@@ -158,21 +158,21 @@ func (h *Host) OpenErrors(args string) error {
 	f := strings.Fields(args)
 	sel := 0
 	if len(f) > 0 {
-		i, err := strconv.Atoi(f[len(f)-1])
-		if err != nil || i < 0 || i >= len(entries) {
-			return Usagef("no error %q; /errors lists them", args)
+		// a bad index opens the list at the newest: the toast naming /errors
+		// would advise the command that just failed
+		if i, err := strconv.Atoi(f[len(f)-1]); err == nil && i >= 0 && i < len(entries) {
+			if f[0] == "ask" {
+				e := entries[i]
+				prompt := "/errors ask " + e.source() + ": " + Headline(e.msg) + agent.Attached("command", fmt.Sprintf(errorAskPrompt, e.at.Format(time.TimeOnly), e.source(), h.zemiSkillDir(), e.msg))
+				h.GoSafe("errors ask", func() {
+					if err := h.AgentSend(prompt); err != nil {
+						h.Notify(slog.LevelError, "Could not send", h.friendlyError(err))
+					}
+				})
+				return nil
+			}
+			sel = len(entries) - 1 - i
 		}
-		if f[0] == "ask" {
-			e := entries[i]
-			prompt := "/errors ask " + e.source() + ": " + Headline(e.msg) + agent.Attached("command", fmt.Sprintf(errorAskPrompt, e.at.Format(time.TimeOnly), e.source(), h.zemiSkillDir(), e.msg))
-			h.GoSafe("errors ask", func() {
-				if err := h.AgentSend(prompt); err != nil {
-					h.Notify(slog.LevelError, "Could not send", h.friendlyError(err))
-				}
-			})
-			return nil
-		}
-		sel = len(entries) - 1 - i
 	}
 	items := make([]OverlayItem, 0, len(entries))
 	noModel := h.modelErr(h.roleModel(defaultRole))

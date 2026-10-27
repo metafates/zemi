@@ -870,8 +870,10 @@ func (h *Host) sendTurn(ctx context.Context, runner *agent.Runner, text string) 
 		if text != "" { // history holds the user message from here on
 			text = ""
 		}
+		// the turn's verdict logs once at TurnDone with model and usage; this
+		// is the per-attempt trace a retried refusal would otherwise lose
 		if err != nil && !errors.Is(err, agent.ErrTurnActive) {
-			h.Log.Error("turn failed", "origin", "agent", "error", err)
+			h.Log.Debug("turn attempt failed", "origin", "agent", "error", err)
 		}
 		// a model whose ceiling is lower than the cap zemi asked for: drop
 		// the cap, remember it, and send again rather than failing every turn
@@ -1588,13 +1590,19 @@ func (h *Host) storeMessage(sid string, msg fantasy.Message, thought time.Durati
 // user's words, replies, thought rows, tool calls and results. A failure
 // costs the log a line, never the turn. A run's session keeps its
 // own rows, wired on the run's runner.
+// logAppendFailed is the one Warn a failed chat-log append makes; the call
+// sites share it so the message lives once.
+func (h *Host) logAppendFailed(err error) {
+	h.Log.Warn("chat log append failed", "origin", "agent", "error", err)
+}
+
 func (h *Host) persistMessage(msg fantasy.Message) error {
 	if h.chat == nil {
 		return nil
 	}
 	seq, err := h.logChatMessage(msg)
 	if err != nil {
-		h.Log.Warn("chat log append failed", "origin", "agent", "error", err)
+		h.logAppendFailed(err)
 		return nil
 	}
 	if seq >= 0 {
@@ -2146,7 +2154,7 @@ func (h *Host) toggleModelFavorite(id, name string) {
 		favs = append(favs, id)
 	}
 	if _, err := h.writeSetting(config.KeyModelsFavorites, favs); err != nil {
-		h.Notify(slog.LevelWarn, "Could not mark the model", err.Error())
+		h.Notify(slog.LevelWarn, "Could not save the favorite", err.Error())
 		return
 	}
 	// the box the key was pressed in is gone by now: this is a fresh list,

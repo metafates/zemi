@@ -934,7 +934,7 @@ func (h *Host) logWork(run, name, text string) {
 		return
 	}
 	if err := h.chat.Work(run, name, "["+name+"] "+text); err != nil {
-		h.Log.Warn("chat log append failed", "origin", "agent", "error", err)
+		h.logAppendFailed(err)
 	}
 }
 

@@ -58,10 +58,10 @@ func (h *Host) RunShell(cmd string) {
 		// shell row the transcript drew
 		if h.chat != nil {
 			if err := h.chat.Shell(row.Text, row.Detail, status != CallErr); err != nil {
-				h.Log.Warn("chat log append failed", "origin", "agent", "error", err)
+				h.logAppendFailed(err)
 			}
 			if err := h.chat.Echo("!command", status != CallErr, text); err != nil {
-				h.Log.Warn("chat log append failed", "origin", "agent", "error", err)
+				h.logAppendFailed(err)
 			}
 		}
 		ag := h.agents

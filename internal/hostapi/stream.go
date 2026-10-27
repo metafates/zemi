@@ -288,7 +288,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		}
 		if h.chat != nil {
 			if err := h.chat.Error(row.Text, row.Status == CallCancelled); err != nil {
-				h.Log.Warn("chat log append failed", "origin", "agent", "error", err)
+				h.logAppendFailed(err)
 			}
 		}
 		h.AppendChat(row)

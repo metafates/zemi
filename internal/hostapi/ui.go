@@ -902,7 +902,7 @@ func (h *Host) renderItems(L *glua.LState, id string, fn *glua.LFunction, items 
 			}
 		}
 		if err != nil {
-			h.Log.Debug("overlay render_item failed", "origin", "ui", "id", id, "error", err)
+			h.RecordErrorOnce("overlay", id+" render_item", err.Error())
 			item.Row = []Segment{{Text: fmt.Sprint(item.raw)}}
 		}
 	}
