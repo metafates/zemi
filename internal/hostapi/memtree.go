@@ -1081,6 +1081,10 @@ func (b *memTree) build(convo []fantasy.Message, first bool, wait chan struct{})
 		}
 	}
 	var best string
+	// resampled: a clean finish with no line is not deterministic the way the
+	// output cap is - the model said nothing this sample and can say the line
+	// on the next one, so the reply gets one fresh sample before parking.
+	resampled := false
 	for range buildTryMax {
 		res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(chatSystem)).Stream(b.ctx, fantasy.AgentStreamCall{
 			Messages:        convo,
@@ -1096,14 +1100,18 @@ func (b *memTree) build(convo []fantasy.Message, first bool, wait chan struct{})
 		reply := strings.TrimSpace(concatText(res.Response.Content))
 		switch {
 		case reply == "":
-			// the same conversation answers the same way: fail the node now
+			// the cap is deterministic: the same conversation answers the
+			// same way, and a fresh sample burns the same cap - park now
 			if res.Response.FinishReason == fantasy.FinishReasonLength {
 				if suppress {
 					return "", fmt.Errorf("%w at the output cap even with reasoning off - the model ignores the suppression; pick a plain model for models.compact", errEmptyReply)
 				}
 				return "", fmt.Errorf("%w at the output cap - lower the model's reasoning effort or raise its output cap", errEmptyReply)
 			}
-			return "", fmt.Errorf("%w - the model returned no line", errEmptyReply)
+			if resampled {
+				return "", fmt.Errorf("%w - the model returned no line twice", errEmptyReply)
+			}
+			resampled = true
 		case len(reply) <= nodeBytes:
 			return reply, nil
 		default:
