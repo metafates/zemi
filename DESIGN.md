@@ -1853,7 +1853,7 @@ view; a reset's wipe drops the row with the chat.
   no cell of it, which the chat row already says. It reads `ctx.frame`,
   `ctx.ended`, `ctx.cancelling`, `interrupt_armed`, `view`, `editing`,
   `waiting`, `busy` (its newest entry, the job the user waits on)
-  and `agent.retry`/`compacting`/`checking_goal`),
+  and `agent.retry`/`checking_goal`),
   the statusline on a bar row below the box. The mascot is always drawn and the frame's height
   never moves with agent state, so no turn adds or removes a row.
   Statusline
