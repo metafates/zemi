@@ -101,6 +101,24 @@ the lab does) is what makes `capture-pane -e` show `38;2;r;g;b`. `-m` applies
 after init.lua. Parallel testers each take their own `$T`, tmux server name and port: on a
 shared port the other tester's server answers, and on a shared tree its `init.lua` loads.
 
+## The chaos driver
+
+`chaos-qa` runs a seeded random action sequence - turns, esc, overlays, armed
+429s, mid-stream drops, resizes, SIGKILLs (its pane is a supervisor loop, so a
+kill is one round, not a teardown) - and checks the invariants after every
+round: store integrity, view coverage exactly-once over the log, dense seqs,
+the process alive. A failure names the seed, so a broken run replays:
+
+```sh
+.agents/skills/zemi-tui-test/chaos-qa up 40 11   # rounds, seed; log to stdout
+.agents/skills/zemi-tui-test/chaos-qa check      # the invariants only
+.agents/skills/zemi-tui-test/chaos-qa down
+```
+
+The fake server's `drop` control file (a positive count of replies cut
+mid-stream) is what drives the network-drop path; `rate_fail` and
+`rate_limit` are described at its top.
+
 ## Clean up
 
 Kill the tmux session and the server; leave nothing running. Delete the tree when done: a

@@ -9,13 +9,28 @@
 # OUTDIR/rate_limit holds "REQUESTS[:TOKENS][:WINDOW]" (e.g. "40:52000:60"): the
 # server enforces it as a sliding window over its own requests and refuses one
 # that would exceed it with a 429 whose Retry-After names when the oldest
-# entry leaves the window. usage: python3 fake_openai.py PORT [OUTDIR]   (OUTDIR default: the CWD)
+# entry leaves the window.
+# While OUTDIR/drop holds a positive count, that many requests get a streamed
+# reply cut off mid-stream (headers and a couple of events, then the socket),
+# the count decrementing per drop. usage: python3 fake_openai.py PORT [OUTDIR]
+#   (OUTDIR default: the CWD)
 import json, os, re, sys, time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 OUT = sys.argv[2] if len(sys.argv) > 2 else "."
 os.makedirs(os.path.join(OUT, "requests"), exist_ok=True)
 REQS, TOKS = [], []  # sliding-window entries: monotonic times, (time, completion tokens)
+
+def ctl(name):
+    try:
+        return int(open(os.path.join(OUT, name)).read().strip() or 0)
+    except (OSError, ValueError):
+        return 0
+
+def set_ctl(name, v):
+    tmp = os.path.join(OUT, name + ".tmp")
+    open(tmp, "w").write(str(v))
+    os.replace(tmp, os.path.join(OUT, name))
 
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -60,20 +75,24 @@ class H(BaseHTTPRequestHandler):
             REQS.append(now)
             TOKS.append((now, 50))
         failp = os.path.join(OUT, "rate_fail")
-        if os.path.exists(failp):
-            try:
-                fail = int(open(failp).read().strip() or 0)
-            except ValueError:
-                fail = 0
-            if fail > 0:
-                open(failp + ".tmp", "w").write(str(fail - 1))
-                os.replace(failp + ".tmp", failp)
-                out = json.dumps({"error": {"message": "Rate limit exceeded", "type": "rate_limit_error"}}).encode()
-                self.send_response(429); self.send_header("Content-Type", "application/json")
-                self.send_header("Retry-After-Ms", "300")
-                self.send_header("Content-Length", str(len(out))); self.end_headers(); self.wfile.write(out)
-                print("REQ %d -> 429 (%d left)" % (n, fail - 1), flush=True)
-                return
+        fail = ctl("rate_fail")
+        if fail > 0:
+            set_ctl("rate_fail", fail - 1)
+            out = json.dumps({"error": {"message": "Rate limit exceeded", "type": "rate_limit_error"}}).encode()
+            self.send_response(429); self.send_header("Content-Type", "application/json")
+            self.send_header("Retry-After-Ms", "300")
+            self.send_header("Content-Length", str(len(out))); self.end_headers(); self.wfile.write(out)
+            print("REQ %d -> 429 (%d left)" % (n, fail - 1), flush=True)
+            return
+        drop = ctl("drop")
+        if drop > 0:
+            set_ctl("drop", drop - 1)
+            self.send_response(200); self.send_header("Content-Type", "text/event-stream"); self.end_headers()
+            self.wfile.write(b'data: {"id":"c","object":"chat.completion.chunk","model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":"half a"}}]}\n\n')
+            self.wfile.flush()
+            self.connection.close()
+            print("REQ %d -> dropped mid-stream" % n, flush=True)
+            return
         usage = {"prompt_tokens": 1000, "completion_tokens": 50, "total_tokens": 1050}
         if not body.get("stream"):
             msg = {"role": "assistant", "content": "done"}

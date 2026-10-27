@@ -1,0 +1,114 @@
+#!/bin/bash
+# chaos-qa drives a running zemi lab with a seeded random action sequence and
+# checks the invariants after every round, so a long hostile session is a
+# reproducible artifact instead of an afternoon of typing.
+#
+#   chaos-qa up [ROUNDS] [SEED]   boot a 140x40 lab and run ROUNDS rounds
+#   chaos-qa check                run the invariant checks only
+#   chaos-qa down                 tear the lab down
+#
+# Every round: one random action from the pool below, then the checks - the
+# store's integrity, the view's exactly-once coverage, the process alive and
+# a quiet errors pill. The seed makes a failing run replayable.
+# Env: PORT (default 18499), SEED, ROUNDS.
+set -u
+PORT=${PORT:-18499}
+NAME=chaos
+S="$(cd "$(dirname "$0")" && pwd)"
+T=${TMPDIR:-/tmp}/zemi-chaos-$NAME
+ZB=${ZEMI_BIN:-$(cd "$S/../../.." && pwd)/bin/zemi}
+case "${1:-up}" in
+up)
+    ROUNDS=${2:-${ROUNDS:-20}}
+    SEED=${3:-${SEED:-42}}
+    "$S/zemi-lab" -n $NAME down >/dev/null 2>&1
+    mkdir -p "$T"/{config,data,state,cache,out/requests,proj}
+    (cd "$T/proj" && git init -q)
+    cat > "$T/config/init.lua" <<L
+zemi.provider.add({ id = "fake", kind = "openai_compat",
+	api_key = "x", base_url = "http://127.0.0.1:$PORT/v1",
+	models = { { id = "m", context_window = 128000 } } })
+zemi.config.set("models.default", "fake/m")
+L
+    python3 "$S/fake_openai.py" $PORT "$T/out" &
+    FPID=$!
+    tmux -L z$NAME new-session -d -s $NAME -x 140 -y 40 -c "$T/proj" \
+        "while true; do env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN=$ZB $S/zemi-safe $T --trust; sleep 1; done"
+    sleep 12
+    echo "chaos: lab up, $ROUNDS rounds, seed $SEED (pid $FPID)"
+    ;;
+esac
+
+DB() {
+    echo "$T/state/projects/$(cat "$T"/state/projects/*/root 2>/dev/null | head -1 >/dev/null; ls "$T"/state/projects | head -1)/zemi.db"
+}
+
+checks() {
+    local fail=0 db; db=$(ls "$T"/state/projects/*/zemi.db 2>/dev/null | head -1)
+    [ -n "$db" ] || { echo "  check: no store yet"; return 0; }
+    local bad
+    bad=$(sqlite3 "$db" "pragma integrity_check" 2>&1)
+    [ "$bad" = "ok" ] || { echo "  FAIL: integrity_check: $bad"; fail=1; }
+    bad=$(sqlite3 "$db" "
+        select sum(n) from (
+            with c as (select i << l as f, 1 << l as n from view_lines),
+            r as (select f, n, sum(n) over (order by f rows between unbounded preceding and 1 preceding) as p from c)
+            select count(*) as n from r where coalesce(p, 0) != f
+            union all
+            select count(*) from (select l, i, count(*) c from view_lines group by l, i having c > 1)
+            union all
+            select (select coalesce(sum(1 << l), 0) from view_lines) - (select coalesce(max(seq), -1) + 1 from log)
+        )" 2>&1)
+    [ "$bad" = "0" ] || { echo "  FAIL: view coverage: $bad"; fail=1; }
+    bad=$(sqlite3 "$db" "select count(*) from (select seq - lag(seq) over (order by seq) d from log) where d is not null and d != 1" 2>&1)
+    [ "$bad" = "0" ] || { echo "  FAIL: log seq not dense: $bad"; fail=1; }
+    pgrep -f "zemi-safe $T" >/dev/null || { echo "  FAIL: the process is gone"; fail=1; }
+    return $fail
+}
+
+act() {
+    local i=$1 r=$(( (SEED * 9301 + i * 49297) % 233280 ))
+    local pick=$(( r % 12 ))
+    case $pick in
+    0 | 1 | 2 | 3) # a turn, sometimes tool-shaped, some long enough for a leaf build
+        local pad
+        [ $((pick % 2)) = 0 ] && pad=$(printf 'detail %.0s' $(seq 1 40))
+        tmux -L z$NAME send-keys -t $NAME "ask number $i: ${pad:-name one lake}" Enter
+        ;;
+    4) tmux -L z$NAME send-keys -t $NAME Escape ;;
+    5) tmux -L z$NAME send-keys -t $NAME '/health' Enter; sleep 1; tmux -L z$NAME send-keys -t $NAME Escape ;;
+    6) tmux -L z$NAME send-keys -t $NAME '/messages' Enter; sleep 1; tmux -L z$NAME send-keys -t $NAME Escape ;;
+    7) echo $(( (i % 5) + 1 )) > "$T/out/rate_fail" ;;
+    8) echo $(( (i % 3) + 1 )) > "$T/out/drop" ;;
+    9) tmux -L z$NAME resize-window -t $NAME -x $(( 100 + (i % 4) * 20 )) 2>/dev/null ;;
+    10) # SIGKILL mid-anything: the worst exit a machine deals; the pane's
+        # supervisor loop boots the next window in a second
+        zp=$(tmux -L z$NAME display -p -t $NAME '#{pane_pid}')
+        kill -9 "$(pgrep -P "$zp" | head -1)" 2>/dev/null
+        sleep 12
+        ;;
+    11) tmux -L z$NAME send-keys -t $NAME '/memories' Enter; sleep 1; tmux -L z$NAME send-keys -t $NAME Escape; tmux -L z$NAME send-keys -t $NAME Escape ;;
+    esac
+}
+
+case "${1:-up}" in
+up)
+    for i in $(seq 1 "$ROUNDS"); do
+        act "$i"
+        sleep 3
+        if ! checks; then
+            echo "chaos: FAILED at round $i (seed $SEED) - the tree is at $T for a repro"
+            exit 1
+        fi
+    done
+    echo "chaos: $ROUNDS rounds clean (seed $SEED)"
+    ;;
+check) checks ;;
+down)
+    tmux -L z$NAME kill-server 2>/dev/null
+    [ -n "${FPID:-}" ] && kill "$FPID" 2>/dev/null
+    pkill -f "fake_openai.py $PORT" 2>/dev/null
+    rm -rf "$T"
+    echo "chaos: down"
+    ;;
+esac
