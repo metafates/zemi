@@ -388,7 +388,7 @@ calls blank the user's global filter drivers too.
 
 Load order is a list of boot steps: host `zemi.*` namespaces
 -> builtin commands (main's own plus every domain
-file's: note, skills, agents, jobs, call, messages, workflow,
+file's: note, skills, agents, jobs, call, messages, memories, workflow,
 mcp, lsp, plugins, config, projects) -> the
 shipped Lua UI (`require("zemi.tui")`) -> the project trust
 decision (the prompt above; before any config that may start an MCP
@@ -2560,7 +2560,13 @@ gets a correction naming its byte count against the 512-dash ruler, and the
 shortest fitting line of the run is kept. A builder call's output budget is
 the model's own cap, 8192 when it names none, at the model's lowest listed
 reasoning effort: a reasoning model must have budget left to write the
-line, not only to think.
+line, not only to think. A model that lists no effort levels (a user-spec
+gateway model) gets the force-off on an openai_compat gateway: effort low
+plus a `thinking: {"type": "disabled"}` body field - measured on
+acme-gateway and DeepSeek, where effort low alone turns thinking ON on
+DeepSeek and the thinking field alone does nothing on the gateway; a model
+that ignores both still parks, and the parked error says to pick a plain
+model.
 
 ### 10.3 The view
 

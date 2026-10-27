@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"charm.land/fantasy/providers/openai"
+	"charm.land/fantasy/providers/openaicompat"
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/store"
@@ -401,12 +403,13 @@ func (b *memTree) run() {
 	}
 	for {
 		if err := b.syncNew(); err != nil {
-			b.h.Log.Warn("memtree sync failed", "origin", "agent", "error", err)
 			if errors.Is(err, errWiped) {
-				// another window wiped the chat: start over from its log
+				// the chat was wiped: start over from its log
 				if err := b.rebuild(); err != nil {
 					b.h.Log.Error("memtree rebuild failed", "origin", "agent", "error", err)
 				}
+			} else {
+				b.h.Log.Warn("memtree sync failed", "origin", "agent", "error", err)
 			}
 		}
 		b.dispatch()
@@ -1052,12 +1055,31 @@ func (b *memTree) build(convo []fantasy.Message, first bool, wait chan struct{})
 	}
 	maxOut := cmp.Or(b.h.maxOutput(id), buildMaxOutput)
 	// a builder call runs at the model's own lowest effort, when it lists
-	// levels: its default effort is what starved the line into reasoning
-	effort := ""
+	// levels: its default effort is what starved the line into reasoning. A
+	// model that lists no levels gets the force-off on an openai_compat
+	// gateway: effort low plus the no-thinking body field - reasoning models
+	// spend the whole output cap on thinking and return no line otherwise
+	// (measured on acme-gateway and DeepSeek: effort low alone turns thinking
+	// ON on DeepSeek, the thinking field alone does nothing on the gateway).
+	effort, suppress := "low", false
+	opts := fantasy.ProviderOptions(nil)
 	if m, ok := b.h.modelSpec(id); ok && len(m.Efforts) > 0 {
 		effort = b.h.Providers.Effort(agent.ModelID(id), "low")
+		opts = b.h.Providers.CallOptions(agent.ModelID(id), effort, store.MainSessionID)
+	} else if prov, _, ok := agent.ModelID(id).Split(); ok {
+		if spec, ok := b.h.Providers.Lookup(prov); ok {
+			switch spec.Kind {
+			case agent.KindOpenAICompat:
+				suppress = true
+				opts = openaicompat.NewProviderOptions(&openaicompat.ProviderOptions{
+					ReasoningEffort: new(openai.ReasoningEffort(effort)),
+					ExtraBody:       map[string]any{"thinking": map[string]string{"type": "disabled"}},
+				})
+			default:
+				opts = b.h.Providers.CallOptions(agent.ModelID(id), effort, store.MainSessionID)
+			}
+		}
 	}
-	opts := b.h.Providers.CallOptions(agent.ModelID(id), effort, store.MainSessionID)
 	var best string
 	for range buildTryMax {
 		res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(chatSystem)).Stream(b.ctx, fantasy.AgentStreamCall{
@@ -1076,6 +1098,9 @@ func (b *memTree) build(convo []fantasy.Message, first bool, wait chan struct{})
 		case reply == "":
 			// the same conversation answers the same way: fail the node now
 			if res.Response.FinishReason == fantasy.FinishReasonLength {
+				if suppress {
+					return "", fmt.Errorf("%w at the output cap even with reasoning off - the model ignores the suppression; pick a plain model for models.compact", errEmptyReply)
+				}
 				return "", fmt.Errorf("%w at the output cap - lower the model's reasoning effort or raise its output cap", errEmptyReply)
 			}
 			return "", fmt.Errorf("%w - the model returned no line", errEmptyReply)

@@ -15,7 +15,7 @@ var schemaPurpose = map[string]string{
 	"todos":      "a session's todo list",
 	"tool_calls": "one row per tool call a message carried",
 	"skills":     "the skill index synced at boot: path, source and enabled flag per name",
-	"kv":         "small state: saved config picks, leases",
+	"kv":         "small state: saved config picks, goals, recap hints, MCP state, user storage",
 	"log":        "the eternal chat: one append-only row per message, seq its dense 0-based index",
 	"nodes":      "the summary tree: node(l, i) covers the 2^l messages from i*2^l on, one line each",
 	"view_lines": "the persisted view, oldest first; a line whose node is missing renders as a placeholder",

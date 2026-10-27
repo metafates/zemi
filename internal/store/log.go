@@ -193,17 +193,6 @@ func (s *DB) BuiltNodes() ([]NodeRef, error) {
 	})
 }
 
-// AppendViewLine puts one line in the persisted view; a second append of the
-// same node collapses onto the row it already made (ord is its first
-// message).
-func (s *DB) AppendViewLine(l, i int64) error {
-	_, err := s.db.Exec(`INSERT OR REPLACE INTO view_lines (ord, l, i) VALUES (?, ?, ?)`, i<<l, l, i)
-	if err != nil {
-		return fmt.Errorf("store: append view line: %w", err)
-	}
-	return nil
-}
-
 // MergeViewLines applies merges in one transaction: each runs only while both
 // its children are still there, so two windows merging from stale views can
 // never double-cover a message - a merge another window already made is

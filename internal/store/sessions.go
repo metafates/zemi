@@ -83,13 +83,6 @@ func (s *DB) GetSession(id string) (*Session, error) {
 // the migration plants is not a conversation.
 const topLevelSessions = `COALESCE(parent_id, '') = '' AND id <> '` + MainSessionID + `'`
 
-// ListSessions returns top-level sessions (subagent runs excluded) ordered
-// by most recent activity.
-func (s *DB) ListSessions(limit int) ([]*Session, error) {
-	rows, err := s.db.Query(`SELECT `+sessionCols+` FROM sessions WHERE `+topLevelSessions+` ORDER BY updated_at DESC LIMIT ?`, limit)
-	return collect(rows, err, scanSession)
-}
-
 // ChildSessions returns the subagent runs a session started, newest first.
 func (s *DB) ChildSessions(parentID string) ([]*Session, error) {
 	rows, err := s.db.Query(`SELECT `+sessionCols+` FROM sessions WHERE parent_id = ? ORDER BY created_at DESC`, parentID)
@@ -250,28 +243,6 @@ func (s *DB) AddToolCall(m *Message, tc *ToolCall) error {
 	})
 }
 
-// ToolStat is one per-tool aggregate over a session's tool calls.
-type ToolStat struct {
-	Tool   string
-	Calls  int
-	Failed int
-}
-
-// ToolCallStats aggregates a session's tool_calls rows per tool, busiest
-// first; afterID limits it to the calls stored after that message, ""
-// counts them all.
-func (s *DB) ToolCallStats(sessionID, afterID string) ([]ToolStat, error) {
-	rows, err := s.db.Query(`SELECT t.tool, COUNT(*),
-			SUM(CASE WHEN t.ok = 0 THEN 1 ELSE 0 END)
-		FROM tool_calls t JOIN messages m ON m.id = t.message_id
-		WHERE m.session_id = ? AND (? = '' OR m.rowid > (SELECT rowid FROM messages WHERE id = ?))
-		GROUP BY t.tool ORDER BY COUNT(*) DESC, t.tool`, sessionID, afterID, afterID)
-	return collect(rows, err, func(r scanner) (st ToolStat, err error) {
-		err = r.Scan(&st.Tool, &st.Calls, &st.Failed)
-		return st, err
-	})
-}
-
 // GetKV loads a json value by key; ErrNotFound when absent.
 func (s *DB) GetKV(key string) (string, error) {
 	return one(s.db.QueryRow(`SELECT value_json FROM kv WHERE key = ?`, key), scanString)
@@ -282,23 +253,6 @@ func (s *DB) SetKV(key, valueJSON string) error {
 		ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at`,
 		key, valueJSON, now())
 	return err
-}
-
-// SetKVOnce inserts a json value by key only when absent, reporting
-// whether this call inserted it. One INSERT OR IGNORE is atomic across
-// processes (SQLite serializes writers), so it is the primitive a
-// cross-process claim uses: two processes claiming the same key, one wins.
-func (s *DB) SetKVOnce(key, valueJSON string) (bool, error) {
-	return s.changed(`INSERT INTO kv (key, value_json, updated_at) VALUES (?, ?, ?)
-		ON CONFLICT(key) DO NOTHING`, key, valueJSON, now())
-}
-
-// ReclaimKVIfStale overwrites key when its updated_at is older than
-// olderThan, in one statement; it reports whether it did. The lease an
-// owner that crashed leaves behind is reclaimed this way.
-func (s *DB) ReclaimKVIfStale(key, valueJSON string, olderThan int64) (bool, error) {
-	return s.changed(`UPDATE kv SET value_json = ?, updated_at = ? WHERE key = ? AND updated_at < ?`,
-		valueJSON, now(), key, olderThan)
 }
 
 // DelKV drops a key, reporting whether there was one.

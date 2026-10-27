@@ -82,18 +82,23 @@ You can use zemi with any provider.
 | `GROQ_API_KEY`              | Groq                                               |
 | `AVIAN_API_KEY`             | Avian                                              |
 | `OPENCODE_API_KEY`          | OpenCode Zen & Go                                  |
-| `VERTEXAI_PROJECT`          | Google Cloud VertexAI (Gemini)                     |
-| `VERTEXAI_LOCATION`         | Google Cloud VertexAI (Gemini)                     |
-| `AWS_ACCESS_KEY_ID`         | Amazon Bedrock (Claude)                            |
-| `AWS_SECRET_ACCESS_KEY`     | Amazon Bedrock (Claude)                            |
-| `AWS_REGION`                | Amazon Bedrock (Claude)                            |
-| `AWS_PROFILE`               | Amazon Bedrock (Custom Profile)                    |
-| `AWS_BEARER_TOKEN_BEDROCK`  | Amazon Bedrock                                     |
-| `AZURE_OPENAI_API_ENDPOINT` | Azure OpenAI models                                |
-| `AZURE_OPENAI_API_KEY`      | Azure OpenAI models (optional when using Entra ID) |
-| `AZURE_OPENAI_API_VERSION`  | Azure OpenAI models                                |
 | `MOONSHOT_API_KEY`          | Moonshot                                           |
 | `XAI_API_KEY`               | xAI                                                |
+| `DEEPSEEK_API_KEY`          | DeepSeek                                           |
+| `KIMI_CODING_API_KEY`       | Kimi Coding                                        |
+| `AIHUBMIX_API_KEY`          | AIHubMix                                           |
+| `ATLASCLOUD_API_KEY`        | Atlas Cloud                                        |
+| `BASETEN_API_KEY`           | Baseten                                            |
+| `CHUTES_API_KEY`            | Chutes                                             |
+| `CORALBRICKS_API_KEY`       | CoralBricks                                        |
+| `CORTECS_API_KEY`           | Cortecs                                            |
+| `FIREWORKS_API_KEY`         | Fireworks                                          |
+| `NEBIUS_API_KEY`            | Nebius Token Factory                               |
+| `NEURALWATT_API_KEY`        | Neuralwatt                                         |
+| `QINIUCLOUD_API_KEY`        | QiniuCloud                                         |
+| `SCW_SECRET_KEY`            | Scaleway                                           |
+| `VENICE_API_KEY`            | Venice AI                                          |
+| `ZHIPU_API_KEY`             | Zhipu                                              |
 
 ## Local models & custom providers
 

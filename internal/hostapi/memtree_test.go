@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"charm.land/fantasy/providers/openaicompat"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
@@ -357,8 +358,8 @@ func TestViewConcurrentCoverage(t *testing.T) {
 	}
 	t.Cleanup(func() { db.Close() })
 	const total = 60
-	for i := range 40 {
-		if err := db.AppendViewLine(0, int64(i)); err != nil {
+	for range 40 {
+		if _, err := db.AppendLog("user", "", "", "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -382,7 +383,7 @@ func TestViewConcurrentCoverage(t *testing.T) {
 	wg.Go(func() {
 		defer close(done)
 		for seq := int64(40); seq < total; seq++ {
-			if err := db.AppendViewLine(0, seq); err != nil {
+			if _, err := db.AppendLog("user", "", "", "", ""); err != nil {
 				t.Error(err)
 				return
 			}
@@ -1096,5 +1097,44 @@ func TestBuilderRowParked(t *testing.T) {
 	row := h.builderRow()
 	if row.Level != HealthError || !strings.Contains(row.Detail, "2 builds parked") {
 		t.Fatalf("builder row = %+v, want the parked builds named", row)
+	}
+}
+
+// TestBuilderSuppressesReasoning: a compact model that lists no effort
+// levels (a user-spec gateway model) gets the force-off - effort low plus
+// the no-thinking body field - because reasoning models spend the whole
+// output cap on thinking and return no line otherwise. Measured on
+// acme-gateway and DeepSeek: the gateway ignores the thinking field, DeepSeek
+// turns thinking ON for a bare effort low; the pair covers both.
+func TestBuilderSuppressesReasoning(t *testing.T) {
+	t.Parallel()
+	h, r := newTestHostDB(t)
+	runUser(t, r, `zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "https://gw/v1", api_key = "k",
+		models = { { id = "m", context_window = 128000 } } })`)
+	if err := h.SetConfig("models.compact", "gw/m"); err != nil {
+		t.Fatal(err)
+	}
+	m := replyStub(t, h, "ok")
+	h.SetUIHooks(&fakeUI{})
+	if _, err := h.chat.User(strings.Repeat("z", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if _, err := h.DB.NodeAt(0, 0); err != nil {
+			return err
+		}
+		return nil
+	})
+	opts := m.lastOpts.Load()
+	if opts == nil {
+		t.Fatal("no provider options on the builder call")
+	}
+	o, ok := (*opts)[openaicompat.Name].(*openaicompat.ProviderOptions)
+	if !ok || o.ReasoningEffort == nil || string(*o.ReasoningEffort) != "low" {
+		t.Fatalf("builder options %+v, want reasoning effort low", o)
+	}
+	th, ok := o.ExtraBody["thinking"].(map[string]string)
+	if !ok || th["type"] != "disabled" {
+		t.Fatalf("extra body %v, want thinking disabled", o.ExtraBody)
 	}
 }

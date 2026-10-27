@@ -99,7 +99,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		} {
 			rows = append(rows, hostapi.WrapSegs([]hostapi.Segment{{Text: "  - "}, {Text: g, HL: hostapi.ChromeValue}}, width)...)
 		}
-		return append(append(rows, nil), wrapText("Without trust, that stays off and reads stay inside the start dir. Either answer is "+saved+".", hostapi.ChromeHint, width)...)
+		return append(append(rows, nil), wrapText("Without trust, those stay off. Either answer is "+saved+".", hostapi.ChromeHint, width)...)
 	}
 	laterDesc := "ask again next start"
 	if tp.state != "" {

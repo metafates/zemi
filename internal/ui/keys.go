@@ -185,8 +185,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.bump()
 			return nil
 		}
-		// a choice's key answers directly ("o" is "y"), so a new choice needs
-		// no case here
+		// a choice's key answers directly, so a new choice needs no case here
 		switch key {
 		case "enter":
 			a.choosePerm(choices[pa.sel])
@@ -194,7 +193,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.answerPerm(false, tools.ByUser)
 		default:
 			for _, c := range choices {
-				if c.key == key || key == "o" && c.key == "y" {
+				if c.key == key {
 					a.choosePerm(c)
 					return nil
 				}

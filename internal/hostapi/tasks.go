@@ -169,7 +169,7 @@ func newTaskReg(settings *config.Store) *taskReg {
 // maxBackground is agent.max_background: how many detached runs may live at
 // once. A value below one would refuse every one of them.
 func (r *taskReg) maxBackground() int {
-	return max(r.settings.Int("agent.max_background"), 1)
+	return max(r.settings.Int(config.KeyAgentMaxBackground), 1)
 }
 
 // The two answers a refused detach can give. The model can run the same call

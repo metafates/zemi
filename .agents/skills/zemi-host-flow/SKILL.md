@@ -241,8 +241,12 @@ applied one. A store made before goose only gains its version table: the baselin
   shortest fitting line kept; a failed build retries on a doubling backoff and parks after
   six failures in a row until new rows land (`buildStreak`) - except an empty reply, which no
   try can fix, and parks on its first one. Builder calls get the model's own output cap (8192
-  when it names none) and its lowest listed reasoning effort, so a reasoning model still has
-  budget left to write the line. The view is the
+  when it names none) and, when the model lists effort levels, its lowest. A model that lists
+  none (a user-spec gateway model) gets the force-off: effort low plus a
+  `thinking: {"type": "disabled"}` extra-body field - reasoning models spend the whole output
+  cap on thinking and return no line otherwise; the pair is measured on acme-gateway
+  (GLM-5.3-Flash) and DeepSeek, where a bare effort low would turn thinking ON and the
+  thinking field alone does nothing on the gateway. The view is the
   persisted sawtooth (DESIGN §10.3): one line per message, then one batch past 128,000 bytes
   merges the most due pairs down to 64,000; the compaction view is the second sawtooth in
   kv. A reset quiesces the builder - a fence: nothing

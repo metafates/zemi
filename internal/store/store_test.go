@@ -119,7 +119,8 @@ func TestMigrationFresh(t *testing.T) {
 	if err := db.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&again); err != nil || again != version {
 		t.Fatalf("goose version after a reopen = %d, %v; want %d", again, err, version)
 	}
-	if n, err := db.SessionCount(); err != nil || n != 1 {
+	var n int
+	if err := db.db.QueryRow(`SELECT count(*) FROM sessions WHERE ` + topLevelSessions).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("sessions = %d, %v", n, err)
 	}
 }
@@ -161,7 +162,8 @@ func TestOpenReadUnmigrated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, err := db.SessionCount()
+	var n int
+	err = db.db.QueryRow(`SELECT count(*) FROM sessions WHERE ` + topLevelSessions).Scan(&n)
 	db.Close()
 	if err != nil || n != 1 {
 		t.Fatalf("a migrated store reads: %d, %v", n, err)
@@ -275,13 +277,6 @@ func TestSessionLifecycle(t *testing.T) {
 	if s, _ = db.GetSession("s1"); s.UpdatedAt != 1 || s.Title != "relabelled" {
 		t.Fatalf("rename: %+v", s)
 	}
-	if err := db.CreateSession("top", "", "top", ""); err != nil {
-		t.Fatal(err)
-	}
-	all, err := db.ListSessions(10)
-	if err != nil || len(all) != 1 || all[0].ID != "top" {
-		t.Fatalf("list must hold only the top-level session: %v %v", all, err)
-	}
 }
 
 func TestMessagesAndToolCalls(t *testing.T) {
@@ -311,15 +306,6 @@ func TestMessagesAndToolCalls(t *testing.T) {
 	if err := db.AddToolCall(&Message{SessionID: "s1", Role: "tool", PartsJSON: `{}`},
 		&ToolCall{Tool: "shell", OK: false}); err != nil {
 		t.Fatal(err)
-	}
-	if stats, err := db.ToolCallStats("s1", ""); err != nil || len(stats) != 1 || stats[0].Calls != 1 {
-		t.Fatalf("tool stats = %+v, %v", stats, err)
-	}
-	if stats, err := db.ToolCallStats("s1", msgs[1].ID); err != nil || len(stats) != 1 || stats[0].Failed != 1 {
-		t.Fatalf("tool stats after a message = %+v, %v", stats, err)
-	}
-	if stats, err := db.ToolCallStats("s1", "nope"); err != nil || len(stats) != 0 {
-		t.Fatalf("tool stats after an unknown message = %+v, %v", stats, err)
 	}
 	if err := db.AddToolCall(&Message{SessionID: "ghost", Role: "tool", PartsJSON: `{}`},
 		&ToolCall{Tool: "shell", OK: true}); err == nil {
@@ -362,29 +348,6 @@ func TestKVRoundtrip(t *testing.T) {
 	v, err := db.GetKV("k")
 	if err != nil || v != `{"v":2}` {
 		t.Fatalf("kv: %q %v", v, err)
-	}
-}
-
-func TestKVOnceClaim(t *testing.T) {
-	db := openTest(t)
-	// only the first of two claims on the same key wins (a cross-process
-	// reflection claim relies on this being atomic)
-	if ok, err := db.SetKVOnce("claim:x", "1"); err != nil || !ok {
-		t.Fatalf("first claim: ok=%v err=%v", ok, err)
-	}
-	if ok, err := db.SetKVOnce("claim:x", "2"); err != nil || ok {
-		t.Fatalf("second claim must not win: ok=%v err=%v", ok, err)
-	}
-	// a claim its owner crashed leaving is reclaimable once stale, not while fresh
-	nowMs := time.Now().UnixMilli()
-	if _, err := db.db.Exec(`UPDATE kv SET updated_at = ? WHERE key = 'claim:x'`, nowMs-60000); err != nil {
-		t.Fatal(err)
-	}
-	if ok, _ := db.ReclaimKVIfStale("claim:x", "3", nowMs-30000); !ok {
-		t.Fatal("a stale claim must be reclaimed")
-	}
-	if ok, _ := db.ReclaimKVIfStale("claim:x", "4", nowMs-30000); ok {
-		t.Fatal("a fresh claim must not be reclaimed")
 	}
 }
 
@@ -492,8 +455,9 @@ func TestClaimForDelete(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				if n, err := db.SessionCount(); err != nil || n != 2 {
-					t.Fatalf("SessionCount = %d, %v; want the 2 top-level sessions", n, err)
+				var n int
+				if err := db.db.QueryRow(`SELECT count(*) FROM sessions WHERE ` + topLevelSessions).Scan(&n); err != nil || n != 2 {
+					t.Fatalf("top-level sessions = %d, %v; want 2", n, err)
 				}
 				if c.held {
 					defer db.Close()

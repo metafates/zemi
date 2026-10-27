@@ -829,7 +829,7 @@ func TestPermissionDenyOneAtATime(t *testing.T) {
 	if app.permAsk.size != first.size {
 		t.Fatalf("the next prompt must open in the answered box: %+v, was %+v", app.permAsk.size, first.size)
 	}
-	app.Update(tea.KeyPressMsg{Code: 'o', Text: "o"})
+	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	if a, b := <-res, <-res; a == b {
 		t.Fatalf("exactly one ask must be denied: %v %v", a, b)
 	}

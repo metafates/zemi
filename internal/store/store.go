@@ -181,14 +181,6 @@ func ClaimForDelete(path string) (sessions []string, release func(), err error) 
 	}, nil
 }
 
-// SessionCount is how many top-level sessions the store holds: the anchor
-// and the subagent runs' child sessions.
-func (s *DB) SessionCount() (int, error) {
-	var n int
-	err := s.db.QueryRow(`SELECT count(*) FROM sessions WHERE ` + topLevelSessions).Scan(&n)
-	return n, err
-}
-
 // Close closes the database.
 func (s *DB) Close() error { return s.db.Close() }
 

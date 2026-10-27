@@ -1,4 +1,4 @@
-// subagent.go runs subagents (DESIGN §6.3, M5): agent definitions, the
+// subagent.go runs subagents (DESIGN §6.3): agent definitions, the
 // model's agent tool, and the detached runs that zemi.agent.run and
 // workflows share. A subagent is a fresh runner with its own history and a
 // restricted tool set; its tool calls pass the same permission pipeline as

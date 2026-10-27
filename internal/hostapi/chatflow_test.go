@@ -50,9 +50,6 @@ func TestViewGrowsOnlyAtItsEnd(t *testing.T) {
 		if _, err := h.DB.AppendLog("user", fmt.Sprintf("row %d", i), "", "", ""); err != nil {
 			t.Fatal(err)
 		}
-		if err := h.DB.AppendViewLine(0, int64(i)); err != nil {
-			t.Fatal(err)
-		}
 		if _, err := h.DB.InsertNode(0, int64(i), fmt.Sprintf("line %d text", i)); err != nil {
 			t.Fatal(err)
 		}
@@ -69,7 +66,7 @@ func TestViewGrowsOnlyAtItsEnd(t *testing.T) {
 	}
 	// two more lines land (a turn's rows), unbuilt: placeholders
 	for i := 10; i < 12; i++ {
-		if err := h.DB.AppendViewLine(0, int64(i)); err != nil {
+		if _, err := h.DB.AppendLog("user", fmt.Sprintf("row %d", i), "", "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}

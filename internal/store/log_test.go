@@ -74,8 +74,8 @@ func TestLogSeqDense(t *testing.T) {
 // the coverage exact.
 func TestViewMerges(t *testing.T) {
 	db := openTest(t)
-	for i := range 4 {
-		if err := db.AppendViewLine(0, int64(i)); err != nil {
+	for range 4 {
+		if _, err := db.AppendLog("user", "line", "", "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
