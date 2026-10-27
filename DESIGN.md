@@ -2317,7 +2317,7 @@ view.
   `print` and `zemi.log` lines), `/health` (one row per check, problems first: store,
   providers, catalog, model, context window, git, shell, notify,
   the chat builder (§10), skills, the Lua runtime, layout, plugins,
-  MCP servers, language servers, recent errors, and the rows Lua adds),
+  recent errors, trust, MCP servers, language servers, and the rows Lua adds),
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/skills`,
   `/agents`, `/jobs`, `/workflows`, `/review`, `/mcp`,
