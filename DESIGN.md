@@ -2277,10 +2277,11 @@ view; a reset's wipe drops the row with the chat.
 - **Default keymaps** (all rebindable by user config except the
   Go-reserved cancel and reload triggers, §6.2; a keymap bound to plain
   `esc` shadows the esc chords, so they are a default, never a guarantee):
-  `enter` sends, `esc` twice within 2s or `ctrl+c` once interrupts the turn
-  (`esc` in an agent view goes back; the esc chord stops a busy job;
-  `ctrl+c` moves a draft into the history, and on an empty composer twice
-  within 2s quits), `pgup`/`pgdown`,
+  `enter` sends, `esc` twice within 2s interrupts the turn
+  (`esc` in an agent view goes back; the esc chord stops a busy job),
+  `ctrl+c` moves a draft into the history first, mid-turn included, then on
+  an empty composer interrupts a turn at once and twice within 2s when idle
+  quits, `pgup`/`pgdown`,
   `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j`, `ctrl+home` and `ctrl+b`
   scroll the transcript (the wheel too: mouse cell motion is captured because the
   altscreen has no native scrollback), and `alt+up`/`alt+down` jump to the previous or

@@ -22,7 +22,7 @@ var goKeys = [][2]string{
 	{"enter", "send; steers a running turn"},
 	{"shift+enter, alt+enter, ctrl+enter", "newline"},
 	{"esc", "back; twice to interrupt"},
-	{"ctrl+c", "interrupt, clear the draft, quit"},
+	{"ctrl+c", "clear the draft, interrupt, quit"},
 	{"ctrl+g", "edit the draft in your editor"},
 	{"ctrl+v", "paste, images included"},
 	{"up, ctrl+p", "earlier prompts or queued ones"},
@@ -124,15 +124,15 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.answerTrust("later")
 		case top == modalOverlay:
 			a.cancelMenu()
+		case !a.composer.empty():
+			// the draft stays one up away, and one ctrl+z
+			a.clearDraft()
 		case a.host.AgentActive() && a.cancelling:
 			// the turn did not stop: leave anyway, past the app.quit veto;
 			// children die on exit
 			go a.leave()
 		case a.host.AgentActive():
 			a.interrupt()
-		case !a.composer.empty():
-			// the draft stays one up away, and one ctrl+z
-			a.clearDraft()
 		case a.arm(key, "quit"):
 			a.Quit()
 		}

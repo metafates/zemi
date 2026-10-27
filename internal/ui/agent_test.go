@@ -1150,8 +1150,9 @@ func TestQueuedFoldOne(t *testing.T) {
 
 // TestInterruptKeys: esc interrupts a running turn on a second press within
 // 2s, an agent view takes it as back, a busy job's chord cancels the job, and
-// idle on a draft it does nothing. ctrl+c interrupts at once, clears a draft
-// into the history, and on an empty composer arms quit. A held key prefix
+// idle on a draft it does nothing. ctrl+c clears a draft into the history
+// first, mid-turn included, interrupts an empty composer at once, and when
+// idle arms quit. A held key prefix
 // replays as plain keys when the next key breaks it or it times out, and
 // ctrl+c drops it.
 func TestInterruptKeys(t *testing.T) {
@@ -1180,6 +1181,7 @@ func TestInterruptKeys(t *testing.T) {
 		{"esc in an overlay closes it", false, false, false, false, "", []tea.KeyPressMsg{box, esc, esc}, false, false, "", ""},
 		{"ctrl+c interrupts at once", true, false, false, false, "", []tea.KeyPressMsg{ctrlC}, true, false, "also this", "ctrl+c quit"},
 		{"ctrl+c clears a draft, up restores it", false, false, false, false, "draft", []tea.KeyPressMsg{ctrlC, up}, false, false, "draft", ""},
+		{"ctrl+c clears a draft even mid-turn", true, false, false, false, "a draft", []tea.KeyPressMsg{ctrlC}, false, false, "", ""},
 		{"ctrl+c on an empty composer arms quit", false, false, false, false, "", []tea.KeyPressMsg{ctrlC}, false, true, "", "ctrl+c again to quit"},
 		{"a broken prefix replays", false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, x}, false, false, "abcx", ""},
 		{"a timed out prefix replays", false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, wait, x}, false, false, "abcx", ""},
