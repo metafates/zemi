@@ -27,6 +27,12 @@ def ctl(name):
     except (OSError, ValueError):
         return 0
 
+def ctl_text(name):
+    try:
+        return open(os.path.join(OUT, name)).read().strip()
+    except OSError:
+        return ""
+
 def set_ctl(name, v):
     tmp = os.path.join(OUT, name + ".tmp")
     open(tmp, "w").write(str(v))
@@ -93,6 +99,11 @@ class H(BaseHTTPRequestHandler):
             self.connection.close()
             print("REQ %d -> dropped mid-stream" % n, flush=True)
             return
+        # while OUTDIR/judge holds text, the next goal check ("Judge whether")
+        # answers with it, once: the goal's verdicts scripted per check
+        reply = ctl_text("judge") if text.startswith("Judge whether") else ""
+        if reply:
+            set_ctl("judge", "")
         usage = {"prompt_tokens": 1000, "completion_tokens": 50, "total_tokens": 1050}
         if not body.get("stream"):
             msg = {"role": "assistant", "content": "done"}
@@ -113,7 +124,7 @@ class H(BaseHTTPRequestHandler):
             ev({}, "tool_calls", usage)
         else:
             ev({"role": "assistant", "reasoning_content": "thinking a moment"})
-            for w in "done, here is the reply.".split():
+            for w in (reply or "done, here is the reply.").split():
                 ev({"content": w + " "})
             ev({}, "stop", usage)
         self.wfile.write(b"data: [DONE]\n\n")
