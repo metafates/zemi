@@ -60,7 +60,7 @@ Anything in the prefix that varies per request busts the provider cache for the 
   (and a 30s slice ceiling, which load does not reach) - reuse it for any test that runs Lua.
 - The Lua API surface is pinned by `TestTypesCoverAPI`, `TestTypesDeclareNothingExtra` and `TestTypesEnums` against the types file, its version by `TestNamespaceVersion`, the rendered UI by the golden files.
 - Drive behavior through Lua where the Lua contract is the thing being pinned; Go-internal
-  units (the gate in tools, learn intake, store) get table tests.
+  units (the gate in tools, the store) get table tests.
 - Skills tests: `newTestHostSkills(t)` boots the namespaces step, which syncs skills;
   `newTestHostSkillsNoBoot(t)` lays files down WITHOUT booting - every `Boot` builds a fresh
   generation, so steps sharing state must be passed in ONE call.
