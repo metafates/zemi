@@ -47,6 +47,9 @@ func TestViewGrowsOnlyAtItsEnd(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	for i := range 10 {
+		if _, err := h.DB.AppendLog("user", fmt.Sprintf("row %d", i), "", "", ""); err != nil {
+			t.Fatal(err)
+		}
 		if err := h.DB.AppendViewLine(0, int64(i)); err != nil {
 			t.Fatal(err)
 		}

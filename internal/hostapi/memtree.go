@@ -317,8 +317,9 @@ func (b *memTree) MergeOnce() {
 
 // quiesce stops dispatch and holds the fence: no build dispatches after it,
 // and every build dispatched before it has landed, so a rewind's cut runs
-// under no build. resume releases it.
-func (b *memTree) quiesce() {
+// under no build. resume releases it. It returns false when the host is
+// closing: the caller must not cut, the fence cannot hold.
+func (b *memTree) quiesce() bool {
 	b.callMu.Lock()
 	b.held = true
 	b.callMu.Unlock()
@@ -330,12 +331,13 @@ func (b *memTree) quiesce() {
 	select {
 	case <-done:
 	case <-b.ctx.Done():
-		return // closing: the process is going down with the builds
+		return false // closing: the process is going down with the builds
 	}
 	// the zero result walks the fence: results are received in the order
 	// they were sent, so once the worker takes it, every build dispatched
 	// before the gate has applied
 	b.send(buildResult{})
+	return true
 }
 
 func (b *memTree) resume() {

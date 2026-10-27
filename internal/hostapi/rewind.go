@@ -143,8 +143,11 @@ func (h *Host) RewindTo(seq int64) (int, error) {
 			return fmt.Errorf("could not restore %s", strings.Join(failed, "; "))
 		}
 		// the builder first: quiesced, so no build lands over the cut, and
-		// resumed whatever the cut did
-		h.chat.quiesce()
+		// resumed whatever the cut did; a closing host refuses the cut, the
+		// fence cannot hold
+		if !h.chat.quiesce() {
+			return errors.New("zemi is closing")
+		}
 		defer h.chat.resume()
 		// one transaction: the cut, the view's patch and the compaction
 		// view's prune, so a second window cannot cut in between
@@ -320,8 +323,10 @@ func (h *Host) ResetChat(yes bool) error {
 		h.cutMu.Lock()
 		defer h.cutMu.Unlock()
 		// the builder first: quiesced, so no build lands over the wipe, and
-		// resumed whatever the wipe did
-		h.chat.quiesce()
+		// resumed whatever the wipe did; a closing host refuses the wipe
+		if !h.chat.quiesce() {
+			return errors.New("zemi is closing")
+		}
 		defer h.chat.resume()
 		// one transaction: the wipe takes the log, the tree, the view, the
 		// checkpoints and the compaction view
@@ -357,7 +362,7 @@ func (h *Host) openReset(confirm string) error {
 		ID: "reset", Title: "Reset", Origin: lua.OriginBuiltin, Confirm: confirm,
 		Items: []OverlayItem{{
 			Text:   "Wipe this chat and start it over",
-			Detail: "Every message, summary and view line is deleted from the store, the store file shrinks back, and the next message is the first again. A rewind restores the files of what it cuts; a resettouches no file.",
+			Detail: "Every message, summary and view line is deleted from the store, the store file shrinks back, and the next message is the first again. A rewind restores the files of what it cuts; a reset touches no file.",
 			Keys:   []ItemKey{{Key: "x", Desc: "reset", Danger: true, Run: "reset"}},
 		}},
 	})

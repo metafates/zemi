@@ -157,6 +157,13 @@ func (s *DB) DeleteLogFrom(seq int64) error {
 // cutting in between would leave leaf lines for messages it already
 // deleted, and cv lines whose nodes are gone.
 func patchCut(tx *sql.Tx, cut int64) error {
+	// Bound the re-cover by the surviving log, not the cut: a second window's
+	// lower cut can land between this window's validation and its delete, and
+	// seeding lines for the seqs it removed fabricates messages.
+	var end int64
+	if err := tx.QueryRow(`SELECT COALESCE(MAX(seq), -1) + 1 FROM log`).Scan(&end); err != nil {
+		return fmt.Errorf("store: rewind view: %w", err)
+	}
 	rows, err := tx.Query(`SELECT l, i FROM view_lines`)
 	if err != nil {
 		return fmt.Errorf("store: rewind view: %w", err)
@@ -168,9 +175,9 @@ func patchCut(tx *sql.Tx, cut int64) error {
 	if err != nil {
 		return fmt.Errorf("store: rewind view: %w", err)
 	}
-	covered := make([]bool, cut)
+	covered := make([]bool, end)
 	for _, ln := range lines {
-		for s := max(ln.I<<ln.L, int64(0)); s < min((ln.I+1)<<ln.L, cut); s++ {
+		for s := max(ln.I<<ln.L, int64(0)); s < min((ln.I+1)<<ln.L, end); s++ {
 			covered[s] = true
 		}
 	}
@@ -257,8 +264,17 @@ func (s *DB) ResetLog() error {
 
 // InsertNode stores a built summary, reporting whether this call inserted it:
 // INSERT OR IGNORE dedupes concurrent builders, and a builder that lost the
-// race reads the winner back instead of rebuilding.
+// race reads the winner back instead of rebuilding. A node whose range runs
+// past the surviving log is refused: its build raced a cut, and the seqs it
+// names are gone or reused.
 func (s *DB) InsertNode(l, i int64, text string) (bool, error) {
+	var msgs int64
+	if err := s.db.QueryRow(`SELECT COALESCE(MAX(seq), -1) + 1 FROM log`).Scan(&msgs); err != nil {
+		return false, fmt.Errorf("store: insert node: %w", err)
+	}
+	if (i+1)*(1<<l) > msgs {
+		return false, nil
+	}
 	ok, err := s.changed(`INSERT OR IGNORE INTO nodes (l, i, text, size, built_at) VALUES (?, ?, ?, ?, ?)`,
 		l, i, text, len(text), nowStamp())
 	if err != nil {
