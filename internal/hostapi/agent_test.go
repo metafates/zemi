@@ -1331,7 +1331,7 @@ func TestEffortPicker(t *testing.T) {
 	}
 	for i, w := range want {
 		row := o.Items[i]
-		if row.Text != w.text || row.Desc != w.desc || row.Run != w.run || row.Key != w.key {
+		if row.Text != w.text || row.Desc != w.desc || row.Run != w.run || row.Tag != w.key {
 			t.Errorf("row %d %+v, want %+v", i, row, w)
 		}
 	}
@@ -1373,7 +1373,7 @@ func TestModelPickerOdd(t *testing.T) {
 	}
 	o := ui.opened[2]
 	row := o.Items[2]
-	if o.Selected != 2 || len(o.Items) != 5 || row.Text != "a/typo" || row.Run != "model a/typo" || row.Key != "current, not in the list" {
+	if o.Selected != 2 || len(o.Items) != 5 || row.Text != "a/typo" || row.Run != "model a/typo" || row.Tag != "current, not in the list" {
 		t.Fatalf("unlisted id: %+v", o.Items)
 	}
 	// the keyless builtins still close the list, now with paste on enter
