@@ -52,6 +52,7 @@ func (a *App) answerTrust(answer string) {
 	if tp != nil && tp.answer != nil {
 		tp.answer <- answer
 	}
+	a.answeredTrust, a.guardOpen = a.now(), len(a.overlays)
 	a.bump()
 }
 

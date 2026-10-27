@@ -139,6 +139,20 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
+	// the trust answer's own key must not act on the box a boot opens right
+	// after it (a first run lands on the model picker): the first key that
+	// reaches a modal the answer opened is dropped, and the guard lifts as
+	// soon as the grace passes or nothing opened
+	if !a.answeredTrust.IsZero() {
+		switch {
+		case a.now().Sub(a.answeredTrust) > permGrace:
+			a.answeredTrust, a.guardOpen = time.Time{}, 0
+		case len(a.overlays) > a.guardOpen:
+			a.answeredTrust, a.guardOpen = time.Time{}, 0
+			return nil
+		}
+	}
+
 	// Go-owned chrome and Lua overlays capture all keys (§8, §10.4).
 	switch top {
 	case modalBoot:

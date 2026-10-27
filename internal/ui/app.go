@@ -135,6 +135,12 @@ type App struct {
 	trust    *trustPrompt
 	toasts   []toast
 
+	// the trust answer's guard: the box a boot opens right after the answer
+	// (a first run lands on the model picker) must not act on the key that
+	// answered, so the router drops the first key that reaches it
+	answeredTrust time.Time
+	guardOpen     int
+
 	// Go-owned agent chrome (DESIGN §6.3, §8)
 	permAsk  *permAskPrompt
 	planAsk  *planAskPrompt

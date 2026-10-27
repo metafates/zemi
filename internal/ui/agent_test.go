@@ -1563,6 +1563,37 @@ func TestTrustAnswers(t *testing.T) {
 	}
 }
 
+// TestTrustAnswerKeyDoesNotReachTheNextBox: the key that answers the trust
+// prompt is dead to the box a boot opens right after it (the model picker a
+// first run lands on), so one y cannot both trust and copy a key row.
+func TestTrustAnswerKeyDoesNotReachTheNextBox(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 80, 24)
+	done := make(chan string, 1)
+	go func() { done <- app.AskTrust("/proj", "/proj", "") }()
+	waitPrompt(t, app, func() bool { return app.trust != nil })
+	pressKeys(app, "y")
+	if got := <-done; got != "trust" {
+		t.Fatalf("trust answered %q", got)
+	}
+	app.openOverlay(hostapi.Overlay{
+		ID: "model", Origin: lua.OriginBuiltin,
+		Items: []hostapi.OverlayItem{{Text: "export ANTHROPIC_API_KEY=", Copy: "export ANTHROPIC_API_KEY="}},
+	})
+	pressKeys(app, "y")
+	for app.Pump() {
+	}
+	if len(app.toasts) != 0 {
+		t.Fatalf("the answer's key reached the picker: %+v", app.toasts)
+	}
+	pressKeys(app, "y")
+	for app.Pump() {
+	}
+	if len(app.toasts) == 0 {
+		t.Fatal("the picker's copy died with the guard")
+	}
+}
+
 // TestGoldenTrustPrompt pins the trust prompt at boot, started below the
 // repository root, as /trust shows it with the current decision, and
 // started outside the root with too little room, where the text scrolls.
