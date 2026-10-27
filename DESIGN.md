@@ -2678,9 +2678,9 @@ prompt, keyed by the log seq of its user row:
 - `patchView` re-covers the messages the cut left behind: every surviving
   message not covered by a surviving line becomes a leaf line again, and
   the builder re-merges it as the tree grows back.
-- The todo list is rebuilt from the log's `todos` tool and echo rows before
-  the cut, the goal is rewound with the kv row it lives in, the runner is
-  dropped, and the prompt text goes back to the composer.
+- The todo list is rebuilt from the surviving log's `todos` tool and echo
+  rows, the goal is dropped or settled from the kv row it lives in, the
+  runner is dropped, and the prompt text goes back to the composer.
 
 ### 10.7 Skills
 
