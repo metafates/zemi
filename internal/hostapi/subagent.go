@@ -711,7 +711,7 @@ func (h *Host) subagentSystem(def AgentDef, toolset []fantasy.AgentTool, readOnl
 		readOnlyLine = "\n\nYou are read-only: you change no project file, only files in the scratchpad, and every command is denied. Report a change instead of making it."
 	}
 	if hasTool(toolset, tools.ToolUpdate) {
-		update = "\n\nUse the update tool only when your caller's attention is needed now: a question or a decision you cannot settle yourself, a blocker, or a finding it explicitly asked to hear at once. Never to narrate progress or announce completion - the final report is that. One or two lines; it reads the line while you run and may steer you on it, so read what comes back and follow it."
+		update = "\n\nUse the update tool only when your caller's attention is needed now; it reads the line while you run and may steer you on it."
 	}
 	return "You are " + def.Name + ", a subagent of zemi. The caller sees only your final message, not your work:" +
 		" end with a complete, concise report of what it needs, citing path:line where it matters," +
@@ -1152,10 +1152,9 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 		" what to report and how to verify. Only its final report comes back, and the user does not see it: relay what matters." +
 		" A long run sends you lines with the update tool as it goes, which you read at your next step." +
 		" Calls sent together run at once." +
-		" Set background for long work you need not wait on. A call without it waits for its run, and hands the run off when the user sends a message while it runs: the report then arrives as a message." +
+		" Set background for long work you need not wait on. A call without it waits for its run, and hands the run off when the user sends a message while it runs: the report or result then arrives as a message." +
 		" send_to continues a run, running or finished, by its run id; stop kills the run." +
-		" wait blocks until a run, or every run and workflow of this session with \"all\", ends instead of working on; it returns early when a run sends an update: read it, answer with send_to if needed, then wait again." +
-		" A sibling - another run or workflow of this session - that finishes or sends an update ends a wait early with a line naming it and the waited run, which keeps running: handle what arrived if needed, then wait again.")
+		" wait blocks until a run, or every run and workflow of this session with \"all\", ends instead of working on; a run sending an update, or a sibling finishing or sending one, ends the wait early with a line naming it and the waited run, which keeps running: read it, answer with send_to if needed, then wait again.")
 	b.WriteString("\n\nAgents:")
 	for _, d := range t.defs {
 		fmt.Fprintf(&b, "\n- %s: %s", d.Name, truncRunes(d.Description, 200))

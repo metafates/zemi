@@ -659,16 +659,6 @@ const chatOpener = `You are zemi, an AI agent that works for one user in a singl
 ends. Each call to you is a turn or a compaction: the view below is followed by
 the user's new message, or by a task starting "Compaction".`
 
-// chatTurns is chatSystem's turns paragraph, kept so the compaction calls
-// read the turns' own words; the compaction section binds what such a call
-// outputs.
-const chatTurns = `# Turns
-
-Do the user's tasks yourself, with your tools, following the user's
-instructions at the end of this prompt: who they are, how their files are
-organized and how they want work done. Use subagents only when the user asks
-for them.`
-
 // compactionPrompt closes the compaction calls' prompt: what one line of
 // the tree owes.
 const compactionPrompt = `# Compactions
@@ -710,4 +700,4 @@ bytes.`
 // chatSystem is the one system prompt for the compaction calls that build
 // the tree over the eternal chat: the view is the only continuity, and zoom
 // the only way into it.
-const chatSystem = chatOpener + "\n\n" + viewPrompt + "\n\n" + chatTurns + "\n\n" + compactionPrompt
+const chatSystem = chatOpener + "\n\n" + viewPrompt + "\n\n" + compactionPrompt

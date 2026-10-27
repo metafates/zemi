@@ -1473,9 +1473,7 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 	actions := []string{string(actStatus), "list", string(actWait), string(actPause), string(actResume), string(actStop), "rerun"}
 	props, required := tools.ArgsOf(workflowArgs{})
 	desc.WriteString(" Set background for runs that take minutes, and act on one with run and action; action list names this session's runs, the user's own from /workflows among them, and status lists the run ids of its agents." +
-		" wait blocks until that run ends, so its result is in the conversation by the time this call returns; a report the same run sends arrives as a message." +
-		" A sibling - another agent run or workflow of this session - that finishes or sends an update ends the wait early with a line naming it, and the waited workflow keeps running: handle what arrived if needed, then wait again." +
-		" It waits for a run started without background, unless the user sends a message while it runs: then the run hands off, and its result arrives as one.")
+		" wait blocks until that run ends, so its result is in the conversation by the time this call returns; a report the same run sends arrives as a message.")
 	props["action"].(map[string]any)["enum"] = actions
 	props["concurrency"].(map[string]any)["description"] = fmt.Sprintf("agents running at once, 1-%d (default %d); with run, changes a running workflow's", workflowMaxConcurrency, workflowConcurrency)
 	if len(t.saved) > 0 {
@@ -1483,8 +1481,8 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 		for _, w := range t.saved {
 			desc.WriteString("\n- " + w.Name + ": " + truncRunes(w.Description, 160))
 		}
+		desc.WriteString("\n\nA saved workflow is <name>.lua under the workflows/ folder of the config directory or of the repository's .agents/: the same script shape, `zemi.workflow.args` its args string. Run it by name, list it with action list.")
 	}
-	desc.WriteString("\n\nA saved workflow is <name>.lua under the workflows/ folder of the config directory or of the repository's .agents/: the same script shape, `zemi.workflow.args` its args string. Run it by name, list it with action list.")
 	return fantasy.ToolInfo{
 		Name:        string(tools.ToolWorkflow),
 		Description: desc.String(),
