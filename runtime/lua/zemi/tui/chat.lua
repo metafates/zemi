@@ -1045,6 +1045,23 @@ zemi.ui.widget.add({
 			-- the transcript's first row stands one row off the window's top
 			-- edge; a printed run's output keeps its own framing
 			if last == 0 and #tr > 0 then all[1] = { { text = "" } } end
+			-- the window is the log's tail, not the chat's start: with the head
+			-- drawn, name what the cut left out and the way back to it
+			local older = last == 0 and ctx.log_count or 0
+			if older > 0 then
+				table.insert(all, 1, {
+					{
+						text = "… "
+							.. older
+							.. " earlier "
+							.. (older == 1 and "message" or "messages")
+							.. " · alt+m to browse",
+						hl = "Dim",
+						copy = false,
+						hover = false,
+					},
+				})
+			end
 			for n = #shown, 1, -1 do
 				for _, l in ipairs(shown[n].lines) do
 					all[#all + 1] = l

@@ -1986,6 +1986,21 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		},
 		"agent":      func(L *glua.LState) glua.LValue { return h.agentTable(L, stream, h.now()) },
 		"transcript": func(L *glua.LState) glua.LValue { return h.transcriptTable(L, epoch, edit, rev, transcript) },
+		"log_count": func(L *glua.LState) glua.LValue {
+			// log rows the window's head cut off: the oldest stamped row's
+			// seq, which is also their count, the log's seqs dense from 0 -
+			// the same head /messages pages back from. A run's transcript is
+			// no cut of the log.
+			if run != nil {
+				return glua.LNumber(0)
+			}
+			for i := range transcript {
+				if transcript[i].Seq != NoSeq {
+					return glua.LNumber(transcript[i].Seq)
+				}
+			}
+			return glua.LNumber(0)
+		},
 		"instructions": func(L *glua.LState) glua.LValue {
 			files := h.instructionsCached()
 			if files == nil {
@@ -2394,7 +2409,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.148.0"))
+	api.RawSetString("version", glua.LString("0.148.1"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

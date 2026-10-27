@@ -66,6 +66,7 @@ local TIPS = {
 	{ "/goal ", "fill /goal ", " keeps working until a condition holds" },
 	{ "/review", "fill /review", " has several agents review your changes" },
 	{ "alt+m", nil, " opens the message picker: read or copy" },
+	{ "alt+o", nil, " browses the chat's whole memory, however old" },
 	{ "+", "fill +", " attaches a skill to the prompt" },
 }
 local TIP = TIPS[math.floor(os.time() / 3600) % #TIPS + 1]

@@ -16,3 +16,4 @@ zemi.keymap.set("ctrl+j", "zemi.ui.scroll.line_down", { desc = "scroll chat down
 zemi.keymap.set("alt+up", "zemi.ui.scroll.sticky_up", { desc = "scroll chat to the previous prompt or opened run" })
 zemi.keymap.set("alt+down", "zemi.ui.scroll.sticky_down", { desc = "scroll chat to the next prompt or opened run" })
 zemi.keymap.set("alt+m", function() assert(zemi.command.run("messages")) end, { desc = "read or copy a message" })
+zemi.keymap.set("alt+o", function() assert(zemi.command.run("memories")) end, { desc = "browse the chat's memory" })
