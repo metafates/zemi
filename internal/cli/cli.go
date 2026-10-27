@@ -201,7 +201,9 @@ or run when it names a command (zemi "/review HEAD~1").`,
 	root.PersistentFlags().StringVarP(&o.dir, "cd", "C", "", "run in `dir`, as if zemi started there")
 	root.PersistentFlags().Bool("trust", false, "trust the project for this run; --trust=false does not")
 	_ = root.MarkPersistentFlagDirname("cd")
-	turnFlags(root, o)
+	// -m is persistent, so a subcommand parses it (zemi -m <id> health)
+	root.PersistentFlags().StringVarP(&o.model, "model", "m", "", "model for the conversation, by provider/model `id`")
+	_ = root.RegisterFlagCompletionFunc("model", completeBooted((*hostapi.Host).ModelIDs))
 
 	var healthJSON *bool
 	health := &cobra.Command{
@@ -221,13 +223,6 @@ or run when it names a command (zemi "/review HEAD~1").`,
 
 	root.AddCommand(projectsCommand(o), pluginCommand(o), modelsCommand(o), dbCommand(o), health)
 	return root
-}
-
-// turnFlags are the flags of a command that runs a turn.
-func turnFlags(c *cobra.Command, o *options) {
-	f := c.Flags()
-	f.StringVarP(&o.model, "model", "m", "", "model for the conversation, by provider/model `id`")
-	_ = c.RegisterFlagCompletionFunc("model", completeBooted((*hostapi.Host).ModelIDs))
 }
 
 // completeBooted offers what only config knows (models, modes),
@@ -386,11 +381,20 @@ func minArgs(n int) cobra.PositionalArgs {
 	}
 }
 
+// maxArgs checks that a command has at most n positional arguments.
+func maxArgs(n int) cobra.PositionalArgs {
+	return func(c *cobra.Command, args []string) error {
+		if len(args) > n {
+			return takesErr(c)
+		}
+		return nil
+	}
+}
+
 // pluginCommand is zemi plugin: no Lua boot, TUI, trust or store, so it
 // works beside a running TUI, whose config watcher reloads on the change.
 func pluginCommand(o *options) *cobra.Command {
 	yes := false
-	var asJSON, mktListJSON *bool
 	// git clones and fetches: an interrupt stops them and exits with 130
 	run := func(c *cobra.Command, args []string) error {
 		// asked before the signal context, so ctrl+c at the prompt ends zemi
@@ -403,19 +407,21 @@ func pluginCommand(o *options) *cobra.Command {
 		dirs := o.dirs
 		var err error
 		switch {
-		case c.Name() == "plugin":
+		case c.Name() == "plugin" || (c.Name() == "list" && c.Parent() != nil && c.Parent().Name() == "plugin"):
+			asJSON, _ := c.Flags().GetBool("json")
 			var ps []plugin.Plugin
 			var skipped []plugin.Skipped
 			if ps, skipped, err = plugin.List(ctx, dirs); err == nil && len(ps) == 0 {
 				fmt.Fprintln(c.ErrOrStderr(), "zemi: no plugins yet; zemi plugin marketplace add <source> adds one")
 			}
-			printPlugins(c.OutOrStdout(), ps, skipped, *asJSON)
-		case c.Name() == "list" && c.Parent() != nil && c.Parent().Name() == "marketplace":
+			printPlugins(c.OutOrStdout(), ps, skipped, asJSON)
+		case c.Name() == "list":
+			asJSON, _ := c.Flags().GetBool("json")
 			var ms []plugin.MarketplaceInfo
 			if ms, err = plugin.Marketplaces(dirs); err == nil && len(ms) == 0 {
 				fmt.Fprintln(c.ErrOrStderr(), "zemi: no marketplaces yet; zemi plugin marketplace add <source> adds one")
 			}
-			printMarketplaces(c.OutOrStdout(), ms, *mktListJSON)
+			printMarketplaces(c.OutOrStdout(), ms, asJSON)
 		case c.Parent().Name() == "marketplace":
 			err = plugin.Run(ctx, dirs, append([]string{"marketplace", c.Name()}, args...), c.OutOrStdout())
 		default:
@@ -428,17 +434,18 @@ func pluginCommand(o *options) *cobra.Command {
 	}
 	cmd := &cobra.Command{
 		Use:   "plugin",
-		Short: "list plugins: name, version, on or off, source",
+		Short: "list, install, enable, disable, delete and test plugins",
 		Args:  cobra.NoArgs,
 		RunE:  run,
 	}
-	asJSON = jsonFlag(cmd)
+	jsonFlag(cmd)
 	for _, v := range []struct {
 		use, short string
 		args       cobra.PositionalArgs
 		names      cobra.CompletionFunc
 		aliases    []string
 	}{
+		{"list", "list plugins: name, version, on or off, source", cobra.NoArgs, nil, nil},
 		{"install <name>[@<marketplace>]", "install an entry of a registered marketplace; a bare name searches them all", nargs(1), completeEntries, []string{"add"}},
 		{"enable <name>", "load the plugin from the next start", nargs(1), completePlugins, nil},
 		{"disable <name>", "stop loading the plugin", nargs(1), completePlugins, nil},
@@ -460,11 +467,11 @@ func pluginCommand(o *options) *cobra.Command {
 		{"add <source>", "register a marketplace repo: owner/repo, a git URL, or a local path", nargs(1), nil},
 		{"list", "show the marketplaces; --json adds the entries they list", cobra.NoArgs, nil},
 		{"remove <name>", "drop a marketplace and its clone", nargs(1), completeMarketplaces},
-		{"update [name]", "pull one or all marketplace clones", cobra.MaximumNArgs(1), completeMarketplaces},
+		{"update [name]", "pull one or all marketplace clones", maxArgs(1), completeMarketplaces},
 	} {
 		sub := &cobra.Command{Use: v.use, Short: v.short, Args: v.args, ValidArgsFunction: v.names, RunE: run}
 		if v.use == "list" {
-			mktListJSON = jsonFlag(sub)
+			jsonFlag(sub)
 		}
 		mkt.AddCommand(sub)
 	}

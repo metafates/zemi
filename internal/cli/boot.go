@@ -25,6 +25,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/term"
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
@@ -48,7 +49,7 @@ func launch(o options) int {
 		return usage(err.Error())
 	}
 	// bubbletea draws to stdout: redirected, the TUI would run the agent unseen
-	if fi, err := os.Stdout.Stat(); err == nil && fi.Mode()&os.ModeCharDevice == 0 {
+	if !term.IsTerminal(os.Stdout.Fd()) {
 		return usage("stdout is not a terminal; the TUI draws on one")
 	}
 	fail := func(err error) int {
@@ -272,7 +273,9 @@ func bootHost(o options, inert bool) (*hostapi.Host, *trustGate, *slog.Logger, f
 
 // bootHeadless boots zemi with no TUI, for zemi health, zemi models and the
 // flag completions; done stops what boot started (MCP and language servers)
-// and closes the log. stderr gets its diagnostics.
+// and closes the log. stderr gets its diagnostics. A non-inert boot applies
+// the run's flags; an id no provider names fails the run, where the TUI
+// would toast it.
 func bootHeadless(o options, inert bool, stderr io.Writer) (*hostapi.Host, func(), error) {
 	h, trust, _, closeLog, err := bootHost(o, inert)
 	if err != nil {
@@ -296,6 +299,12 @@ func bootHeadless(o options, inert bool, stderr io.Writer) (*hostapi.Host, func(
 		return nil, nil, err
 	}
 	markConfig()
+	if !inert {
+		if err := applyOptions(h, o); err != nil {
+			done()
+			return nil, nil, err
+		}
+	}
 	return h, done, nil
 }
 

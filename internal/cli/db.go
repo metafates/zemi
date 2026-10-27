@@ -30,7 +30,8 @@ func dbCommand(o *options) *cobra.Command {
 	var asJSON, global *bool
 	cmd := &cobra.Command{
 		Use:   "db <sql> [args...]",
-		Short: "run one read-only query against zemi's store; the args after it bind to ?1, ?2, ...; --global for the global store",
+		Short: "run one read-only query against zemi's store",
+		Long:  "run one read-only query against zemi's store; the args after it bind to ?1, ?2, ...; --global for the global store",
 		Args:  minArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			dirs := o.dirs
