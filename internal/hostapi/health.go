@@ -261,14 +261,11 @@ func NotifyArgv(text string) []string {
 func (h *Host) builderRow() HealthRow {
 	unbuilt := h.chat.tree.health.unbuilt.Load()
 	failed := h.chat.tree.health.failed.Load()
-	parked := h.chat.tree.health.parked.Load()
 	queued := h.chat.tree.health.queued.Load()
 	detail := fmt.Sprintf("%d lines still placeholders, %d builds queued", unbuilt, queued)
 	switch {
-	case parked > 0:
-		return HealthRow{Level: HealthError, Detail: fmt.Sprintf("%d builds parked after repeated failures, %s; they retry when new messages land (see /errors)", parked, detail)}
 	case failed > 0:
-		return HealthRow{Level: HealthWarn, Detail: fmt.Sprintf("%d builds failed, %s; they retry on their backoff (see /errors)", failed, detail)}
+		return HealthRow{Level: HealthWarn, Detail: fmt.Sprintf("%d builds failed, %s; they retry when new messages land (see /errors)", failed, detail)}
 	case unbuilt > 4*leafWaitLines:
 		return HealthRow{Level: HealthWarn, Detail: "the view holds " + detail + "; zoom still reads the raw messages"}
 	}

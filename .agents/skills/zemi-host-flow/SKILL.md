@@ -253,7 +253,7 @@ applied one. A store made before goose only gains its version table: the baselin
   dispatches into the wipe and every build before it has landed, the wait bounded by
   `quiesceWait` so a wedged provider call refuses the reset instead of wedging it. `/health`'s
   `chat builder`
-  row reads the queue depths and the parked builds (`builderHealth`).
+  row reads the queue depths and the failed builds (`builderHealth`).
 - **One turn is one fresh call.** `runTurns` sets `History` to `[viewMessage]` (the persisted
   view as one user message of 4-line parts, `chatlog.go viewMessage`) before every send, so
   nothing carries between turns but the view; `keepSigned` degenerates to a no-op

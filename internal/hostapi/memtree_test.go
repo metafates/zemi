@@ -38,6 +38,7 @@ type treeModel struct {
 	gate      chan struct{}
 	gateAfter int
 	fail      atomic.Bool
+	burn      atomic.Bool
 	finish    fantasy.FinishReason
 }
 
@@ -63,6 +64,9 @@ func (m *treeModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Stre
 	reply := m.replies[len(m.replies)-1]
 	if i < len(m.replies) {
 		reply = m.replies[i]
+	}
+	if m.burn.Load() {
+		reply = ""
 	}
 	parts := textParts(reply)
 	if m.finish != "" {
@@ -788,46 +792,6 @@ func TestResetRebuilds(t *testing.T) {
 // the streak parks it after parkAfter failures until fresh rows revive it
 // for one try, a failure no try can fix parks at once, and readiness follows
 // the clock.
-func TestBuildStreak(t *testing.T) {
-	now := time.Unix(0, 0)
-	var s buildStreak
-	if s.ready(now, false) {
-		t.Fatal("a streak with no failures is ready")
-	}
-	for i, want := range []time.Duration{
-		time.Second, 2 * time.Second, 4 * time.Second,
-		8 * time.Second, 16 * time.Second, 32 * time.Second,
-	} {
-		if parked := s.fail(now, false); parked {
-			t.Fatalf("try %d parked, want a %s backoff", i+1, want)
-		}
-		if got := s.next.Sub(now); got != want {
-			t.Fatalf("try %d backs off %s, want %s", i+1, got, want)
-		}
-		now = now.Add(want)
-	}
-	if !s.ready(now, false) {
-		t.Fatal("the backoff ran out but the node is not ready")
-	}
-	if !s.fail(now, false) {
-		t.Fatal("the seventh failure did not park the node")
-	}
-	if s.ready(now, false) {
-		t.Fatal("a parked node ready without fresh rows")
-	}
-	if !s.ready(now, true) {
-		t.Fatal("a parked node not revived by fresh rows")
-	}
-	if capped := retryBackoff(20); capped != retryCap {
-		t.Fatalf("backoff %s past the cap, want %s", capped, retryCap)
-	}
-
-	// an empty reply parks on its first failure: no backoff, no waves
-	var d buildStreak
-	if !d.fail(now, true) || !d.parked || d.next != (time.Time{}) {
-		t.Fatalf("fail(now, true) = parked %v next %s, want an immediate park and no backoff", d.parked, d.next)
-	}
-}
 
 // TestResetRefusesAWedgedBuilder: a build wedged past quiesceWait refuses
 // the reset instead of wedging it, releases the gate, and the builder
@@ -896,64 +860,66 @@ func TestResetConfirmLeavesTheWorker(t *testing.T) {
 	})
 }
 
-// TestBuilderEmptyReplyParks: an empty compaction reply is deterministic, so
-// each node costs one call and parks - no try loop, no backoff waves - the
-// parked queue costs nothing at idle, and fresh rows revive the parked nodes
-// for one try that builds.
-func TestBuilderEmptyReplyParks(t *testing.T) {
+// TestBuilderEmptyReplyLadder: a capped compaction reply is the reply budget,
+// not the line, so the build doubles the cap and retries; a model that burns
+// every cap fails its node, which waits for fresh rows - never a timer - and
+// builds on the next message.
+func TestBuilderEmptyReplyLadder(t *testing.T) {
 	t.Parallel()
-	h, cl, m := newTree(t, "", "", strings.Repeat("s", 100))
-	m.finish = fantasy.FinishReasonLength // the output cap ate the reply, as a reasoning model's does
+	h, cl, m := newTree(t, strings.Repeat("s", 100))
+	m.finish = fantasy.FinishReasonLength
+	m.burn.Store(true) // every reply burns: a reasoning model over its cap
 	for range 2 {
 		if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
 			t.Fatal(err)
 		}
 	}
 	waitFor(t, func() error {
-		if calls := m.callCount(); calls != 2 {
-			return fmt.Errorf("%d calls, want one per node", calls)
+		if calls := m.callCount(); calls != 6 {
+			return fmt.Errorf("%d calls, want the cap ladder per node", calls)
 		}
-		if row := h.builderRow(); !strings.Contains(row.Detail, "2 builds parked") {
-			return fmt.Errorf("builder row = %q, want both nodes parked", row.Detail)
+		if row := h.builderRow(); !strings.Contains(row.Detail, "2 builds failed") {
+			return fmt.Errorf("builder row = %q, want both builds failed", row.Detail)
 		}
 		return nil
 	})
-	// the park says why, so the model's config is the next thing to look at
+	// the failure says why, so the model's config is the next thing to look at
 	for _, msg := range h.errorsSince(time.Time{}, "chat builder") {
 		if !strings.Contains(msg, "empty compaction reply at the output cap") {
-			t.Fatalf("parked error %q, want the output cap named", msg)
+			t.Fatalf("failed error %q, want the output cap named", msg)
 		}
 	}
 
-	// a parked queue costs nothing at idle: no timer re-arms, no revival
-	// fires, the window the first backoff would have needed passes callless
+	// a failed build rides no timer: the idle window passes callless
 	quiet := m.callCount()
-	time.Sleep(1500 * time.Millisecond) // past retryBase, the earliest backoff
+	time.Sleep(1500 * time.Millisecond)
 	if calls := m.callCount(); calls != quiet {
-		t.Fatalf("%d more calls while parked, want none", calls-quiet)
+		t.Fatalf("%d more calls while failed, want none", calls-quiet)
 	}
 
-	// fresh rows revive the parked nodes for one try each, and the reply builds
+	// fresh rows retry the failed nodes, and the reply builds
+	m.burn.Store(false)
 	if _, err := cl.User(strings.Repeat("w", 600), ""); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, func() error {
-		for seq := range int64(3) {
-			if _, err := h.DB.NodeAt(0, seq); err != nil {
+		for _, id := range [][2]int64{{0, 0}, {0, 1}, {0, 2}, {1, 0}} {
+			if _, err := h.DB.NodeAt(id[0], id[1]); err != nil {
 				return err
 			}
 		}
 		return nil
 	})
-	if calls := m.callCount(); calls != 5 {
-		t.Fatalf("%d calls, want the two revivals, the new leaf and the free join", calls)
+	if calls := m.callCount(); calls != quiet+3 {
+		t.Fatalf("%d calls, want the two retries and the new leaf", calls)
 	}
 	coverage(t, h.DB, 3)
 }
 
-// TestBuilderBackoff: a failing build retries on its backoff instead of a
-// storm, and a success over fresh rows builds the node.
-func TestBuilderBackoff(t *testing.T) {
+// TestBuilderRetryPerMessage: a failing build tries once per fresh batch of
+// rows - never in a timer loop - and a success over fresh rows builds the
+// node.
+func TestBuilderRetryPerMessage(t *testing.T) {
 	t.Parallel()
 	h, cl, m := newTree(t, strings.Repeat("s", 400))
 	m.fail.Store(true)
@@ -966,27 +932,27 @@ func TestBuilderBackoff(t *testing.T) {
 		}
 		return nil
 	})
-	// the retries space out: the second try waits out the base backoff, and
-	// the storm's dozens of tries in the same window never happen
+	// the failed node rides no timer: no further call until new rows land
+	quiet := m.callCount()
+	time.Sleep(300 * time.Millisecond)
+	if calls := m.callCount(); calls != quiet {
+		t.Fatalf("%d more calls without fresh rows, want none", calls-quiet)
+	}
+	// the next message retries the failed node once, alongside the new leaf
+	if _, err := cl.User(strings.Repeat("y", 600), ""); err != nil {
+		t.Fatal(err)
+	}
 	waitFor(t, func() error {
-		if m.callCount() < 3 {
-			return errors.New("the backoff retries have not run")
+		if m.callCount() < quiet+2 {
+			return errors.New("the retry has not run")
 		}
 		return nil
 	})
-	m.mu.Lock()
-	first, second, third := m.times[0], m.times[1], m.times[2]
-	m.mu.Unlock()
-	if got := second.Sub(first); got < retryBase {
-		t.Fatalf("the second try ran %s after the first, want the backoff floor", got)
+	time.Sleep(300 * time.Millisecond) // the storm's tight loop would show here
+	if calls := m.callCount(); calls != quiet+2 {
+		t.Fatalf("%d calls, want one retry and one new leaf", calls)
 	}
-	if got := third.Sub(second); got < 2*retryBase {
-		t.Fatalf("the third try ran %s after the second, want the doubled backoff", got)
-	}
-	if n := m.callCount(); n > 2*parkAfter {
-		t.Fatalf("%d calls for one failing node, want the backoff's bounded few", n)
-	}
-	// a success over fresh rows: the failed node's streak requeues at once
+	// a success over fresh rows: the failed node's requeue builds it
 	m.fail.Store(false)
 	if _, err := cl.User(strings.Repeat("w", 600), ""); err != nil {
 		t.Fatal(err)
@@ -1089,14 +1055,14 @@ func TestBuilderSurvivesACorruptView(t *testing.T) {
 	}
 }
 
-// TestBuilderRowParked: /health's builder row says a parked build outright.
-func TestBuilderRowParked(t *testing.T) {
+// TestBuilderRowFailed: /health's builder row says a failed build outright.
+func TestBuilderRowFailed(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	h.chat.tree.health.parked.Store(2)
+	h.chat.tree.health.failed.Store(2)
 	row := h.builderRow()
-	if row.Level != HealthError || !strings.Contains(row.Detail, "2 builds parked") {
-		t.Fatalf("builder row = %+v, want the parked builds named", row)
+	if row.Level != HealthWarn || !strings.Contains(row.Detail, "2 builds failed") {
+		t.Fatalf("builder row = %+v, want the failed builds named", row)
 	}
 }
 

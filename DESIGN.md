@@ -2565,8 +2565,9 @@ gateway model) gets the force-off on an openai_compat gateway: effort low
 plus a `thinking: {"type": "disabled"}` body field - measured on
 acme-gateway and DeepSeek, where effort low alone turns thinking ON on
 DeepSeek and the thinking field alone does nothing on the gateway; a model
-that ignores both still parks, and the parked error says to pick a plain
-model.
+that ignores both still burns it, and the failure says to pick a plain
+model. A build that fails retries when fresh log rows land, never on a
+timer: a failed call is tried again at the next message.
 
 ### 10.3 The view
 
@@ -2701,8 +2702,8 @@ There are none: no eval harness, mock provider or CI gate.
 - Every Go->Lua boundary is a `pcall`; errors are logged and show as a
   statusline flag; a `/errors` overlay lists recent handler failures with
   file:line (from Lua `debug.traceback`). A failed builder call is
-  logged and its node retries on its backoff, parking after six failures
-  in a row (§10.2); `/health`'s builder row says parked builds. Lua code and
+  logged and its node retries when fresh log rows land (§10.2); `/health`'s
+  builder row says failed builds. Lua code and
   runtime failures are
   recorded by their callers under a slug source (`command boom`, `keymap
   ctrl+t`); a command error that is how it was asked (`ErrUsage`: a bad

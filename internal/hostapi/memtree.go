@@ -47,12 +47,6 @@ const (
 	// none: a reasoning model spends output thinking before it writes the
 	// line, so the old 2048 starved it into empty replies.
 	buildMaxOutput = 8192
-	// A failed build retries on a doubling backoff up to retryCap, and a
-	// streak past parkAfter parks the node until fresh rows or a reset
-	// revive it: a permanently failing build must not re-fire in a storm.
-	retryBase = time.Second
-	retryCap  = time.Minute
-	parkAfter = 6
 	// leafWaitLines: a leaf builds once fewer than this many lines before it
 	// are still unbuilt, so the placeholder tail stays about this long.
 	leafWaitLines = 8
@@ -209,7 +203,6 @@ type memTree struct {
 	held       bool               // dispatch paused (a reset quiesces); guarded by callMu
 	burst      chan struct{}      // closed when the burst's first response starts
 	force      chan chan struct{} // the overflow guard's one batch, acked when it ran
-	retryTimer *time.Timer        // wakes the builder at the earliest retry's backoff
 
 	// owned by the worker goroutine
 	msgs       int64          // messages in the log: seqs 0..msgs-1, dense
@@ -217,13 +210,12 @@ type memTree struct {
 	built      map[nodeID]int // built nodes and their line sizes
 	view       []viewLine     // the view, oldest first
 	viewBytes  int
-	leaves     []int64                 // pending leaves, in message order
-	leafRetry  []int64                 // failed leaves, back per their streak
-	merges     []nodeID                // pending merges, as the parents that would land
-	mergeRetry []nodeID                // failed merges, back per their streak
-	streaks    map[nodeID]*buildStreak // each failed node's failure streak
-	draining   bool                    // a batch left the view above the floor
-	cv         []viewLine              // the compaction view, the second sawtooth
+	leaves     []int64    // pending leaves, in message order
+	leafRetry  []int64    // failed leaves, retried when fresh rows land
+	merges     []nodeID   // pending merges, as the parents that would land
+	mergeRetry []nodeID   // failed merges, retried when fresh rows land
+	draining   bool       // a batch left the view above the floor
+	cv         []viewLine // the compaction view, the second sawtooth
 	cvBytes    int
 
 	// health is what /health reads of the queues; the worker rewrites it
@@ -231,50 +223,10 @@ type memTree struct {
 	health builderHealth
 }
 
-// builderHealth is the builder's queue depth, unbuilt lines and failed or
-// parked builds, what /health's builder row says.
+// builderHealth is the builder's queue depth, unbuilt lines and failed
+// builds, what /health's builder row says.
 type builderHealth struct {
-	unbuilt, failed, queued, parked atomic.Int64
-}
-
-// buildStreak is one node's consecutive build failures: a capped exponential
-// backoff between tries, parking when the streak passes parkAfter until new
-// log rows or a reset revive it.
-type buildStreak struct {
-	fails  int
-	next   time.Time
-	parked bool
-}
-
-// fail records one failure and reschedules the try; it says whether the
-// streak just parked. nowPark parks at once: a failure no try can fix (an
-// empty reply) must not ride the backoff waves out.
-func (s *buildStreak) fail(now time.Time, nowPark bool) bool {
-	s.fails++
-	if s.parked {
-		return false
-	}
-	if nowPark || s.fails > parkAfter {
-		s.parked = true
-		return true
-	}
-	s.next = now.Add(retryBackoff(s.fails))
-	return false
-}
-
-// ready says whether a failed node may try again: one whose backoff ran
-// out, or any of them over fresh log rows - a parked node included, for one
-// try per arrival.
-func (s *buildStreak) ready(now time.Time, fresh bool) bool {
-	if s.parked {
-		return fresh
-	}
-	return s.fails > 0 && (fresh || !now.Before(s.next))
-}
-
-// retryBackoff doubles the base wait per consecutive failure, capped.
-func retryBackoff(fails int) time.Duration {
-	return min(retryBase<<(fails-1), retryCap)
+	unbuilt, failed, queued atomic.Int64
 }
 
 // quiesceWait bounds a reset's wait for the in-flight builds: a provider
@@ -294,7 +246,6 @@ func newMemTree(ctx context.Context, h *Host) *memTree {
 		force:   make(chan chan struct{}, 1),
 		results: make(chan buildResult),
 		built:   map[nodeID]int{},
-		streaks: map[nodeID]*buildStreak{},
 	}
 	h.GoSafe("memtree", b.run)
 	return b
@@ -429,27 +380,7 @@ func (b *memTree) run() {
 			b.apply(r)
 		}
 		b.reportHealth()
-		b.armRetry()
 	}
-}
-
-// armRetry wakes the builder when the earliest failed build's backoff runs
-// out, so a quiet log still retries; a parked node has no next wake.
-func (b *memTree) armRetry() {
-	var next time.Time
-	for _, s := range b.streaks {
-		if !s.parked && (next.IsZero() || s.next.Before(next)) {
-			next = s.next
-		}
-	}
-	if b.retryTimer != nil {
-		b.retryTimer.Stop()
-		b.retryTimer = nil
-	}
-	if next.IsZero() {
-		return
-	}
-	b.retryTimer = time.AfterFunc(max(time.Until(next), 0), b.Wake)
 }
 
 // reportHealth rewrites what /health reads of the queues (worker only).
@@ -460,15 +391,8 @@ func (b *memTree) reportHealth() {
 			unbuilt++
 		}
 	}
-	parked := 0
-	for _, s := range b.streaks {
-		if s.parked {
-			parked++
-		}
-	}
 	b.health.unbuilt.Store(int64(unbuilt))
 	b.health.failed.Store(int64(len(b.leafRetry) + len(b.mergeRetry)))
-	b.health.parked.Store(int64(parked))
 	b.health.queued.Store(int64(len(b.leaves) + len(b.merges)))
 }
 
@@ -514,7 +438,6 @@ func (b *memTree) rebuild() error {
 	slices.SortFunc(b.merges, func(a, c nodeID) int {
 		return cmpDue(b.msgs, a.last(), a.span()/2, c.last(), c.span()/2)
 	})
-	b.streaks = map[nodeID]*buildStreak{}
 	b.leafRetry, b.mergeRetry = nil, nil
 	b.draining = b.viewBytes > viewCeiling
 	return b.loadCV()
@@ -596,19 +519,16 @@ func (b *memTree) syncNew() error {
 	}
 }
 
-// requeue moves failed builds back into their queues: one whose backoff has
-// run out, all of them when fresh rows landed - a parked node included, for
-// one try per arrival - and drops nodes the log no longer holds.
+// requeue moves failed builds back into their queues when fresh rows landed -
+// a failed call tries again at the next message, never in a timer loop - and
+// drops nodes the log no longer holds.
 func (b *memTree) requeue(fresh bool) {
-	now := time.Now()
+	if !fresh {
+		return
+	}
 	keep := b.leafRetry[:0]
 	for _, seq := range b.leafRetry {
 		if seq >= b.msgs { // the row is gone (rewound)
-			delete(b.streaks, nodeID{0, seq})
-			continue
-		}
-		if s := b.streaks[nodeID{0, seq}]; s != nil && !s.ready(now, fresh) {
-			keep = append(keep, seq)
 			continue
 		}
 		b.leaves = append(b.leaves, seq)
@@ -617,11 +537,6 @@ func (b *memTree) requeue(fresh bool) {
 	keepM := b.mergeRetry[:0]
 	for _, parent := range b.mergeRetry {
 		if (parent.i+1)*(1<<parent.l) > b.msgs { // a half is gone (rewound)
-			delete(b.streaks, parent)
-			continue
-		}
-		if s := b.streaks[parent]; s != nil && !s.ready(now, fresh) {
-			keepM = append(keepM, parent)
 			continue
 		}
 		b.merges = append(b.merges, parent)
@@ -685,7 +600,6 @@ func (b *memTree) dispatchLeaf() bool {
 	e, err := b.h.DB.LogAt(seq)
 	if errors.Is(err, store.ErrNotFound) {
 		b.leaves = b.leaves[1:]
-		delete(b.streaks, nodeID{0, seq})
 		return true // the row is gone (rewound): nothing to summarize
 	}
 	if err != nil {
@@ -737,7 +651,6 @@ func (b *memTree) dispatchMerge() bool {
 				return false // a transient store error: the queue waits for the next round
 			}
 			b.merges = b.merges[1:]
-			delete(b.streaks, parent)
 			continue // a half is gone (rewound): the pair is dead
 		}
 		b.merges = b.merges[1:]
@@ -771,9 +684,9 @@ func (b *memTree) send(r buildResult) {
 	}
 }
 
-// apply installs a finished build. A failure starts its node's streak: the
-// retry waits out a backoff, fresh rows hurry it, and a streak past
-// parkAfter parks the node until then. The view self-heals.
+// apply installs a finished build. A failure holds its place in the retry
+// list: per the recipe, the call tries again at the next message - fresh
+// rows requeue it, and the retry rides no timer. The view self-heals.
 func (b *memTree) apply(r buildResult) {
 	if r == (buildResult{}) {
 		return // the quiesce fence's zero result
@@ -784,17 +697,7 @@ func (b *memTree) apply(r buildResult) {
 	}
 	if r.err != nil {
 		if b.ctx.Err() == nil { // a Close's failures are not build failures
-			s := b.streaks[id]
-			if s == nil {
-				s = &buildStreak{}
-				b.streaks[id] = s
-			}
-			if s.fail(time.Now(), errors.Is(r.err, errEmptyReply)) {
-				b.h.RecordErrorOnce("chat builder", "", "build of "+id.id()+" parked: "+r.err.Error())
-				b.h.Log.Warn("memtree build parked", "origin", "agent", "node", id.id(), "error", r.err)
-			} else {
-				b.h.Log.Warn("memtree build failed", "origin", "agent", "node", id.id(), "error", r.err)
-			}
+			b.h.RecordErrorOnce("chat builder", "", "build of "+id.id()+" failed: "+r.err.Error())
 		}
 		if r.leaf {
 			b.leafRetry = append(b.leafRetry, r.seq)
@@ -803,7 +706,6 @@ func (b *memTree) apply(r buildResult) {
 		}
 		return
 	}
-	delete(b.streaks, id)
 	if r.leaf {
 		b.insertBuilt(nodeID{0, r.seq}, r.text)
 		return
@@ -1054,8 +956,7 @@ func (b *memTree) build(convo []fantasy.Message, first bool, wait chan struct{})
 		model = burstModel{LanguageModel: model, started: sync.OnceFunc(b.openBurst)}
 	}
 	maxOut := cmp.Or(b.h.maxOutput(id), buildMaxOutput)
-	// a builder call runs at the model's own lowest effort, when it lists
-	// levels: its default effort is what starved the line into reasoning. A
+	// a builder call runs at the model's own lowest effort, when it lists	// levels: its default effort is what starved the line into reasoning. A
 	// model that lists no levels gets the force-off on an openai_compat
 	// gateway: effort low plus the no-thinking body field - reasoning models
 	// spend the whole output cap on thinking and return no line otherwise
@@ -1100,8 +1001,13 @@ func (b *memTree) build(convo []fantasy.Message, first bool, wait chan struct{})
 		reply := strings.TrimSpace(concatText(res.Response.Content))
 		switch {
 		case reply == "":
-			// the cap is deterministic: the same conversation answers the
-			// same way, and a fresh sample burns the same cap - park now
+			// a cap burn is the reasoning budget, not the line: the model
+			// spent the whole reply thinking, so a fresh sample at the same
+			// cap burns again but a doubled cap leaves room for the line
+			if res.Response.FinishReason == fantasy.FinishReasonLength && maxOut < 4*buildMaxOutput {
+				maxOut *= 2
+				continue
+			}
 			if res.Response.FinishReason == fantasy.FinishReasonLength {
 				if suppress {
 					return "", fmt.Errorf("%w at the output cap even with reasoning off - the model ignores the suppression; pick a plain model for models.compact", errEmptyReply)
