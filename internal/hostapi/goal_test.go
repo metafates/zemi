@@ -4,6 +4,8 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -260,6 +262,7 @@ func TestGoalOnlyFromSetGoal(t *testing.T) {
 func TestGoalChainsOnlyWhereSet(t *testing.T) {
 	proj, state := t.TempDir(), t.TempDir()
 	a, _ := newWindow(t, state, proj)
+	peerHeartbeat(t, a)
 	var aChecks atomic.Int32
 	a.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
@@ -286,6 +289,7 @@ func TestGoalChainsOnlyWhereSet(t *testing.T) {
 	}
 	// b boots on the store: it loads the goal and chains none of it
 	b, _ := newWindow(t, state, proj)
+	peerHeartbeat(t, b)
 	var bChecks atomic.Int32
 	b.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
@@ -330,6 +334,67 @@ func TestGoalChainsOnlyWhereSet(t *testing.T) {
 	}
 	if got := bChecks.Load(); got != 0 {
 		t.Fatalf("b ran %d judge asides, want none", got)
+	}
+}
+
+// TestGoalChainsAfterTheWriterGone: a goal outlives the window that set it.
+// While the writer's heartbeat is fresh, a window that boots on the store
+// chains none of it; once the writer is gone, the same window takes the
+// chain over, so a restarted chat resumes instead of stalling.
+func TestGoalChainsAfterTheWriterGone(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a, _ := newWindow(t, state, proj)
+	peerHeartbeat(t, a)
+	if err := a.SetGoal("the tests pass"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, a)
+	b, _ := newWindow(t, state, proj)
+	peerHeartbeat(t, b)
+	var bChecks atomic.Int32
+	b.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
+			if strings.HasPrefix(last, "Judge whether") {
+				bChecks.Add(1)
+				return textParts("MET: x")
+			}
+			return textParts("ok")
+		}}, nil
+	}
+	if err := b.AgentSend("from b"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, b)
+	if got := bChecks.Load(); got != 0 {
+		t.Fatalf("b ran %d judge asides on a live writer's goal, want none", got)
+	}
+	if err := os.Remove(filepath.Join(filepath.Dir(b.peersPath), a.origin+".json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.AgentSend("again"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, b)
+	if bChecks.Load() != 1 {
+		t.Fatalf("b ran %d judge asides on a gone writer's goal, want the adoption check", bChecks.Load())
+	}
+	if _, err := b.DB.GetKV(goalKV); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the met goal's row survived: %v", err)
+	}
+}
+
+// peerHeartbeat plants the heartbeat file the goal gate reads for a live
+// window: StartPeers's ticker would keep beating after a Close, so the tests
+// name the files by hand.
+func peerHeartbeat(t *testing.T, h *Host) {
+	t.Helper()
+	dir := filepath.Join(h.Dirs.StateHome, "peers", filepath.Base(filepath.Dir(h.DB.Path())))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	h.peersPath = filepath.Join(dir, h.origin+".json")
+	if err := os.WriteFile(h.peersPath, []byte(`{"working":false}`), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

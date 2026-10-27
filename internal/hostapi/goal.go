@@ -5,6 +5,8 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -167,10 +169,19 @@ func (h *Host) setGoalFrom(seq int64, msg fantasy.Message) {
 }
 
 // goalMine reports whether this window runs g's chain: the window that set
-// it did. A goal persisted before the writer field named no owner and keeps
-// the old every-window chain.
+// it, a row that predates the field, or a fresh boot of the same chat - the
+// writer's heartbeat is gone, so one window takes the chain over instead of
+// leaving a resumed goal with nobody to run it. Two live windows still never
+// run it twice.
 func (h *Host) goalMine(g *Goal) bool {
-	return g.Writer == "" || g.Writer == h.origin
+	if g.Writer == "" || g.Writer == h.origin {
+		return true
+	}
+	if h.peersPath == "" {
+		return true // presence is off (headless): the store's one window is ours
+	}
+	raw, err := os.Stat(filepath.Join(filepath.Dir(h.peersPath), g.Writer+".json"))
+	return err != nil || time.Since(raw.ModTime()) > peersTTL
 }
 
 func (h *Host) stopGoal() error {
