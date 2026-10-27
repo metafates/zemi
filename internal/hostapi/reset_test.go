@@ -64,18 +64,16 @@ func TestResetChat(t *testing.T) {
 		t.Fatalf("%d log rows survived the ask, want the %d it held", n, before)
 	}
 
-	// --yes wipes and starts over
+	// --yes wipes and starts over; the one row left is the reset's own note
 	if err := h.ResetChat(true); err != nil {
 		t.Fatal(err)
 	}
-	if n, _ := h.DB.LogCount(); n != 0 {
-		t.Fatalf("%d log rows survived the reset", n)
+	if n, _ := h.DB.LogCount(); n != 1 {
+		t.Fatalf("%d log rows survived the reset, want the reset note", n)
 	}
-	if nodes, _ := h.DB.BuiltNodes(); len(nodes) != 0 {
-		t.Fatalf("%d nodes survived the reset", len(nodes))
-	}
-	if lines, _ := h.DB.LoadView(); len(lines) != 0 {
-		t.Fatalf("%d view lines survived the reset", len(lines))
+	note, _ := h.DB.LogTail(1)
+	if len(note) != 1 || note[0].Kind != kindNote || note[0].Text != "the chat was reset" {
+		t.Fatalf("the reset's row = %+v, want the reset note", note)
 	}
 	if raw, err := h.DB.GetKV(store.CVKey); err != nil && !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("the compaction view survived the reset: %q, %v", raw, err)
@@ -87,23 +85,24 @@ func TestResetChat(t *testing.T) {
 		t.Fatalf("todos %+v survived the reset", todos)
 	}
 
-	// a next turn works, and the log restarts at 0 with its summary
+	// a next turn works, behind the reset's note, and the log restarts at 0
 	replyStub(t, h, "fresh reply")
 	if err := h.AgentSend("again"); err != nil {
 		t.Fatal(err)
 	}
 	waitIdle(t, h)
 	rows, err := h.DB.LogFrom(0, 10)
-	if err != nil || len(rows) != 2 || rows[0].Seq != 0 || rows[0].Kind != kindUser || rows[1].Kind != kindAgent {
+	if err != nil || len(rows) != 3 || rows[0].Seq != 0 || rows[0].Kind != kindNote ||
+		rows[1].Kind != kindUser || rows[2].Kind != kindAgent {
 		t.Fatalf("the next turn logged %+v, %v", rows, err)
 	}
 	waitFor(t, func() error {
-		if _, err := h.DB.NodeAt(0, 0); err != nil {
+		if _, err := h.DB.NodeAt(0, 1); err != nil {
 			return errors.New("the builder did not rebuild over the empty log")
 		}
 		return nil
 	})
-	if tr := h.Session().Transcript; len(tr) == 0 || tr[0].Text != "again" || tr[0].Seq != 0 {
+	if tr := h.Session().Transcript; len(tr) == 0 || tr[0].Text != "again" || tr[0].Seq != 1 {
 		t.Fatalf("the chat restarted with %+v", tr)
 	}
 }

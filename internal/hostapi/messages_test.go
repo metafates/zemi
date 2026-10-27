@@ -172,39 +172,6 @@ func TestStampingPairsResultRows(t *testing.T) {
 // TestMessagesCrossWindow: the turns another window logged appear in the
 // picker, the way /memories shows them, under their own section and named by
 // their log seq; the rows this window drew but has not stamped yet stay out.
-func TestMessagesCrossWindow(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.AppendMessage("user", "mine")
-	if _, err := h.DB.AppendLog(kindUser, "mine", "", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	h.stampLogSeqs()
-	// another window's turn: logged, never drawn here
-	if _, err := h.DB.AppendLog(kindUser, "their prompt", "", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := h.DB.AppendLog(kindAgent, "their reply", "", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	o := h.messagesList(h.pickerTranscript(), 0)
-	var rows []string
-	for _, it := range o.Items {
-		rows = append(rows, it.Section+"|"+it.Text+"|"+it.ID)
-	}
-	want := []string{
-		"Turn 1|mine|", // the window's row
-		"From another window|their prompt|",
-		"From another window|their reply|", // a reply names no prompt; its run reads it whole
-	}
-	if !slices.Equal(rows, want) {
-		t.Fatalf("rows = %q, want %q", rows, want)
-	}
-	if o.Items[1].Run != "messages view #1" || o.Items[2].Run != "messages view #2" {
-		t.Fatalf("the logged rows' runs = %q %q, want their seq views", o.Items[1].Run, o.Items[2].Run)
-	}
-}
-
 // TestMessagesView: reading a row whole shows a reply as its markdown and a
 // prompt as the text it is.
 func TestMessagesView(t *testing.T) {

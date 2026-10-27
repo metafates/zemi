@@ -325,7 +325,16 @@ applied one. A store made before goose only gains its version table: the baselin
   stored messages into model history and transcript rows for its child session. A second
   window's rows carry a different log `origin`, which the seq stamping skips and `SyncChat`
   (the config watch's idle tick) splices into this window at their place, so two windows on
-  one repository draw the one chat the log keeps; a foreign reset reloads this window whole.
+  one repository draw the one chat the log keeps; the spliced rows carry the transcript row's
+  `foreign` mark, the chat dims their gutter and readout under them; a foreign reset toasts
+  "Chat reset by another window" and reloads this window whole. A window whose composer holds
+  a draft when foreign rows land gets one collision toast per draft. Presence is file-shaped,
+  not log-shaped: `presence.go` writes `<state>/peers/<store key>/<origin>.json` on a 2s beat
+  (working = `AgentActive`) and reads the siblings fresh within 6s into the ctx's `peers` and
+  `peers_working` (presence.go is started by the boot, after the config watch; `ClosePeers`
+  follows `p.Run()`, which is not `Host.Close`'s path). A reset leaves one note row, "the chat
+  was reset", which the transcript draws nothing of, so the splash a fresh chat opens with
+  survives the wipe.
 - **Live equals settled.** The live turn holds one stretch in stream order (reasoning, calls,
   reply); `flushOutput` moves it into the transcript whenever the next part would break that
   order (reasoning after a call or a reply, a call after a reply), and at every tool call that

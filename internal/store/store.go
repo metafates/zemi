@@ -41,6 +41,9 @@ type DB struct {
 	Origin string
 }
 
+// Path is the database file's path: the peers dir keys off its parent.
+func (s *DB) Path() string { return s.path }
+
 // Open creates the parent directory if needed and opens the database with
 // WAL journalling. Every transaction takes the write lock at BEGIN, so one
 // that reads first waits on busy_timeout for another process instead of

@@ -414,6 +414,11 @@ type ChatMessage struct {
 	Seq    int64
 	ID     string // a run row's stored message id (its transcript rebuilds from the store)
 	SentAt int64  // a user row: when the prompt was sent, unix ms, 0 elsewhere
+	// Foreign marks a row another window wrote and a sync spliced in live:
+	// the chat dims its gutter, so "who wrote this" reads off the row. Rows
+	// read at boot or after a reload carry no mark: the whole window is
+	// equally the log's.
+	Foreign bool
 }
 
 // Plural is one when n is 1, else many.
@@ -560,6 +565,8 @@ type Host struct {
 	// pairing tells its rows apart by; foreignPend buffers the other
 	// windows' rows the pairing passed, for syncChat to splice in.
 	origin      string
+	peersPath   string                    // this window's heartbeat file, "" without a store
+	peers       atomic.Pointer[peersView] // the sibling windows the last beat read
 	foreignPend []store.LogEntry
 
 	// agentRows caches ctx.agent's tool subtables between renders: a finished
@@ -699,6 +706,7 @@ type Host struct {
 
 	composerMu     sync.Mutex
 	composerText   string
+	draftToasted   string // the draft the last collision toast named, so an unchanged one never re-toasts
 	composerCursor int
 
 	recentStale atomic.Bool
@@ -1922,6 +1930,10 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("agents_running", glua.LNumber(agents))
 	tb.RawSetString("workflows_running", glua.LNumber(flows))
 	tb.RawSetString("jobs_running", glua.LNumber(h.jobsRunningCount()))
+	if pv := h.peerView(); pv.n > 0 {
+		tb.RawSetString("peers", glua.LNumber(pv.n))
+		tb.RawSetString("peers_working", glua.LNumber(pv.working))
+	}
 	if g, ok := h.Goal(); ok {
 		gt := L.CreateTable(0, 3)
 		gt.RawSetString("condition", glua.LString(sanitize.String(g.Condition)))
@@ -2151,6 +2163,7 @@ func chatRow(L *glua.LState, m ChatMessage) *glua.LTable {
 		row.RawSetString("ended", glua.LNumber(m.Stat.Ended))
 		row.RawSetString("model", glua.LString(m.Stat.Model))
 	}
+	row.RawSetString("foreign", glua.LBool(m.Foreign))
 	return row
 }
 
@@ -2388,7 +2401,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.147.0"))
+	api.RawSetString("version", glua.LString("0.148.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

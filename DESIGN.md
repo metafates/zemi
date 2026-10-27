@@ -1799,7 +1799,14 @@ carries the writer window's `origin`, so the second window's live pairing
 tells its rows from the first's, and the config watch's idle tick syncs
 the other window's rows into this one's transcript at their place: two
 windows on one repository draw the one chat it keeps, in the order a
-restart reads, and a foreign reset reloads the window whole.
+restart reads, and a foreign reset reloads the window whole. The spliced
+rows carry the transcript row's `foreign` mark, so a row that arrived
+while this window watched reads as the other window's (a dim gutter and
+readout); rows read at boot are the log's own and carry no mark. A
+window's presence rides heartbeat files under `<state>/peers/<store
+key>/` (one per origin, a two-second beat, fresh for six seconds), so the
+statusline names the windows sharing the chat and which of them run a
+turn - liveness the log cannot tell, whose origins outlive their windows.
 
 Indexes: `messages(session_id)`,
 `tool_calls(message_id, created_at)`, `sessions(parent_id)`,
@@ -2719,12 +2726,17 @@ was the hardest correctness surface, and the spec has none).
   reset instead of wedging it), then deletes the log rows, every summary
   node, every view line and the compaction view's kv row in one transaction
   (`ResetLog`), vacuums and truncates the WAL so the text is gone from
-  disk. The next append starts at seq 0.
+  disk, and logs one note row - "the chat was reset", the wipe's only trace,
+  which the chat draws nothing of (the fresh chat opens on its splash) while
+  zoom and the messages picker keep the why. The next content append starts
+  at seq 1.
 - The todo list clears, every goal drops with its kv row, the runner is
   dropped, and the transcript swaps to the empty log. It refuses a live
   turn or run, and asks through the armed screen or `--yes`. The armed
   key's press runs the wipe on its own goroutine, so the UI's worker never
-  sits on the quiesce; the toast names the outcome.
+  sits on the quiesce; the toast names the outcome. A window whose log
+  shrinks under it - another window's reset - toasts "Chat reset by another
+  window" and reloads whole.
 
 ### 10.7 Skills
 

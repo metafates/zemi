@@ -773,6 +773,7 @@ function zemi.event.stats() end
 ---@field elapsed number
 ---@field ended number Unix time the turn ended, 0 when unknown.
 ---@field model string The model id that wrote the reply, "" elsewhere.
+---@field foreign? boolean Another window wrote this row and a sync spliced it in live; false on rows this window wrote or read at boot.
 
 ---@class zemi.RecentProject
 ---@field path string The project root, ~-shortened.
@@ -863,6 +864,8 @@ function zemi.event.stats() end
 ---@field agents_running integer Agents of this session still running outside a workflow: the turn's own and background ones, whose reports arrive as messages.
 ---@field workflows_running integer Workflows of this session still running, paused ones included.
 ---@field jobs_running integer Background jobs (job_start, or a shell call that outlived its timeout) still running.
+---@field peers? integer Other windows whose heartbeat under the state home is still fresh; absent when the window is alone.
+---@field peers_working? integer How many of those run a turn right now.
 ---@field goal? zemi.GoalCtx The session's goal while one is set (/goal).
 ---@field loop? zemi.LoopCtx The session's loop while one runs (/loop).
 ---@field quit_armed boolean A second ctrl+c quits.

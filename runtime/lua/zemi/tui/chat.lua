@@ -247,8 +247,8 @@ local function builder(ctx, width)
 	-- view, and the bar never hovers there.
 	---@param text string
 	---@param waiting boolean? Waiting for the turn's next step boundary.
-	function B.user(text, waiting)
-		local bar_hl = waiting and "Queued" or "UserMsg"
+	function B.user(text, waiting, foreign)
+		local bar_hl = waiting and "Queued" or foreign and "Dim" or "UserMsg"
 		for _, segs in ipairs(zemi.ui.wrap(text, width - 2)) do
 			local row = { { text = "▌ ", hl = bar_hl, copy = false, hover = false, sticky = not waiting } }
 			for _, sg in ipairs(segs) do
@@ -256,6 +256,11 @@ local function builder(ctx, width)
 				row[#row + 1] = sg
 			end
 			push(row)
+		end
+		-- another window wrote this: name it under the message, the reply
+		-- readout's shape, so "who wrote this" reads off the row
+		if foreign then
+			B.lines[#B.lines + 1] = { { text = "  ", copy = false }, { text = "· other window", hl = "Dim" } }
 		end
 	end
 
@@ -852,7 +857,7 @@ zemi.ui.widget.add({
 			elseif m.role == "user" then
 				-- plain text: what the user typed is not markdown
 				B.gap("user")
-				B.user(m.text)
+				B.user(m.text, nil, m.foreign)
 			else
 				B.gap("text")
 				B.markdown(m.text)

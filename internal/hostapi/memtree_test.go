@@ -761,13 +761,13 @@ func TestResetFencesTheBuilder(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the reset did not finish behind a gated build")
 	}
-	// a fresh message takes seq 0 again: its node is its own words, and no
-	// stale summary of the wiped ones may land over it
+	// a fresh message takes seq 1, behind the reset's note: its node is its
+	// own words, and no stale summary of the wiped ones may land over it
 	if _, err := cl.User("fresh words", ""); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, func() error {
-		n, err := h.DB.NodeAt(0, 0)
+		n, err := h.DB.NodeAt(0, 1)
 		if errors.Is(err, store.ErrNotFound) {
 			return err
 		}
@@ -775,7 +775,7 @@ func TestResetFencesTheBuilder(t *testing.T) {
 			return err
 		}
 		if n.Text != "fresh words" {
-			return errors.New("node(0,0) is not the fresh message's own text")
+			return errors.New("node(0,1) is not the fresh message's own text")
 		}
 		return nil
 	})
@@ -802,7 +802,7 @@ func TestResetRebuilds(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, func() error {
-		if n, err := h.DB.LogCount(); err != nil || n != 0 {
+		if n, err := h.DB.LogCount(); err != nil || n != 1 {
 			return errors.New("the wipe has not settled")
 		}
 		return nil
@@ -819,7 +819,7 @@ func TestResetRebuilds(t *testing.T) {
 		}
 		return nil
 	})
-	coverage(t, h.DB, 2)
+	coverage(t, h.DB, 3) // the reset's note, then the two fresh rows
 	if m.callCount() < calls {
 		t.Fatal("the builder went backwards")
 	}
@@ -885,7 +885,7 @@ func TestResetConfirmLeavesTheWorker(t *testing.T) {
 	}
 	close(m.gate) // the build lands, and the wipe behind it
 	waitFor(t, func() error {
-		if n, _ := h.DB.LogCount(); n != 0 {
+		if n, _ := h.DB.LogCount(); n != 1 {
 			return errors.New("the wipe has not landed behind the build")
 		}
 		return nil

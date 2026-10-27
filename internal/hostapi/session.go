@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"encoding/json/v2"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -219,6 +220,7 @@ func (h *Host) SyncChat() {
 		h.tMu.Unlock()
 		h.scroll(ScrollBottom, "")
 		h.refresh()
+		h.Notify(slog.LevelInfo, "Chat reset by another window", "this window reloaded from the shared log")
 		return
 	}
 	h.stampLogSeqsLocked()
@@ -236,7 +238,11 @@ func (h *Host) SyncChat() {
 					break
 				}
 			}
-			tr = slices.Insert(tr, at, logRows([]store.LogEntry{row})...)
+			rows := logRows([]store.LogEntry{row})
+			for i := range rows {
+				rows[i].Foreign = true
+			}
+			tr = slices.Insert(tr, at, rows...)
 		}
 		h.session.Transcript = tr
 		h.trEpoch.Add(1)
@@ -246,6 +252,14 @@ func (h *Host) SyncChat() {
 	h.tMu.Unlock()
 	if len(foreign) > 0 {
 		h.refresh()
+		// a draft in the composer can be answered by what just arrived: say
+		// it once per draft, so a chatty window cannot re-toast an unchanged one
+		if draft := h.ComposerText(); strings.TrimSpace(draft) != "" && draft != h.draftToasted {
+			h.composerMu.Lock()
+			h.draftToasted = draft
+			h.composerMu.Unlock()
+			h.Notify(slog.LevelInfo, "Another window sent a message", "your draft is kept")
+		}
 	}
 }
 

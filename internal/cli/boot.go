@@ -114,6 +114,7 @@ func launch(o options) int {
 				}
 			}
 		})
+		host.StartPeers()
 		// A bad flag is a toast, not a boot failure: the TUI is still usable.
 		if err := applyOptions(host, o); err != nil {
 			host.RecordError("flag", "", err.Error())
@@ -142,6 +143,7 @@ func launch(o options) int {
 	}()
 
 	_, err = p.Run()
+	host.ClosePeers()
 	// Children run in their own sessions (internal/proc), so the terminal
 	// closing does not reach them: stop them here, and start none after (a
 	// reload, an MCP retry, a plugin's job), which would outlive zemi. Exit

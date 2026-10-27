@@ -316,44 +316,8 @@ func (h *Host) messagesList(p pickTr, at int) Overlay {
 			o.Items = append(o.Items, item)
 		}
 	}
-	o.Items = append(o.Items, h.otherWindowRows()...)
 	o.More = h.messagesOlder
 	return o
-}
-
-// otherWindowRows reads the log rows this window never drew: another
-// window's turns land in the shared log above the seqs this transcript
-// stamped, and /memories shows them, so the picker does too. They
-// name no transcript row, the way a loaded page's rows do. The stamping runs
-// first, so the rows this window drew but has not named yet stay out. NOTE:
-// capped at one page; a longer gap waits for this window to draw its way to
-// them (cross-window convergence is lazy).
-func (h *Host) otherWindowRows() []OverlayItem {
-	if h.DB == nil {
-		return nil
-	}
-	h.stampLogSeqs()
-	h.tMu.RLock()
-	tr := h.session.Transcript
-	h.tMu.RUnlock()
-	top := int64(-1)
-	for _, m := range tr { // the window's rows carry their log seq once stamped
-		if m.Seq > top {
-			top = m.Seq
-		}
-	}
-	rows, err := h.DB.LogFrom(top+1, chatPageRows)
-	if err != nil || len(rows) == 0 {
-		return nil
-	}
-	var items []OverlayItem
-	for _, m := range logRows(rows) {
-		if item := olderRow(m); item.Text != "" {
-			item.Section = "From another window"
-			items = append(items, item)
-		}
-	}
-	return items
 }
 
 // chatPageRows is how many log rows one page-up of the picker loads.

@@ -108,6 +108,27 @@ zemi.ui.widget.add({
 	end,
 })
 
+-- Windows sharing this chat: the other zemis whose heartbeat beside this
+-- one's under the state home is still fresh. A beat carries whether the
+-- window runs a turn, so a peer at work reads here without a row of its own.
+zemi.ui.widget.add({
+	id = "statusline.peers",
+	region = "statusline.left",
+	priority = 27,
+	---@param ctx zemi.WidgetCtx
+	---@return zemi.Line[]
+	render = function(ctx)
+		local peers, working = ctx.peers or 0, ctx.peers_working or 0
+		if peers == 0 then return {} end
+		local line = fmt.hint("⧉ " .. peers, peers == 1 and "other window" or "other windows")
+		if working > 0 then
+			line[#line + 1] = { text = " · ", hl = "Dim" }
+			line[#line + 1] = { text = working .. " working", hl = "Dim" }
+		end
+		return { line }
+	end,
+})
+
 -- The keys of a bound sequence typed so far, waiting for the rest.
 zemi.ui.widget.add({
 	id = "statusline.keys",

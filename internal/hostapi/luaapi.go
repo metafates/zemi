@@ -56,6 +56,14 @@ func (h *Host) SetComposerSnapshot(text string, cursor int) {
 	}
 }
 
+// ComposerText is the draft as the UI last pushed it, without waiting on the
+// UI goroutine.
+func (h *Host) ComposerText() string {
+	h.composerMu.Lock()
+	defer h.composerMu.Unlock()
+	return h.composerText
+}
+
 // composerNamespace is zemi.composer: get() -> { text, cursor } (cursor is
 // a 0-based character offset), set(text [, cursor]), insert(text) at the
 // cursor, submit() as if enter was pressed, history_prev() and
