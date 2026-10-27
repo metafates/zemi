@@ -186,9 +186,6 @@ type agentHost struct {
 	// hookCtx is what the plugins' SessionStart hooks captured for the chat.
 	hookCtx string
 
-	// turnSeq is the log seq of the running turn's user message; the goal
-	// keys on it. -1 before the message is logged.
-	turnSeq int64
 	// shellNotes holds !command output waiting for the next message.
 	shellNotes []string
 
@@ -223,7 +220,7 @@ type agentHost struct {
 }
 
 func newAgentHost(clock lua.Clock) *agentHost {
-	return &agentHost{targets: map[string]*modelTarget{}, clock: clock, turnSeq: -1}
+	return &agentHost{targets: map[string]*modelTarget{}, clock: clock}
 }
 
 // host wiring
@@ -1604,14 +1601,7 @@ func (h *Host) persistMessage(msg fantasy.Message) error {
 		h.stampLogSeqs()
 	}
 	if msg.Role == fantasy.MessageRoleUser && seq >= 0 {
-		ag := h.agents
-		ag.mu.Lock()
-		first := ag.turnSeq < 0
-		ag.turnSeq = seq
-		ag.mu.Unlock()
-		if first {
-			h.setGoalFrom(seq, msg)
-		}
+		h.setGoalFrom(seq, msg)
 	}
 	return nil
 }
