@@ -445,8 +445,6 @@ func TestImagesRefusedContinues(t *testing.T) {
 			m := reflectStub(t, h, "ok")
 			m.toolStep.Store(50_000)
 			m.failOnce.Store(&fantasy.ProviderError{StatusCode: 400, Message: c.refusal})
-			h.reflectMu.Lock()
-			defer h.reflectMu.Unlock()
 			sender(t, h)("what is in @shot.png")
 			if n := m.streams.Load(); n != 3 {
 				t.Fatalf("model streamed %d times, want 3", n)

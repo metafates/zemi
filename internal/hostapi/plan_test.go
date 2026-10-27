@@ -21,11 +21,10 @@ func TestPlanHold(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}}
 	h.SetUIHooks(ui)
-	sid := seedSession(t, h)
 	if v, ok := h.approvePlan("# The first plan"); !ok || v.Path == "" {
 		t.Fatalf("approve: %+v ok=%v", v, ok)
 	}
-	path := h.planPath(sid)
+	path := h.planPath()
 	saved, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -69,11 +68,7 @@ func TestResumeShowsPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitIdle(t, h)
-	rows, err := h.DB.Messages(h.AgentSessionID())
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, tr := historyFrom(rows)
+	tr := h.Session().Transcript
 	body := slices.IndexFunc(tr, func(m ChatMessage) bool { return m.Text == "# The plan\nstep one" })
 	if body < 1 {
 		t.Fatalf("no plan message: %+v", tr)

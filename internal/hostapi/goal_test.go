@@ -11,7 +11,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/store"
 )
 
 // TestGoalLoop drives /goal against a model that works and, asked to
@@ -124,22 +123,12 @@ func TestGoalLoop(t *testing.T) {
 				return nil
 			})
 
-			sid := h.AgentSessionID()
-			if err := h.NewSession(); err != nil {
-				t.Fatal(err)
+			// a rewind before the message that set the goal drops it
+			seq, _ := h.DB.LogKindBack(kindUser, 10)
+			if len(seq) == 0 {
+				t.Fatal("no prompts logged")
 			}
-			if err := h.ResumeSession(sid); err != nil {
-				t.Fatal(err)
-			}
-			if resumed := goalRows(h.Session().Transcript); !slices.Equal(resumed, notices) {
-				t.Errorf("resumed notices = %q, live %q", resumed, notices)
-			}
-			if rg, ok := h.Goal(); ok != set || rg.Condition != g.Condition || rg.Turns != g.Turns || rg.Reason != g.Reason {
-				t.Errorf("resumed goal = %+v %v, live %+v %v", rg, ok, g, set)
-			}
-			rows, _ := h.DB.Messages(sid)
-			first := slices.IndexFunc(rows, func(m *store.Message) bool { return m.Role == string(fantasy.MessageRoleUser) })
-			if _, err := h.RewindTo(rows[first].ID); err != nil {
+			if _, err := h.RewindTo(seq[0].Seq); err != nil {
 				t.Fatal(err)
 			}
 			if _, ok := h.Goal(); ok {
@@ -233,35 +222,6 @@ func TestParseVerdict(t *testing.T) {
 		ev, why, ok := parseVerdict(c.reply)
 		if ev != c.ev || why != c.why || ok != (c.ev != "") {
 			t.Errorf("%q: %q %q %v", c.reply, ev, why, ok)
-		}
-	}
-}
-
-// TestGoalIn: the goal stored rows leave set.
-func TestGoalIn(t *testing.T) {
-	row := func(ev goalEvent, text string) *store.Message {
-		return &store.Message{Role: goalRole, PartsJSON: fmt.Sprintf(`{"event":%q,"text":%q}`, ev, text)}
-	}
-	for _, c := range []struct {
-		name  string
-		rows  []*store.Message
-		cond  string // "" for no goal
-		turns int
-	}{
-		{"none", nil, "", 0},
-		{"set", []*store.Message{row(goalSet, "a b")}, "a b", 0},
-		{"checked", []*store.Message{row(goalSet, "a b"), row(goalNotYet, "x"), row(goalBlocked, "y")}, "a b", 2},
-		{"met", []*store.Message{row(goalSet, "a b"), row(goalMet, "x")}, "", 0},
-		{"stopped", []*store.Message{row(goalSet, "a b"), row(goalStopped, "")}, "", 0},
-		{"set again", []*store.Message{row(goalSet, "a b"), row(goalMet, "x"), row(goalSet, "c d")}, "c d", 0},
-		{"a verdict with no goal", []*store.Message{row(goalNotYet, "x")}, "", 0},
-	} {
-		cond, turns := "", 0
-		if g := goalIn(c.rows); g != nil {
-			cond, turns = g.Condition, g.Turns
-		}
-		if cond != c.cond || turns != c.turns {
-			t.Errorf("%s: goal %q after %d checks", c.name, cond, turns)
 		}
 	}
 }

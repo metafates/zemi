@@ -10,19 +10,16 @@ import (
 // schemaPurpose is the one-line purpose of the tables whose role the schema
 // cannot say; a table not here renders bare.
 var schemaPurpose = map[string]string{
-	"sessions":    "one row per conversation (top level) or subagent run",
-	"messages":    "a session's persisted rows, read back in rowid order; role `tail` holds the verbatim tail a compaction kept",
+	"sessions":    `the "main" billing and todos anchor, one row per subagent run`,
+	"messages":    "a subagent run's persisted rows, read back in rowid order",
 	"todos":       "a session's todo list",
 	"tool_calls":  "one row per tool call a message carried",
-	"checkpoints": "pre-turn file snapshots /rewind restores",
+	"checkpoints": "pre-turn file snapshots /rewind restores, keyed by the log seq of the turn's user message",
 	"skills":      "the skill index synced at boot: path, source and enabled flag per name",
-	"kv":          "small state: saved config picks, reflector claims, leases",
+	"kv":          "small state: saved config picks, leases",
 	"log":         "the eternal chat: one append-only row per message, seq its dense 0-based index",
 	"nodes":       "the summary tree: node(l, i) covers the 2^l messages from i*2^l on, one line each",
 	"view_lines":  "the persisted view, oldest first; a line whose node is missing renders as a placeholder",
-	"proposals":   "memory proposals waiting for a /memory decision",
-	"memory":      "memory lines with scope, origin and supersede trail",
-	"memory_ops":  "the append-only journal of every memory write, for undo and recall",
 }
 
 // SchemaDoc renders the schema the embedded migrations build: one bullet per

@@ -30,23 +30,23 @@ func TestRoleModel(t *testing.T) {
 	}{
 		{
 			name: "nothing set runs the provider default",
-			want: map[string]string{"conversation": "a/big", "default": "a/big", "agents": "a/big", "titles": "a/big", "compact": "a/big", "memory": "a/big"},
+			want: map[string]string{"conversation": "a/big", "default": "a/big", "agents": "a/big", "compact": "a/big"},
 		},
 		{
 			name:   "the default pick moves every role",
 			config: `zemi.config.set("models.default", "a/small")`,
-			want:   map[string]string{"conversation": "a/small", "default": "a/small", "agents": "a/small", "titles": "a/small", "compact": "a/small", "memory": "a/small"},
+			want:   map[string]string{"conversation": "a/small", "default": "a/small", "agents": "a/small", "compact": "a/small"},
 		},
 		{
 			name:   "a set target wins",
-			config: `zemi.config.set("models.titles", "a/small") zemi.config.set("models.memory", "a/small")`,
-			want:   map[string]string{"conversation": "a/big", "agents": "a/big", "titles": "a/small", "compact": "a/big", "memory": "a/small"},
+			config: `zemi.config.set("models.compact", "a/small")`,
+			want:   map[string]string{"conversation": "a/big", "agents": "a/big", "compact": "a/small"},
 		},
 		{
 			name:   "a key refuses a target name",
-			config: `zemi.config.set("models.titles", "default")`,
-			want:   map[string]string{"titles": "a/big"},
-			err:    `config key models.titles expects a provider/model id or ""`,
+			config: `zemi.config.set("models.compact", "default")`,
+			want:   map[string]string{"compact": "a/big"},
+			err:    `config key models.compact expects a provider/model id or ""`,
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -77,18 +77,18 @@ func TestModelTargetNames(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, rolesProvider+`
-		zemi.config.set("models.titles", "a/small")
-		zemi.model.add("clf", { desc = "the classifier", model = "titles" })`)
+		zemi.config.set("models.compact", "a/small")
+		zemi.model.add("clf", { desc = "the classifier", model = "compact" })`)
 	if id := h.roleModel("clf"); id != "a/small" {
-		t.Fatalf("clf runs on %q, want models.titles", id)
+		t.Fatalf("clf runs on %q, want models.compact", id)
 	}
 	for _, c := range []struct{ name, src, want string }{
-		{"a builtin role", `zemi.model.add("titles", { desc = "x" })`, `"titles" is a builtin role`},
+		{"a builtin role", `zemi.model.add("compact", { desc = "x" })`, `"compact" is a builtin role`},
 		{"default", `zemi.model.add("default", { desc = "x" })`, `"default" is a builtin role`},
 		{"a dotted name", `zemi.model.add("a.b", { desc = "x" })`, `name "a.b" must be a lowercase letter`},
 		{"no desc", `zemi.model.add("x", { model = "a/big" })`, "desc is what /model roles shows"},
 		{"a typo'd key", `zemi.model.add("x", { desc = "x", model_id = "a/big" })`, `spec: unknown field "model_id"`},
-		{"its own name as its model", `zemi.model.add("x", { desc = "x", model = "x" })`, `model "x" must name a builtin role (default, agents, titles, compact, memory) or a provider/model id`},
+		{"its own name as its model", `zemi.model.add("x", { desc = "x", model = "x" })`, `model "x" must name a builtin role (default, agents, compact) or a provider/model id`},
 		{"another target as its model", `zemi.model.add("x", { desc = "x", model = "clf" })`, `model "clf" must name a builtin role`},
 	} {
 		if err := r.ExecuteChunk(t.Context(), c.src, "test.lua", lua.OriginUser); err == nil || !strings.Contains(err.Error(), c.want) {
@@ -97,7 +97,7 @@ func TestModelTargetNames(t *testing.T) {
 	}
 	// a del of nothing is false, never an error
 	runUser(t, r, `assert(zemi.model.del("nope") == false, "a slot nothing registered")
-		assert(zemi.model.del("titles") == false, "a role")`)
+		assert(zemi.model.del("compact") == false, "a role")`)
 	// a plugin registers its own slot, and takes a name the user holds
 	if err := r.ExecuteChunk(t.Context(), `zemi.model.add("cli-slot", { desc = "the plugin's", model = "a/big" })`, "p.lua", lua.OriginPlugin); err != nil {
 		t.Fatalf("a plugin registers a slot: %v", err)
@@ -202,10 +202,10 @@ func TestModelTargetUI(t *testing.T) {
 	for _, it := range rows {
 		got = append(got, it.Text)
 	}
-	if want := []string{"default", "agents", "titles", "compact", "memory", "clf"}; !slices.Equal(got, want) {
+	if want := []string{"default", "agents", "compact", "clf"}; !slices.Equal(got, want) {
 		t.Fatalf("/model roles lists %v, want %v", got, want)
 	}
-	if row := rows[5]; row.Desc != "a/small · the classifier" {
+	if row := rows[3]; row.Desc != "a/small · the classifier" {
 		t.Errorf("clf row %+v", row)
 	}
 	// the slot's list opens on what an empty key means
@@ -287,13 +287,13 @@ func TestSetModelArgs(t *testing.T) {
 		{"", "model", "", "", ""},
 		{"default", "model default", "", "", ""},
 		{"roles", "model roles", "", "", ""},
-		{"titles", "model titles", "", "", ""},
+		{"compact", "model compact", "", "", ""},
 		{"a/small", "", "models.default", "a/small", ""},
-		{"titles a/big", "", "models.titles", "a/big", ""},
-		{"titles default", "", "models.titles", "", ""},
-		{"titles nope/x", "", "", "", `provider "nope" is not registered`},
+		{"compact a/big", "", "models.compact", "a/big", ""},
+		{"compact default", "", "models.compact", "", ""},
+		{"compact nope/x", "", "", "", `provider "nope" is not registered`},
 		{"fast a/big", "", "", "", "usage: /model"},
-		{"titles a/big more", "", "", "", "usage: /model"},
+		{"compact a/big more", "", "", "", "usage: /model"},
 	} {
 		n := len(ui.opened)
 		err := h.SetModel(c.args)
@@ -317,11 +317,11 @@ func TestSetModelArgs(t *testing.T) {
 	// the roles list tags what follows default, and zemi.model.list says what runs where
 	roles := ui.opened[2].Items
 	if k := roles[2].Key; k != "follows default" {
-		t.Errorf("titles row key %q", k)
+		t.Errorf("compact row key %q", k)
 	}
 	for _, c := range []struct{ line, want string }{
-		{"/model ", "roles update default agents titles compact memory a/big a/small"},
-		{"/model titles ", "default a/big a/small"},
+		{"/model ", "roles update default agents compact a/big a/small"},
+		{"/model compact ", "default a/big a/small"},
 		{"/model default ", "a/big a/small"},
 		{"/model a/big ", ""},
 	} {
@@ -331,9 +331,9 @@ func TestSetModelArgs(t *testing.T) {
 			t.Errorf("complete %q = %v, want %q", c.line, got, c.want)
 		}
 	}
-	runUser(t, r, `zemi.config.set("models.memory", "a/big")
+	runUser(t, r, `zemi.config.set("models.compact", "a/big")
 		for _, m in ipairs(zemi.model.list()) do
-			local want = m.id == "a/big" and "memory" or "default,agents,titles,compact"
+			local want = m.id == "a/big" and "compact" or "default,agents"
 			assert(table.concat(m.roles, ",") == want, m.id .. ": " .. table.concat(m.roles, ","))
 		end`)
 }

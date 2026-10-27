@@ -20,7 +20,7 @@ func TestMessagesList(t *testing.T) {
 	t.Parallel()
 	sent := time.Date(2026, 10, 19, 14, 2, 0, 0, time.Local)
 	tr := []ChatMessage{
-		{Role: fantasy.MessageRoleUser, Text: "ping", ID: "m1", SentAt: sent.UnixMilli()},
+		{Role: fantasy.MessageRoleUser, Text: "ping", Seq: 7, SentAt: sent.UnixMilli()},
 		{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "hmm"},
 		{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "shell", Text: "go test", Label: "run the tests", Status: CallErr, Output: "a\nb"},
 		{Role: fantasy.MessageRoleAssistant, Text: "the tests fail"},
@@ -71,11 +71,11 @@ func TestMessagesList(t *testing.T) {
 		t.Errorf("the reader in the run selects %d, want the digest", sel)
 	}
 	// a prompt names the message r rewinds to
-	if prompt := o.Items[0]; prompt.ID != "m1" || prompt.Keys != nil {
+	if prompt := o.Items[0]; prompt.ID != "7" || prompt.Keys != nil {
 		t.Errorf("prompt = %+v", prompt)
 	}
 	r := o.Keys[slices.IndexFunc(o.Keys, func(k OverlayKey) bool { return k.Key == "r" })]
-	if !r.Danger || !r.Applies(OverlayItem{ID: "m1"}) || r.Applies(OverlayItem{Text: "again"}) {
+	if !r.Danger || !r.Applies(OverlayItem{ID: "7"}) || r.Applies(OverlayItem{Text: "again"}) {
 		t.Errorf("rewind key = %+v", r)
 	}
 	// a call copies the input it acted on; one that took nothing worth
@@ -158,8 +158,6 @@ func TestMessagesRun(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	reflectStub(t, h, "pong")
-	h.reflectMu.Lock()
-	defer h.reflectMu.Unlock()
 	if err := h.AgentSend("ping"); err != nil {
 		t.Fatal(err)
 	}

@@ -10,8 +10,6 @@ import (
 	"log/slog"
 	"runtime/debug"
 	"time"
-
-	"charm.land/fantasy"
 )
 
 // errPanicked is the failure an async handle's wait reads when the goroutine
@@ -59,10 +57,9 @@ func (h *Host) clearCrashedTurn(r any) {
 	ag := h.agents
 	ag.mu.Lock()
 	h.release()
-	ag.compacting, ag.checkingGoal = false, false
+	ag.checkingGoal = false
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
 	ag.turnStart, ag.retryAt = time.Time{}, time.Time{}
-	ag.cutUsage, ag.cutMS = fantasy.Usage{}, 0
 	ag.mu.Unlock()
 }
 

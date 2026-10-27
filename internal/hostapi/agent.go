@@ -7,8 +7,6 @@ package hostapi
 import (
 	"cmp"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
@@ -17,13 +15,13 @@ import (
 	"maps"
 	"math"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
@@ -76,12 +74,11 @@ type StreamTool struct {
 	partial string        // the head of the streaming input, until Label is known
 }
 
-// agentHost owns the live agent session: the model slots config registered,
-// the runner, the steering queue and the stream view the UI renders.
+// agentHost owns the live chat: the model slots config registered, the
+// runner, the steering queue and the stream view the UI renders.
 type agentHost struct {
-	mu        sync.Mutex
-	runner    *agent.Runner
-	sessionID string
+	mu     sync.Mutex
+	runner *agent.Runner
 	// outcomes is what each running call's tool reported beyond its text,
 	// keyed by call id and read once the call ends
 	outcomes map[string]tools.Outcome
@@ -129,8 +126,7 @@ type agentHost struct {
 
 	// readMu guards reads, instr and loaded, the per-session bookkeeping
 	// the tools carry (what the model has read, which instruction files it
-	// has been given, which MCP tools tool_search loaded). All are dropped
-	// when the session changes.
+	// has been given, which MCP tools tool_search loaded).
 	readMu sync.Mutex
 	reads  map[string]*sync.Map
 	instr  set.Set[string]
@@ -148,23 +144,6 @@ type agentHost struct {
 	pin      promptPin
 	pinDrops int
 	pinMu    sync.Mutex
-	// lastSent is the pin key of the last completed step: the prefix the
-	// provider holds in cache. A send whose key differs would resend the
-	// whole conversation, which handoffGate offers to compact first;
-	// handoffAsked is the key it already asked about.
-	lastSent     string
-	handoffAsked string
-	// lastCore is the pin core the last step was sent with: an MCP-only move
-	// of the key between the steps is not a switch.
-	lastCore string
-	// lastCache is the cache usage the last completed step reported: evidence
-	// the provider caches the prefix at all. A model that reports neither a
-	// cache read nor a write has no warm prefix to ride, so handoffGate stays
-	// silent.
-	lastCache int64
-	// ctx is the context message the live session last stored: a resume
-	// loads it, a drop point clears it
-	ctx contextRow
 
 	// turn timing: turnStart pins the clock at AgentSend, thinking
 	// tracks the open reasoning block, thought accumulates closed ones
@@ -183,48 +162,26 @@ type agentHost struct {
 	// counts down instead of looking stuck). turns counts the turns begun
 	// (beginTurn), which resets retries, so a reader tells one turn's count
 	// from the last one's by it.
-	retryAt    time.Time
-	retries    int
-	retryWhy   string // friendlyError of the failure being retried
-	turns      int
-	compacting bool // summarizing history before the next turn
+	retryAt  time.Time
+	retries  int
+	retryWhy string // friendlyError of the failure being retried
+	turns    int
 
 	// held is the command line's prompt, up as the first message from the
 	// TUI's first frame and claimed as a turn from then; SendHeld starts the
 	// turn once boot ends, AgentCancel takes the prompt back.
 	held *heldPrompt
 
-	// compactFails counts auto compactions in a row that failed or left the
-	// context full; at compactMaxFails auto compaction stops for the session.
-	// compacted has the next step judge the last compaction. holdOverflow
-	// keeps TurnDone quiet about a context-too-long error sendCompacting
-	// will retry.
-	compactFails int
-	compacted    bool
-	holdOverflow bool
-	holdImages   bool          // a 400 over image parts is resent without them, not reported
-	holdCap      bool          // a refused output cap is resent without it, not reported
-	holdCut      bool          // a Full cut is compacted and resent, not reported; off once the compaction failed
-	cutUsage     fantasy.Usage // the steps before a Full cut, billed with the turn's end
-	cutMS        int64         // their clock, banked beside cutUsage for the turn's readout
+	holdImages   bool // a 400 over image parts is resent without them, not reported
+	holdCap      bool // a refused output cap is resent without it, not reported
+	holdOverflow bool // a too-large context is merged and resent once, not reported
 
-	// brain is the # Brain section, pinned at session open (DESIGN §10.7) and rebuilt
-	// at compaction and a mid-session trust flip, brainGlobs the pointer
-	// table built with it. hookCtx is what
-	// the plugins' SessionStart hooks captured for this session.
-	brain      string
-	brainGlobs []brainGlob
-	hookCtx    string
-	// brainWrites are the brain files this session wrote, keyed by their
-	// resolved path with the hash each write saw: a later file-mode write
-	// applies only while the file still matches (DESIGN §10.4's overwrite gate).
-	// Cleared on rewind and when the session changes.
-	brainWrites map[string]string
-	reflectErr  error // last reflector run's error, nil after a success (/health)
+	// hookCtx is what the plugins' SessionStart hooks captured for the chat.
+	hookCtx string
 
-	// turnMsgID is the stored user message of the running turn; write tools
-	// checkpoint files against it (rewind).
-	turnMsgID string
+	// turnSeq is the log seq of the running turn's user message; write tools
+	// checkpoint files against it (rewind). -1 before the message is logged.
+	turnSeq int64
 	// shellNotes holds !command output waiting for the next message.
 	shellNotes []string
 
@@ -259,7 +216,7 @@ type agentHost struct {
 }
 
 func newAgentHost(clock lua.Clock) *agentHost {
-	return &agentHost{targets: map[string]*modelTarget{}, clock: clock}
+	return &agentHost{targets: map[string]*modelTarget{}, clock: clock, turnSeq: -1}
 }
 
 // host wiring
@@ -363,7 +320,7 @@ func (h *Host) ensureRunner(toolset []fantasy.AgentTool) (*agent.Runner, error) 
 	h.agents.mu.Lock()
 	h.agents.promptParts, h.agents.promptTokens = sizes, int64(chars/4)
 	h.agents.mu.Unlock()
-	sid := h.AgentSessionID()
+	sid := store.MainSessionID
 	r.ProviderOptions, r.Headers = h.Providers.CallOptions(agent.ModelID(id), h.Effort(id), sid), agent.SessionHeaders(sid)
 	r.MaxOutputTokens = h.maxOutput(id)
 	r.Hooks = h.streamHooks()
@@ -371,7 +328,6 @@ func (h *Host) ensureRunner(toolset []fantasy.AgentTool) (*agent.Runner, error) 
 	r.Steer = h.deliverSteering
 	r.TextOnly = !h.takesImages(id)
 	r.Compose = func(text string) fantasy.Message { return h.composeUserMessage(text, !r.TextOnly) }
-	r.Full = h.contextFull
 	return r, nil
 }
 
@@ -387,40 +343,11 @@ type promptPin struct {
 
 // dropPin makes the next send build the prompt again. The text stays for
 // /prompt and for the rest of a running turn, which still sends it. ag.mu held.
-func (ag *agentHost) dropPin() { ag.pin.key, ag.pinDrops, ag.ctx = "", ag.pinDrops+1, contextRow{} }
+func (ag *agentHost) dropPin() { ag.pin.key, ag.pinDrops = "", ag.pinDrops+1 }
 
-// contextRole marks a stored context message (agent.Runner.Context): the
-// bytes a session sent, so its resume sends them again and the provider's
-// cache of the conversation holds. No transcript reader looks at the role.
+// contextRole marks a run's stored context message; no transcript reader
+// looks at the role.
 const contextRole = "context"
-
-// contextRow is a stored context message: key is contextKey's for the prompt
-// it was built with, files the instruction file versions it holds.
-type contextRow struct {
-	Key   string               `json:"key"`
-	Text  string               `json:"text"`
-	Files map[string]time.Time `json:"files,omitempty"`
-}
-
-// contextKey is what a stored context message is valid for: the pin key,
-// the working directory and scratchpad it names (a fork has its own) and
-// the brain and plugin-context renders, so a memory dropped or a capture
-// landed since is not sent again.
-func (h *Host) contextKey(pinKey, brain, hooks string) string {
-	sum := sha256.Sum256([]byte(pinKey + "\x00" + h.Dirs.ProjectDir + "\x00" + h.ScratchDir() + "\x00" + brain + "\x00" + hooks))
-	return hex.EncodeToString(sum[:])
-}
-
-// contextIn is the context message the session stored last.
-func contextIn(rows []*store.Message) contextRow {
-	var c contextRow
-	for _, row := range slices.Backward(rows) {
-		if row.Role == contextRole && json.Unmarshal([]byte(row.PartsJSON), &c) == nil {
-			return c
-		}
-	}
-	return contextRow{}
-}
 
 // pinnedTool sends the Info the pin was built with, so a description read
 // from files (agent definitions, saved workflows) cannot move the prefix.
@@ -436,9 +363,9 @@ func (t pinnedTool) Info() fantasy.ToolInfo { return t.info }
 // whether the model takes images (read's
 // description says) and each tool's name and input schema, since a stale
 // schema fails calls. Descriptions, instruction files, skills and
-// agent.assemble output wait for a drop point (closeSession, compactDone,
-// deleteRecipe). A reload drops nothing: the config watcher reloads on any
-// config-tree write, the model's own skill writes included.
+// agent.assemble output wait for a drop point (deleteRecipe). A reload drops
+// nothing: the config watcher reloads on any config-tree write, the model's
+// own skill writes included.
 func (h *Host) pinPrompt(toolset []fantasy.AgentTool) (out []fantasy.AgentTool, system, ctxMsg string, parts promptParts) {
 	id := h.roleModel(defaultRole)
 	trusted, images := strconv.FormatBool(h.ProjectTrusted()), strconv.FormatBool(h.takesImages(id))
@@ -461,7 +388,7 @@ func (h *Host) pinPrompt(toolset []fantasy.AgentTool) (out []fantasy.AgentTool, 
 	ag.pinMu.Lock()
 	defer ag.pinMu.Unlock()
 	ag.mu.Lock()
-	pin, drops, brainText, hookText := ag.pin, ag.pinDrops, ag.brain, ag.hookCtx
+	pin, drops := ag.pin, ag.pinDrops
 	ag.mu.Unlock()
 	if pin.key != k {
 		pin = promptPin{key: k, core: strings.Join(core, "\x00"), infos: map[string]fantasy.ToolInfo{}}
@@ -469,35 +396,12 @@ func (h *Host) pinPrompt(toolset []fantasy.AgentTool) (out []fantasy.AgentTool, 
 		for _, info := range infos {
 			pin.infos[info.Name] = info
 		}
-		ctxKey, mine := h.contextKey(k, brainText, hookText), filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
-		var stored *contextRow
 		ag.mu.Lock()
 		// a drop during the build means it may have read what the drop replaced
 		if ag.pinDrops == drops {
-			if ag.ctx.Key == ctxKey {
-				// a resumed session: the system prompt is the user's as it is
-				// now, the context what the session sent
-				pin.context = ag.ctx.Text
-				for f, mt := range ag.ctx.Files {
-					if f != mine {
-						pin.parts.files[f] = mt
-					}
-				}
-			} else {
-				row := contextRow{Key: ctxKey, Text: pin.context, Files: pin.parts.files}
-				ag.ctx, stored = row, &row
-			}
 			ag.pin = pin
 		}
-		sid := ag.sessionID
 		ag.mu.Unlock()
-		if stored != nil && sid != "" && h.DB != nil {
-			if data, err := json.Marshal(stored, json.Deterministic(true)); err == nil {
-				if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: contextRole, PartsJSON: string(data)}); err != nil {
-					h.Log.Warn("context not stored", "origin", "agent", "error", err)
-				}
-			}
-		}
 	}
 	out = make([]fantasy.AgentTool, len(toolset))
 	for i, t := range toolset {
@@ -535,7 +439,6 @@ func promptSizes(p promptParts, toolset []fantasy.AgentTool) []promptPart {
 		{"instructions", p.instructions},
 		{"lua", p.lua},
 		{"skills", p.skills},
-		{"brain", p.brain},
 	}
 }
 
@@ -588,12 +491,21 @@ func (h *Host) AgentSendUser(text string) error {
 	return err
 }
 
+// maxMessageChars caps one sent message's typed text: a paste beyond it
+// would blow any model's window and wedge the turn on a refusal instead of
+// failing here, where the text is still one paste away.
+// NOTE: a fixed ceiling, not the model's own window; a file goes as @path.
+const maxMessageChars = 400_000
+
 // agentSend is AgentSend, reporting whether the message joined a running turn.
 func (h *Host) agentSend(text string) (queued bool, err error) {
 	if strings.TrimSpace(text) == "" {
 		// a provider refuses an empty user message, and where it landed would
 		// be the middle of a turn
 		return false, errors.New("nothing to send")
+	}
+	if utf8.RuneCountInString(text) > maxMessageChars {
+		return false, fmt.Errorf("the message is over the %dk character limit; save it to a file and attach it with @path", maxMessageChars/1000)
 	}
 	ag := h.agents
 	ag.mu.Lock()
@@ -705,7 +617,7 @@ func (h *Host) dropHeldRow(held *heldPrompt) {
 func (h *Host) drainQueue() {
 	ag := h.agents
 	ag.mu.Lock()
-	if ag.active || len(ag.steering) == 0 || h.tasks.runningFor(ag.sessionID) > 0 {
+	if ag.active || len(ag.steering) == 0 || h.tasks.runningFor(store.MainSessionID) > 0 {
 		ag.mu.Unlock()
 		return
 	}
@@ -734,14 +646,11 @@ func (h *Host) sendClaimed(scope *turnScope, text string, held *heldPrompt) (err
 		h.refresh()
 		return err
 	}
-	// before the session row, so a send that cannot run leaves no empty session
 	id := h.roleModel(defaultRole)
 	if _, err := h.resolveTurnModel(id); err != nil {
 		return fail(err)
 	}
-	if err := h.ensureSession(text); err != nil {
-		return fail(err)
-	}
+	h.captureSessionStart()
 	toolset := h.mainTools()
 	runner, err := h.ensureRunner(toolset)
 	if err != nil {
@@ -833,51 +742,6 @@ func (h *Host) notKept(what string, err error) {
 	h.Log.Warn(what, "origin", "agent", "error", err)
 }
 
-// persistTurnStat keeps a turn's readout for a resume. The stored messages
-// hold no usage (fantasy.Message has none) and the reply's row only its time,
-// so the stat rides a telemetry row after them, which historyFrom attaches to
-// the turn's own reply.
-func (h *Host) persistTurnStat(sid string, stat TurnStat) {
-	if h.DB == nil || sid == "" {
-		return
-	}
-	parts, err := json.Marshal(map[string]any{
-		"turn_ms": stat.ElapsedMS, "in": stat.In, "out": stat.Out, "ended": stat.Ended, "model": stat.Model,
-	}, json.Deterministic(true))
-	if err != nil {
-		return
-	}
-	if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: "tool", PartsJSON: string(parts)}); err != nil {
-		h.notKept("turn stat not kept", err)
-	}
-}
-
-// chatRole marks a stored transcript row that no model message holds: a
-// notice, a failed turn, a !command. The live turn draws it as it happens,
-// and only the row itself can bring it back on a resume.
-const chatRole = "chat"
-
-// AppendStoredChat draws a chat row and keeps it, so a resumed session shows
-// the chat the user saw.
-func (h *Host) AppendStoredChat(m ChatMessage) {
-	h.storeChatRow(h.AgentSessionID(), m)
-	h.AppendChat(m)
-}
-
-// storeChatRow keeps a transcript row no model message holds.
-func (h *Host) storeChatRow(sid string, m ChatMessage) {
-	if h.DB == nil || sid == "" {
-		return
-	}
-	parts, err := json.Marshal(m, json.Deterministic(true))
-	if err != nil {
-		return
-	}
-	if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: chatRole, PartsJSON: string(parts)}); err != nil {
-		h.notKept("chat row not kept", err)
-	}
-}
-
 // release lets the agent go idle (ag.mu held).
 func (h *Host) release() {
 	h.agents.active = false
@@ -966,6 +830,8 @@ func (h *Host) handOff(scope *turnScope) {
 // runTurns sends text and every follow-up the queue produces, each turn a
 // fresh call that opens on the view: nothing carries between turns, so the
 // old pre-turn compaction and handoff gate have nothing to work on.
+// runTurns sends text and every follow-up the queue produces, each turn a
+// fresh call that opens on the view.
 func (h *Host) runTurns(runner *agent.Runner, scope *turnScope, text string) {
 	defer h.endTurnAfterPanic()
 	for scope != nil {
@@ -974,9 +840,81 @@ func (h *Host) runTurns(runner *agent.Runner, scope *turnScope, text string) {
 		} else {
 			runner.SetHistory(nil)
 		}
-		err := h.sendCompacting(scope.ctx, runner, text)
-		h.loopTurnEnded(runner, text, err, scope.ctx.Err() != nil)
+		err := h.sendTurn(scope.ctx, runner, text)
+		// interrupted is the turn's own error, not scope.ctx.Err() alone: the
+		// runner's stream cancel can return the turn before the scope's
+		// cancel lands, and an interrupt that reads as a finished turn
+		// leaves a replaced loop running
+		h.loopTurnEnded(runner, text, err, scope.ctx.Err() != nil || errors.Is(err, context.Canceled))
 		scope, text = h.nextTurn(scope, err)
+	}
+}
+
+// sendTurn runs one turn: the provider refusals a turn survives on its own
+// are retried (a refused output cap is dropped, image parts a model refuses
+// become a note), and a context-too-large refusal runs one view merge batch
+// and retries once - the view outgrew the model's window.
+func (h *Host) sendTurn(ctx context.Context, runner *agent.Runner, text string) error {
+	ag := h.agents
+	capDropped, imagesDropped, retried := false, false, false
+	for {
+		ag.mu.Lock()
+		ag.holdOverflow = !retried
+		ag.holdImages = !imagesDropped && !runner.TextOnly
+		ag.holdCap = !capDropped && runner.MaxOutputTokens > 0
+		ag.mu.Unlock()
+		err := runner.Send(ctx, text)
+		if text != "" { // history holds the user message from here on
+			text = ""
+		}
+		if err != nil && !errors.Is(err, agent.ErrTurnActive) {
+			h.Log.Error("turn failed", "origin", "agent", "error", err)
+		}
+		// a model whose ceiling is lower than the cap zemi asked for: drop
+		// the cap, remember it, and send again rather than failing every turn
+		if !capDropped && runner.MaxOutputTokens > 0 && maxTokensRefused(err) {
+			capDropped = true
+			ag.mu.Lock()
+			capRejected.Store(ag.turnModel, true)
+			ag.beginTurn()
+			ag.mu.Unlock()
+			runner.MaxOutputTokens = 0
+			continue
+		}
+		// a model that refuses image parts: replace them with a note that
+		// says so, remember it, and send again rather than ending the turn;
+		// an image too large leaves the history, and later ones still go
+		if !imagesDropped && !runner.TextOnly && imagesRefused(err) {
+			imagesDropped = true
+			ag.mu.Lock()
+			model := ag.turnModel
+			ag.beginTurn()
+			ag.mu.Unlock()
+			if imageTooLarge(err) {
+				runner.DropImages("too large to send")
+				h.Notify(slog.LevelWarn, "Image left out", "too large for "+model+"; the turn goes on without it")
+			} else {
+				runner.TextOnly = true
+				imagesRejected.Store(model, true)
+				h.Notify(slog.LevelWarn, "Images left out", model+" takes no images; vision = false on its model entry skips this")
+			}
+			continue
+		}
+		if !retried && contextTooLarge(err) {
+			// the held TurnDone kept the turn open; the retry owns it now
+			retried = true
+			ag.mu.Lock()
+			ag.beginTurn()
+			ag.mu.Unlock()
+			if h.chat != nil {
+				h.chat.tree.MergeOnce()
+			}
+			if msg, ok := h.viewMessage(); ok {
+				runner.SetHistory([]fantasy.Message{msg})
+			}
+			continue
+		}
+		return err
 	}
 }
 
@@ -1041,7 +979,7 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 	}
 	// a background run's report starts its own turn, which is checked after
 	goal := ag.goal
-	if text != "" || err != nil || done.ctx.Err() != nil || h.tasks.runningFor(ag.sessionID) > 0 {
+	if text != "" || err != nil || done.ctx.Err() != nil || h.tasks.runningFor(store.MainSessionID) > 0 {
 		goal = nil
 	}
 	if text != "" {
@@ -1405,9 +1343,7 @@ func (h *Host) flushOutput(stat TurnStat) {
 		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: ag.textBuf, Stat: &stat})
 	}
 	ag.reasonBuf, ag.tools, ag.textBuf, ag.thought = "", slices.Clone(ag.tools[done:]), "", 0
-	h.tMu.Lock()
-	h.session.Transcript = append(h.session.Transcript, rows...)
-	h.tMu.Unlock()
+	h.appendTranscript(rows...)
 	h.refreshMessagesFrom(h.pickerTranscriptLocked()) // the picker shows a row as it settles
 }
 
@@ -1443,15 +1379,6 @@ func (h *Host) appendAfterLive(m ChatMessage) {
 	h.tMu.Unlock()
 	ag.mu.Unlock()
 	h.refresh()
-}
-
-func addUsage(a, b fantasy.Usage) fantasy.Usage {
-	a.InputTokens += b.InputTokens
-	a.OutputTokens += b.OutputTokens
-	a.TotalTokens += b.TotalTokens
-	a.CacheReadTokens += b.CacheReadTokens
-	a.CacheCreationTokens += b.CacheCreationTokens
-	return a
 }
 
 // capLines keeps the first n lines and notes how many were cut.
@@ -1638,74 +1565,48 @@ func (h *Host) storeMessage(sid string, msg fantasy.Message, thought time.Durati
 	return row, nil
 }
 
-// stepThinking is how long the step now running has thought.
-func (h *Host) stepThinking() time.Duration {
-	ag := h.agents
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	d := ag.stepThinking
-	if ag.thinking {
-		d += h.now().Sub(ag.thinkStart)
-	}
-	return d
-}
-
+// persistMessage persists one main-chat message into the eternal log: the
+// user's words, replies, tool calls and results; reasoning is never logged.
+// A failure costs the log a line, never the turn. A run's session keeps its
+// own rows, wired on the run's runner.
 func (h *Host) persistMessage(msg fantasy.Message) error {
-	if h.chat != nil {
-		h.logChatMessage(msg)
-	}
-	sid := h.AgentSessionID()
-	if h.DB == nil || sid == "" {
+	if h.chat == nil {
 		return nil
 	}
-	row, err := h.storeMessage(sid, msg, h.stepThinking())
+	seq, err := h.logChatMessage(msg)
 	if err != nil {
-		return err
+		h.Log.Warn("chat log append failed", "origin", "agent", "error", err)
+		return nil
 	}
-	if msg.Role == fantasy.MessageRoleUser {
-		h.agents.mu.Lock()
-		h.agents.turnMsgID = row.ID
-		h.agents.mu.Unlock()
-		// the row drawn when the message was sent names the stored one from
-		// here: a send draws its row before the row exists. Replaced whole,
-		// like joinReasoning: readers share the old array and the chat widget
-		// caches rows by index
-		h.tMu.Lock()
-		for i := range h.session.Transcript {
-			r := &h.session.Transcript[i]
-			if r.ID == "" && r.Kind == "" && r.Role == fantasy.MessageRoleUser {
-				tr := slices.Clone(h.session.Transcript)
-				tr[i].ID = row.ID
-				h.session.Transcript = tr
-				break
-			}
+	if msg.Role == fantasy.MessageRoleUser && seq >= 0 {
+		ag := h.agents
+		ag.mu.Lock()
+		first := ag.turnSeq < 0
+		ag.turnSeq = seq
+		ag.mu.Unlock()
+		if first {
+			h.setGoalFrom(seq, msg)
 		}
-		h.tMu.Unlock()
-		h.setGoalFrom(sid, msg)
 	}
 	return nil
 }
 
-// logChatMessage dual-writes one main-chat message into the eternal log as
-// it happens: the user's words, replies, tool calls and results. Reasoning
-// is never logged, and a failure here costs the log a line, never the turn.
-func (h *Host) logChatMessage(msg fantasy.Message) {
-	var err error
+// logChatMessage appends one main-chat message to the eternal log and
+// returns the first seq it wrote, -1 for none.
+func (h *Host) logChatMessage(msg fantasy.Message) (int64, error) {
 	switch msg.Role {
 	case fantasy.MessageRoleUser:
 		typed, _ := agent.CutAttached(concatText(msg.Content))
 		if strings.TrimSpace(typed) != "" {
-			err = h.chat.User(typed, logImages(msg))
+			return h.chat.User(typed, logImages(msg))
 		}
 	case fantasy.MessageRoleAssistant:
-		err = h.logAssistant(msg)
+		return -1, h.logAssistant(msg)
 	case fantasy.MessageRoleTool:
-		err = h.logResults(msg)
+		return -1, h.logResults(msg)
 	case fantasy.MessageRoleSystem:
 	}
-	if err != nil {
-		h.Log.Warn("chat log append failed", "origin", "agent", "error", err)
-	}
+	return -1, nil
 }
 
 // logAssistant logs a step's reply, its tool calls apart: the text as one
@@ -1860,56 +1761,13 @@ func (h *Host) resetTodoNag(todos []store.Todo) {
 	}
 }
 
-// ensureSession creates the store session on the first send. Rolling over
-// a previous session is the reflector's session-close trigger (DESIGN
-// §10.3).
-func (h *Host) ensureSession(firstText string) error {
-	ag := h.agents
-	ag.mu.Lock()
-	if ag.sessionID != "" {
-		ag.mu.Unlock()
-		return nil
+// ensureSession ran on the first send; the chat has no session row now, but
+// the plugins' SessionStart hooks still capture once, at the first send.
+func (h *Host) captureSessionStart() {
+	if h.sessionStartDone.Swap(true) {
+		return
 	}
-	if h.DB == nil {
-		ag.mu.Unlock()
-		return fmt.Errorf("agent: %w", errNoStore)
-	}
-	ag.mu.Unlock()
-	sid := store.ShortID()
-	typed, attached := agent.CutAttached(firstText)
-	if strings.TrimSpace(typed) == "" {
-		// an attached-only first message (a plugin's send): its first body
-		// line, past the element's tag
-		_, typed, _ = strings.Cut(strings.TrimPrefix(attached, agent.AttachMarker+"\n"), "\n")
-	}
-	title, _, _ := strings.Cut(strings.TrimSpace(typed), "\n")
-	// the reconcile and the render take file and flock time; they run off
-	// ag.mu, which every agent-state reader holds
-	h.reconcileBrain(h.partition(store.ScopeProject))
-	brain, globs := h.brainFor()
-	ag.mu.Lock()
-	if ag.sessionID != "" {
-		ag.mu.Unlock()
-		return nil
-	}
-	if err := h.DB.CreateSession(sid, "", title, ""); err != nil {
-		ag.mu.Unlock()
-		return err
-	}
-	ag.sessionID = sid
-	ag.env = ""
-	ag.brain, ag.brainGlobs = brain, globs
-	ag.mu.Unlock()
-	// the tab, the exit banner and zemi.session.title() read the first
-	// message's line from here on, not after the model's title lands
-	h.setLiveTitle(sid, title)
-	h.refreshPending()
-	h.EmitAsync(EventSessionNew, map[string]any{"id": sid, "title": title})
-	h.captureSessionContext(sid, "startup")
-	if title != "" {
-		h.autoTitle(sid, title)
-	}
-	return nil
+	h.captureSessionContext()
 }
 
 // btwPrompt frames a side question, after maki's: nothing it says is kept,
@@ -1954,12 +1812,9 @@ func (h *Host) btw(ctx context.Context, question string) (string, error) {
 func (h *Host) aside(ctx context.Context, text string) (string, error) {
 	ag := h.agents
 	ag.mu.Lock()
-	live, sid, compacting := ag.runner, ag.sessionID, ag.compacting
+	live := ag.runner
 	ag.mu.Unlock()
-	switch {
-	case compacting:
-		return "", errors.New("compacting the conversation; ask after it")
-	case live == nil:
+	if live == nil {
 		return "", errNothingToAsk
 	}
 	history := live.Snapshot()
@@ -1972,7 +1827,7 @@ func (h *Host) aside(ctx context.Context, text string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h.bill(sid, h.roleModel(defaultRole), res.TotalUsage)
+	h.bill(store.MainSessionID, h.roleModel(defaultRole), res.TotalUsage)
 	return strings.TrimSpace(concatText(res.Response.Content)), nil
 }
 
@@ -1997,7 +1852,7 @@ func (h *Host) recap(ctx context.Context) {
 	}
 	ag := h.agents
 	ag.mu.Lock()
-	sid, idle := ag.sessionID, ag.runner != nil && !ag.active && !ag.compacting && h.tasks.runningFor(ag.sessionID) == 0
+	idle := ag.runner != nil && !ag.active && h.tasks.runningFor(store.MainSessionID) == 0
 	ag.mu.Unlock()
 	h.tMu.RLock()
 	tr := h.session.Transcript
@@ -2020,9 +1875,6 @@ func (h *Host) recap(ctx context.Context) {
 		h.Log.Debug("no recap", "origin", "session", "error", fmt.Sprint(err))
 		return
 	}
-	if h.AgentSessionID() != sid {
-		return
-	}
 	// the first recap ever names its /config key
 	row := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "Recap: " + text}
 	if h.GlobalDB != nil {
@@ -2031,14 +1883,11 @@ func (h *Host) recap(ctx context.Context) {
 		}
 	}
 	// a send, a report or a rewind since the call would leave it stale
-	h.tMu.Lock()
+	h.tMu.RLock()
 	added := ctx.Err() == nil && len(h.session.Transcript) == len(tr)
+	h.tMu.RUnlock()
 	if added {
-		h.session.Transcript = append(h.session.Transcript, row)
-	}
-	h.tMu.Unlock()
-	if added {
-		h.storeChatRow(sid, row)
+		h.appendTranscript(row)
 	}
 	if added && row.Detail != "" {
 		_ = h.GlobalDB.SetKV("recap.hinted", "true")
@@ -2046,13 +1895,9 @@ func (h *Host) recap(ctx context.Context) {
 	h.refresh()
 }
 
-// AgentSessionID returns the live session id ("" before the first send).
-func (h *Host) AgentSessionID() string {
-	ag := h.agents
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	return ag.sessionID
-}
+// AgentSessionID is the id every main-chat surface names: the anchor row the
+// log migration plants, which billing and todos ride.
+func (h *Host) AgentSessionID() string { return store.MainSessionID }
 
 // beginThinking opens a reasoning block (ag.mu held); endThinking closes
 // any open block into the accumulated thought time. agentRun holds a twin
@@ -2725,13 +2570,6 @@ func (h *Host) sessionLogs() (reads, loaded *sync.Map) {
 	return ag.reads[sid], ag.loaded
 }
 
-// seedReads refills a resumed session's read log from its stored rows: the
-// restored context still holds the text of every file the conversation
-// read or wrote, so refusing the next edit would only buy a re-read. A file
-// changed after the row that last read or wrote it is left out, because
-// that text is the one the model does not have.
-func (h *Host) seedReads(rows []*store.Message) { h.seedReadsInto(h.readLog(), rows) }
-
 func (h *Host) seedReadsInto(seen *sync.Map, rows []*store.Message) {
 	touched := map[string]int64{} // path -> the time of the row that last read or wrote it
 	for _, row := range rows {
@@ -2772,18 +2610,14 @@ func (h *Host) pinFiles() []string {
 	return slices.Collect(maps.Keys(h.agents.pin.parts.files))
 }
 
-// mainInstructions is the main agent's Instructions hook: its prompt holds
-// the files the pin read, and a brain pointer when one maps the path.
+// mainInstructions is the main agent's Instructions hook: the files the pin read.
 func (h *Host) mainInstructions(path string) string {
-	return h.nearestInstructions(path, h.pinFiles(), h.instructionSent) + h.brainPointer(path, false)
+	return h.nearestInstructions(path, h.pinFiles(), h.instructionSent)
 }
 
-// afterWrite is the pipeline's AfterWrite hook. The recipe check and the
-// brain scrub come first: both may rewrite the file.
+// afterWrite is the pipeline's AfterWrite hook; the recipe check may rewrite the file.
 func (h *Host) afterWrite(path string) string {
-	note := h.recipeAfterWrite(path) + h.brainAfterWrite(path)
-	h.noteWrite(path)
-	return note + h.lspAfterWrite(path) + h.brainPointer(path, true)
+	return h.recipeAfterWrite(path) + h.lspAfterWrite(path)
 }
 
 // PipelineFor builds the tools pipeline for the model's tool calls. It is
@@ -2816,9 +2650,6 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 			h.agents.mu.Unlock()
 			return h.takesImages(id)
 		},
-		Remember: func(p *tools.Pipeline, call tools.MemoryCall) (string, error) {
-			return h.memoryTool(p, h.AgentSessionID(), call)
-		},
 		Pad:          h.ScratchDir(),
 		ProjectDir:   h.Dirs.ProjectDir,
 		Seen:         h.readLog(),
@@ -2829,14 +2660,10 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		p.ApprovePlan = h.approvePlan
 	}
 	if h.DB != nil {
-		p.TodosRead = func() ([]store.Todo, error) { return h.DB.Todos(h.AgentSessionID()) }
+		p.TodosRead = func() ([]store.Todo, error) { return h.DB.Todos(store.MainSessionID) }
 		p.TodosWrite = func(todos []store.Todo) error {
-			sid := h.AgentSessionID()
-			if sid == "" {
-				return errors.New("no active session")
-			}
 			defer h.todosStale.Store(true)
-			if err := h.DB.SetTodos(sid, todos); err != nil {
+			if err := h.DB.SetTodos(store.MainSessionID, todos); err != nil {
 				return err
 			}
 			h.resetTodoNag(todos)

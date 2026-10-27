@@ -103,6 +103,14 @@ func (s *DB) LogTail(n int) ([]LogEntry, error) {
 	return collect(rows, err, scanLog)
 }
 
+// LogKindBack reads the last n rows of one kind, oldest first: the composer
+// history's user rows, the rewind picker's prompts.
+func (s *DB) LogKindBack(kind string, limit int) ([]LogEntry, error) {
+	rows, err := s.db.Query(`SELECT `+logCols+` FROM (SELECT seq, kind, text, meta_json, parts_json, created_at
+		FROM log WHERE kind = ? ORDER BY seq DESC LIMIT ?) ORDER BY seq`, kind, limit)
+	return collect(rows, err, scanLog)
+}
+
 // LogAt reads one row; ErrNotFound when absent.
 func (s *DB) LogAt(seq int64) (LogEntry, error) {
 	return one(s.db.QueryRow(`SELECT `+logCols+` FROM log WHERE seq = ?`, seq), scanLog)
@@ -117,9 +125,11 @@ func (s *DB) LogCount() (int64, error) {
 
 // DeleteLogFrom rewinds the chat to seq: the log rows from seq on, every node
 // whose range intersects them (node(l,i) covers [i*2^l, (i+1)*2^l), so an
-// ancestor holding the cut goes too) and the view lines that start at or
-// after it, in one transaction. The next append takes max(seq)+1 of what is
-// left, so the index stays dense.
+// ancestor holding the cut goes too), and every view line whose node touches
+// them - the lines past the cut and the straddling ones, whose node is gone.
+// The next append takes max(seq)+1 of what is left, so the index stays dense;
+// the uncovered tail of what survives is leaf lines again, which the rewind
+// appends.
 func (s *DB) DeleteLogFrom(seq int64) error {
 	return s.inTx(func(tx *sql.Tx) error {
 		for _, q := range []struct {
@@ -128,7 +138,8 @@ func (s *DB) DeleteLogFrom(seq int64) error {
 		}{
 			{"log", `DELETE FROM log WHERE seq >= ?`},
 			{"nodes", `DELETE FROM nodes WHERE (i + 1) * (1 << l) > ?`},
-			{"view", `DELETE FROM view_lines WHERE ord >= ?`},
+			{"view", `DELETE FROM view_lines WHERE (i + 1) * (1 << l) > ?`},
+			{"checkpoints", `DELETE FROM checkpoints WHERE seq >= ?`},
 		} {
 			if _, err := tx.Exec(q.sql, seq); err != nil {
 				return fmt.Errorf("store: rewind %s: %w", q.what, err)

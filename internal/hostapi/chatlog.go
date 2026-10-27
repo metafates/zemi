@@ -22,6 +22,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -51,6 +52,12 @@ type chatLog struct {
 	tree *memTree
 }
 
+// quiesce stops the builder's dispatch and waits for its in-flight builds;
+// resume releases it. A rewind holds both around the cut.
+func (c *chatLog) quiesce() { c.tree.quiesce() }
+
+func (c *chatLog) resume() { c.tree.resume() }
+
 // newChatLog opens the writer and starts the builder worker on ctx: the
 // caller's Close ends both.
 func newChatLog(ctx context.Context, h *Host) *chatLog {
@@ -62,14 +69,14 @@ func newChatLog(ctx context.Context, h *Host) *chatLog {
 func (c *chatLog) Close() { c.tree.Close() }
 
 // User logs the user's words; parts carries the message's images, which
-// zoom replays.
-func (c *chatLog) User(text, parts string) error { return c.append(kindUser, text, "", parts) }
+// zoom replays. It returns the first seq it wrote.
+func (c *chatLog) User(text, parts string) (int64, error) { return c.append(kindUser, text, "", parts) }
 
 // Agent logs one of zemi's replies.
-func (c *chatLog) Agent(text string) error { return c.append(kindAgent, text, "", "") }
+func (c *chatLog) Agent(text string) error { _, err := c.append(kindAgent, text, "", ""); return err }
 
 // Note logs a memory from before the chat: a chapter mark.
-func (c *chatLog) Note(text string) error { return c.append(kindNote, text, "", "") }
+func (c *chatLog) Note(text string) error { _, err := c.append(kindNote, text, "", ""); return err }
 
 // Work logs a subagent's report: the run it reports for and the "[Name]" head
 // it opens with.
@@ -81,7 +88,8 @@ func (c *chatLog) Work(run, name, text string) error {
 	if err != nil {
 		return err
 	}
-	return c.append(kindWork, text, string(meta), "")
+	_, err = c.append(kindWork, text, string(meta), "")
+	return err
 }
 
 // Tool logs one tool call: its name, and the input as sent.
@@ -120,15 +128,21 @@ func (c *chatLog) Echo(name string, ok bool, output string) error {
 	return nil
 }
 
-// append logs the rows a text splits into, each with its view line.
-func (c *chatLog) append(kind, text, meta, parts string) error {
+// append logs the rows a text splits into, each with its view line, and
+// returns the first seq.
+func (c *chatLog) append(kind, text, meta, parts string) (int64, error) {
+	first := int64(-1)
 	for _, row := range splitText(text, chatSplitChars) {
-		if _, err := c.h.DB.AppendLog(kind, row, meta, parts, ""); err != nil {
-			return err
+		seq, err := c.h.DB.AppendLog(kind, row, meta, parts, "")
+		if err != nil {
+			return first, err
+		}
+		if first < 0 {
+			first = seq
 		}
 	}
 	c.tree.Wake()
-	return nil
+	return first, nil
 }
 
 // toolLeaf renders a tool call's line mechanically: the tool and the first
@@ -358,22 +372,77 @@ func (h *Host) zoom(in zoomArgs) (fantasy.ToolResponse, error) {
 	if name := rowTool(row); name != "" {
 		head += " " + name
 	}
-	text := row.Text
-	if page := in.Page; page > 0 {
-		r := []rune(text)
-		at := page * zoomPageChars
-		if at >= len(r) {
-			return fantasy.NewTextErrorResponse(fmt.Sprintf("message %d has %d pages", in.ID, (len(r)+zoomPageChars-1)/zoomPageChars)), nil
-		}
-		text = string(r[at:min(at+zoomPageChars, len(r))])
-	} else {
-		r := []rune(text)
-		if len(r) > zoomPageChars {
-			text = string(r[:zoomPageChars]) + fmt.Sprintf("\n(page 1 of %d; zoom(%d, 1, page: 1) for the next)", (len(r)+zoomPageChars-1)/zoomPageChars, in.ID)
+	if row.Kind == kindWork {
+		if run := workRun(row); run != "" {
+			return h.zoomRun(run, in.Page)
 		}
 	}
-	return fantasy.NewTextResponse(head + ": " + text), nil
+	text := row.Text
+	if pages := (utf8.RuneCountInString(text) + int(zoomPageChars) - 1) / int(zoomPageChars); in.Page >= pages {
+		return fantasy.NewTextErrorResponse(fmt.Sprintf("message %d has %d pages", in.ID, pages)), nil
+	}
+	return fantasy.NewTextResponse(pageText(head, text, in.ID, in.Page)), nil
 }
+
+// pageText is one message as a zoom(id, 1) result: its head, its text, paged
+// when it is long.
+func pageText(head, text string, id int64, page int) string {
+	r := []rune(text)
+	pages := (len(r) + int(zoomPageChars) - 1) / int(zoomPageChars)
+	if page > 0 {
+		at := int64(page) * zoomPageChars
+		if at >= int64(len(r)) {
+			return fmt.Sprintf("message %d has %d pages", id, pages)
+		}
+		return head + ": " + string(r[at:min(at+zoomPageChars, int64(len(r)))])
+	}
+	if pages > 1 {
+		text = string(r[:zoomPageChars]) + fmt.Sprintf("\n(page 1 of %d; zoom(%d, 1, page: 1) for the next)", pages, id)
+	}
+	return head + ": " + text
+}
+
+// workRun is the run a work row reports for, from its meta; "" for none.
+func workRun(row store.LogEntry) string {
+	if row.Kind != kindWork {
+		return ""
+	}
+	var meta struct {
+		Run string `json:"run"`
+	}
+	if json.Unmarshal([]byte(row.MetaJSON), &meta) != nil {
+		return ""
+	}
+	return meta.Run
+}
+
+// zoomRun is zoom(id, 1) on a work message: the run it names, its transcript
+// paged by the same 8k characters a long message gets.
+func (h *Host) zoomRun(run string, page int) (fantasy.ToolResponse, error) {
+	rows, err := h.DB.Messages(run)
+	if errors.Is(err, store.ErrNotFound) {
+		return fantasy.NewTextResponse(workGone), nil
+	}
+	if err != nil {
+		return fantasy.ToolResponse{}, err
+	}
+	_, tr := historyFrom(rows)
+	var b strings.Builder
+	for _, m := range tr {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		text := m.Text
+		if m.Kind != "" {
+			text = string(m.Kind) + " " + text
+		}
+		b.WriteString(sanitize.String(clipRunes(strings.TrimSpace(text), 2000)))
+	}
+	return fantasy.NewTextResponse(pageText("run "+run, b.String(), -1, page)), nil
+}
+
+// workGone is what zoom says of a work row whose run's rows are gone.
+const workGone = "the run's transcript is gone from this store"
 
 // rowTool is the tool a tool or echo row names, from its meta; "" for the
 // other kinds.

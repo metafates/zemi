@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -63,13 +64,12 @@ func launch(o options) int {
 	defer closeLog()
 	app := ui.NewApp(host, log)
 	host.SetUIHooks(app)
-	// a prompt or a resumed session fills the transcript, so no splash offers projects
-	trust.ask, trust.splash = app.AskTrust, o.prompt == "" && !o.cont && o.resume == ""
+	// a prompt fills the transcript, so no splash offers projects
+	trust.ask, trust.splash = app.AskTrust, o.prompt == ""
 	// The command line's prompt shows as the first message from the first
 	// frame and goes as the first turn once boot ends: the splash never shows
-	// over it. One that names a command (SendPrompt's) is no message to show,
-	// and one that rides a resume lands after the history it loads.
-	if o.prompt != "" && !o.cont && o.resume == "" && !strings.HasPrefix(o.prompt, "/") {
+	// over it. One that names a command (SendPrompt's) is no message to show.
+	if o.prompt != "" && !strings.HasPrefix(o.prompt, "/") {
 		host.HoldPrompt(o.prompt)
 	}
 
@@ -171,10 +171,10 @@ func launch(o options) int {
 	if bootErr := app.BootError(); bootErr != nil {
 		fmt.Fprintln(os.Stderr, "zemi: boot failed: "+bootErr.Error())
 	}
-	if dir, resume := app.RelaunchDir(); dir != "" {
+	if dir, _ := app.RelaunchDir(); dir != "" {
 		restoreStderr() // the exec inherits the tty, and a failed one prints here
 		closeLog()      // an exec runs no defers
-		return fail(relaunch(dir, resume))
+		return fail(relaunch(dir))
 	}
 	return 0
 }
@@ -187,11 +187,8 @@ func launch(o options) int {
 // start of a program outside internal/proc besides the editor
 // probes: the children are reaped (proc.Reaped) and the terminal restored.
 // NOTE: Windows has no exec; there it names the command to run instead.
-func relaunch(dir, resume string) error {
+func relaunch(dir string) error {
 	args := []string{os.Args[0], "-C", dir}
-	if resume != "" {
-		args = append(args, "-r", resume)
-	}
 	proc.Reaped()
 	exe, err := os.Executable()
 	if err == nil {
@@ -242,7 +239,8 @@ func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App) []lua.BootStep {
 			soft(lua.LoadFileStep(initStep, filepath.Join(h.Dirs.ConfigHome, "init.lua"), lua.OriginUser)),
 			soft(h.SkillsUserHooksStep()),
 		},
-		app != nil)
+		app != nil,
+	)
 }
 
 // bootHost is the prologue a TUI boot and a headless one (zemi health, a
@@ -454,42 +452,17 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "help", Desc: "list keys and commands", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.OpenHelp()
 		}},
-		{Name: "new", Desc: "start a new session", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
-			return h.NewSession()
-		}},
-		{Name: "sessions", NArgs: hostapi.NArgsAny, Desc: "list this project's sessions, rename or delete one", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
-			if id, ok := strings.CutPrefix(strings.TrimSpace(args), "delete "); ok {
-				id, yes := hostapi.ConfirmArgs(id, confirm)
-				return h.DeleteSession(id, yes)
-			}
-			// the row action the sessions picker runs: sessions rename <id> [title]
-			if rest, ok := strings.CutPrefix(strings.TrimSpace(args), "rename "); ok {
-				id, title, _ := strings.Cut(strings.TrimSpace(rest), " ")
-				// an empty title opens the prompt itself, so nothing is renamed yet
-				if err := h.RenameSession(id, strings.TrimSpace(title)); err != nil {
-					return err
-				}
-				if title = strings.TrimSpace(title); title != "" {
-					h.Notify(slog.LevelInfo, "Session renamed", title)
-				}
-				return nil
-			}
-			err := h.OpenSessions("")
-			if errors.Is(err, hostapi.ErrNeedsTUI) {
-				err = fmt.Errorf("%w; zemi sessions lists them", err)
-			}
-			return err
-		}},
-		{Name: "resume", Hidden: true, NArgs: hostapi.NArgsOptional, Desc: "resume the latest session, or the one with this id", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
-			return h.ResumeSession(strings.TrimSpace(args))
-		}},
 		{Name: "rewind", NArgs: hostapi.NArgsOptional, Desc: "go back to an earlier prompt and undo its file changes", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			if args = strings.TrimSpace(args); args == "" {
 				return h.OpenRewind()
 			}
-			n, err := h.RewindTo(args)
+			seq, err := strconv.ParseInt(args, 10, 64)
+			if err != nil {
+				return hostapi.Usagef("usage: /rewind [<message id>]")
+			}
+			n, err := h.RewindTo(seq)
 			if err == nil {
-				h.Notify(slog.LevelInfo, "Session rewound", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, hostapi.Plural(n, "file", "files")))
+				h.Notify(slog.LevelInfo, "Chat rewound", fmt.Sprintf("restored %d %s; the prompt is back in the composer", n, hostapi.Plural(n, "file", "files")))
 			}
 			return err
 		}},
@@ -519,10 +492,6 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "copy", NArgs: hostapi.NArgsAny, Desc: "copy the last reply or one of its code blocks", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.CopyReply(args)
 		}, GoComplete: hostapi.SubcommandCompleter([]string{"reply", "code"}, nil)},
-		{Name: "fork", Hidden: true, Desc: "continue this conversation in a new session", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
-			_, err := h.ForkSession()
-			return err
-		}},
 		{Name: "reload", Hidden: true, Desc: "reload config now", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			// the composer matches /reload before the registry; this
 			// serves the palette, keymaps and zemi.command.run
@@ -540,9 +509,6 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		}},
 		{Name: "health", Desc: "check zemi's setup", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			return h.OpenHealth()
-		}},
-		{Name: "compact", NArgs: hostapi.NArgsAny, Desc: "summarize the conversation to free context; text after it says what to keep", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
-			return h.CompactNow(args)
 		}},
 		{Name: "goal", NArgs: hostapi.NArgsAny, Desc: "keep working until a condition holds; alone, show it", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.SetGoal(args)
@@ -695,11 +661,9 @@ func (tg *trustGate) command() func() {
 
 // readyStep drops the builtin providers when init.lua turned them off
 // (config has run by now, and a replay re-seeds them first), names an
-// override no tool answers to and a ui.theme no theme does, and emits app.ready. Only the TUI reflects at startup: zemi health
-// exits before it could finish.
+// override no tool answers to and a ui.theme no theme does, and emits app.ready.
 func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 	// once per process: a reload replays the step
-	reflectLast := sync.OnceFunc(func() { h.GoSafe("reflect sweep", h.ReflectSweep) })
 	updateLast := sync.OnceFunc(func() {
 		h.GoSafe("plugin auto-update", func() {
 			ctx := context.WithoutCancel(context.Background())
@@ -730,12 +694,9 @@ func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 			h.CheckToolNames()
 			h.CheckTheme()
 			h.EmitOnState(g.L, hostapi.EventAppReady, nil)
-			// idle sessions are reflected in the background at startup,
-			// so quitting never waits on the reflector (DESIGN §10.3)
-			// and the marketplace pull runs off the boot too; a headless
-			// boot stays quiet, its stderr is the work
+			// the marketplace pull runs off the boot, and only for the TUI:
+			// a headless boot stays quiet, its stderr is the work
 			if reflect {
-				reflectLast()
 				updateLast()
 			}
 			return nil

@@ -13,7 +13,7 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/metafates/zemi/internal/learn"
+	"github.com/metafates/zemi/internal/sanitize"
 )
 
 // Protocol is a provider that judges the state itself: zemi POSTs the state and
@@ -115,7 +115,7 @@ func protocolAsk(ctx context.Context, p Protocol, req Request) (Result, error) {
 		return Result{}, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		body := learn.Truncate(string(data), 200)
+		body := sanitize.Truncate(string(data), 200)
 		if body != string(data) {
 			body += "..."
 		}

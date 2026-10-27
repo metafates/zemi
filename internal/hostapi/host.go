@@ -254,12 +254,11 @@ const (
 	RowReasoning RowKind = "reasoning"
 	RowTool      RowKind = "tool"
 	RowShell     RowKind = "shell" // a !command and its output
-	RowCompact   RowKind = "compact"
 	RowNotice    RowKind = "notice"
 	RowError     RowKind = "error"
 )
 
-var rowKinds = []RowKind{RowMessage, RowReasoning, RowTool, RowShell, RowCompact, RowNotice, RowError}
+var rowKinds = []RowKind{RowMessage, RowReasoning, RowTool, RowShell, RowNotice, RowError}
 
 // CallStatus is where a tool call, or a !command, stands on its row.
 type CallStatus string
@@ -387,7 +386,11 @@ type ChatMessage struct {
 	Output string     // tool rows: the last lines of the result (shortOutput)
 	Stat   *TurnStat
 	CallID string // tool rows: the stream's call id, so a report names a call once
-	ID     string // the stored message's id once it is stored; a rewind names it
+	// Seq is the row's log message: the rewind picker names it, and a user
+	// row's is where a rewind cuts. 0 for a row the log holds no message
+	// for (a live-only notice, a run row).
+	Seq    int64
+	ID     string // a run row's stored message id (its transcript rebuilds from the store)
 	SentAt int64  // a user row: when the prompt was sent, unix ms, 0 elsewhere
 }
 
@@ -587,6 +590,9 @@ type Host struct {
 	// KeepPicks lets a runtime pick outlive the process; launch turns it on
 	// once the TUI's flags applied, so nothing else keeps one.
 	KeepPicks atomic.Bool
+	// sessionStartDone: the plugins' SessionStart hooks capture once, at the
+	// first send.
+	sessionStartDone atomic.Bool
 	// agentsView is the agents view's one ticker claim (watchAgents).
 	agentsView atomic.Bool
 	agents     *agentHost
@@ -594,20 +600,6 @@ type Host struct {
 	stops      *stopReg
 	// test is set, before boot, only in a zemi plugin test zemi
 	test *PluginTest
-
-	// memUndo reverses the /memory list's actions, newest last; opening the
-	// list empties it, so an undo reaches no further than the list shows.
-	memUndo struct {
-		mu    sync.Mutex
-		steps []func() error
-	}
-
-	// reflectMu serializes reflector runs (one at a time, DESIGN §10.3)
-	reflectMu sync.Mutex
-	// sweptMu guards swept: the message count each session held when this
-	// process's startup sweep listed it, so one sitting reads a session once.
-	sweptMu sync.Mutex
-	swept   map[string]int
 	// cutMu orders a rewind's cut against a reflector run's writes, so a run
 	// never stores what it read from rows a rewind removed.
 	cutMu    sync.Mutex
@@ -621,10 +613,6 @@ type Host struct {
 
 	md        markdownCache
 	lightTerm atomic.Bool // the terminal reported a light background
-
-	// pendingMemory counts proposals awaiting review for the statusline
-	// badge (refreshPending).
-	pendingMemory atomic.Int32
 
 	selectSeq atomic.Int64 // ids for overlays each call opens anew (select, input, /btw)
 
@@ -674,8 +662,6 @@ type Host struct {
 	composerText   string
 	composerCursor int
 
-	recentMu    sync.Mutex
-	recent      []*store.Session
 	recentStale atomic.Bool
 	splashMu    sync.Mutex // guards splash, splashProjects' cache
 	splash      []Project
@@ -755,10 +741,7 @@ type Host struct {
 }
 
 // SetProjectTrusted records the trust decision and rescans the project's
-// skills. A flip also rebuilds the brain render the session carries: the pin
-// key moves with trust, and the next send would otherwise re-pin the stale
-// render, keeping the private catalog in an untrusted session (DESIGN §10.7) or
-// holding it back a compaction.
+// skills.
 func (h *Host) SetProjectTrusted(ok bool) {
 	prev := h.projectTrusted.Swap(ok)
 	if prev && !ok {
@@ -770,16 +753,6 @@ func (h *Host) SetProjectTrusted(ok bool) {
 	}
 	h.projectSkills.Store(&found)
 	h.instrStale.Store(true)
-	ag := h.agents
-	ag.mu.Lock()
-	stale := prev != ok && ag.brain != ""
-	ag.mu.Unlock()
-	if stale {
-		brain, globs := h.brainFor()
-		ag.mu.Lock()
-		ag.brain, ag.brainGlobs = brain, globs
-		ag.mu.Unlock()
-	}
 }
 
 // TrustUnsaved reports a trust root no decision is saved for: the home
@@ -807,11 +780,32 @@ func (h *Host) projectNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// Session is the session state (title, cwd, transcript).
+// Session is the session state (cwd, the transcript window).
 type Session struct {
-	Title      string
 	CWD        string
 	Transcript []ChatMessage
+}
+
+// chatWindowRows is how many settled rows the live transcript holds: the
+// log is eternal, the chat's working set is not. Older rows stay reachable
+// through zoom and the paged store reads.
+const chatWindowRows = 1000
+
+// appendTranscript appends rows to the window and trims its head once it
+// passes chatWindowRows. Replaced whole, like setTranscript: readers share
+// the old array and the chat widget caches rows by index.
+func (h *Host) appendTranscript(rows ...ChatMessage) {
+	if len(rows) == 0 {
+		return
+	}
+	h.tMu.Lock()
+	tr := append(h.session.Transcript, rows...)
+	if cut := len(tr) - chatWindowRows; cut > 0 {
+		tr = slices.Clone(tr[cut:])
+		h.trEpoch.Add(1)
+	}
+	h.session.Transcript = tr
+	h.tMu.Unlock()
 }
 
 // NewHost wires the registries and opens the stores (best effort:
@@ -828,7 +822,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		Widgets:   &WidgetRegistry{},
 		Events:    &EventRegistry{},
 		Themes:    &ThemeRegistry{},
-		session:   &Session{Title: "zemi", CWD: dirs.ProjectDir},
+		session:   &Session{CWD: dirs.ProjectDir},
 		watches:   &watchReg{},
 		hookReg:   &hookReg{},
 		Providers: &agent.Registry{},
@@ -868,13 +862,16 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	}
 	if h.DB != nil {
 		h.chat = newChatLog(context.Background(), h)
+		// the window opens on the log's tail: the chat that never ends has
+		// no resume, only more of itself
+		if rows, err := h.DB.LogTail(chatWindowRows); err == nil {
+			h.session.Transcript = logRows(rows)
+		}
+		h.loadGoal()
 	}
 	h.picked, h.pluginKeys = map[config.Key]any{}, map[config.Key]Gen{}
 	if h.GlobalDB != nil {
 		h.loadPicks()
-		// the global store's partition reconciles at startup; a project
-		// store's waits for its project session to open (DESIGN §7)
-		h.reconcileBrain(h.partition(store.ScopeUser))
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
 		"zemi.ui.help":       func(h *Host, _ string) error { return h.OpenHelp() },
@@ -896,7 +893,6 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 			return nil
 		}
 	}
-	h.refreshPending()
 	h.recentStale.Store(true)
 	h.splashStale.Store(true)
 	h.instrStale.Store(true)
@@ -1012,22 +1008,12 @@ type titleSet struct {
 }
 
 // TerminalTitle is what the terminal tab shows: the title config set this
-// generation, else the session's title with " · zemi" once it has one.
+// generation.
 func (h *Host) TerminalTitle() string {
 	if t := h.title.Load(); t != nil && t.gen == h.currentGen() {
 		return t.text
 	}
-	if t := sanitize.String(h.SessionTitle()); t != "" && t != "zemi" {
-		return markedTitle(h.AgentSessionID(), t) + " · zemi"
-	}
 	return "zemi"
-}
-
-// SessionTitle is the current session's title, for the terminal tab.
-func (h *Host) SessionTitle() string {
-	h.tMu.RLock()
-	defer h.tMu.RUnlock()
-	return h.session.Title
 }
 
 func (h *Host) refresh() {
@@ -1083,7 +1069,6 @@ func (h *Host) Session() Session {
 	h.tMu.RLock()
 	defer h.tMu.RUnlock()
 	return Session{
-		Title:      h.session.Title,
 		CWD:        h.session.CWD,
 		Transcript: slices.Clip(h.session.Transcript),
 	}
@@ -1094,9 +1079,7 @@ func (h *Host) AppendMessage(role fantasy.MessageRole, text string) {
 }
 
 func (h *Host) AppendChat(m ChatMessage) {
-	h.tMu.Lock()
-	h.session.Transcript = append(h.session.Transcript, m)
-	h.tMu.Unlock()
+	h.appendTranscript(m)
 	h.refresh()
 	h.refreshMessages()
 }
@@ -1853,7 +1836,6 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	if state.Rail != 0 {
 		tb.RawSetString("rail", glua.LNumber(state.Rail))
 	}
-	tb.RawSetString("emoji", glua.LString(SessionMark(h.AgentSessionID())))
 	if jobs := h.BusyList(); len(jobs) > 0 {
 		b := L.CreateTable(len(jobs), 0)
 		for _, j := range jobs {
@@ -1865,7 +1847,6 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		}
 		tb.RawSetString("busy", b)
 	}
-	tb.RawSetString("pending_memory", glua.LNumber(h.pendingMemory.Load()))
 	sid := h.AgentSessionID()
 	agents, flows := h.tasks.live(func(p string) bool { return p == sid })
 	tb.RawSetString("agents_running", glua.LNumber(agents))
@@ -1942,30 +1923,6 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 			return tb
 		},
 		"trustable": func(L *glua.LState) glua.LValue { return glua.LBool(!TrustUnsaved(h.trustRoot())) },
-		"resume": func(L *glua.LState) glua.LValue {
-			if id := h.AgentSessionID(); id != "" {
-				return glua.LString(ResumeCommand(h.ResumeDir, id))
-			}
-			return glua.LString("")
-		},
-		"recent": func(L *glua.LState) glua.LValue {
-			if len(sess.Transcript) > 0 {
-				return glua.LNil
-			}
-			recent := L.NewTable()
-			for _, r := range h.recentSessions() {
-				row := L.NewTable()
-				row.RawSetString("id", glua.LString(r.ID))
-				title := sanitize.String(r.Title)
-				if title == "" {
-					title = "(untitled)" // as the splash names a session without one
-				}
-				row.RawSetString("title", glua.LString(markedTitle(r.ID, title)))
-				row.RawSetString("ago", glua.LString(ago(r.UpdatedAt)))
-				recent.Append(row)
-			}
-			return recent
-		},
 		"projects": func(L *glua.LState) glua.LValue {
 			ps := h.splashProjects()
 			if len(sess.Transcript) > 0 || len(ps) == 0 {
@@ -2051,7 +2008,6 @@ func (h *Host) agentTable(L *glua.LState, stream StreamSnapshot, now time.Time) 
 	at.RawSetString("steering", steering)
 	at.RawSetString("thought", glua.LNumber(stream.Thought.Seconds()))
 	at.RawSetString("elapsed", glua.LNumber(stream.Elapsed.Seconds()))
-	at.RawSetString("compacting", glua.LBool(stream.Compacting))
 	at.RawSetString("checking_goal", glua.LBool(stream.CheckingGoal))
 	if stream.Retrying {
 		retry := L.CreateTable(0, 3)
@@ -2351,9 +2307,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.mcp", h.mcpNamespace(L), nil},
 		{"zemi.lsp", h.lspNamespace(L), nil},
 		{"zemi.session", h.sessionNamespace(L), nil},
-		{"zemi.memory", h.memoryNamespace(L), nil},
 		{"zemi.skills", h.skillsNamespace(L), nil},
-		{"zemi.learn", h.learnNamespace(L), nil},
 		{"zemi.health", h.healthNamespace(L), nil},
 		{"zemi.errors", h.errorsNamespace(L), nil},
 		{"zemi.project", h.projectNamespace(L), nil},
@@ -2364,7 +2318,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.142.0"))
+	api.RawSetString("version", glua.LString("0.143.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

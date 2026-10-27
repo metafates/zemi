@@ -36,7 +36,6 @@ func TestPluginText(t *testing.T) {
 			if !c.headless {
 				h.SetUIHooks(&fakeUI{})
 			}
-			sid := seedSession(t, h)
 			err := chunkAs(t.Context(), h, r, c.origin, c.src)
 			if c.err != "" {
 				if err == nil || !strings.Contains(err.Error(), c.err) {
@@ -61,9 +60,6 @@ func TestPluginText(t *testing.T) {
 					return nil
 				})
 				waitIdle(t, h)
-			}
-			if got := h.quoteInSession(sid, "deploy key lives"); got != c.quote {
-				t.Errorf("quote counts = %v, want %v", got, c.quote)
 			}
 			var notices []string
 			for _, m := range h.Session().Transcript {

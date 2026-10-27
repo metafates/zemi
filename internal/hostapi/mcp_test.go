@@ -639,12 +639,6 @@ func TestMCPDeferred(t *testing.T) {
 			"mcp_a_echo mcp_a_fail mcp_a_shot mcp_b_echo mcp_b_shot tool_search",
 			"mcp_a_echo mcp_a_fail mcp_a_shot mcp_b_echo mcp_b_fail mcp_b_shot mcp_c_echo mcp_c_fail mcp_c_shot mcp_d_echo tool_search",
 		}},
-		{"new drops them and resume reseeds the called ones", 4, []string{"search:shot", "call:mcp_c_shot", "new", "hi", "resume", "hi"}, []string{
-			"tool_search", "mcp_a_shot mcp_b_shot mcp_c_shot mcp_d_shot tool_search",
-			"mcp_a_shot mcp_b_shot mcp_c_shot mcp_d_shot tool_search", "mcp_a_shot mcp_b_shot mcp_c_shot mcp_d_shot tool_search",
-			"tool_search",
-			"mcp_c_shot tool_search",
-		}},
 	}
 	srv := httptest.NewServer(mcptest.Handler())
 	defer srv.Close()
@@ -653,8 +647,6 @@ func TestMCPDeferred(t *testing.T) {
 			h, r := newTestHostDB(t)
 			defer h.mcp.stopParked()
 			defer h.mcp.park()
-			h.reflectMu.Lock() // a session close must not start a reflect run
-			defer h.reflectMu.Unlock()
 			for _, name := range []string{"a", "b", "c", "d"}[:tc.servers] {
 				runUser(t, r, fmt.Sprintf(`zemi.mcp.add(%q, { url = %q })`, name, srv.URL))
 			}
@@ -674,23 +666,11 @@ func TestMCPDeferred(t *testing.T) {
 				return textParts("ok")
 			}}}
 			h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
-			first := ""
 			for _, send := range tc.sends {
-				var err error
-				switch send {
-				case "new":
-					first = h.AgentSessionID()
-					err = h.NewSession()
-				case "resume":
-					err = h.ResumeSession(first)
-				default:
-					if err = h.AgentSend(send); err == nil {
-						waitIdle(t, h)
-					}
-				}
-				if err != nil {
+				if err := h.AgentSend(send); err != nil {
 					t.Fatalf("%s: %v", send, err)
 				}
+				waitIdle(t, h)
 			}
 			if !slices.Equal(m.sent, tc.want) {
 				t.Fatalf("requests offered\n%q\nwant\n%q", m.sent, tc.want)

@@ -159,7 +159,7 @@ var zemiToolNames = set.Of(
 	tools.ToolTodos,
 	tools.ToolQuestion, tools.ToolPlan, tools.ToolSkill,
 	tools.ToolJobStart, tools.ToolJobRead, tools.ToolJobList,
-	tools.ToolJobKill, tools.ToolMemory, tools.ToolAgent, tools.ToolWorkflow,
+	tools.ToolJobKill, tools.ToolAgent, tools.ToolWorkflow,
 	tools.ToolLua, tools.ToolUpdate, tools.ToolSearch,
 )
 
@@ -447,19 +447,16 @@ func (h *Host) runPipeline(run *agentRun, name, modelID string) *tools.Pipeline 
 	if run.parent != "" {
 		pipe.Pad = h.scratchFor(run.parent)
 	}
-	parent := cmp.Or(run.parent, "lua")
-	pipe.Remember = func(p *tools.Pipeline, call tools.MemoryCall) (string, error) {
-		return h.memoryTool(p, parent, call)
-	}
 	h.labelAsks(pipe, run, name)
 	return pipe
 }
 
-// capRun caps a run's output and ends its turn when the window fills.
+// capRun caps a run's output and ends its turn when the window nears full:
+// the run then drops the middle of its history once and goes on.
 func (h *Host) capRun(runner *agent.Runner, modelID string) {
 	runner.MaxOutputTokens = h.maxOutput(modelID)
 	window := h.contextWindow(modelID)
-	runner.Full = func(used int64) bool { return window > 0 && used >= h.compactThreshold(window) }
+	runner.Full = func(used int64) bool { return window > 0 && used >= window*3/4 }
 }
 
 // writesFiles reports tools that can change files: the run's task then names the
@@ -528,6 +525,12 @@ func (h *Host) subagentSetup(run *agentRun, def AgentDef, prompt string) (*runSe
 	sys, ctxMsg := h.systemWith(h.subagentSystem(def, kept, def.ReadOnly), kept, pipe.Pad, def.ReadOnly)
 	runner := agent.NewRunner(model, kept, sys)
 	runner.Context, runner.ActiveTools = ctxMsg, active
+	// the run opens on the view: what the caller's chat holds is what its
+	// work builds on, read-only
+	if msg, ok := h.viewMessage(); ok {
+		runner.History = []fantasy.Message{msg}
+	}
+	run.forkBase = len(runner.History) // the run's own messages start past the view
 	h.capRun(runner, modelID)
 	return &runSetup{
 		runner: runner, pipe: pipe, modelID: modelID, loaded: loaded, prompt: prompt,
@@ -656,14 +659,14 @@ func (h *Host) labelAsks(pipe *tools.Pipeline, run *agentRun, name string) {
 }
 
 // sendPruning runs one subagent turn inside the context window: a run that
-// fills it clears its old tool output and goes on, and a cap the model
-// refuses is dropped once. A subagent has no summarizer: its history is its
-// own and only its report leaves the run, so pruning is all it needs. With
-// nothing to clear it drops the middle of the history, once: the task and a
-// recent tail stay. own is where the run's own messages start and moves with
-// what a drop takes from the front.
-// NOTE: a drop that reaches past own can leave the caller's own last message
-// as the run's report, where a run's opening outgrew the window.
+// fills it drops the middle of its history, once - the task and a recent
+// tail stay - and goes on. A subagent has no summarizer: its history is its
+// own and only its report leaves the run. A cap the model refuses is dropped
+// once. own is where the run's own messages start and moves with what a drop
+// takes from the front.
+// NOTE: the dropped steps are lost unsummarized, a follow-up message older
+// than the tail among them, and a run that fills the window again ends with
+// the error.
 func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, text string, own int) (int, error) {
 	for dropped := 0; ; {
 		err := runner.Send(ctx, text)
@@ -673,25 +676,26 @@ func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, t
 			capRejected.Store(modelID, true)
 			runner.MaxOutputTokens = 0
 		case contextTooLarge(err) || err == nil && runner.CutShort():
-			window := h.contextWindow(modelID)
-			history, freed := pruneToolOutput(runner.History, h.compactThreshold(window), true)
-			if freed == 0 {
-				// tailStart never lands on a tool result, so the tail opens
-				// with a message a provider accepts after the task.
-				start := 1 + tailStart(history[1:], tailKeep(h.compactThreshold(window)))
-				if dropped > 0 || start == 1 {
-					return own, err // nothing left to drop: the report is what it has
-				}
-				// NOTE: the dropped steps are lost unsummarized, a follow-up
-				// message older than the tail among them, and a run that
-				// fills the window again ends with the error.
-				h.Log.Warn("subagent context full, dropping history", "origin", "agent", "messages", start-1)
-				dropped, history = start-1, append(history[:1:1], history[start:]...)
-				if own > 0 {
-					own = max(1, own-dropped)
+			if dropped > 0 || len(runner.History) < 3 {
+				return own, err // nothing left to drop: the report is what it has
+			}
+			// keep the task (0) and the messages a tail of pairs from the end:
+			// a call never loses its result
+			start := 1
+			for keep, at := 0, len(runner.History)-1; at > start && keep < 8; at-- {
+				if runner.History[at].Role == fantasy.MessageRoleUser {
+					keep = 0
+					start = at
+				} else {
+					keep++
 				}
 			}
-			runner.History = history
+			h.Log.Warn("subagent context full, dropping history", "origin", "agent", "messages", start-1)
+			dropped++
+			runner.History = append(runner.History[:1:1], runner.History[start:]...)
+			if own > 0 {
+				own = max(1, own-(start-1))
+			}
 		default:
 			return own, err
 		}

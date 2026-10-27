@@ -18,7 +18,6 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -77,7 +76,6 @@ func TestSystemPromptSections(t *testing.T) {
 func TestPromptFollowsToolSet(t *testing.T) {
 	t.Parallel()
 	h := newTestHostUI(t)
-	h.agents.sessionID = "s1" // a session has a scratchpad, whose line is part of the prompt
 	pad := h.ScratchDir()
 	h.SetUIHooks(&fakeUI{})
 	defs := append(slices.Clone(builtinAgents), AgentDef{Name: "reviewer", ReadOnly: true}, AgentDef{Name: "no-read", Tools: []string{"shell"}})
@@ -266,9 +264,8 @@ func TestPromptPinned(t *testing.T) {
 		{"hand edit sent, then rewound", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
 			handEdit(h, agentsMD(h), "run make check")
 			sender(t, h)("mid")
-			rows, _ := h.DB.Messages(h.AgentSessionID())
-			last := rows[slices.IndexFunc(rows, func(m *store.Message) bool { return m.Role == "user" && strings.Contains(m.PartsJSON, "mid") })]
-			if _, err := h.RewindTo(last.ID); err != nil {
+			rows, _ := h.DB.LogKindBack(kindUser, 10)
+			if _, err := h.RewindTo(rows[len(rows)-1].Seq); err != nil {
 				t.Fatal(err)
 			}
 		}, false, 1},
@@ -296,38 +293,19 @@ func TestPromptPinned(t *testing.T) {
 			os.MkdirAll(filepath.Join(h.Dirs.ConfigHome, "workflows"), 0o755)
 			os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "workflows", "fresh.lua"), []byte("-- a fresh workflow\nreturn 1\n"), 0o644)
 		}, false, 0},
-		{"memory added", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
-			if err := h.Remember("a fresh memory"); err != nil {
-				t.Fatal(err)
-			}
-		}, false, 0},
+
 		{"assemble handler changed and reloaded", "", func(t *testing.T, h *Host, r *lua.Runtime) {
 			if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 				t.Fatal(err)
 			}
 			runUser(t, r, `zemi.event.on("agent.assemble", function() return "changed" end)`)
 		}, false, 0},
-		{"compaction", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
-			if err := h.CompactNow(""); err != nil {
-				t.Fatal(err)
-			}
-			waitIdle(t, h)
-		}, true, 0},
 		{"provider refused images", "", func(t *testing.T, _ *Host, _ *lua.Runtime) {
 			imagesRejected.Store("stub/m", true)
 			t.Cleanup(func() { imagesRejected.Delete("stub/m") })
 		}, true, 0},
 		{"model switch", "", func(t *testing.T, _ *Host, r *lua.Runtime) {
 			runUser(t, r, `zemi.config.set("models.default", "stub/m2")`)
-		}, true, 0},
-		{"resume", "", func(t *testing.T, h *Host, _ *lua.Runtime) {
-			sid := h.AgentSessionID()
-			if err := h.NewSession(); err != nil {
-				t.Fatal(err)
-			}
-			if err := h.ResumeSession(sid); err != nil {
-				t.Fatal(err)
-			}
 		}, true, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -397,7 +375,6 @@ func TestPromptSameAcrossProjects(t *testing.T) {
 		}
 		h.SetProjectTrusted(true)
 		h.syncSkills()
-		h.agents.sessionID = fmt.Sprint("session", i)
 		toolset := h.mainTools()
 		out, s, c, _ := h.pinPrompt(toolset)
 		var info []fantasy.ToolInfo
@@ -423,7 +400,6 @@ func TestPromptBudget(t *testing.T) {
 	h, _ := newTestHostSkills(t)
 	h.SetUIHooks(&fakeUI{})
 	h.SetProjectTrusted(true)
-	h.agents.sessionID = "s1"
 	// a repository, as most projects are
 	if err := os.Mkdir(filepath.Join(h.Dirs.ProjectDir, ".git"), 0o755); err != nil {
 		t.Fatal(err)
@@ -446,7 +422,11 @@ func TestPromptBudget(t *testing.T) {
 		schema, _ := json.Marshal(tool.Info().Parameters, json.Deterministic(true))
 		text += tool.Info().Description + string(schema)
 	}
-	root, exe := filepath.Dir(h.Dirs.ProjectDir), must(os.Executable())
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Dir(h.Dirs.ProjectDir)
 	n += len(strings.NewReplacer(perm.RealPath(root), "/tmp/t", root, "/tmp/t", exe, "/usr/local/bin/zemi").Replace(text)) - len(text)
 	// NOTE: chars, not tokens (about 4.3 per o200k token): the owner's limit
 	// is 10k tokens. The ceiling is today's size rounded up to the next 500,

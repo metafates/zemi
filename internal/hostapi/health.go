@@ -20,13 +20,11 @@ import (
 
 	glua "github.com/yuin/gopher-lua"
 
-	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
-	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -259,6 +257,21 @@ func NotifyArgv(text string) []string {
 	return []string{"notify-send", "-a", "zemi", "--", "zemi", text}
 }
 
+// builderRow is the /health row of the summary tree's builder.
+func (h *Host) builderRow() HealthRow {
+	unbuilt := h.chat.tree.health.unbuilt.Load()
+	failed := h.chat.tree.health.failed.Load()
+	queued := h.chat.tree.health.queued.Load()
+	detail := fmt.Sprintf("%d lines unbuilt, %d queued", unbuilt, queued)
+	switch {
+	case failed > 0:
+		return HealthRow{Level: HealthError, Detail: fmt.Sprintf("%d builds failed, %s; they retry at the next message (see /errors)", failed, detail)}
+	case unbuilt > 4*leafWaitLines:
+		return HealthRow{Level: HealthWarn, Detail: "the view holds " + detail + "; zoom still reads the raw messages"}
+	}
+	return HealthRow{Level: HealthOK, Detail: detail}
+}
+
 // goHealthRows are the Go-side checks, in the order /health shows them.
 func (h *Host) goHealthRows() []HealthRow {
 	var out []HealthRow
@@ -348,44 +361,12 @@ func (h *Host) goHealthRows() []HealthRow {
 		add(HealthOK, "notify", style+", "+why+"; only while zemi is unfocused")
 	}
 
-	h.agents.mu.Lock()
-	reflectErr := h.agents.reflectErr
-	h.agents.mu.Unlock()
-	if reflectErr != nil {
-		add(HealthError, "reflector", "last run failed: "+reflectErr.Error())
+	// the builder row: what the summary tree has and owes, so a dead builder
+	// is visible in one place (risk 4 of the plan)
+	if h.DB == nil {
+		add(HealthWarn, "chat builder", "no store: the chat runs with no summary tree")
 	} else {
-		add(HealthOK, "reflector", "runs when a session closes, after ten minutes with no turn, and at startup for idle ones")
-	}
-
-	if mem := h.pendingMemory.Load(); mem > 0 {
-		add(HealthWarn, "learning", fmt.Sprintf("%d %s to review in /memory", mem, Plural(int(mem), "memory", "memories")), "memory")
-	} else {
-		add(HealthOK, "learning", "nothing to review")
-	}
-
-	// the brain row: lint findings, over-budget partitions and the counts
-	// beside the learning row
-	userP, privateP := h.brainParts()
-	var findings []brain.Finding
-	findings = append(findings, brain.Lint(userP)...)
-	if h.ProjectTrusted() {
-		findings = append(findings, brain.Lint(privateP)...)
-	}
-	liveRows, _ := h.memoryList(false)
-	learned, yours := 0, 0
-	for _, m := range liveRows {
-		if m.Origin == store.OriginLearned {
-			learned++
-		} else {
-			yours++
-		}
-	}
-	switch detail := fmt.Sprintf("%d learned, %d yours", learned, yours); {
-	case len(findings) > 0:
-		detail = fmt.Sprintf("%d findings; %s", len(findings), detail)
-		add(HealthWarn, "brain", detail, "memory")
-	default:
-		add(HealthOK, "brain", detail)
+		add(h.builderRow().Level, "chat builder", h.builderRow().Detail)
 	}
 
 	// the project's own skills are always on and never in the registry, so

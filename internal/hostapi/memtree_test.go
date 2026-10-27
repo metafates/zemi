@@ -200,10 +200,10 @@ func TestTemplateAndShortLeavesNeedNoModelCall(t *testing.T) {
 	if err := cl.Echo("read", true, "package a\nline two\n"); err != nil {
 		t.Fatal(err)
 	}
-	if err := cl.User("short", ""); err != nil {
+	if _, err := cl.User("short", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := cl.User("also short", ""); err != nil {
+	if _, err := cl.User("also short", ""); err != nil {
 		t.Fatal(err)
 	}
 	// the template leaves landed in their append transactions
@@ -270,7 +270,7 @@ func TestRulerKeepsShortestLine(t *testing.T) {
 	h, cl, m := newTree(t,
 		strings.Repeat("a", 600), strings.Repeat("b", 580), strings.Repeat("c", 560),
 		strings.Repeat("d", 540), shortest)
-	if err := cl.User(strings.Repeat("z", 600), ""); err != nil {
+	if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, func() error {
@@ -288,17 +288,19 @@ func TestRulerKeepsShortestLine(t *testing.T) {
 }
 
 // TestViewSawtoothBounds: the view grows to the ceiling, one batch merges it
-// to the floor, and growth resumes inside the band.
+// to the floor, and growth resumes inside the band. 320 verbatim leaves merge
+// up through ~160 model calls; the wait scales to that work, which a -race
+// run of the whole suite stretches well past the 10s default.
 func TestViewSawtoothBounds(t *testing.T) {
 	t.Parallel()
 	h, cl, m := newTree(t, strings.Repeat("s", 400))
 	line := strings.Repeat("w", 450) // its own node verbatim, no call
 	for range 320 {
-		if err := cl.User(line, ""); err != nil {
+		if _, err := cl.User(line, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
-	waitFor(t, func() error {
+	waitForWithin(t, 120*time.Second, func() error {
 		if n := viewBytesOf(t, h.DB); n > viewFloor {
 			return fmt.Errorf("view at %d bytes, the batch has not merged it down", n)
 		}
@@ -309,11 +311,11 @@ func TestViewSawtoothBounds(t *testing.T) {
 	}
 	coverage(t, h.DB, 320)
 	for range 12 {
-		if err := cl.User(line, ""); err != nil {
+		if _, err := cl.User(line, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
-	waitFor(t, func() error {
+	waitForWithin(t, 60*time.Second, func() error {
 		n := viewBytesOf(t, h.DB)
 		if n <= viewFloor {
 			return fmt.Errorf("view at %d bytes, growth stalled under the floor", n)
@@ -396,7 +398,7 @@ func TestBuilderCloseQuiet(t *testing.T) {
 	m := &treeModel{gate: make(chan struct{})} // calls hang until released
 	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
 	b := newMemTree(context.Background(), h)
-	if err := h.chat.User(strings.Repeat("z", 600), ""); err != nil {
+	if _, err := h.chat.User(strings.Repeat("z", 600), ""); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, func() error {
@@ -456,7 +458,7 @@ func TestSplitText(t *testing.T) {
 func TestChatLogKinds(t *testing.T) {
 	t.Parallel()
 	h, cl, m := newTree(t, "x")
-	if err := cl.User("hello", ""); err != nil {
+	if _, err := cl.User("hello", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := cl.Agent("hi back"); err != nil {
@@ -534,7 +536,7 @@ func TestChatLogLongTextSplits(t *testing.T) {
 	t.Parallel()
 	h, cl, m := newTree(t, "x")
 	long := strings.Repeat("a", chatSplitChars-100) + "\n" + strings.Repeat("b", 500)
-	if err := cl.User(long, ""); err != nil {
+	if _, err := cl.User(long, ""); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := h.DB.LogTail(3)
@@ -636,7 +638,7 @@ func TestRewindCutRebuild(t *testing.T) {
 	t.Parallel()
 	h, cl, m := newTree(t, strings.Repeat("s", 400))
 	for range 6 {
-		if err := cl.User(strings.Repeat("w", 600), ""); err != nil {
+		if _, err := cl.User(strings.Repeat("w", 600), ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -659,7 +661,7 @@ func TestRewindCutRebuild(t *testing.T) {
 	})
 	// new appends land dense and build over the cut
 	for range 2 {
-		if err := cl.User(strings.Repeat("w", 600), ""); err != nil {
+		if _, err := cl.User(strings.Repeat("w", 600), ""); err != nil {
 			t.Fatal(err)
 		}
 	}

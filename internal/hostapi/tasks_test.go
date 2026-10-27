@@ -2,7 +2,6 @@ package hostapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -178,13 +178,6 @@ func TestBackgroundAgent(t *testing.T) {
 	if notices() != 1 {
 		t.Fatalf("transcript should show one notice row: %+v", h.Session().Transcript)
 	}
-	sid := h.AgentSessionID()
-	if err := h.ResumeSession(sid); err != nil {
-		t.Fatal(err)
-	}
-	if notices() != 1 {
-		t.Fatalf("resume should rebuild the notice row: %+v", h.Session().Transcript)
-	}
 }
 
 // TestReportNoticeWhereRead: a report that reaches a running turn at a step
@@ -218,7 +211,7 @@ func TestRunRowFollowsItsRun(t *testing.T) {
 	if err := h.DB.CreateSession("r1", sid, "look around", "explore"); err != nil {
 		t.Fatal(err)
 	}
-	h.setTranscript("t", []ChatMessage{
+	h.SetTranscript([]ChatMessage{
 		{Kind: RowTool, Tool: tools.ToolAgent, Run: "r1", Status: CallBG},
 		{Kind: RowTool, Tool: tools.ToolAgent, Run: "r2", Status: CallBG},
 	})
@@ -795,45 +788,36 @@ func TestAgentSendsWhileBackground(t *testing.T) {
 }
 
 // TestReportStoredWhenSessionMoved: a background report that finishes after
-// the user moved on is stored in the session that started the run, so a
-// resume shows it and the next send carries it.
+// the user moved on reaches the chat as a work row in the log and the next
+// send carries it.
 func TestReportStoredWhenSessionMoved(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
-	release := make(chan struct{})
 	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(system, last string, _ bool) []fantasy.StreamPart {
-			if strings.Contains(system, "a subagent of zemi") {
-				<-release
-				return textParts("found it")
-			}
+		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
 			return textParts("ok: " + last)
 		}}, nil
 	}
-	parent := seedSession(t, h)
 	def, _ := h.agentDef("explore")
-	id, err := h.startBackgroundAgent(t.Context(), def, "left behind", "look")
+	_, err := h.startBackgroundAgent(t.Context(), def, "left behind", "look")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := h.NewSession(); err != nil {
-		t.Fatal(err)
-	}
-	close(release)
 	waitFor(t, func() error {
-		rows, _ := h.DB.Messages(parent)
-		if len(rows) == 0 || !strings.Contains(rows[len(rows)-1].PartsJSON, "agent-report") {
-			return errors.New("report never stored")
+		rows, _ := h.DB.LogKindBack(kindWork, 5)
+		if len(rows) == 0 || !strings.Contains(rows[len(rows)-1].Text, "ok: look") {
+			return errors.New("report never logged")
 		}
 		return nil
 	})
-	if err := h.ResumeSession(parent); err != nil {
-		t.Fatal(err)
-	}
-	if tr := h.Session().Transcript; len(tr) == 0 || tr[len(tr)-1].Text != reportHead(report{id: id, agent: "explore", status: "finished", description: "left behind"}) {
-		t.Fatalf("resume lacks the report: %+v", tr)
-	}
+	waitFor(t, func() error {
+		found := slices.ContainsFunc(h.Session().Transcript, func(m ChatMessage) bool { return m.Kind == RowNotice && strings.Contains(m.Text, "Background agent") })
+		if !found {
+			return errors.New("the chat lacks the report notice")
+		}
+		return nil
+	})
 	if err := h.AgentSend("next"); err != nil {
 		t.Fatal(err)
 	}
@@ -843,37 +827,32 @@ func TestReportStoredWhenSessionMoved(t *testing.T) {
 	}
 }
 
-// TestUpdateStoredWhenSessionMoved: an update that lands after the user moved
-// on is stored in the update's own shape, so a resume draws the row the live
-// update drew, body line and all.
-func TestUpdateStoredWhenSessionMoved(t *testing.T) {
+// TestUpdateStoredInItsShape: an update is stored in the update's own shape,
+// body line and all.
+func TestUpdateStoredInItsShape(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
-	parent := seedSession(t, h)
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart { return textParts("ok") }}, nil
+	}
 	def, _ := h.agentDef("explore")
 	run, _ := h.newRun(t.Context(), def, "left behind", "look", true)
 	if err := h.tasks.add(run); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.NewSession(); err != nil {
-		t.Fatal(err)
-	}
 	if err := h.deliverUpdate(run, "kept going"); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := h.DB.Messages(parent)
-	if err != nil || len(rows) == 0 {
-		t.Fatalf("update never stored: %v", err)
+	rows, err := h.DB.LogKindBack(kindWork, 5)
+	if err != nil || !slices.ContainsFunc(rows, func(r store.LogEntry) bool { return strings.Contains(r.Text, "kept going") }) {
+		t.Fatalf("update never logged: %v", err)
 	}
-	var m fantasy.Message
-	if err := json.Unmarshal([]byte(rows[len(rows)-1].PartsJSON), &m); err != nil {
-		t.Fatal(err)
-	}
-	_, tail := agent.CutAttached(concatText(m.Content))
+	// the update reaches the model behind the marker, under the tag the chat
+	// reads the update's line from
 	want := []notice{{Text: "Agent " + run.id + " (explore): kept going", Run: run.id}}
-	if heads := reportHeads(tail); !slices.Equal(heads, want) {
-		t.Fatalf("resumed row = %+v, want %+v", heads, want)
+	if heads := reportHeads(agent.Attached(fmt.Sprintf("agent-update run=%q agent=%q", run.id, run.agent), "kept going")); !slices.Equal(heads, want) {
+		t.Fatalf("update row = %+v, want %+v", heads, want)
 	}
 }
 
@@ -906,13 +885,11 @@ func TestSendTo(t *testing.T) {
 		!strings.HasPrefix(lines[0], "explore · 1 tool call · glob") || lines[1] != "explore · 1 tool call" || run.runner.MaxOutputTokens != 2000 {
 		t.Fatalf("continuation: %v, rows %q, max output %d", err, lines, run.runner.MaxOutputTokens)
 	}
-	h.agents.mu.Lock()
-	h.agents.sessionID = "other"
-	h.agents.mu.Unlock()
 	resp, err := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "c1", Input: fmt.Sprintf(`{"prompt":"again","send_to":%q}`, id)})
-	if err != nil || !resp.IsError || !strings.Contains(resp.Content, "belongs to another session") {
-		t.Fatalf("another session's run: %v %q", err, resp.Content)
+	if err != nil || resp.IsError || !strings.Contains(resp.Content, "again") {
+		t.Fatalf("send_to again: %v %q", err, resp.Content)
 	}
+	waitIdle(t, h)
 }
 
 // TestStopWording: a stopped run reads as stopped, whoever stopped it,

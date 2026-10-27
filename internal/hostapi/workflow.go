@@ -1835,7 +1835,7 @@ func (h *Host) workflowCommands() []*Command {
 			}
 			switch verb {
 			case "run":
-				return h.runSaved("/workflows "+strings.Join(f, " "), attached, id, strings.Join(f[2:], " "))
+				return h.runSaved(attached, id, strings.Join(f[2:], " "))
 			case "view":
 				if arg(2) != "" {
 					if err := h.ViewAgentFrom(arg(2), "workflows view "+id, "workflows"); err != nil {
@@ -1870,7 +1870,7 @@ func (h *Host) workflowCommands() []*Command {
 					if err != nil {
 						return "", err
 					}
-					return h.startUserFlow(flowSpec{from: id, src: src}, "/workflows rerun "+id, attached)
+					return h.startUserFlow(flowSpec{from: id, src: src}, attached)
 				}
 				// its ask blocks, and a Go command runs on the key loop
 				h.GoSafe("workflows rerun", func() {
@@ -1917,13 +1917,13 @@ func (h *Host) workflowCommands() []*Command {
 		Name: "review", NArgs: NArgsOptional, Desc: "review your changes, a base ref or a commit, with several agents",
 		GoFn: func(h *Host, args string, confirm bool) error {
 			typed, attached := agent.CutAttached(args)
-			return h.runSaved(strings.TrimSpace("/review "+typed), attached, "review", strings.TrimSpace(typed))
+			return h.runSaved(attached, "review", strings.TrimSpace(typed))
 		},
 	}}
 }
 
 // runSaved starts a saved workflow for the user, args its text ("" none).
-func (h *Host) runSaved(line, attached, name, args string) error {
+func (h *Host) runSaved(attached, name, args string) error {
 	src, err := h.workflowSource(name)
 	if err != nil {
 		return err
@@ -1932,16 +1932,16 @@ func (h *Host) runSaved(line, attached, name, args string) error {
 	if args != "" {
 		spec.args = args
 	}
-	_, err = h.startUserFlow(spec, line, attached)
+	_, err = h.startUserFlow(spec, attached)
 	return err
 }
 
 // startUserFlow starts a run the user asked for, with no model call before
+// the run's own first one.
 // the work. It runs in the background and reports to the model like a
 // background agent, and returns the run's id.
-func (h *Host) startUserFlow(spec flowSpec, line, attached string) (string, error) {
-	// the refusals before the session row, so a start that cannot run leaves
-	// no empty session
+func (h *Host) startUserFlow(spec flowSpec, attached string) (string, error) {
+	// the refusals before the run, so a start that cannot run leaves nothing
 	if _, err := h.resolveModel(h.roleModel(defaultRole)); err != nil {
 		return "", err
 	}
@@ -1951,16 +1951,13 @@ func (h *Host) startUserFlow(spec flowSpec, line, attached string) (string, erro
 	if err := h.tasks.canDetach(); err != nil {
 		return "", err
 	}
-	// the run's report, pad, agents and spend belong to a session
-	if err := h.ensureSession(line + attached); err != nil {
-		return "", err
-	}
+	h.captureSessionStart()
 	spec.background, spec.done = true, h.deliverFlow(attached)
 	f, err := h.startFlow(context.Background(), spec)
 	if err != nil {
 		return "", err
 	}
-	h.AppendStoredChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: fmt.Sprintf("Started workflow %s (%s) · /workflows", f.id, clipLine(f.description, 60))})
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: fmt.Sprintf("Started workflow %s (%s) · /workflows", f.id, clipLine(f.description, 60))})
 	return f.id, nil
 }
 

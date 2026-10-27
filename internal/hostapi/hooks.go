@@ -48,7 +48,6 @@ var hookEventMap = map[string]string{
 	"PostToolUse":      EventToolPost,
 	"PermissionDenied": EventToolDenied,
 	"Stop":             EventAgentFinish,
-	"SessionEnd":       EventSessionClose,
 	"SubagentStart":    EventAgentSubagentStart,
 	"SubagentStop":     EventAgentSubagentFinish,
 	"SessionStart":     hookSessionStart,
@@ -240,15 +239,13 @@ func (h *Host) runHook(e hookEntry, input []byte, timeout time.Duration) string 
 	return out.String()
 }
 
-// captureSessionContext runs the plugins' SessionStart hooks for sid and
-// keeps what they print for the session's next prompt, beside the project
-// skills index. kind is the session start's source (startup, resume), what
-// the hooks' matchers name. It starts off the session-creation path, so no
-// send waits on it; a capture that lands drops the pin unconditionally, so
-// one in flight stores no prompt without the text, and the next send
-// rebuilds with it. A reload never re-runs it: this is session state, not
-// registry state.
-func (h *Host) captureSessionContext(sid, kind string) {
+// captureSessionContext runs the plugins' SessionStart hooks and keeps what
+// they print for the chat's next prompt, beside the project skills index.
+// It starts off the send path, so no send waits on it; a capture that lands
+// drops the pin unconditionally, so one in flight stores no prompt without
+// the text, and the next send rebuilds with it. A reload never re-runs it:
+// this is session state, not registry state.
+func (h *Host) captureSessionContext() {
 	entries := h.hookReg.handlers(hookSessionStart)
 	if len(entries) == 0 || proc.Refused() != nil {
 		return
@@ -256,7 +253,7 @@ func (h *Host) captureSessionContext(sid, kind string) {
 	h.GoSafe("plugin sessionstart hooks", func() {
 		var texts []string
 		for _, e := range entries {
-			if e.match != nil && !e.match(kind) {
+			if e.match != nil && !e.match("startup") {
 				continue
 			}
 			if out := hookContextOut(h.runHook(e, marshalHookPayload(h.hookBase(e)), min(e.timeout, hookCaptureWait))); out != "" {
@@ -276,9 +273,6 @@ func (h *Host) captureSessionContext(sid, kind string) {
 		ag := h.agents
 		ag.mu.Lock()
 		defer ag.mu.Unlock()
-		if ag.sessionID != sid { // the session moved on while the hooks ran
-			return
-		}
 		ag.hookCtx = text
 		// a build in flight holds pin.key as empty too: only a drop counted
 		// by it makes that build throw its text-less prompt away

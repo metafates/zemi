@@ -721,7 +721,7 @@ func (e MarketplacePlugin) manifestJSON() ([]byte, error) {
 // ClaudeHookEvents is the Claude hook events zemi runs; anything else a
 // plugin declares is refused at load, so the display summary leaves it out.
 var ClaudeHookEvents = []string{
-	"PermissionDenied", "PostToolUse", "SessionEnd", "SessionStart",
+	"PermissionDenied", "PostToolUse", "SessionStart",
 	"Stop", "SubagentStart", "SubagentStop",
 }
 

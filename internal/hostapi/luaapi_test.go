@@ -41,8 +41,6 @@ func TestLuaAPIAdditions(t *testing.T) {
 		assert(zemi.fs.write("notes/a.txt", "hi") == true, "fs.write returns true")
 		assert(zemi.fs.read("notes/a.txt") == "hi", "fs round trip")
 
-		assert(#zemi.session.list() == 0, "no sessions yet")
-
 		local n = 0
 		local id = zemi.event.on("user.ping", function() n = n + 1 end)
 		zemi.event.emit("user.ping", {})
@@ -167,7 +165,7 @@ func TestLuaAPIIO(t *testing.T) {
 		assert(v == nil and err == nil, "a key nobody set is nil with no error")
 		assert(zemi.env.get("ZEMI_NOT_SET_ANYWHERE") == nil, "an unset variable is nil, not the empty string")
 
-		local wid = zemi.config.watch("models.titles", function() end)
+		local wid = zemi.config.watch("models.compact", function() end)
 		assert(type(wid) == "string", "watch id type " .. type(wid))
 		assert(zemi.config.off(wid) == true and zemi.config.off(wid) == false, "off is idempotent")
 

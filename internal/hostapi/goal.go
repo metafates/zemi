@@ -13,12 +13,11 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/sanitize"
-	"github.com/metafates/zemi/internal/store"
 )
 
-// goalRole marks a stored goal event: historyFrom draws it and goalIn reads
-// the goal back, so a rewind cuts it, a fork copies it and a delete drops it.
-const goalRole = "goal"
+// goalKV is the kv row the live goal persists in: what must hold and the log
+// seq of the message that set it, so a rewind past that seq drops it.
+const goalKV = "goal"
 
 // goalMaxRuns bounds the turns a goal starts on its own before anyone else
 // starts one.
@@ -37,22 +36,14 @@ const (
 	goalStopped goalEvent = "stopped"
 )
 
-// goalRow is a stored goal event. A set row carries the session's spend
-// when it was set; a met row the spend the goal took, as its notice shows.
-type goalRow struct {
-	Event  goalEvent `json:"event"`
-	Text   string    `json:"text,omitempty"`
-	Detail string    `json:"detail,omitempty"`
-	Tokens int64     `json:"tokens,omitzero"`
-	Cost   float64   `json:"cost,omitzero"`
-}
-
-// Goal is the session's goal (/goal): what must hold, when it was set and
-// the session's spend then, and the checks so far.
+// Goal is the chat's goal (/goal): what must hold, when it was set and the
+// log seq of the message that set it, and the checks so far. Turns and
+// reason are this process' state; the condition and its set-at survive.
 type Goal struct {
 	Condition string
 	Reason    string // the last check, "not yet: <why>", "" before the first
 	Turns     int    // the turns it was checked after
+	SetAt     int64  // the log seq of the message that set it
 	Since     time.Time
 	Tokens    int64
 	Cost      float64
@@ -68,7 +59,7 @@ MET: the evidence shows the goal holds; name the evidence.
 NOT YET: name what is still missing or failing, for the next turn to act on.
 BLOCKED: the conversation shows it cannot go on without the user (a decision, access, a tool call nobody could approve, a goal that contradicts itself); name what is needed.`
 
-// Goal is the live session's goal, false for none.
+// Goal is the live goal, false for none.
 func (h *Host) Goal() (Goal, bool) {
 	ag := h.agents
 	ag.mu.Lock()
@@ -77,6 +68,45 @@ func (h *Host) Goal() (Goal, bool) {
 		return Goal{}, false
 	}
 	return *ag.goal, true
+}
+
+// loadGoal reads a persisted goal into the live state at boot: a condition
+// set before this run, whose message still stands in the log.
+func (h *Host) loadGoal() {
+	if h.DB == nil {
+		return
+	}
+	raw, err := h.DB.GetKV(goalKV)
+	if err != nil {
+		return
+	}
+	var g Goal
+	if json.Unmarshal([]byte(raw), &g) != nil || g.Condition == "" {
+		return
+	}
+	if count, err := h.DB.LogCount(); err != nil || g.SetAt >= count {
+		return // the log moved under it (a rewind cleared it but not the row)
+	}
+	h.agents.mu.Lock()
+	h.agents.goal = &g
+	h.agents.mu.Unlock()
+}
+
+// storeGoal persists the goal's condition and set-at, or drops the row; a
+// missed write costs the goal its persistence, never the chat.
+func (h *Host) storeGoal(g *Goal) {
+	if h.DB == nil {
+		return
+	}
+	if g == nil {
+		_, _ = h.DB.DelKV(goalKV)
+		return
+	}
+	if raw, err := json.Marshal(*g, json.Deterministic(true)); err == nil {
+		if err := h.DB.SetKV(goalKV, string(raw)); err != nil {
+			h.Log.Warn("goal not kept", "origin", "goal", "error", err)
+		}
+	}
 }
 
 // SetGoal runs /goal: alone it shows the goal, "stop" drops it, and a
@@ -110,9 +140,9 @@ func goalAttached(cond string) string {
 }
 
 // setGoalFrom sets the goal when msg carries the brief SetGoal last sent,
-// never one that attached text (a plugin send, a file, a report) quotes,
-// and records it after msg, so a rewind to it cuts the goal too.
-func (h *Host) setGoalFrom(sid string, msg fantasy.Message) {
+// never one that attached text (a plugin send, a file, a report) quotes, at
+// the log seq the message was written at.
+func (h *Host) setGoalFrom(seq int64, msg fantasy.Message) {
 	ag := h.agents
 	ag.mu.Lock()
 	cond := ag.goalPending
@@ -122,10 +152,10 @@ func (h *Host) setGoalFrom(sid string, msg fantasy.Message) {
 	}
 	ag.goalPending = ""
 	old := ag.goal
-	g := &Goal{Condition: cond, Since: time.Now(), Tokens: ag.sessIn + ag.sessOut, Cost: ag.sessCost}
+	g := &Goal{Condition: cond, Since: time.Now(), SetAt: seq, Tokens: ag.sessIn + ag.sessOut, Cost: ag.sessCost}
 	ag.goal = g
 	ag.mu.Unlock()
-	h.storeGoal(sid, goalRow{Event: goalSet, Text: cond, Tokens: g.Tokens, Cost: g.Cost})
+	h.storeGoal(g)
 	if old != nil {
 		h.Notify(slog.LevelInfo, "Replaced the goal", old.Condition)
 	}
@@ -135,13 +165,14 @@ func (h *Host) setGoalFrom(sid string, msg fantasy.Message) {
 func (h *Host) stopGoal() error {
 	ag := h.agents
 	ag.mu.Lock()
-	g, sid := ag.goal, ag.sessionID
+	g := ag.goal
 	ag.goal = nil
 	ag.mu.Unlock()
 	if g == nil {
 		return Usagef("no goal to stop")
 	}
-	h.recordGoal(sid, goalRow{Event: goalStopped})
+	h.storeGoal(nil)
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "Goal stopped"})
 	return nil
 }
 
@@ -178,15 +209,16 @@ func (h *Host) spentSince(tokens int64, cost float64) string {
 }
 
 // checkGoal asks the model, as an aside on the conversation, whether g
-// holds, records the verdict and returns the note the next turn sends: ""
-// ends the chain. An interrupt records nothing, and neither does a goal
-// stopped or replaced meanwhile.
+// holds, draws the verdict's notice row and returns the note the next turn
+// sends: "" ends the chain. An interrupt records nothing, and neither does a
+// goal stopped or replaced meanwhile.
 func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 	reply, err := h.aside(ctx, fmt.Sprintf(goalCheckPrompt, g.Condition))
 	if ctx.Err() != nil {
 		return ""
 	}
 	ev, reason, ok := parseVerdict(reply)
+	var detail string
 	switch {
 	case err != nil:
 		ev, reason = goalPaused, "the check failed: "+h.friendlyError(err)
@@ -205,16 +237,16 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 	}
 	g.Turns++
 	g.Reason = goalReason(ev, reason)
-	sid := ag.sessionID
 	if ev == goalMet {
 		ag.goal = nil
+		ag.mu.Unlock()
+		h.storeGoal(nil)
+	} else {
+		ag.mu.Unlock()
 	}
-	ag.mu.Unlock()
-	row := goalRow{Event: ev, Text: reason}
-	if ev == goalMet {
-		row.Detail = fmt.Sprintf("%d %s, %s, %s", g.Turns, Plural(g.Turns, "turn", "turns"), fmtDuration(time.Since(g.Since)), h.spentSince(g.Tokens, g.Cost))
+	if m, ok := goalNotice(ev, reason, detail); ok {
+		h.AppendChat(m)
 	}
-	h.recordGoal(sid, row)
 	if ev != goalNotYet {
 		return ""
 	}
@@ -225,28 +257,10 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 	return agent.Attached("goal", why+"\nKeep working until this holds: "+g.Condition)
 }
 
-// recordGoal stores a goal event and draws its notice row.
-func (h *Host) recordGoal(sid string, row goalRow) {
-	h.storeGoal(sid, row)
-	if m, ok := goalNotice(row); ok {
-		h.AppendChat(m)
-	}
-}
-
-func (h *Host) storeGoal(sid string, row goalRow) {
-	if h.DB == nil || sid == "" {
-		return
-	}
-	parts, _ := json.Marshal(row, json.Deterministic(true))
-	if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: goalRole, PartsJSON: string(parts)}); err != nil {
-		h.Log.Warn("event not stored", "origin", "goal", "error", err)
-	}
-}
-
-// goalNotice is a goal event's row, live and resumed alike; a set row has none.
-func goalNotice(row goalRow) (ChatMessage, bool) {
-	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "Goal " + string(row.Event), Detail: row.Detail}
-	switch row.Event {
+// goalNotice is a goal event's live row; a set row has none.
+func goalNotice(ev goalEvent, reason, detail string) (ChatMessage, bool) {
+	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "Goal " + string(ev), Detail: detail}
+	switch ev {
 	case goalSet:
 		return m, false
 	case goalNotYet:
@@ -255,33 +269,25 @@ func goalNotice(row goalRow) (ChatMessage, bool) {
 		m.Detail = "/goal stop drops it"
 	case goalMet, goalPaused, goalStopped:
 	}
-	if row.Text != "" {
-		m.Text += ": " + sanitize.String(row.Text)
+	if reason != "" {
+		m.Text += ": " + sanitize.String(reason)
 	}
 	return m, true
 }
 
-// goalIn is the goal rows leave set, nil for none.
-func goalIn(rows []*store.Message) *Goal {
-	var g *Goal
-	for _, m := range rows {
-		var row goalRow
-		if m.Role != goalRole || json.Unmarshal([]byte(m.PartsJSON), &row) != nil {
-			continue
-		}
-		switch row.Event {
-		case goalSet:
-			g = &Goal{Condition: row.Text, Since: time.UnixMilli(m.CreatedAt), Tokens: row.Tokens, Cost: row.Cost}
-		case goalMet, goalStopped:
-			g = nil
-		default:
-			if g != nil {
-				g.Turns++
-				g.Reason = goalReason(row.Event, row.Text)
-			}
-		}
+// goalRewound drops a goal the rewind's cut removed the message of, and
+// settles a surviving one's turn count.
+func (h *Host) goalRewound(cut int64) {
+	ag := h.agents
+	ag.mu.Lock()
+	g := ag.goal
+	if g != nil && g.SetAt >= cut {
+		ag.goal = nil
+		ag.mu.Unlock()
+		h.storeGoal(nil)
+		return
 	}
-	return g
+	ag.mu.Unlock()
 }
 
 // goalReason is a check's verdict as the goal row names it.

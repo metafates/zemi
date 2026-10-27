@@ -68,11 +68,6 @@ func scanSession(row scanner) (*Session, error) {
 	return &s, nil
 }
 
-// SetSessionLastIn records the context the session's latest step used.
-func (s *DB) SetSessionLastIn(id string, n int64) error {
-	return s.execOne("set last in", `UPDATE sessions SET last_in = ? WHERE id = ?`, n, id)
-}
-
 // SetSessionRunStatus records how a run ended. It leaves updated_at alone: a
 // run ending is not activity in its parent's list.
 func (s *DB) SetSessionRunStatus(id, status string) error {
@@ -83,9 +78,8 @@ func (s *DB) GetSession(id string) (*Session, error) {
 	return one(s.db.QueryRow(`SELECT `+sessionCols+` FROM sessions WHERE id = ?`, id), scanSession)
 }
 
-// topLevelSessions is the WHERE the old world's session lists read through:
-// the anchor row the log migration plants is not a conversation, and until
-// the session concept dies nothing may show it as one.
+// topLevelSessions is the WHERE the run lists read through: the anchor row
+// the log migration plants is not a conversation.
 const topLevelSessions = `COALESCE(parent_id, '') = '' AND id <> '` + MainSessionID + `'`
 
 // ListSessions returns top-level sessions (subagent runs excluded) ordered
@@ -99,28 +93,6 @@ func (s *DB) ListSessions(limit int) ([]*Session, error) {
 func (s *DB) ChildSessions(parentID string) ([]*Session, error) {
 	rows, err := s.db.Query(`SELECT `+sessionCols+` FROM sessions WHERE parent_id = ? ORDER BY created_at DESC`, parentID)
 	return collect(rows, err, scanSession)
-}
-
-// RenameSession sets the session title. Unknown ids are ErrNotFound. It
-// leaves updated_at alone: a title is a label, not activity.
-func (s *DB) RenameSession(id, title string) error {
-	return s.execOne("rename session", `UPDATE sessions SET title = ? WHERE id = ?`, title, id)
-}
-
-// DeleteSession removes a session and its subagent runs (parent_id has no
-// foreign key; the rest cascades), then rewrites the file and empties the
-// WAL: a DELETE only frees pages, so the text would stay on disk.
-func (s *DB) DeleteSession(id string) error {
-	if err := s.execOne("delete session", `DELETE FROM sessions WHERE id = ? OR parent_id = ?`, id, id); err != nil {
-		return err
-	}
-	if _, err := s.db.Exec(`VACUUM`); err != nil {
-		return fmt.Errorf("store: vacuum: %w", err)
-	}
-	if _, err := s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
-		return fmt.Errorf("store: checkpoint: %w", err)
-	}
-	return nil
 }
 
 // AddUsage accumulates token counts and cost onto a session. Unknown ids are
@@ -187,106 +159,6 @@ func insertMessage(ex execer, m *Message) error {
 
 func (s *DB) AddMessage(m *Message) error { return insertMessage(s.db, m) }
 
-// AddCompaction stores a compaction's summary row, the verbatim tail copies
-// that follow it in one transaction: a crash partway would leave a resumed
-// conversation missing the tail.
-func (s *DB) AddCompaction(sessionID string, summary *Message, tail []*Message) error {
-	return s.inTx(func(tx *sql.Tx) error {
-		for _, m := range append([]*Message{summary}, tail...) {
-			m.SessionID = sessionID
-			if err := insertMessage(tx, m); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
-// ForkSession copies src into a new top-level session id: its messages
-// under new ids, their checkpoints (a rewind in the fork restores files too),
-// its tool calls and its subagents' (on the first message: the fork has no
-// children, and the calls gate memory autonomy), in one transaction so a
-// failure leaves no half-copied fork.
-func (s *DB) ForkSession(src *Session, id, title string) (err error) {
-	defer func() {
-		if err != nil {
-			err = fmt.Errorf("store: fork session: %w", err)
-		}
-	}()
-	msgs, err := s.Messages(src.ID)
-	if err != nil {
-		return err
-	}
-	type checkpoint struct {
-		mid string
-		Checkpoint
-	}
-	rows, err := s.db.Query(`SELECT message_id, path, existed, link, content FROM checkpoints WHERE session_id = ?`, src.ID)
-	cps, err := collect(rows, err, func(r scanner) (c checkpoint, err error) {
-		err = r.Scan(&c.mid, &c.Path, &c.Existed, &c.Link, &c.Content)
-		return c, err
-	})
-	if err != nil {
-		return err
-	}
-	rows, err = s.db.Query(`SELECT t.message_id, t.tool, t.ok, t.created_at
-		FROM tool_calls t JOIN messages m ON m.id = t.message_id
-		WHERE m.session_id = ? OR m.session_id IN (SELECT id FROM sessions WHERE parent_id = ?)`, src.ID, src.ID)
-	type call struct {
-		ToolCall
-		at int64
-	}
-	calls, err := collect(rows, err, func(r scanner) (c call, err error) {
-		err = r.Scan(&c.MessageID, &c.Tool, &c.OK, &c.at)
-		return c, err
-	})
-	if err != nil {
-		return err
-	}
-	todos, err := s.Todos(src.ID)
-	if err != nil {
-		return err
-	}
-	// every row is read before the transaction: one connection serves both
-	return s.inTx(func(tx *sql.Tx) error {
-		t := now()
-		if _, err := tx.Exec(`INSERT INTO sessions (id, title, agent, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-			id, title, src.Agent, t, t); err != nil {
-			return err
-		}
-		ids := make(map[string]string, len(msgs))
-		for _, m := range msgs {
-			copied := &Message{SessionID: id, Role: m.Role, PartsJSON: m.PartsJSON, RowMeta: m.RowMeta, CreatedAt: m.CreatedAt}
-			if err := insertMessage(tx, copied); err != nil {
-				return err
-			}
-			ids[m.ID] = copied.ID
-		}
-		for _, c := range cps {
-			if mid, ok := ids[c.mid]; ok {
-				if _, err := tx.Exec(`INSERT INTO checkpoints (message_id, session_id, path, existed, link, content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-					mid, id, c.Path, c.Existed, c.Link, c.Content, t); err != nil {
-					return err
-				}
-			}
-		}
-		for _, c := range calls {
-			mid, ok := ids[c.MessageID]
-			if !ok && len(msgs) > 0 {
-				mid = ids[msgs[0].ID]
-			}
-			if mid == "" {
-				continue
-			}
-			if _, err := tx.Exec(`INSERT INTO tool_calls (message_id, tool, ok, created_at) VALUES (?, ?, ?, ?)`,
-				mid, c.Tool, c.OK, c.at); err != nil {
-				return err
-			}
-		}
-		return setTodos(tx, id, todos)
-	})
-}
-
 // Messages returns a session's messages in insertion order: rowid, since a
 // turn persists several messages within one millisecond and ids are random.
 func (s *DB) Messages(sessionID string) ([]*Message, error) {
@@ -298,59 +170,6 @@ func (s *DB) Messages(sessionID string) ([]*Message, error) {
 func scanMessage(r scanner) (*Message, error) {
 	var m Message
 	return &m, r.Scan(&m.ID, &m.SessionID, &m.Role, &m.PartsJSON, &m.RowMeta, &m.CreatedAt)
-}
-
-// MessageCount is how many rows Messages would return, tool telemetry
-// included, without loading them.
-func (s *DB) MessageCount(sessionID string) (int, error) {
-	var n int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM messages WHERE session_id = ?`, sessionID).Scan(&n)
-	return n, err
-}
-
-// UserMessages returns the newest top-level session user messages, newest
-// first, for the composer history: what the user typed survives the session
-// it was typed in. Subagent (child) sessions are excluded, since their user
-// rows are prompts the agent wrote, not the user.
-func (s *DB) UserMessages(limit int) ([]*Message, error) {
-	rows, err := s.db.Query(`SELECT id, session_id, role, parts_json, row_meta, created_at
-		FROM messages WHERE role = 'user'
-		AND session_id IN (SELECT id FROM sessions WHERE COALESCE(parent_id, '') = '')
-		ORDER BY rowid DESC LIMIT ?`, limit)
-	return collect(rows, err, scanMessage)
-}
-
-// SessionPreview is what the session picker shows besides the title: how
-// many messages a session holds and the parts of its first user message.
-type SessionPreview struct {
-	Count     int
-	FirstJSON string
-}
-
-// SessionPreviews returns one preview per listed session; tool telemetry and
-// compaction tails have their own roles and stay out of the count. The ids
-// bound the scan: the picker shows a page of sessions, not every message
-// ever stored.
-func (s *DB) SessionPreviews(ids []string) (map[string]SessionPreview, error) {
-	rows, err := s.db.Query(`SELECT session_id, COUNT(*), COALESCE((
-			SELECT parts_json FROM messages f
-			WHERE f.session_id = m.session_id AND f.role = 'user' ORDER BY rowid LIMIT 1), '')
-		FROM messages m WHERE role IN ('user', 'assistant')
-		AND session_id IN (SELECT value FROM json_each(?)) GROUP BY session_id`, jsonList(ids))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[string]SessionPreview{}
-	for rows.Next() {
-		var id string
-		var p SessionPreview
-		if err := rows.Scan(&id, &p.Count, &p.FirstJSON); err != nil {
-			return nil, err
-		}
-		out[id] = p
-	}
-	return out, rows.Err()
 }
 
 // TodoStatus is where a todo item stands; the todos tool's schema offers

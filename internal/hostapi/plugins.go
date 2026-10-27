@@ -16,10 +16,10 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
@@ -299,7 +299,7 @@ func (h *Host) claudeCommandSkills(root, data string) []skill.Skill {
 		}
 		rows = append(rows, skill.Skill{
 			Name: stem, Dir: filepath.Join(root, "commands"), Source: skill.Plugin,
-			Description: learn.Truncate(desc, skill.MaxDescriptionRunes),
+			Description: sanitize.Truncate(desc, skill.MaxDescriptionRunes),
 			File:        path, Root: root, Data: data,
 		})
 		if strings.Contains(body, "!`") {

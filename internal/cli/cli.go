@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -35,7 +34,6 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/sanitize"
-	"github.com/metafates/zemi/internal/store"
 )
 
 // envHelp ends the root's help only.
@@ -59,11 +57,10 @@ Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
 var version string
 
 type options struct {
-	cont          bool
-	resume, model string
-	prompt        string
-	dir           string // -C
-	trust         *bool  // --trust for this run; nil when not given
+	model  string
+	prompt string
+	dir    string // -C
+	trust  *bool  // --trust for this run; nil when not given
 	// dirs are this run's, resolved once by the root's hook after -C; a
 	// completion resolves its own, since cobra runs no hook there.
 	dirs config.Dirs
@@ -113,19 +110,6 @@ func execute(args []string, stdout, stderr io.Writer, launch func(options) int) 
 		dirs, err := config.ResolveDirs()
 		if err != nil {
 			return err
-		}
-		// a resume id may name a session of another project, which zemi then
-		// starts in: every project fact is bound at start. An explicit -C is
-		// the user's own answer and is never overridden.
-		if o.resume != "" && o.dir == "" {
-			if root, found := hostapi.SessionProject(dirs, o.resume); found && perm.CanonPath(root) != perm.CanonPath(dirs.TrustRoot()) {
-				if err := enterDir(root); err != nil {
-					return fmt.Errorf("session %s is in %s, which is gone (%w)", o.resume, perm.TildePath(root), err)
-				}
-				if dirs, err = config.ResolveDirs(); err != nil {
-					return err
-				}
-			}
 		}
 		o.dirs = dirs
 		return nil
@@ -235,17 +219,14 @@ or run when it names a command (zemi "/review HEAD~1").`,
 	}
 	healthJSON = jsonFlag(health)
 
-	root.AddCommand(sessionsCommand(o), projectsCommand(o), pluginCommand(o), modelsCommand(o), dbCommand(o), health)
+	root.AddCommand(projectsCommand(o), pluginCommand(o), modelsCommand(o), dbCommand(o), health)
 	return root
 }
 
 // turnFlags are the flags of a command that runs a turn.
 func turnFlags(c *cobra.Command, o *options) {
 	f := c.Flags()
-	f.BoolVarP(&o.cont, "continue", "c", false, "continue the most recent session")
-	f.StringVarP(&o.resume, "resume", "r", "", "resume the session with this `id`, of any project")
 	f.StringVarP(&o.model, "model", "m", "", "model for the conversation, by provider/model `id`")
-	_ = c.RegisterFlagCompletionFunc("resume", completeSessions)
 	_ = c.RegisterFlagCompletionFunc("model", completeBooted((*hostapi.Host).ModelIDs))
 }
 
@@ -278,42 +259,7 @@ func completionDirs(c *cobra.Command) (config.Dirs, error) {
 	return config.ResolveDirs()
 }
 
-// completeSessions offers session ids: this project's for export, and for -r
-// every project's, a row of another one naming it.
-func completeSessions(c *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	var out []cobra.Completion
-	dirs, err := completionDirs(c)
-	if err != nil || c.Name() == "export" && len(args) > 0 {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	if c.Flags().Lookup("resume") != nil {
-		root := dirs.TrustRoot()
-		groups, _ := hostapi.ListAllSessions(dirs)
-		for _, g := range groups {
-			where := ""
-			if perm.CanonPath(g.Root) != perm.CanonPath(root) {
-				where = filepath.Base(g.Root) + ": "
-			}
-			for _, s := range g.Sessions {
-				title := []rune(sanitize.Line(s.Title))
-				out = append(out, cobra.CompletionWithDesc(s.ID, where+string(title[:min(len(title), 60)])))
-			}
-		}
-		return out, cobra.ShellCompDirectiveNoFileComp
-	}
-	db, err := projectStore(dirs)
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	defer db.Close()
-	list, _ := db.ListSessions(-1)
-	for _, s := range list {
-		title := []rune(sanitize.Line(s.Title))
-		out = append(out, cobra.CompletionWithDesc(s.ID, string(title[:min(len(title), 60)])))
-	}
-	return out, cobra.ShellCompDirectiveNoFileComp
-}
-
+// completeSessions was the -r and export id list; both are gone.
 // completePlugins offers the plugin names: the first argument of the verbs
 // that take one, and test's first may be a directory too.
 func completePlugins(c *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
@@ -385,9 +331,6 @@ func (o *options) finish(c *cobra.Command, args []string) error {
 		if args[0] == "version" {
 			return errors.New("\"version\" is not a command; did you mean --version?")
 		}
-	}
-	if o.cont && o.resume != "" {
-		return errors.New("--continue and --resume cannot be combined")
 	}
 	o.prompt = strings.TrimSpace(strings.Join(args, " "))
 	return nil
@@ -557,110 +500,8 @@ func pluginCommand(o *options) *cobra.Command {
 	return cmd
 }
 
-func sessionsCommand(o *options) *cobra.Command {
-	var asJSON, all *bool
-	cmd := &cobra.Command{
-		Use:   "sessions",
-		Short: "list this project's sessions, newest first; -a adds every other",
-		Args:  cobra.NoArgs,
-		RunE: func(c *cobra.Command, _ []string) error {
-			dirs := o.dirs
-			out, p := c.OutOrStdout(), colorprofile.Detect(c.OutOrStdout(), os.Environ())
-			if *all {
-				groups, skipped := hostapi.ListAllSessions(dirs)
-				if n := len(skipped); n > 0 {
-					names := make([]string, n)
-					for i, root := range skipped {
-						names[i] = perm.TildePath(root)
-					}
-					fmt.Fprintf(c.ErrOrStderr(), "zemi: skipped %d unreadable %s: %s\n", n, hostapi.Plural(n, "store", "stores"), strings.Join(names, ", "))
-				}
-				if len(groups) == 0 {
-					fmt.Fprintln(c.ErrOrStderr(), "zemi: no sessions in any project yet")
-					return nil
-				}
-				for _, g := range groups {
-					printSessions(out, p, g.Sessions, *asJSON, g.Root)
-				}
-				return nil
-			}
-			var list []*store.Session
-			db, err := projectStore(dirs)
-			if err == nil {
-				defer db.Close()
-				list, err = db.ListSessions(-1)
-			}
-			if errors.Is(err, fs.ErrNotExist) || err == nil && len(list) == 0 {
-				fmt.Fprintf(c.ErrOrStderr(), "zemi: no sessions in %s yet\n", perm.TildePath(dirs.TrustRoot()))
-				return nil
-			}
-			if err != nil {
-				return err
-			}
-			printSessions(out, p, list, *asJSON, "")
-			return nil
-		},
-	}
-	asJSON = jsonFlag(cmd)
-	all = cmd.Flags().BoolP("all", "a", false, "list the sessions of every project, grouped by project")
-
-	full := false
-	export := &cobra.Command{
-		Use:               "export <id>",
-		ValidArgsFunction: completeSessions,
-		Short:             "print a session as markdown",
-		Args:              nargs(1),
-		RunE: func(c *cobra.Command, args []string) error {
-			dirs := o.dirs
-			db, err := projectStore(dirs)
-			md := ""
-			if err == nil {
-				defer db.Close()
-				md, err = hostapi.SessionMarkdown(db, args[0], full)
-			}
-			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, store.ErrNotFound) {
-				return fmt.Errorf("no session %q; zemi sessions lists them", args[0])
-			}
-			fmt.Fprint(c.OutOrStdout(), md)
-			return err
-		},
-	}
-	export.Flags().BoolVar(&full, "full", false, "add reasoning, every tool call expanded and the agent runs")
-	cmd.AddCommand(export)
-	return cmd
-}
-
-// printSessions writes sessions as id, updated, title rows, the id first so a
-// row is copied straight from the terminal into -r or export; a project names
-// an -a group, whose title prints above its rows instead of the header.
-func printSessions(out io.Writer, p colorprofile.Profile, list []*store.Session, asJSON bool, project string) {
-	t := table{p: p, cols: []tableCol{
-		{head: "session", role: "hint"},
-		{head: "updated", role: "hint"},
-		{head: "title"},
-	}}
-	if project != "" {
-		t.noHead = true
-		if !asJSON {
-			fmt.Fprintln(out, paint(p, "title", perm.TildePath(project)))
-		}
-	}
-	for _, s := range list {
-		updated := time.UnixMilli(s.UpdatedAt)
-		if asJSON {
-			writeJSON(out, struct {
-				ID      string    `json:"id"`
-				Title   string    `json:"title"`
-				Updated time.Time `json:"updated"`
-				CostUSD float64   `json:"cost_usd"`
-				Project string    `json:"project,omitempty"`
-			}{ID: s.ID, Title: sanitize.Line(s.Title), Updated: updated, CostUSD: s.Cost, Project: project})
-			continue
-		}
-		t.row(s.ID, updated.Format(hostapi.StampLayout), ansi.Truncate(cmp.Or(sanitize.Line(s.Title), "(untitled)"), 60, "…"))
-	}
-	t.print(out)
-}
+// sessionsCommand and printSessions are gone: the chat is one log per project,
+// its transcript opens in the TUI, and a run's rows in /agents.
 
 // projectsCommand is zemi projects: one line per project, the path last and
 // absolute at column 36, so cut -c36- hands it to zemi -C.
@@ -703,9 +544,8 @@ func projectsCommand(o *options) *cobra.Command {
 						Trust      string    `json:"trust"`
 						Used       time.Time `json:"used,omitzero"`
 						Sessions   int       `json:"sessions"`
-						Memories   int       `json:"memories"`
 						StatsError string    `json:"stats_error,omitempty"`
-					}{Root: p.Root, Trust: p.TrustWord(), Used: p.Used, Sessions: p.Sessions, Memories: p.Memories, StatsError: statsErr})
+					}{Root: p.Root, Trust: p.TrustWord(), Used: p.Used, Sessions: p.Sessions, StatsError: statsErr})
 					continue
 				}
 				used := "-"
@@ -770,12 +610,6 @@ func modelsCommand(o *options) *cobra.Command {
 		},
 	})
 	return cmd
-}
-
-// projectStore opens this project's store read-only, so a look or a tab
-// press writes nothing, a missing store included (fs.ErrNotExist).
-func projectStore(dirs config.Dirs) (*store.DB, error) {
-	return store.OpenRead(store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot()))
 }
 
 // jsonFlag adds --json to a listing command: JSON Lines on stdout, one
@@ -1111,9 +945,6 @@ func applyOptions(h *hostapi.Host, o options) error {
 		if err := h.SetTargetModel("default", o.model); err != nil {
 			return err
 		}
-	}
-	if o.cont || o.resume != "" {
-		return h.ResumeSession(o.resume)
 	}
 	return nil
 }

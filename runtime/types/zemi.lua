@@ -197,14 +197,6 @@ function debug.traceback(msg) end
 ---| "warn"
 ---| "error"
 
----@alias zemi.Scope
----| "user"     # holds in every project
----| "project"  # this repository only
-
----@alias zemi.MemoryOrigin
----| "user"     # the user wrote it or said to keep it
----| "learned"  # the model or the reflector proposed it
-
 --- The regions the default layout draws, plus "exit", which no layout draws: its
 --- widgets print once to the shell after zemi quits, foreground colors only. A layout
 --- may draw any other name.
@@ -481,9 +473,6 @@ function zemi.command.list() end
 ---| "app.ready"
 ---| "app.quit"
 ---| "config.reloaded"
----| "session.new"
----| "session.open"
----| "session.close"
 ---| "agent.start"
 ---| "agent.step"
 ---| "agent.finish"
@@ -501,9 +490,6 @@ function zemi.command.list() end
 ---| "ui.resize"
 ---| "composer.change"
 ---| "composer.submit"
----| "memory.written"
----| "reflector.start"
----| "reflector.done"
 ---| "job.exit"
 ---| "lsp.request"
 
@@ -514,10 +500,6 @@ function zemi.command.list() end
 
 -- NOTE: the payload classes are kept by hand from the EmitAsync and
 -- EmitVetoable calls in internal/; only the event names are pinned by a test.
-
----@class zemi.ev.Session: zemi.Event
----@field id string
----@field title? string Not on session.close.
 
 ---@class zemi.ev.Text: zemi.Event
 ---@field text string agent.start: the message; the deltas: the new text.
@@ -598,24 +580,6 @@ function zemi.command.list() end
 ---@class zemi.ev.ComposerSubmit: zemi.Event
 ---@field text string
 
----@class zemi.ev.MemoryWritten: zemi.Event
----@field id string
----@field scope zemi.Scope
----@field origin zemi.MemoryOrigin
----@field text string
-
----@class zemi.ev.ReflectorStart: zemi.Event
----@field session string
-
----@class zemi.ev.ReflectorDone: zemi.Event
----@field session string
----@field error? string Set when the run failed, and then no counts are.
----@field stored? integer
----@field queued? integer Proposals waiting in /memory.
----@field superseded? integer
----@field skipped? integer
----@field retired? integer Memories the run dropped under auto accept.
-
 ---@class zemi.ev.JobExit: zemi.Event
 ---@field id integer
 ---@field cmd string
@@ -671,7 +635,6 @@ zemi.event = {}
 ---@param fn fun(ev: zemi.Event): any
 ---@param opts? zemi.EventOpts
 ---@return string id
----@overload fun(name: "session.new"|"session.open"|"session.close", fn: (fun(ev: zemi.ev.Session): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "agent.start"|"agent.text_delta"|"agent.reasoning_delta", fn: (fun(ev: zemi.ev.Text): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "agent.finish", fn: (fun(ev: zemi.ev.AgentFinish): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "agent.error", fn: (fun(ev: zemi.ev.AgentError): any), opts?: zemi.EventOpts): string
@@ -687,9 +650,6 @@ zemi.event = {}
 ---@overload fun(name: "ui.resize", fn: (fun(ev: zemi.ev.Resize): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "composer.change", fn: (fun(ev: zemi.ev.ComposerChange): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "composer.submit", fn: (fun(ev: zemi.ev.ComposerSubmit): zemi.SubmitVeto?), opts?: zemi.EventOpts): string
----@overload fun(name: "memory.written", fn: (fun(ev: zemi.ev.MemoryWritten): any), opts?: zemi.EventOpts): string
----@overload fun(name: "reflector.start", fn: (fun(ev: zemi.ev.ReflectorStart): any), opts?: zemi.EventOpts): string
----@overload fun(name: "reflector.done", fn: (fun(ev: zemi.ev.ReflectorDone): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "job.exit", fn: (fun(ev: zemi.ev.JobExit): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "lsp.request", fn: (fun(ev: zemi.ev.LspRequest): any), opts?: zemi.EventOpts): string
 function zemi.event.on(name, fn, opts) end
@@ -795,7 +755,6 @@ function zemi.event.stats() end
 ---| "reasoning"  # a finished thinking block
 ---| "tool"
 ---| "shell"      # a !command and its output
----| "compact"
 ---| "notice"
 ---| "error"
 
@@ -818,11 +777,6 @@ function zemi.event.stats() end
 ---@field elapsed number
 ---@field ended number Unix time the turn ended, 0 when unknown.
 ---@field model string The model id that wrote the reply, "" elsewhere.
-
----@class zemi.RecentSession
----@field id string
----@field title string The session's title, its marker emoji prefixed; "(untitled)" when it has none.
----@field ago string "now", "5m ago", "2d ago".
 
 ---@class zemi.RecentProject
 ---@field path string The project root, ~-shortened.
@@ -901,19 +855,15 @@ function zemi.event.stats() end
 ---@field transcript_edit integer Changes when a settled row's text grew in place: every unit redraws, unlike `transcript_epoch`, whose bump also drops the rows the reader opened.
 ---@field view_revision integer Changes when the shown run rewrites its transcript, in place included; 0 while the session shows.
 ---@field todos zemi.Todo[]
----@field recent? zemi.RecentSession[] Recent sessions, only while the transcript is empty.
 ---@field projects? zemi.RecentProject[] The three projects zemi started in last besides this one, newest first; only while the transcript is empty and zemi runs in ~, / or outside a repository with no session here.
----@field resume string The shell command that reopens this session: from its project, or with the -C dir this run started with; "" before the first send.
 ---@field instructions? string[] The project's instruction files, repo-relative; empty when it has none (what /init writes), nil when untrusted or at $HOME or /. Cached: read again after a boot or reload, a trust change and a new session.
 ---@field usage zemi.Usage
 ---@field context zemi.ContextUsage
 ---@field rail? integer The transcript row opening the activity run a list walks (the messages picker's rail view), or negative when that run holds no settled rows (the live-only run a text tail leaves); the chat draws that run whole while it is up.
----@field emoji string The session's marker emoji, derived from its id; "" before the first send.
 ---@field regions table<string, true> The regions the layout draws this frame: `ctx.regions.working` says whether the composer's top rule is on screen.
 ---@field frame integer The frame clock: wall time in 50 ms steps. While a turn runs every frame renders, so it advances by one per render; divide it for a slower cadence.
 ---@field ended zemi.TurnEnd|"" How the turn that ended a moment ago ended, so the mascot can show it while the working row is otherwise gone; "" once that moment passed.
----@field busy? { label: string, elapsed: number, cancellable: boolean }[] Every job the user waits on that is not a turn (/btw, a plugin install, the reflector, a recap, compaction), newest first: each one's label, seconds it has run, and whether a double esc stops it (esc stops every such job). nil when none runs.
----@field pending_memory integer
+---@field busy? { label: string, elapsed: number, cancellable: boolean }[] Every job the user waits on that is not a turn (/btw, a plugin install, a recap), newest first: each one's label, seconds it has run, and whether a double esc stops it (esc stops every such job). nil when none runs.
 ---@field agents_running integer Agents of this session still running outside a workflow: the turn's own and background ones, whose reports arrive as messages.
 ---@field workflows_running integer Workflows of this session still running, paused ones included.
 ---@field jobs_running integer Background jobs (job_start, or a shell call that outlived its timeout) still running.
@@ -1631,9 +1581,7 @@ function zemi.log.list() end
 ---@alias zemi.ModelTarget
 ---| "default"  # the conversation, and the root every role follows
 ---| "agents"   # subagents
----| "titles"   # session titles
----| "compact"  # summaries
----| "memory"   # the reflector
+---| "compact"  # the summary tree's builder
 ---| string     # a name zemi.model.add registered
 
 ---@class zemi.ModelInfo
@@ -1708,7 +1656,7 @@ function zemi.model.del(name) end
 --- id the provider does not list is taken and warned about. A call made after
 --- boot is kept for later starts, like
 --- `zemi.config.set`. An explicitly named target is plain config:
---- `zemi.config.set("models.titles", id)`.
+--- `zemi.config.set("models.compact", id)`.
 ---@param id string
 function zemi.model.set(id) end
 
@@ -1729,7 +1677,7 @@ function zemi.model.set(id) end
 --- manifest declares `model` (one it does not declare is refused, not asked).
 ---
 --- ```lua
---- local title, err = zemi.model.ask({ model = "titles", prompt = "Name this diff:\n" .. diff }):wait()
+--- local title, err = zemi.model.ask({ model = "default", prompt = "Name this diff:\n" .. diff }):wait()
 --- ```
 ---
 --- With a `schema` the provider is left to make the model fill it - its
@@ -1978,63 +1926,23 @@ function zemi.workflow.log(...) end
 
 -- zemi.session
 
----@class zemi.SessionInfo
----@field id string
----@field title string
----@field updated_at integer
----@field ago string
----@field tokens integer
----@field cost number
----@field current boolean
-
----@class zemi.StoredMessage
----@field id string
----@field role string
----@field text string The message's text parts joined.
----@field json string The provider wire format, as stored. Unstable: prefer `text`.
-
 ---@class zemi.session
 zemi.session = {}
 
+--- The chat's session id: the anchor row, "main".
 ---@return string id
 function zemi.session.id() end
 
----@return string title
-function zemi.session.title() end
-
----@param title string
----@return true|nil ok
+--- Rewind the chat to the log message `seq` (a user row the rewind picker
+--- lists): the messages from it on and every file changed since go back.
+---@param seq integer
+---@return integer|nil restored How many files came back.
 ---@return string|nil err
-function zemi.session.rename(title) end
+function zemi.session.rewind(seq) end
 
----@return zemi.StoredMessage[]
-function zemi.session.messages() end
-
---- Past sessions. The limit is 20 by default, at most 200.
----@param opts? { limit: integer }
----@return zemi.SessionInfo[]
-function zemi.session.list(opts) end
-
----
----@return true|nil ok
----@return string|nil err
-function zemi.session.new() end
-
----
----@param id string
----@return true|nil ok
----@return string|nil err
-function zemi.session.resume(id) end
-
----@return zemi.Todo[]
+--- The chat's todo list, as the todos tool last wrote it.
+---@return { content: string, status: string, active_form: string }[]|nil todos
 function zemi.session.todos() end
-
---- Restore the files a turn changed and cut the conversation back to the
---- message with this id.
----@param message_id string
----@return integer|nil restored
----@return string|nil err
-function zemi.session.rewind(message_id) end
 
 -- zemi.composer
 
@@ -2564,77 +2472,7 @@ function zemi.json.encode(value) end
 ---@return string|nil err
 function zemi.json.decode(s) end
 
--- zemi.memory, zemi.learn, zemi.skills
-
----@class zemi.Memory
----@field id string
----@field scope zemi.Scope
----@field origin zemi.MemoryOrigin
----@field text string
----@field quote string The user's own words a memory about them rests on; "" otherwise.
-
----@class zemi.MemoryOpts
----@field scope? zemi.Scope "project" by default; "user" holds in every project.
----@field quote? string The user's exact words from this session, at most 160 characters.
----@field replaces? string The memory this one rewrites, by its id.
-
----@class zemi.MemoryAddResult
----@field stored? boolean Written straight away under auto autonomy.
----@field id? string
----@field queued? boolean Waiting for review in /memory.
----@field reason? string Why it waits, "" when the autonomy setting alone holds it.
----@field duplicate? string Id of the live or pending memory it repeats; nothing was written.
----@field dropped? boolean The quote is not in the session's messages; nothing was written.
-
----@class zemi.memory
-zemi.memory = {}
-
---- Propose a memory of at most 300 characters. It goes through intake and
---- the autonomy gate, so it is stored or queued for review, never written
---- blindly. User config writes its own memory (origin user) and works
---- before the first message; the model's Lua tool writes a learned one.
----@param text string
----@param opts? zemi.MemoryOpts
----@return zemi.MemoryAddResult|nil res
----@return string|nil err
-function zemi.memory.add(text, opts) end
-
----@param include_superseded? boolean
----@return zemi.Memory[]|nil memories
----@return string|nil err
-function zemi.memory.list(include_superseded) end
-
---- Delete a memory by id.
----@param id string
----@return true|nil ok
----@return string|nil err
-function zemi.memory.del(id) end
-
----@class zemi.Proposal
----@field id string
----@field scope zemi.Scope
----@field origin string
----@field text string
----@field quote string
----@field forget? true Accepting deletes the stored memory this text is a copy of.
-
----@class zemi.learn
-zemi.learn = {}
-
---- Memory proposals awaiting review, the rows /memory shows.
----@return zemi.Proposal[]
-function zemi.learn.list() end
-
----@alias zemi.LearnAction
----| "accept"
----| "reject"
-
---- Decide one proposal by id.
----@param id string
----@param action zemi.LearnAction
----@return true|nil ok
----@return string|nil err
-function zemi.learn.decide(id, action) end
+-- zemi.skills
 
 ---@alias zemi.SkillSource
 ---| "user"

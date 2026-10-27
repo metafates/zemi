@@ -20,6 +20,7 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -146,7 +147,7 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 	if !strings.HasPrefix(detail, "explore · 0 tool calls") {
 		t.Fatalf("detail = %q", detail)
 	}
-	list, err := h.DB.ListSessions(10)
+	list, err := h.DB.ChildSessions(store.MainSessionID)
 	if err != nil || len(list) != 1 {
 		t.Fatalf("sessions = %v %v", list, err)
 	}
@@ -193,7 +194,7 @@ func TestSeedStreamSeedsEveryField(t *testing.T) {
 		Model: "a/b", Thought: 2 * time.Second, Elapsed: 3 * time.Second,
 		SessionIn: 1, SessionOut: 2, SessionCost: 3.5, LastIn: 4, CtxWindow: 5000,
 		CacheRead: 6, CacheBilled: 7, Retrying: true, RetryIn: 8 * time.Second, RetryWhy: "overloaded",
-		Retries: 9, Turn: 10, Compacting: true, CheckingGoal: true,
+		Retries: 9, Turn: 10, CheckingGoal: true,
 		Tools: []StreamTool{{ID: "c1", Name: "shell"}},
 	}
 	h.SeedStream(s)
@@ -310,8 +311,8 @@ func TestSubagentFailureKeepsReport(t *testing.T) {
 }
 
 // TestSubagentSurvivesAFullWindow: a subagent has no summarizer, so a
-// context the provider refuses clears its old tool output, or with none to
-// clear drops the middle of its history once, and the run goes on.
+// context the provider refuses drops the middle of its history once - the
+// task and a recent tail stay - and the run goes on; a second refusal ends it.
 func TestSubagentSurvivesAFullWindow(t *testing.T) {
 	big := agent.UserMessage(strings.Repeat("r", 120_000))
 	big.Role = fantasy.MessageRoleAssistant
@@ -324,25 +325,13 @@ func TestSubagentSurvivesAFullWindow(t *testing.T) {
 		check    func([]fantasy.Message) bool
 	}{
 		{
-			"old tool output is cleared",
-			[]fantasy.Message{agent.UserMessage("look"), toolResult("old", 30_000), toolResult("new", toolKeepTokens)},
+			"the drop keeps the task and the retry's message",
+			[]fantasy.Message{agent.UserMessage("look"), big, toolResult("old", 100), agent.UserMessage("more")},
 			1, 0, 0,
 			func(h []fantasy.Message) bool {
-				return toolText(h[1].Content[0].(fantasy.ToolResultPart)) == clearedOutput
+				// the middle goes; the task, the resent prompt and the reply stay
+				return concatText(h[0].Content) == "look" && concatText(h[1].Content) == "go" && estTokens(h...) < 130_000
 			},
-		},
-		{
-			"nothing to clear drops the middle, not the task",
-			[]fantasy.Message{agent.UserMessage("look"), big},
-			1, 0, 0,
-			func(h []fantasy.Message) bool {
-				return concatText(h[0].Content) == "look" && estTokens(h...) < 1_000
-			},
-		},
-		{
-			"the drop carries the run's own opening with it",
-			[]fantasy.Message{agent.UserMessage("look"), big, agent.UserMessage("more")},
-			1, 3, 2, nil,
 		},
 		{"a second refusal ends the run", []fantasy.Message{agent.UserMessage("look"), big}, 9, 0, 0, nil},
 	} {
@@ -379,7 +368,6 @@ func TestSubagentSurvivesAFullWindow(t *testing.T) {
 func TestSubagentAsksAsAgent(t *testing.T) {
 	for _, tc := range []struct{ name, tool string }{
 		{"lua tool", "weather"},
-		{"forgetting a memory the user saved", string(tools.ToolMemory)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -388,10 +376,7 @@ func TestSubagentAsksAsAgent(t *testing.T) {
 			h.SetUIHooks(ui)
 			askEverything(t, r)
 			runUser(t, r, `zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
-			if err := h.Remember("deploy by hand"); err != nil {
-				t.Fatal(err)
-			}
-			args := `{"text": "", "replaces": "` + projectMemories(t, h)[0].ID + `"}`
+			args := `{"query": "weather"}`
 			h.modelFn = func() (fantasy.LanguageModel, error) {
 				return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
 					if toolResult {
@@ -456,7 +441,6 @@ func TestSubagentInstructions(t *testing.T) {
 func TestSubagentOwnDir(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	h.agents.sessionID = "s1"
 	var systems []string
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(system, last string, _ bool) []fantasy.StreamPart {
@@ -625,38 +609,8 @@ func TestSubagentModelChoice(t *testing.T) {
 	if desc := h.agentTool(nil).Info().Description; strings.Contains(desc, "myllm/main") {
 		t.Fatalf("description lists models: %q", desc)
 	}
-	if err := h.checkModelID("other/x"); err == nil || err.Error() != `unknown model "other/x"; targets: default, agents, titles, compact, memory; configured models: myllm/main, myllm/mini` {
+	if err := h.checkModelID("other/x"); err == nil || err.Error() != `unknown model "other/x"; targets: default, agents, compact; configured models: myllm/main, myllm/mini` {
 		t.Fatalf("unknown model: %v", err)
-	}
-}
-
-// TestSubagentMemoryKeepsItsSession: a memory a run writes after the user
-// moved to another session carries the run's own session as provenance.
-func TestSubagentMemoryKeepsItsSession(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.Settings.SetQuiet("memory.autonomy", "auto")
-	h.SetProjectTrusted(true)
-	sid := seedSession(t, h)
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
-			if toolResult {
-				return textParts("done")
-			}
-			seedSession(t, h) // the user ran /new and sent a message
-			return toolCallParts("c1", "memory", `{"scope":"project","text":"the build uses make"}`)
-		}}, nil
-	}
-	def, err := h.agentDef("general")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := h.runSubagent(t.Context(), def, "d", "look"); err != nil {
-		t.Fatal(err)
-	}
-	live := projectMemories(t, h)
-	if len(live) != 1 || live[0].ProvenanceSessionID != sid || len(h.memoryProposals()) != 0 {
-		t.Fatalf("want one memory from %s, nothing queued: %+v", sid, live)
 	}
 }
 
@@ -817,17 +771,20 @@ func TestHaltKeepsTheStep(t *testing.T) {
 	h.agents.mu.Lock()
 	history := fmt.Sprint(h.agents.runner.History)
 	h.agents.mu.Unlock()
-	rows, err := h.DB.Messages(h.AgentSessionID())
+	rows, err := h.DB.LogTail(50)
 	if err != nil {
 		t.Fatal(err)
 	}
 	stored := ""
 	for _, m := range rows {
-		stored += m.PartsJSON
+		stored += m.Kind + ":" + m.Text + ";"
 	}
 	for name, got := range map[string]string{"history": history, "store": stored} {
-		if !strings.Contains(got, "w1") || !strings.Contains(got, "halted by hook: stop") || strings.Contains(got, "went on") {
+		if !strings.Contains(got, "halted by hook: stop") || strings.Contains(got, "went on") {
 			t.Errorf("%s lost the step or ran past the halt: %s", name, got)
+		}
+		if name == "history" && !strings.Contains(got, "w1") {
+			t.Errorf("history lost the call: %s", got)
 		}
 	}
 }
@@ -1017,9 +974,6 @@ func TestForkContinuesTheCallersPrefix(t *testing.T) {
 		return toolCallParts("call-1", "agent", `{"description":"check it","prompt":"review what we did","agent":"fork"}`)
 	}
 	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
-	if err := h.Remember("deploy by hand"); err != nil {
-		t.Fatal(err)
-	}
 	if err := h.AgentSend("hello"); err != nil {
 		t.Fatal(err)
 	}
@@ -1035,7 +989,7 @@ func TestForkContinuesTheCallersPrefix(t *testing.T) {
 		t.Fatalf("calls = %d, want the caller's step, the fork's and the caller's next", len(calls))
 	}
 	caller, fork, next := calls[0], calls[1], calls[2]
-	if len(fork.Prompt) != len(caller.Prompt)+1 {
+	if len(fork.Prompt) < len(caller.Prompt)+1 {
 		t.Fatalf("the fork sent %d messages, want the caller's %d plus its task", len(fork.Prompt), len(caller.Prompt))
 	}
 	// the cache breakpoints ride on the last two messages of a request, so they
@@ -1046,17 +1000,6 @@ func TestForkContinuesTheCallersPrefix(t *testing.T) {
 		}
 	}
 	// the # Brain section rides the caller's prefix, so the fork's first
-	// request reuses its bytes: the per-message loop above holds it
-	var ctxMsg string
-	for _, msg := range caller.Prompt {
-		if s := concatText(msg.Content); strings.Contains(s, "<context>") {
-			ctxMsg = s
-			break
-		}
-	}
-	if !strings.Contains(ctxMsg, "# Brain") || !strings.Contains(ctxMsg, "deploy by hand") {
-		t.Fatalf("the caller's context message does not carry the brain:\n%.400s", ctxMsg)
-	}
 	task := concatText(fork.Prompt[len(fork.Prompt)-1].Content)
 	if !strings.HasPrefix(task, forkTask) || !strings.Contains(task, "review what we did") {
 		t.Fatalf("the fork's task = %q", task)

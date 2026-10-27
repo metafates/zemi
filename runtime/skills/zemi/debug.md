@@ -38,7 +38,7 @@
    grep -n 'ERROR\|WARN\|panic' ~/.local/state/zemi/logs/<file>.log
    ```
 
-   Each line is `time=... level=WARN msg=... origin=... key=value...`, a value with spaces or escapes quoted and a `zemi.log` field as `ctx.<key>=`. Origins worth grepping: `agent`, `reflector`, `memory`, `skills`, `trust`, `events`, `panic`, `ui`, `boot`, `mcp`, `lsp`, `rewind`, `tools`, `commands`, `workflows`, and a Lua `zemi.log` line's `user`, `plugin` or `project`. A recovered panic logs its full stack under `origin=panic`.
+   Each line is `time=... level=WARN msg=... origin=... key=value...`, a value with spaces or escapes quoted and a `zemi.log` field as `ctx.<key>=`. Origins worth grepping: `agent`, `skills`, `trust`, `events`, `panic`, `ui`, `boot`, `mcp`, `lsp`, `rewind`, `tools`, `commands`, `workflows`, and a Lua `zemi.log` line's `user`, `plugin` or `project`. A recovered panic logs its full stack under `origin=panic`.
 7. A trail that leads into zemi's Go code or a dependency reads the source where it already is: `go env GOMODCACHE` names the module cache, no network fetch.
 
 ## Common failures
@@ -53,7 +53,6 @@
 | "Images left out" toast, "`<model>` takes no images; vision = false on its model entry skips this" | the provider refused image input; set `vision = false` on the model entry, or pick a multimodal model for screenshots |
 | context percent missing, no auto compaction | the model has no `context_window` (`/health` context row); add it to the model entry |
 | project `.agents/` config, AGENTS.md or language servers ignored | the project is not trusted (`/health` trust row); `/trust` shows the prompt again. Decisions live in `~/.local/state/zemi/trust.json` by repository root (`/projects` lists them and forgets one); a linked worktree uses its main checkout's |
-| reflector never proposes | `/health` reflector row; it runs on `/new`, `/resume`, after ten minutes with no turn in an open zemi and at start for one session idle that long, once one has two new user messages and a tool call or a failed call; `/reflect` runs it now |
 | `module "x" not found on runtimepath` from a plugin | the module is not at `<plugin x>/.zemi/lua/x.lua` or `.zemi/lua/x/init.lua` (a plugin answers only requires under its own name, so plugin `zemi-branch` cannot answer `require("branch")`), or plugin x is disabled or failed to load; plugins are listed once per boot, and a new one reloads within a second |
 | `module "..." at ... is outside plugin <name>` | a relative require or a symlink left the plugin's own directory, or reached a disabled plugin |
 | `plugin code running with no file of its plugin on the stack has no principal` | user code called a function a plugin handed out that is not the plugin's own file (a user module it required, a `load` chunk); call it through the plugin's own code |

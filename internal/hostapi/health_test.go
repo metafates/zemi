@@ -2,9 +2,6 @@ package hostapi
 
 import (
 	"context"
-	"errors"
-	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -12,7 +9,6 @@ import (
 	"time"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/lua"
 )
 
@@ -97,7 +93,6 @@ func TestHealthActionCoversRuns(t *testing.T) {
 func TestHealthChecks(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	h.agents.reflectErr = errors.New("boom")
 	runUser(t, h.RT, `
 		zemi.ui.widget.add({ id = "lost", region = "nowhere", render = function() return {} end })
 		zemi.ui.widget.add({ id = "bye", region = "exit", render = function() return {} end })`)
@@ -110,7 +105,7 @@ func TestHealthChecks(t *testing.T) {
 		t.Errorf("layout row %q", d)
 	}
 	for name, level := range map[string]string{
-		"store": "ok", "model": "error", "reflector": "error", "learning": "ok", "skills": "ok", "lua": "ok", "mcp": "ok", "layout": "warn",
+		"store": "ok", "model": "error", "skills": "ok", "lua": "ok", "mcp": "ok", "layout": "warn",
 	} {
 		if string(got[name].Level) != level {
 			t.Errorf("%s = %+v, want level %s", name, got[name], level)
@@ -125,31 +120,6 @@ func TestHealthChecks(t *testing.T) {
 		if item.Text == "store" && item.Detail != "" {
 			t.Fatalf("a fine short row opens a detail view: %+v", item)
 		}
-	}
-}
-
-// TestHealthBrainRow: malformed memories.md lines make the brain row warn
-// with a finding count, & action opens /memory.
-func TestHealthBrainRow(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.SetProjectTrusted(true)
-	_, private := h.brainParts()
-	if err := os.MkdirAll(private.Dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(private.Dir, brain.MemFile),
-		[]byte("not a memory line\n- [abcd2345 learned 2026-10-05] tabs over spaces\nalso not a memory line\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	rows := map[string]HealthRow{}
-	for _, r := range h.HealthRows() {
-		rows[r.Name] = r
-	}
-	row := rows["brain"]
-	if row.Level != HealthWarn || row.Run != "memory" ||
-		!strings.Contains(row.Detail, " findings; 1 learned, 0 yours") {
-		t.Fatalf("brain row = %+v", row)
 	}
 }
 
@@ -186,11 +156,10 @@ func TestHealthModelRows(t *testing.T) {
 		{"builtin without key", "model", `zemi.config.set("models.default", "openai/gpt-5")`, openai, "error", `builtin provider "openai" needs its key: export OPENAI_API_KEY and start zemi again`},
 		{"empty key", "model", `zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "m" } } })`, openai, "error", "a: api_key is empty in "},
 		{"unlisted model", "model", anthropic + `zemi.config.set("models.default", "a/other")`, openai, "warn", "a/other: not in the provider's models list"},
-		{"a role's row is named after it", "titles model", anthropic + `zemi.config.set("models.titles", "nobody/m")`, openai, "error", `provider "nobody" is not registered: add a provider to `},
+		{"a role's row is named after it", "compact model", anthropic + `zemi.config.set("models.compact", "nobody/m")`, openai, "error", `provider "nobody" is not registered: add a provider to `},
 		{"the conversation pick", "model", chat, nil, "ok", "a/m"},
 		{"the conversation's and the agents' windows", "context", chat, nil, "warn", "window unknown for a/m: no context percent, no auto compaction; b/m: subagents"},
-		{"titles and memory read no window", "context", ab + `zemi.config.set("models.titles", "b/m") zemi.config.set("models.memory", "b/m")`, nil, "ok", ""},
-		{"compact falls back to the chat window", "context", ab + `zemi.config.set("models.compact", "b/m")`, nil, "ok", ""},
+		{"a role reads no window", "context", ab + `zemi.config.set("models.compact", "b/m")`, nil, "ok", ""},
 		{"agents read one", "context", ab + `zemi.config.set("models.agents", "b/m")`, nil, "warn", ""},
 	} {
 		h, r := newTestHostDB(t)

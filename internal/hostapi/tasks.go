@@ -418,7 +418,7 @@ func (r *taskReg) find(id string) *agentRun {
 func (h *Host) newRun(ctx context.Context, def AgentDef, description, prompt string, background bool) (*agentRun, context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	return &agentRun{
-		id: store.ShortID(), agent: def.Name, description: description, parent: h.AgentSessionID(), model: def.Model,
+		id: store.ShortID(), agent: def.Name, description: description, parent: store.MainSessionID, model: def.Model,
 		background: background, started: time.Now(), cancel: cancel, status: RunRunning,
 		tr: []ChatMessage{{Role: fantasy.MessageRoleUser, Text: prompt}}, rows: map[string]int{},
 	}, ctx
@@ -542,7 +542,7 @@ func (run *agentRun) view(base StreamSnapshot) (RunStatus, []ChatMessage, Stream
 	if !run.retryAt.IsZero() {
 		base.Retrying, base.RetryIn, base.RetryWhy = true, max(time.Until(run.retryAt), 0), run.retryWhy
 	}
-	base.Compacting, base.CheckingGoal = false, false
+	base.CheckingGoal = false
 	return run.status, run.transcriptLocked(), base, run.rev
 }
 
@@ -1017,7 +1017,6 @@ var attachedTag = `(?:\A|` + regexp.QuoteMeta(agent.AttachMarker) + `)\n<`
 
 var (
 	reportAttrs = regexp.MustCompile(attachedTag + reportTag)
-	reportBody  = regexp.MustCompile(`(?s)` + attachedTag + reportTag + `>\n(.*?)\n</agent-report>`)
 	// a zemi.agent.send from a plugin, with its first line that has something in
 	// it: an element whose text opens with blank lines has no line to name it by
 	pluginSent = regexp.MustCompile(attachedTag + `(plugin:[^>\s]+)>\n(?s:(.*?))\n</`)
@@ -1025,16 +1024,6 @@ var (
 	// a running agent's own line, with its first
 	updateSent = regexp.MustCompile(attachedTag + `agent-update run="([^"]*)" agent="([^"]*)">\n(?s:(.*?))\n</`)
 )
-
-// notifyReports tells the user of the queued reports a closing session drops.
-func (h *Host) notifyReports(queued []string) {
-	for _, m := range queued {
-		for _, g := range reportBody.FindAllStringSubmatch(m, -1) {
-			desc, _ := strconv.Unquote(g[4])
-			h.notifyReport(report{id: g[1], agent: g[2], status: reportStatus(g[3]), description: desc, body: g[5]})
-		}
-	}
-}
 
 // notice is a notice row built from the message behind agent.AttachMarker:
 // the line the user reads, the status of the run it names, so a failed
@@ -1212,7 +1201,7 @@ func storedStatus(s string) RunStatus {
 // loadRun rebuilds a finished run from its child session.
 func (h *Host) loadRun(id string) (*agentRun, error) {
 	if h.DB == nil {
-		return nil, errNoStore
+		return nil, Usagef("no agent run %q: the store is unavailable", id)
 	}
 	sess, err := h.DB.GetSession(id)
 	if err != nil || sess.ParentID == "" {

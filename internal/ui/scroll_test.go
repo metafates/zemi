@@ -310,7 +310,11 @@ func TestChatScrollFollows(t *testing.T) {
 			app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			return nil
 		},
-		"new session": func(_ *App, host *hostapi.Host) error { return host.NewSession() },
+		"rewind": func(_ *App, host *hostapi.Host) error {
+			// a rewind replaces the window, which re-opens at the tail
+			host.SetTranscript(nil)
+			return nil
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

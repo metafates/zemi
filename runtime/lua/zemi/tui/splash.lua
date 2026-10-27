@@ -98,7 +98,7 @@ local function tip(ctx, listed)
 	elseif ctx.projects then
 		return { key("/projects", "projects"), dim(" switches to one, or type to stay here") }
 	end
-	return { key("/resume", "resume"), dim(" picks up the latest session") }
+	return { key(TIP[1], TIP[2]), dim(TIP[3]) }
 end
 
 --- The row the block ends with: the pending row the chat yields to the
@@ -132,8 +132,8 @@ function M.render(ctx)
 	local fit = ctx.height or 0
 	local room = math.max(math.min(width - 4, 72), 1)
 	-- where zemi is rarely the pick (~, /, a new dir outside a repository) Go
-	-- sets projects to switch to, which take the recent sessions' place
-	local recent = ctx.projects or ctx.recent or {}
+	-- sets projects to switch to
+	local recent = ctx.projects or {}
 	local tips = flow(tip(ctx, #recent > 0), room, 7)
 	table.insert(tips[1], 1, { text = "● Tip  ", hl = "Accent", copy = false })
 	local last = lastRow(ctx, room)
@@ -168,9 +168,9 @@ function M.render(ctx)
 		local rows = {}
 		for _, r in ipairs(recent) do
 			local ago = zemi.ui.width(r.ago)
-			local label = ctx.projects and tail(r.path, w - ago - 2) or r.title
+			local label = tail(r.path, w - ago - 2)
 			label = fmt.clip(label, w - ago - 2)
-			local click = ctx.projects and ("projects switch " .. r.root) or ("resume " .. r.id)
+			local click = "projects switch " .. r.root
 			rows[#rows + 1] = {
 				{ text = label, hl = "Normal", click = click },
 				{ text = string.rep(" ", w - zemi.ui.width(label) - ago), copy = false },

@@ -3,12 +3,12 @@ package hostapi
 import (
 	"cmp"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
@@ -33,7 +33,9 @@ func flowFields(f *flowRun, v flowView) []string {
 	}
 	script := ""
 	if f.script != "" {
-		script = perm.TildePath(f.script)
+		// the file the `o` key and a rerun open: its directory is the run's
+		// pad, which every row here already implies, so the name alone fits
+		script = filepath.Base(f.script)
 	}
 	fields := []string{
 		"status", flowWord(v), "agents", fmt.Sprintf("%d/%d done · %d running · %d at once", v.done, len(v.agents), v.running, v.limit),

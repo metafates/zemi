@@ -167,8 +167,15 @@ func askEverything(t *testing.T, r *lua.Runtime) {
 // error after 10s: parallel hosts on a loaded machine stretch every
 // transition past a shorter deadline.
 func waitFor(t *testing.T, cond func() error) {
+	waitForWithin(t, 10*time.Second, cond)
+}
+
+// waitForWithin waits for cond past d: a test whose work is O(hundreds) of
+// stubbed calls under -race raises the deadline instead of failing a loaded
+// machine.
+func waitForWithin(t *testing.T, d time.Duration, cond func() error) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(d)
 	for {
 		err := cond()
 		if err == nil {
@@ -188,7 +195,7 @@ func TestNamespaceVersion(t *testing.T) {
 	t.Parallel()
 	_, r := newTestHost(t)
 	runUser(t, r, `
-		assert(zemi.api.version == "0.142.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.143.0", "version=" .. tostring(zemi.api.version))
 		assert(not pcall(function() return zemi.test end), "zemi.test outside zemi plugin test")
 		assert(zemi.project.trusted() == false and zemi.project.root() ~= "", "zemi.project")
 		assert(zemi.ui.width("日本") == 4, "zemi.ui.width counts cells")
@@ -494,7 +501,6 @@ func TestRenderAllowlist(t *testing.T) {
 		{`zemi.config.get("ui.mouse")`, ""},
 		{`zemi.perm.ask({ subject = "fs.write" })`, "perm.ask"},
 		{`zemi.agent.run({ prompt = "x" })`, "agent.run"},
-		{`zemi.memory.add("x")`, "memory.add"},
 		{`zemi.skills.enable("x")`, "skills.enable"},
 		{`zemi.config.watch("ui.mouse", function() end)`, "config.watch"},
 		{`zemi.ui.scroll("bottom")`, "ui.scroll"},
@@ -590,8 +596,8 @@ func TestEmitVetoable(t *testing.T) {
 func TestConfigSetAnyOrigin(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
-	if err := r.ExecuteChunk(t.Context(), `zemi.config.set("memory.autonomy", "auto")`, "p.lua", lua.OriginProject); err != nil {
-		t.Fatalf("project config set memory.autonomy: %v", err)
+	if err := r.ExecuteChunk(t.Context(), `zemi.config.set("agent.effort", "low")`, "p.lua", lua.OriginProject); err != nil {
+		t.Fatalf("project config set agent.effort: %v", err)
 	}
 	runUser(t, r, `zemi.config.set("ui.notify", false)`)
 	if v, _ := h.Settings.Get("ui.notify"); v != config.NotifyAuto {
@@ -600,11 +606,7 @@ func TestConfigSetAnyOrigin(t *testing.T) {
 	if !h.Recorded(`config key ui.notify expects auto, osc, native, bell or off`) {
 		t.Error("the refused value is not flagged in /errors")
 	}
-	runUser(t, r, `
-		zemi.config.set("memory.autonomy", "auto")
-
-		zemi.config.set("agent.max_background", 42)
-	`)
+	runUser(t, r, `zemi.config.set("agent.max_background", 42)`)
 	if v, ok := h.Settings.Get("agent.max_background"); !ok || v != 42.0 {
 		t.Fatalf("agent.max_background = %v, want 42", v)
 	}
@@ -676,10 +678,8 @@ func TestConfigSet(t *testing.T) {
 	}{
 		{"agent.effort", "high", "default", `""`, ""},
 		{"agent.effort", "high", "turbo", `"high"`, `config key agent.effort expects low, medium, high or default, not "turbo"`},
-		{"agent.compact_at", 80.0, "60", "60", ""},
-		{"agent.compact_at", 80.0, "84.5", "84.5", ""},
-		{"agent.compact_at", 80.0, "abc", "80", "agent.compact_at is a number"},
-		{"agent.compact_at", 80.0, "NaN", "80", "config key agent.compact_at expects number"},
+		{"agent.max_background", 4.0, "2", "2", ""},
+		{"agent.max_background", 4.0, "many", "4", "agent.max_background is a number"},
 	} {
 		key := config.Key(c.path)
 		h.Settings.SetQuiet(key, c.from)
@@ -692,7 +692,7 @@ func TestConfigSet(t *testing.T) {
 	}
 	// every other row changes on a screen of its own, which /config edit is
 	// unless the key has a picker
-	for path, section := range map[string]string{"editor.command": "editor", "ui.theme": "ui", "models.titles": "models"} {
+	for path, section := range map[string]string{"editor.command": "editor", "ui.theme": "ui", "models.compact": "models"} {
 		items := h.configItems(section)
 		row := items[slices.IndexFunc(items, func(it OverlayItem) bool { return it.Text == path })]
 		if act := row.Keys[0]; act.Run != configPicker(config.Key(path)) || act.Desc != "change" {
@@ -705,11 +705,11 @@ func TestConfigSet(t *testing.T) {
 	if root < 0 || sections[root].Run != "config session" || sections[root].Verb != VerbOpen {
 		t.Fatalf("the session row = %+v, want open running config session", sections[root])
 	}
-	if sections[root].Desc == "" || sections[root].Preview != "auto_title, recap" {
+	if sections[root].Desc == "" || sections[root].Preview != "recap" {
 		t.Errorf("the session row reads %q, %q; want a description over its keys", sections[root].Desc, sections[root].Preview)
 	}
-	if n := len(h.configItems("session")); n != 2 {
-		t.Errorf("the session section holds %d keys, want auto_title and recap", n)
+	if n := len(h.configItems("session")); n != 1 {
+		t.Errorf("the session section holds %d keys, want recap", n)
 	}
 	if !h.configSection("models") || h.configSection("set") {
 		t.Error("configSection matches a schema segment only")
@@ -719,7 +719,6 @@ func TestConfigSet(t *testing.T) {
 		path, want string
 	}{
 		{"session.recap", "default 3m"},
-		{"agent.compact_idle", "empty = off"},
 		{"agent.max_background", "default 4"},
 		{"editor.command", ""},
 	} {
@@ -812,8 +811,7 @@ func TestConfigWatchNoDeadlock(t *testing.T) {
 
 // TestLoadPicksDropsDeadKeys: a kept pick for a key nothing registers any
 // more is deleted from the store once, instead of warning at every boot; a
-// plugin- or model-shaped unknown pick may still register this boot, and a
-// bad value on a known key stays for its fix.
+// plugin- or model-shaped unknown pick may still register this boot.
 func TestLoadPicksDropsDeadKeys(t *testing.T) {
 	t.Parallel()
 	var file bytes.Buffer
@@ -823,7 +821,6 @@ func TestLoadPicksDropsDeadKeys(t *testing.T) {
 		{"config:agent.max_steps", "500"},
 		{"config:plugins.plug.thing", "1"},
 		{"config:models.gpt9", `"big"`},
-		{"config:agent.compact_at", `"whenever"`},
 	} {
 		if err := h.GlobalDB.SetKV(kv[0], kv[1]); err != nil {
 			t.Fatal(err)
@@ -839,18 +836,9 @@ func TestLoadPicksDropsDeadKeys(t *testing.T) {
 	if v, ok := h.picked["models.gpt9"]; !ok || v != "big" {
 		t.Errorf("model pick: %v, %v", v, ok)
 	}
-	if v, _ := h.Settings.Get("agent.compact_at"); v != 80.0 {
-		t.Errorf("the bad value was set: %v", v)
-	}
-	if _, err := h.GlobalDB.GetKV("config:agent.compact_at"); err != nil {
-		t.Error("the bad-value row was deleted")
-	}
 	logs := file.String()
 	if n := strings.Count(logs, "dropped dead pick"); n != 1 {
 		t.Errorf("dropped dead pick logged %d times, want 1", n)
-	}
-	if n := strings.Count(logs, "kept pick left out"); n != 1 {
-		t.Errorf("kept pick left out logged %d times, want 1", n)
 	}
 }
 
@@ -925,9 +913,6 @@ func TestEventLogFromLua(t *testing.T) {
 func TestStoresByScope(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	if h.memoryDB("user") != h.GlobalDB || h.memoryDB("project") != h.DB {
-		t.Fatal("memory scope maps to the wrong store")
-	}
 	if err := h.DB.CreateSession("s1", "", "t", ""); err != nil {
 		t.Fatal(err)
 	}

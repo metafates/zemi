@@ -25,7 +25,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
@@ -289,9 +288,9 @@ func (h *Host) recipeAfterWrite(path string) string {
 		return ""
 	}
 	note := "\n\nrecipe: "
-	clean := learn.ScrubShapes(sanitize.String(string(data)))
+	clean := sanitize.ScrubShapes(sanitize.String(string(data)))
 	switch {
-	case learn.IsOneBlob(clean):
+	case sanitize.IsOneBlob(clean):
 		os.Remove(path)
 		return note + "removed, it was mostly secret material"
 	case clean != string(data):

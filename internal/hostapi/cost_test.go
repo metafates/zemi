@@ -69,7 +69,6 @@ func TestAgentFinishUsage(t *testing.T) {
 func TestUsageCountsCache(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	sid := seedSession(t, h)
 	run, _ := h.newRun(t.Context(), builtinAgents[0], "d", "p", false)
 	u := fantasy.Usage{InputTokens: 1, CacheReadTokens: 10, CacheCreationTokens: 100, OutputTokens: 5}
 	h.streamHooks().StreamDone(u)
@@ -77,24 +76,10 @@ func TestUsageCountsCache(t *testing.T) {
 	if got := h.AgentStream().SessionIn; got != 222 {
 		t.Errorf("live input tally = %d, want 222", got)
 	}
-	if sess, err := h.DB.GetSession(store.MainSessionID); err != nil || sess.PromptTokens != 111 {
-		t.Errorf("anchor row usage = %+v, %v; want 111", sess, err)
-	}
-	if sess, err := h.DB.GetSession(sid); err != nil || sess.PromptTokens != 111 {
-		t.Errorf("session row usage = %+v, %v; want 111", sess, err)
-	}
-	if err := h.NewSession(); err != nil {
-		t.Fatal(err)
-	}
-	if s := h.AgentStream(); s.CacheRead != 0 || s.CacheBilled != 0 {
-		t.Errorf("cache share after /new = %d/%d, want 0/0", s.CacheRead, s.CacheBilled)
-	}
-	// a resume restores the session's tally, the cache share included
-	if err := h.ResumeSession(sid); err != nil {
-		t.Fatal(err)
-	}
-	if s := h.AgentStream(); s.SessionIn != 111 || s.CacheRead != 10 || s.CacheBilled != 111 {
-		t.Errorf("resumed tally = in %d, cache %d/%d; want 111 and 10/111", s.SessionIn, s.CacheRead, s.CacheBilled)
+	// the run bills its parent, the "main" anchor row the conversation also
+	// rides: one row now holds both
+	if sess, err := h.DB.GetSession(store.MainSessionID); err != nil || sess.PromptTokens != 222 {
+		t.Errorf("anchor row usage = %+v, %v; want 222", sess, err)
 	}
 }
 
@@ -122,9 +107,6 @@ func TestStreamBillsLiveTally(t *testing.T) {
 	if sess, err := h.DB.GetSession(store.MainSessionID); err != nil || sess.PromptTokens != 13 {
 		t.Fatalf("anchor row usage = %+v, %v; want 13", sess, err)
 	}
-	if sess, err := h.DB.GetSession(h.AgentSessionID()); err != nil || sess.PromptTokens != 0 {
-		t.Fatalf("the live session row took the conversation's usage: %+v, %v", sess, err)
-	}
 }
 
 // streamOnly answers every call with a stream; its Generate fails.
@@ -141,7 +123,7 @@ func TestGenerateStreams(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.modelFn = func() (fantasy.LanguageModel, error) { return streamOnly{}, nil }
 	maxOut := int64(128_000)
-	res, err := h.generate(t.Context(), "", titleSystem, "hi", &maxOut, nil, "titles")
+	res, err := h.generate(t.Context(), store.MainSessionID, "Name the conversation:", "hi", &maxOut, nil, "titles")
 	if err != nil || res.Response.Content.Text() != "a title" {
 		t.Fatalf("generate = %+v, %v", res, err)
 	}

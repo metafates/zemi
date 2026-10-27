@@ -284,7 +284,7 @@ func TestClassifyGate(t *testing.T) {
 	if !pickerHas(ui.opened[0].Items, "jev/m") {
 		t.Error("a classifier slot is not offered the decisions model")
 	}
-	if err := h.OpenModelPicker("titles"); err != nil {
+	if err := h.OpenModelPicker("default"); err != nil {
 		t.Fatal(err)
 	}
 	if pickerHas(ui.opened[1].Items, "jev/m") {
@@ -304,11 +304,11 @@ func TestClassifyGate(t *testing.T) {
 	if id := h.roleModel("clf"); id != "jev/m" {
 		t.Errorf("the classifier slot runs on %q", id)
 	}
-	if err := h.SetModel("titles jev/m"); err == nil || !strings.Contains(err.Error(), "is a decisions model") {
-		t.Errorf("/model titles jev/m: err %v, want a refusal", err)
+	if err := h.SetModel("default jev/m"); err == nil || !strings.Contains(err.Error(), "is a decisions model") {
+		t.Errorf("/model default jev/m: err %v, want a refusal", err)
 	}
-	if got := h.Settings.Str("models.titles"); got != "" {
-		t.Errorf("models.titles = %q after a refused pick", got)
+	if got := h.Settings.Str("models.compact"); got != "" {
+		t.Errorf("models.compact = %q after a refused pick", got)
 	}
 
 	// the gate: a plugin's declared call settles with no rule (its manifest's

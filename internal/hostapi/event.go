@@ -16,9 +16,6 @@ const (
 	EventAppReady            = "app.ready"
 	EventAppQuit             = "app.quit"
 	EventConfigReloaded      = "config.reloaded"
-	EventSessionNew          = "session.new"
-	EventSessionOpen         = "session.open"
-	EventSessionClose        = "session.close"
 	EventAgentStart          = "agent.start"
 	EventAgentFinish         = "agent.finish"
 	EventAgentError          = "agent.error"
@@ -36,9 +33,6 @@ const (
 	EventUIResize            = "ui.resize"
 	EventComposerChange      = "composer.change"
 	EventComposerSubmit      = "composer.submit"
-	EventMemoryWritten       = "memory.written"
-	EventReflectorStart      = "reflector.start"
-	EventReflectorDone       = "reflector.done"
 	EventJobExit             = "job.exit"
 	EventLSPRequest          = "lsp.request"
 )
@@ -47,15 +41,12 @@ const (
 // these or to `user.*` names; host-owned prefixes cannot be emitted.
 var eventCatalogue = set.Of(
 	EventAppReady, EventAppQuit, EventConfigReloaded,
-	EventSessionNew, EventSessionOpen, EventSessionClose,
 	EventAgentStart, EventAgentFinish, EventAgentError,
 	EventAgentAssemble, EventAgentSubagentStart, EventAgentSubagentFinish,
 	EventAgentTextDelta, EventAgentReasoningDelta, EventAgentStep,
 	EventToolPre, EventToolPost, EventToolDenied,
 	EventPermissionRequest, EventPermissionResolved,
 	EventUIResize, EventComposerChange, EventComposerSubmit,
-	EventMemoryWritten,
-	EventReflectorStart, EventReflectorDone,
 	EventJobExit,
 	EventLSPRequest,
 )

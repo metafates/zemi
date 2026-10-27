@@ -34,22 +34,21 @@ func TestWidgetRows(t *testing.T) {
 }
 
 // TestRelaunch: a relaunch the quit veto stopped leaves no dir for the next
-// /quit to restart in, and one past it names its dir and the session to
-// resume there.
+// /quit to restart in, and one past it names its dir.
 func TestRelaunch(t *testing.T) {
 	for _, c := range []struct {
-		name, veto, want, wantResume string
+		name, veto, want string
 	}{
-		{"a vetoed relaunch", `return { decision = "deny", reason = "busy" }`, "", ""},
-		{"a relaunch past the veto", `return nil`, "/tmp/other", "s1"},
+		{"a vetoed relaunch", `return { decision = "deny", reason = "busy" }`, ""},
+		{"a relaunch past the veto", `return nil`, "/tmp/other"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			app, _ := bootAgentApp(t, 80, 20)
 			runLua(t, app, `zemi.event.on("app.quit", function() `+c.veto+` end)`)
-			app.Relaunch("/tmp/other", "s1")
-			if dir, resume := app.RelaunchDir(); dir != c.want || resume != c.wantResume {
-				t.Fatalf("RelaunchDir = %q, %q, want %q, %q", dir, resume, c.want, c.wantResume)
+			app.Relaunch("/tmp/other", "")
+			if dir, _ := app.RelaunchDir(); dir != c.want {
+				t.Fatalf("RelaunchDir = %q, want %q", dir, c.want)
 			}
 		})
 	}

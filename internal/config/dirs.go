@@ -133,12 +133,10 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 -- zemi.config.set("providers.builtin", false)   -- or all of them
 
 -- Model roles: default runs the conversation and every role left unset; agents
--- (subagents), titles, compact (summaries) and memory (the reflector) each
--- take their own. Unset, default is the default model of the first provider
--- you add here, else of the first builtin one with a key. /model roles sets
--- them too.
+-- (subagents) and compact (the summary tree's builder) each take their own.
+-- Unset, default is the default model of the first provider you add here, else
+-- of the first builtin one with a key. /model roles sets them too.
 -- zemi.config.set("models.default", "anthropic/claude-sonnet-4-6")
--- zemi.config.set("models.titles", "anthropic/claude-haiku-4-5-20251001")
 
 -- Settings: zemi.config.schema() lists every one with its default.
 -- /config lists every setting; a pick there lasts across restarts unless a

@@ -980,8 +980,6 @@ func permTitle(req hostapi.PermRequest) string {
 		return "Run this workflow?"
 	case req.Subject == "tool."+req.Tool:
 		return "Use the " + req.Tool + " tool?"
-	case req.Subject == perm.SubjectMemory:
-		return "Forget this memory?"
 	}
 	return "Allow " + req.Subject + "?"
 }
@@ -1037,7 +1035,7 @@ func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment
 		return "file", parts(arg)
 	case req.Subject == perm.SubjectWorkflow && arg != "script":
 		return "workflow", []hostapi.Segment{{Text: arg, HL: hostapi.ChromeValue}}
-	case strings.HasPrefix(req.Subject, "mcp."), req.Subject == "tool."+req.Tool, req.Subject == perm.SubjectMemory, arg == "script":
+	case strings.HasPrefix(req.Subject, "mcp."), req.Subject == "tool."+req.Tool, arg == "script":
 		return "", nil
 	}
 	return "arg", parts(req.Arg)

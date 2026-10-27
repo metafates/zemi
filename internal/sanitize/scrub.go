@@ -1,13 +1,12 @@
-// scrub.go redacts secret-shaped spans at intake (DESIGN §10.4): known key
-// shapes, key=value assignments and spans above an entropy threshold are
-// replaced with a "[redacted n chars]" marker. Text that is one secret
-// blob after scrubbing is refused, not stored.
+// scrub.go redacts secret-shaped spans before untrusted text is stored or
+// shown: known key shapes, key=value assignments and URL passwords are
+// replaced with a "[redacted n chars]" marker. Text that is one secret blob
+// after scrubbing carries nothing worth keeping.
 
-package learn
+package sanitize
 
 import (
 	"fmt"
-	"math"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -20,8 +19,8 @@ var keyShapes = []*regexp.Regexp{
 	regexp.MustCompile(`\bxox[abprs]-[A-Za-z0-9-]{10,}\b`),
 	regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}\b`),
 	regexp.MustCompile(`\b[0-9a-fA-F]{32,}\b`),
-	// no '/': long paths match otherwise; base64 with slashes falls to the
-	// entropy pass. No '=': a long NAME=value is no key
+	// no '/': long paths match otherwise; base64 with slashes is not a key
+	// shape here. No '=': a long NAME=value is no key
 	regexp.MustCompile(`\b[A-Za-z0-9+_-]{40,}\b`),
 }
 
@@ -42,33 +41,11 @@ func reference(v string) bool {
 	return strings.HasPrefix(v, "{{") || v != "" && strings.ContainsRune("$%<", rune(v[0]))
 }
 
-// entropyThreshold is the shannon-entropy floor (bits/char) above which a
-// long token is presumed secret; entropyFloorLen the minimum token length
-// the entropy pass considers.
-const (
-	entropyThreshold = 4.5
-	entropyFloorLen  = 20
-)
-
-// ScrubSecrets replaces secret-shaped spans with redaction markers and
-// reports whether anything was redacted. Redaction is per span, so
-// "[redacted 24 chars]" markers can coexist with surviving prose.
-func ScrubSecrets(text string) (string, bool) {
-	out := ScrubShapes(text)
-	var toks []string
-	for tok := range strings.FieldsSeq(out) {
-		if len(tok) >= entropyFloorLen && shannon(tok) >= entropyThreshold {
-			toks = append(toks, tok)
-		}
-	}
-	out = redactAll(out, toks)
-	return out, out != text
-}
-
-// ScrubShapes is ScrubSecrets without the entropy pass, for a recipe: there
-// a long path or NAME=https://... is a command, and cutting it breaks the step.
-// NOTE: a bare random token under 40 characters with no key name survives;
-// the user reads every recipe write in its ask.
+// ScrubShapes redacts secret-shaped spans: URL passwords, known key shapes
+// and key=value assignments. The entropy pass an intake would add is out:
+// a long path or NAME=https://... is a command, and cutting it breaks the
+// step.
+// NOTE: a bare random token under 40 characters with no key name survives.
 func ScrubShapes(text string) string {
 	out := urlPassword.ReplaceAllStringFunc(text, func(m string) string {
 		i := urlPassword.FindStringSubmatchIndex(m)
@@ -90,7 +67,7 @@ func ScrubShapes(text string) string {
 var oneBlob = regexp.MustCompile(`\[redacted \d+ chars\]`)
 
 // IsOneBlob reports whether scrubbed text holds nothing but redaction
-// markers: a recipe that was only secret material.
+// markers.
 func IsOneBlob(scrubbed string) bool {
 	return strings.TrimSpace(oneBlob.ReplaceAllString(scrubbed, "")) == ""
 }
@@ -113,17 +90,11 @@ func redacted(span string) string {
 	return fmt.Sprintf("[redacted %d chars]", utf8.RuneCountInString(span))
 }
 
-// shannon computes bits of entropy per byte of s.
-func shannon(s string) float64 {
-	counts := make(map[byte]int, 64)
-	for i := range len(s) {
-		counts[s[i]]++
+// Truncate cuts s to at most n runes.
+func Truncate(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
 	}
-	h := 0.0
-	n := float64(len(s))
-	for _, c := range counts {
-		p := float64(c) / n
-		h -= p * math.Log2(p)
-	}
-	return h
+	return string(r[:n])
 }

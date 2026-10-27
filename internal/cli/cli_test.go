@@ -55,7 +55,6 @@ func TestCLI(t *testing.T) {
 	base, dir := t.TempDir(), t.TempDir()
 	t.Chdir(base)
 	t.Setenv("PWD", base)
-	sid := store.ShortID() // a real id, so the listing's column widths are exercised
 	dirs, err := config.ResolveDirs()
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +65,7 @@ func TestCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	global.Close()
-	if err := db.CreateSession(sid, "", "fix the failing test", "default"); err != nil {
+	if _, err := db.AppendLog("user", "fix the failing test", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
@@ -98,7 +97,7 @@ func TestCLI(t *testing.T) {
 		{name: "dash dash keeps a dashed prompt", args: []string{"--", "-v", "means", "verbose?"}, want: &options{prompt: "-v means verbose?"}},
 		{name: "dash dash keeps a command name", args: []string{"--", "plugin", "x"}, want: &options{prompt: "plugin x"}},
 		{name: "one-word typo", args: []string{"helth"}, code: 2, stderr: "did you mean health"},
-		{name: "continue with resume", args: []string{"-c", "-r", "s1"}, code: 2, stderr: "cannot be combined"},
+		{name: "continue with resume", args: []string{"-c", "-r", "s1"}, code: 2, stderr: "unknown shorthand flag: 'c'"},
 		{name: "print flag is gone", args: []string{"-p", "hi"}, code: 2, stderr: "unknown shorthand flag: 'p'"},
 		{name: "trust false", args: []string{"--trust=false"}, want: &options{trust: new(false)}},
 		{name: "version", args: []string{"--version"}, stdout: "zemi "},
@@ -106,14 +105,8 @@ func TestCLI(t *testing.T) {
 		{name: "a parent takes no args", args: []string{"models", "are", "slow"}, code: 2, stderr: `unknown command "are" for "zemi models"`},
 		{name: "models lists what init.lua adds", args: []string{"models"}, stdout: "gw/m1\n"},
 		{name: "complete a model", args: []string{"__complete", "-m", ""}, stdout: "gw/m1\n"},
-		{name: "a failure is 1", args: []string{"sessions", "export", "nope"}, code: 1, stderr: `zemi: sessions export: no session "nope"`},
-		{name: "sessions lists", args: []string{"sessions"}, stdout: sid + "  "},
-		{name: "sessions as JSON", args: []string{"sessions", "--json"}, stdout: `{"id":"` + sid + `","title":"fix the failing test","updated":"`},
-		{name: "no sessions as JSON", args: []string{"-C", dir, "sessions", "--json"}, notStdout: "{"},
-		{name: "export prints markdown", args: []string{"sessions", "export", sid}, stdout: "# fix the failing test\n"},
-		{name: "export full", args: []string{"sessions", "export", "--full", sid}, stdout: "# fix the failing test\n"},
-		{name: "no store, no sessions", args: []string{"-C", dir, "sessions"}, stderr: "zemi: no sessions in "},
-		// the path at column 36, for cut -c36-
+		{name: "a failure is 1", args: []string{"db", "select * from nope"}, code: 1, stderr: `zemi: db: SQL logic error: no such table: nope`},
+		// the TUI's chat opens on the log's tail; the CLI keeps no session surface
 		{name: "projects lists", args: []string{"projects"}, stdout: "  undecided     1  " + dirs.TrustRoot() + "\n"},
 		{name: "projects as JSON", args: []string{"projects", "--json"}, stdout: `"trust":"undecided",`},
 		{name: "plugins arity", args: []string{"plugin", "enable"}, code: 2, stderr: "zemi: plugin enable takes <name>\n"},
@@ -131,9 +124,7 @@ func TestCLI(t *testing.T) {
 		{name: "delete with yes", args: []string{"plugin", "delete", "--yes", "zzq"}},
 		{name: "the delete took", args: []string{"plugin"}, stdout: "rub", notStdout: "zzq"},
 		{name: "completion script", args: []string{"completion", "fish"}, stdout: "complete -c zemi"},
-		{name: "complete a session id", args: []string{"__complete", "-r", ""}, stdout: sid + "\tfix the failing test\n"},
 		{name: "complete a plugin name", args: []string{"__complete", "plugin", "enable", ""}, stdout: "rub\n"},
-		{name: "complete a session of another project", args: []string{"__complete", "-C", dir, "-r", ""}, stdout: sid + "\t"},
 		{name: "-C a missing dir", args: []string{"-C", "nope", "fix", "it"}, code: 1, stderr: "zemi: -C nope: no such file or directory"},
 		{name: "-C a dir", args: []string{"-C", dir, "fix", "it"}, want: &options{prompt: "fix it", dir: dir}},
 	} {
@@ -433,8 +424,8 @@ func TestHeadlessNotices(t *testing.T) {
 		do         func() error
 	}{
 		{"-m unlisted", "zemi: Model not listed: a/unlisted: not in the provider's models list; the provider decides whether it exists\n", func() error { return applyOptions(h, options{model: "a/unlisted"}) }},
-		{"-m a role name", "", func() error {
-			if err := applyOptions(h, options{model: "titles"}); err == nil || !strings.Contains(err.Error(), `provider "titles" is not registered`) {
+		{"-m a target name", "", func() error {
+			if err := applyOptions(h, options{model: "compact"}); err == nil || !strings.Contains(err.Error(), `provider "compact" is not registered`) {
 				return fmt.Errorf("got %w", err)
 			}
 			return nil
@@ -483,11 +474,11 @@ func TestModelFlag(t *testing.T) {
 	if got := h.Settings.Str("models.default"); got != "a/cheap" {
 		t.Fatalf("models.default = %q, want the bare pick", got)
 	}
-	if err := h.SetModel("titles a/main"); err != nil {
+	if err := h.SetModel("compact a/main"); err != nil {
 		t.Fatal(err)
 	}
-	if got, def := h.Settings.Str("models.titles"), h.Settings.Str("models.default"); got != "a/main" || def != "a/cheap" {
-		t.Fatalf("a named slot wrote another: titles %q, default %q", got, def)
+	if got, def := h.Settings.Str("models.compact"), h.Settings.Str("models.default"); got != "a/main" || def != "a/cheap" {
+		t.Fatalf("a named slot wrote another: compact %q, default %q", got, def)
 	}
 }
 
@@ -583,7 +574,6 @@ func TestSessionsAcrossProjects(t *testing.T) {
 	if perm.CanonPath(dirs.TrustRoot()) != perm.CanonPath(base) {
 		t.Fatalf("this project is %q, want %q", dirs.TrustRoot(), base)
 	}
-	ids := map[string]string{}
 	for _, p := range []struct{ root, title string }{
 		{dirs.TrustRoot(), "local notes"},
 		{other, "deploy the kubelet"},
@@ -593,14 +583,11 @@ func TestSessionsAcrossProjects(t *testing.T) {
 			t.Fatal(err)
 		}
 		global.Close()
-		sid := store.ShortID()
-		if err := db.CreateSession(sid, "", p.title, ""); err != nil {
+		if _, err := db.AppendLog("user", p.title, "", "", ""); err != nil {
 			t.Fatal(err)
 		}
 		db.Close()
-		ids[perm.CanonPath(p.root)] = sid
 	}
-	theirs := ids[perm.CanonPath(other)]
 	// a store no SQLite reads, never opened so the file stays what it is
 	garbage := t.TempDir()
 	skipDir := filepath.Dir(store.ProjectDBPath(dirs.StateHome, garbage))
@@ -619,17 +606,8 @@ func TestSessionsAcrossProjects(t *testing.T) {
 		stdout, stderr string
 		root           string // the project the run must start in, "" for any
 	}{
-		{name: "-a lists another project's session", args: []string{"sessions", "-a"}, stdout: theirs + "  "},
-		{name: "-a names the project first", args: []string{"sessions", "-a"}, stdout: perm.TildePath(other) + "\n"},
-		{name: "-a names the unreadable store", args: []string{"sessions", "-a"}, stderr: "zemi: skipped 1 unreadable store: " + perm.TildePath(garbage) + "\n"},
-		{name: "-a as JSON carries the project", args: []string{"sessions", "-a", "--json"}, stdout: `"id":"` + theirs + `"`},
-		{name: "-a as JSON names its root", args: []string{"sessions", "-a", "--json"}, stdout: `"project":"` + other + `"`},
 		{name: "projects names the unreadable store", args: []string{"projects"}, stderr: "zemi: skipped 1 unreadable store: " + perm.TildePath(garbage) + ": "},
 		{name: "projects JSON carries the stats error", args: []string{"projects", "--json"}, stdout: `"stats_error":"`},
-		// -r takes any session id: this project's, or one another project holds
-		{name: "-r starts in the session's project", args: []string{"-r", theirs}, root: other},
-		{name: "-r keeps this project", args: []string{"-r", ids[perm.CanonPath(base)]}, root: base},
-		{name: "-r leaves an explicit -C alone", args: []string{"-C", base, "-r", theirs}, root: base},
 	} {
 		var out, errOut strings.Builder
 		var got options
@@ -647,9 +625,9 @@ func TestSessionsAcrossProjects(t *testing.T) {
 	}
 }
 
-// TestSessionsAllUnreadable: when every store is unreadable, -a names the
-// skips instead of claiming there are no sessions.
-func TestSessionsAllUnreadable(t *testing.T) {
+// TestProjectsAllUnreadable: when every store is unreadable, /projects names
+// the skips instead of reading green over them.
+func TestProjectsAllUnreadable(t *testing.T) {
 	home := t.TempDir()
 	for _, env := range []string{"CONFIG", "DATA", "STATE", "CACHE"} {
 		t.Setenv("ZEMI_"+env+"_HOME", filepath.Join(home, strings.ToLower(env)))
@@ -665,12 +643,21 @@ func TestSessionsAllUnreadable(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// the root file names the trust root the hash must match: the symlinked
+	// state home resolves to a different spelling, so hash the resolved root
+	resolved, err := filepath.EvalSymlinks(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "root"), []byte(resolved+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(dir, "zemi.db"), []byte("not a database"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var out, errOut strings.Builder
-	code := execute([]string{"sessions", "-a"}, &out, &errOut, func(options) int { return 0 })
-	for _, want := range []string{"zemi: skipped 1 unreadable store", "zemi: no sessions in any project yet"} {
+	code := execute([]string{"projects"}, &out, &errOut, func(options) int { return 0 })
+	for _, want := range []string{"zemi: skipped 1 unreadable store"} {
 		if !strings.Contains(errOut.String(), want) {
 			t.Errorf("stderr %q, want %q", errOut.String(), want)
 		}

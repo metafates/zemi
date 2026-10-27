@@ -114,8 +114,7 @@ func commandHost(t *testing.T) *hostapi.Host {
 func TestMainCommandArgs(t *testing.T) {
 	h := commandHost(t)
 	for _, c := range []struct{ name, args, want string }{
-		{"new", "idea: add caching", "/new takes no arguments"},
-		{"resume", "some-id", "session store unavailable"},
+		{"quit", "now", "/quit takes no arguments"},
 	} {
 		if got := fmt.Sprint(h.RunCommand(t.Context(), c.name, c.args, false)); got != c.want {
 			t.Errorf("/%s %s = %q, want %q", c.name, c.args, got, c.want)

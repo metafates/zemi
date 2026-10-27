@@ -1,6 +1,6 @@
 ---
 name: zemi
-description: "Load to change or extend zemi, the tool you run in (settings, models, permissions, keys, UI, Lua, plugins, subagents, skills, workflows, memory, past sessions, errors), to work with its own state - query its store, its sessions, turns or usage - or before parallel work in git worktrees. Never for work on the user's code."
+description: "Load to change or extend zemi, the tool you run in (settings, models, permissions, keys, UI, Lua, plugins, subagents, skills, workflows, errors), to work with its own state - query its store, its log, turns or usage - or before parallel work in git worktrees. Never for work on the user's code."
 ---
 
 # zemi
@@ -16,7 +16,6 @@ This file is what every zemi task needs. The rest is in files beside it: read on
 | a subagent | `agents.md` |
 | a skill or a prompt command | `skills.md` |
 | a workflow: controlling a run, rerunning, saving or making one | `workflows.md` |
-| memories, the reflector, recipes | `memory.md` |
 | the store zemi keeps its state in: query it read-only, read a past session | `db.md` |
 | zemi misbehaves: an error, a silent model, config that does not load | `debug.md` |
 | several branches at once in git worktrees | `worktrees.md` |
@@ -35,7 +34,7 @@ The prompt names the exact user config, project config and local plugins directo
 - Ask before you edit the user's init.lua, and say which lines you add or change. A plugin, agent, prompt command, skill or workflow never needs an init.lua edit to load.
 - Never write an API key into a file: config reads it with `zemi.env.get("NAME")`.
 - zemi reloads within a second of a config file change once no turn runs, and the Lua tool reloads before a script whenever a config or plugin file changed, so a script always sees what is on disk and its result starts with what failed to load. A reload drops what earlier scripts registered.
-- The system prompt is pinned per session: the listed skills, agents and workflows and `agent.assemble` sections change after `/new` or `/compact`. A new agent or workflow still loads by name at once, a new skill after the next reload, and an edited AGENTS.md reaches the model with the next message.
+- The system prompt is pinned: the listed skills, agents and workflows and `agent.assemble` sections change when the pin is dropped (a trust flip, a deleted skill). A new agent or workflow still loads by name at once, a new skill after the next reload, and an edited AGENTS.md reaches the model with the next message.
 - For the Lua API, grep the types file in the shell, never read it whole: `grep -n '^function zemi\.'` lists every member with its parameters, `grep -n -B20 'function zemi.config.add('` one member with the rules and `---@return` above it, and `grep -n -A20 '@class zemi.WidgetSpec'` (or `@alias zemi.SettingKind`) one type with its fields.
 
 ## Check a change

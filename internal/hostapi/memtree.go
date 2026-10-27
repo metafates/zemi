@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"charm.land/fantasy"
 
@@ -173,7 +174,9 @@ type memTree struct {
 	callMu     sync.Mutex
 	flight     int           // model calls in flight
 	leafFlight int           // leaf calls in flight: the unbuilt lines a leaf waits behind
+	held       bool          // dispatch paused (a rewind quiesces); guarded by callMu
 	burst      chan struct{} // closed when the burst's first response starts
+	force      chan struct{} // size 1: merge one batch now
 
 	// owned by the worker goroutine
 	msgs       int64          // messages in the log: seqs 0..msgs-1, dense
@@ -188,6 +191,16 @@ type memTree struct {
 	draining   bool       // a batch left the view above the floor
 	cv         []viewLine // the compaction view, the second sawtooth
 	cvBytes    int
+
+	// health is what /health reads of the queues; the worker rewrites it
+	// each round, so a reader never takes the worker's state.
+	health builderHealth
+}
+
+// builderHealth is the builder's queue depth, unbuilt lines and retries,
+// what /health's builder row says.
+type builderHealth struct {
+	unbuilt, failed, queued atomic.Int64
 }
 
 // newMemTree starts the builder worker on ctx; the caller's Close ends it.
@@ -200,6 +213,7 @@ func newMemTree(ctx context.Context, h *Host) *memTree {
 		done:    make(chan struct{}),
 		wake:    make(chan struct{}, 1),
 		rebld:   make(chan struct{}, 1),
+		force:   make(chan struct{}, 1),
 		results: make(chan buildResult),
 		built:   map[nodeID]int{},
 	}
@@ -223,6 +237,40 @@ func (b *memTree) RebuildQueues() {
 	case b.rebld <- struct{}{}:
 	default:
 	}
+}
+
+// MergeOnce merges one batch now, whatever the view's size: the overflow
+// guard's retry rides it when the provider refused the context as too large.
+func (b *memTree) MergeOnce() {
+	select {
+	case b.force <- struct{}{}:
+	case <-b.ctx.Done():
+	}
+}
+
+// quiesce stops dispatching and waits for the in-flight builds to land, so
+// a rewind's cut runs under no build. resume releases it.
+func (b *memTree) quiesce() {
+	b.callMu.Lock()
+	b.held = true
+	flight := b.flight
+	b.callMu.Unlock()
+	if flight == 0 {
+		return
+	}
+	done := make(chan struct{})
+	go func() { b.calls.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-b.ctx.Done():
+	}
+}
+
+func (b *memTree) resume() {
+	b.callMu.Lock()
+	b.held = false
+	b.callMu.Unlock()
+	b.RebuildQueues()
 }
 
 // Close ends the builder: the context cancels, in-flight model calls abort,
@@ -253,10 +301,26 @@ func (b *memTree) run() {
 			if err := b.rebuild(); err != nil {
 				b.h.Log.Error("memtree rebuild failed", "origin", "agent", "error", err)
 			}
+		case <-b.force:
+			b.batch()
 		case r := <-b.results:
 			b.apply(r)
 		}
+		b.reportHealth()
 	}
+}
+
+// reportHealth rewrites what /health reads of the queues (worker only).
+func (b *memTree) reportHealth() {
+	unbuilt := 0
+	for _, ln := range b.view {
+		if _, ok := b.built[ln.id]; !ok {
+			unbuilt++
+		}
+	}
+	b.health.unbuilt.Store(int64(unbuilt))
+	b.health.failed.Store(int64(len(b.leafRetry) + len(b.mergeRetry)))
+	b.health.queued.Store(int64(len(b.leaves) + len(b.merges)))
 }
 
 // rebuild reloads everything from the store: at boot, and after a rewind cut
@@ -438,11 +502,14 @@ func (b *memTree) dispatchLeaf() bool {
 		return true
 	}
 	b.takeLeaf() // synchronous: the 8-line gate counts it from now
+	// the prompt reads the compaction view, worker-owned state: build it
+	// here, before the call goroutine exists
+	prompt := b.leafPrompt(seq, e.Kind, e.Text)
 	b.calls.Add(1)
 	b.h.GoSafe("memtree leaf", func() {
 		defer b.calls.Done()
 		defer b.endLeaf()
-		text, err := b.build([]fantasy.Message{agent.UserMessage(b.leafPrompt(seq, e.Kind, e.Text))})
+		text, err := b.build([]fantasy.Message{agent.UserMessage(prompt)})
 		b.send(buildResult{leaf: true, seq: seq, text: text, err: err})
 	})
 	return true
@@ -477,10 +544,13 @@ func (b *memTree) dispatchMerge() bool {
 			b.insertBuilt(parent, join)
 			return true
 		}
+		// the join's prompt reads the compaction view, worker-owned state:
+		// build it here, before the call goroutine exists
+		prompt := b.mergePrompt(a, c)
 		b.calls.Add(1)
 		b.h.GoSafe("memtree merge", func() {
 			defer b.calls.Done()
-			text, err := b.build([]fantasy.Message{agent.UserMessage(b.mergePrompt(a, c))})
+			text, err := b.build([]fantasy.Message{agent.UserMessage(prompt)})
 			b.send(buildResult{parent: parent, text: text, err: err})
 		})
 		return true

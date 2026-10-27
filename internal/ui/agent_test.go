@@ -2472,15 +2472,6 @@ func TestPendingRow(t *testing.T) {
 		want string
 	}{
 		{"busy job", func(h *hostapi.Host) { h.Busy("Checking health", nil) }, "⧗ checking health"},
-		{
-			// a turn's clock is running under the summary, which is no reason
-			// for the chat to draw the turn's own wait row under it
-			"compaction",
-			func(h *hostapi.Host) {
-				h.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond, Compacting: true})
-			},
-			"⧗ compacting the conversation",
-		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -2600,17 +2591,10 @@ func TestShimmerHoldsTheFrameClock(t *testing.T) {
 	}
 }
 
-// seedTodos writes a session's todo list, as the todos tool would.
+// seedTodos writes the chat's todo list, as the todos tool would.
 func seedTodos(t testing.TB, host *hostapi.Host, todos []store.Todo) {
 	t.Helper()
-	db := testStore(t, host)
-	sid := store.ShortID()
-	if err := db.CreateSession(sid, "", "t", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := host.ResumeSession(sid); err != nil {
-		t.Fatal(err)
-	}
+	testStore(t, host)
 	if err := host.PipelineFor().TodosWrite(todos); err != nil {
 		t.Fatal(err)
 	}
@@ -2767,7 +2751,6 @@ func TestPermTitle(t *testing.T) {
 		{hostapi.PermRequest{Tool: "lua", Subject: "tool.lua", Arg: "/p/x.lua"}, "Run Lua inside zemi?", "file x.lua"},
 		{hostapi.PermRequest{Tool: "workflow", Subject: "tool.workflow", Arg: "review"}, "Run this workflow?", "workflow review"},
 		{hostapi.PermRequest{Tool: "jira_create", Subject: "tool.jira_create", Arg: "jira_create"}, "Use the jira_create tool?", ""},
-		{hostapi.PermRequest{Tool: "memory", Subject: "memory.write", Arg: "prefers tabs"}, "Forget this memory?", ""},
 		{hostapi.PermRequest{Subject: "lua.fs.write", Arg: "x"}, "Allow lua.fs.write?", "arg x"},
 	} {
 		rows, _, _ := permFacts(c.req, "/p", 200, 40)

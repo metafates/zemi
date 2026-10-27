@@ -106,11 +106,6 @@ func TestLoop(t *testing.T) {
 		{name: "it expires", args: "1d check it", reply: "ok", steps: []step{
 			{runs: 1, next: 24 * time.Hour}, {after: 24 * time.Hour, runs: 2, next: 48 * time.Hour}, {after: 24 * time.Hour, runs: 3, next: 72 * time.Hour}, {after: 24 * time.Hour, runs: 3},
 		}, notices: []string{"Loop run 1: check it", "Loop run 2: check it", "Loop run 3: check it", "Loop stopped after 72h (3 runs)"}},
-		{name: "a new session stops it quietly", args: "5m check it", reply: "ok", steps: []step{{runs: 1, next: 5 * time.Minute}, {do: func(h *Host) {
-			if err := h.NewSession(); err != nil {
-				panic(err)
-			}
-		}, runs: 1}}},
 		{name: "a command runs with the note attached", args: "5m /note it", reply: "ok", steps: []step{{runs: 1, next: 5 * time.Minute}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -167,8 +162,21 @@ func TestLoop(t *testing.T) {
 					return nil
 				})
 				l, on := h.Loop()
-				if next := l.Next.Sub(start); on != (s.next > 0) || on && next != s.next {
-					t.Fatalf("step %d: loop on %v, next at +%s; want +%s", i, on, next, s.next)
+				if on != (s.next > 0) {
+					// the interrupt's stop runs beside waitIdle's release: wait
+					// for the settled loop, never assert the moving state
+					waitForWithin(t, 10*time.Second, func() error {
+						l, on = h.Loop()
+						if on != (s.next > 0) {
+							return fmt.Errorf("loop on %v, want %v", on, s.next > 0)
+						}
+						return nil
+					})
+				}
+				if on {
+					if next := l.Next.Sub(start); next != s.next {
+						t.Fatalf("step %d: loop next at +%s; want +%s", i, next, s.next)
+					}
 				}
 			}
 			if c.notices != nil {

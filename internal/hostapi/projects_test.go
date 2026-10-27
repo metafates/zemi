@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -48,15 +47,16 @@ func TestProjectsCommand(t *testing.T) {
 			os.Remove(gone)
 			continue
 		}
-		p.CreateSession("sid-other", "", "fix the flaky test", "")
+		if _, err := p.AppendLog("user", "fix the flaky test", "", "", ""); err != nil {
+			t.Fatal(err)
+		}
 		p.Close()
 	}
 	if err := dirs.WriteTrust(map[string]string{other: "trusted", gone: "trusted"}); err != nil {
 		t.Fatal(err)
 	}
 	files := []string{
-		filepath.Join(dirs.StateHome, "scratch", "sid-other"),
-		filepath.Join(dirs.DataHome, "plans", "sid-other.md"),
+		filepath.Join(projectState(dirs.StateHome, other), "skills"),
 	}
 	for _, f := range files {
 		os.MkdirAll(filepath.Dir(f), 0o755)
@@ -94,7 +94,7 @@ func TestProjectsCommand(t *testing.T) {
 				// the running decision beside the saved one, and a gone root's decision in its detail
 				"desc:untrusted this run       · now", "[trust untrusted this run]", "key:current",
 				"desc:missing                  · now", "[trust trusted] [sessions ]",
-				"desc:trusted   · 1 session    · now", "[sessions 1 · latest now: " + SessionMark("sid-other") + " fix the flaky test]",
+				"desc:trusted   · 1 session    · now", "[sessions 1 · latest now: " + markedTitle(store.MainSessionID, "fix the flaky test") + "]",
 				"desc:switch to it key:s run:projects switch " + other, "desc:forget trust key:f run:projects forget " + other, "danger:true desc:delete key:x run:projects delete " + other,
 				"Selected:2", // held: the gone root, used last, has nothing to switch to
 			},
@@ -189,23 +189,6 @@ func TestDeleteProjectWithoutState(t *testing.T) {
 	}
 }
 
-// TestResumeCommand: a run started with -C names its dir as one shell word,
-// ~-shortened only where the shell expands it.
-func TestResumeCommand(t *testing.T) {
-	home, _ := os.UserHomeDir()
-	for dir, want := range map[string]string{
-		"":                  "zemi -r id",
-		"/tmp/a":            "zemi -C /tmp/a -r id",
-		"/tmp/a b":          "zemi -C '/tmp/a b' -r id",
-		home + "/code/app":  "zemi -C ~/code/app -r id",
-		home + "/it's here": "zemi -C '" + home + "/it'\\''s here' -r id",
-	} {
-		if got := ResumeCommand(dir, "id"); got != want {
-			t.Errorf("ResumeCommand(%q) = %q, want %q", dir, got, want)
-		}
-	}
-}
-
 // TestSplashProjects: the splash offers the other projects that still exist
 // in ~ always and outside a repository only while the dir has no session.
 func TestSplashProjects(t *testing.T) {
@@ -249,7 +232,7 @@ func TestSplashProjects(t *testing.T) {
 			h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{ProjectDir: dir, StateHome: state})
 			t.Cleanup(h.Close)
 			if c.session {
-				h.DB.CreateSession("s", "", "", "")
+				h.DB.AppendLog(kindUser, "a prompt", "", "", "")
 			}
 			var got []string
 			for _, p := range h.splashProjects() {
@@ -288,7 +271,7 @@ func TestListProjects(t *testing.T) {
 				t.Fatal(err)
 			}
 			for i := range c.sessions {
-				if err := p.CreateSession(strconv.Itoa(i), "", "", ""); err != nil {
+				if _, err := p.AppendLog("user", fmt.Sprintf("message %d", i), "", "", ""); err != nil {
 					t.Fatal(err)
 				}
 			}

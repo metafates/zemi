@@ -62,7 +62,7 @@ var luaReadOnly = set.Of(
 	"health.list",
 	"fs.data_dir", "fs.exists", "fs.glob", "fs.grep", "fs.list", "fs.read", "fs.stat",
 	"json.decode", "json.encode",
-	"keymap.get", "keymap.list", "learn.list",
+	"keymap.get", "keymap.list",
 	"log", "log.list", "log.debug", "log.info", "log.warn", "log.error",
 	"lsp.list", "mcp.list", "memory.list",
 	"model.list", "notify.list",

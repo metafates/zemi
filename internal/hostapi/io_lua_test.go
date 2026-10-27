@@ -122,25 +122,3 @@ func TestLuaFsOutsideTheProject(t *testing.T) {
 		t.Fatalf("read back = %q, %v", b, err)
 	}
 }
-
-// TestBrainFilesFromLua: a brain file is in no root of its own, so Lua reads
-// and writes one like any other file, through the gates (DESIGN §10.8).
-func TestBrainFilesFromLua(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHostDB(t)
-	h.Dirs.DataHome = t.TempDir()
-	user, private := h.brainParts()
-	for _, dir := range []string{user.Dir, private.Dir} {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, c := range []struct{ name, path string }{
-		{"user brain", filepath.Join(user.Dir, "style.md")},
-		{"private brain", filepath.Join(private.Dir, "repo-map.md")},
-	} {
-		runUser(t, r, fmt.Sprintf(`
-			assert(zemi.fs.write(%q, "x"), "write")
-			assert(zemi.fs.read(%q) == "x", "read")`, c.path, c.path))
-	}
-}

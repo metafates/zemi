@@ -25,7 +25,6 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
-	"github.com/metafates/zemi/internal/tools"
 )
 
 // CopyReply copies the viewed run's, else the live session's, last reply as
@@ -109,21 +108,19 @@ func copyPicker(text string, blocks []codeBlock) Overlay {
 }
 
 // lastReply is the reply /copy and its direct forms take: the viewed run's
-// streamed one included, else the live session's last stored one.
+// streamed one included, else the log's newest agent row.
 func (h *Host) lastReply() (string, error) {
 	if run := h.viewedRun(); run != nil {
 		return lastReplyText(run.transcript()), nil
 	}
-	sid := h.AgentSessionID()
-	if sid == "" || h.DB == nil {
+	if h.DB == nil {
 		return "", nil
 	}
-	rows, err := h.DB.Messages(sid)
-	if err != nil {
+	rows, err := h.DB.LogKindBack(kindAgent, 1)
+	if err != nil || len(rows) == 0 {
 		return "", err
 	}
-	_, tr := historyFrom(rows)
-	return lastReplyText(tr), nil
+	return rows[len(rows)-1].Text, nil
 }
 
 // lastReplyText is the last non-empty assistant reply of transcript rows,
@@ -184,127 +181,89 @@ func codeBlocks(md string) []codeBlock {
 	return out
 }
 
-// ExportSession writes the live session as markdown to path ("" picks
-// zemi-<id>.md in the project), says where, and returns the path written.
+// ExportSession writes the chat log as markdown to path ("" picks
+// zemi-<seq>.md in the project), says where, and returns the path written.
 func (h *Host) ExportSession(path string, full bool) (string, error) {
-	sid := h.AgentSessionID()
-	if sid == "" || h.DB == nil {
-		return "", Usagef("no session to export")
+	if h.DB == nil {
+		return "", Usagef("nothing to export")
 	}
 	if path == "" {
-		path = filepath.Join(h.Dirs.ProjectDir, "zemi-"+sid+".md")
+		path = filepath.Join(h.Dirs.ProjectDir, "zemi-chat.md")
 	} else if !filepath.IsAbs(path) {
 		path = filepath.Join(h.Dirs.ProjectDir, path)
 	}
 	// the user names this path, so it may leave the project
-	md, err := SessionMarkdown(h.DB, sid, full)
+	md, err := LogMarkdown(h.DB, full)
 	if err != nil {
 		return "", err
 	}
 	if err := os.WriteFile(path, []byte(md), 0o644); err != nil {
 		return "", err
 	}
-	h.Notify(slog.LevelInfo, "Session exported", "saved to "+perm.TildePath(h.relPath(path)))
+	h.Notify(slog.LevelInfo, "Chat exported", "saved to "+perm.TildePath(h.relPath(path)))
 	return path, nil
 }
 
-// SessionMarkdown is a session as markdown; full adds reasoning, every tool
-// call expanded and the subagent runs.
-func SessionMarkdown(db *store.DB, sid string, full bool) (string, error) {
-	sess, err := db.GetSession(sid)
+// LogMarkdown is the chat log as markdown; full expands every tool call with
+// its result.
+func LogMarkdown(db *store.DB, full bool) (string, error) {
+	rows, err := db.LogFrom(0, exportMaxRows)
 	if err != nil {
 		return "", err
 	}
-	rows, err := db.Messages(sid)
+	count, err := db.LogCount()
 	if err != nil {
 		return "", err
-	}
-	title := sanitize.String(sess.Title)
-	if title == "" {
-		title = "zemi session"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n_zemi session %s, %s_\n", title, sid, time.UnixMilli(sess.CreatedAt).Format(StampLayout))
-	_, tr := historyFrom(rows)
-	exportMarkdown(&b, tr, 2, full)
-	if full {
-		// NOTE: raw tool results stay out, the rows' short output stands in;
-		// a reader who needs a whole result reads the store
-		runs, err := db.ChildSessions(sid)
-		if err != nil {
-			return "", err
-		}
-		for _, run := range slices.Backward(runs) {
-			rows, err := db.Messages(run.ID)
-			if err != nil {
-				return "", err
-			}
-			fmt.Fprintf(&b, "\n## Agent run %s (%s): %s\n", run.ID, sanitize.String(run.Agent), sanitize.String(run.Title))
-			_, tr := historyFrom(rows)
-			exportMarkdown(&b, tr, 3, true)
-		}
+	fmt.Fprintf(&b, "# zemi chat\n\n_%d messages, %s_\n", count, time.Now().Format(StampLayout))
+	if count > int64(len(rows)) {
+		fmt.Fprintf(&b, "\n_(the first %d messages are older than this export)_\n", count-int64(len(rows)))
 	}
+	exportLog(&b, rows, 2, full)
 	return b.String(), nil
 }
 
-// exportMarkdown writes transcript rows as markdown under level headers, one
-// over each run of rows by one speaker; full adds reasoning and expands every
-// tool call. Every string is sanitized: a file the user later cats must not
-// carry escapes, and historyFrom leaves message text raw.
-func exportMarkdown(b *strings.Builder, tr []ChatMessage, level int, full bool) {
-	speaker, list := "", false // list: the last line written is a tool row's
-	for _, m := range tr {
-		if m.Kind == RowReasoning && !full {
-			continue
-		}
+// exportMaxRows bounds one export; the log is eternal, a markdown file is
+// not the archive.
+const exportMaxRows = 5000
+
+// exportLog writes log rows as markdown under level headers, one over each
+// run of rows by one speaker. Every string is sanitized: a file the user
+// later cats must not carry escapes.
+func exportLog(b *strings.Builder, rows []store.LogEntry, level int, full bool) {
+	speaker := ""
+	for _, row := range rows {
 		who := "zemi"
-		if m.Role == fantasy.MessageRoleUser {
+		if row.Kind == kindUser {
 			who = "You"
 		}
 		if who != speaker || who == "You" {
 			fmt.Fprintf(b, "\n%s %s\n", strings.Repeat("#", level), who)
-			speaker, list = who, false
+			speaker = who
 		}
-		text := strings.TrimSpace(sanitize.String(m.Text))
-		switch {
-		case m.Kind == RowReasoning:
-			head := "Thought"
-			if m.Stat != nil && m.Stat.ThoughtMS > 0 {
-				head += " for " + fmtDuration(time.Duration(m.Stat.ThoughtMS)*time.Millisecond)
+		text := strings.TrimSpace(sanitize.String(row.Text))
+		name := rowTool(row)
+		switch row.Kind {
+		case kindTool:
+			if full {
+				fmt.Fprintf(b, "\n**%s**\n", sanitize.String(name))
+				b.WriteString(codeFence("", text))
+			} else {
+				head := sanitize.Line(toolSummary(name, row.Text))
+				fmt.Fprintf(b, "- `%s` %s\n", sanitize.String(name), clipLine(head, 120))
 			}
-			fmt.Fprintf(b, "\n> _%s_\n>\n", head)
-			for l := range strings.Lines(text) {
-				b.WriteString(strings.TrimRight("> "+l, " \n") + "\n")
+		case kindEcho:
+			if full {
+				b.WriteString(codeFence("", text))
 			}
-		case m.Kind == RowTool && full:
-			head := sanitize.Line(m.Label)
-			if head == "" && !strings.Contains(text, "\n") {
-				head, text = text, ""
-			}
-			fmt.Fprintf(b, "\n**%s** %s%s\n", sanitize.String(string(m.Tool)), head, callEnd(m.Status))
-			lang := ""
-			if m.Tool == tools.ToolShell {
-				lang = "sh"
-			}
-			for _, f := range [][2]string{{lang, text}, {"diff", m.Diff}, {"", m.Output}} {
-				if f[1] = strings.TrimRight(sanitize.String(f[1]), "\n"); f[1] != "" {
-					b.WriteString(codeFence(f[0], f[1]))
-				}
-			}
-			if m.Run != "" {
-				fmt.Fprintf(b, "run %s, below\n", sanitize.String(m.Run))
-			}
-		case m.Kind == RowTool:
-			if !list {
-				b.WriteString("\n")
-			}
-			fmt.Fprintf(b, "- `%s` %s%s\n", sanitize.String(string(m.Tool)), clipLine(cmp.Or(m.Label, m.Text), 120), callEnd(m.Status))
-		case m.Kind == RowNotice, m.Kind == RowCompact:
+		case kindWork:
 			fmt.Fprintf(b, "\n_%s_\n", text)
+		case kindNote:
+			fmt.Fprintf(b, "\n> _note: %s_\n", text)
 		default:
 			fmt.Fprintf(b, "\n%s\n", demoteHeadings(text, level))
 		}
-		list = m.Kind == RowTool && !full
 	}
 }
 
@@ -344,60 +303,15 @@ func codeFence(lang, text string) string {
 	return fence + lang + "\n" + text + "\n" + fence + "\n"
 }
 
-// callEnd names a tool call that did not finish well, after its row.
-func callEnd(s CallStatus) string {
-	switch s {
-	case CallErr:
-		return " (failed)"
-	case CallStopped:
-		return " (stopped)"
-	default:
-		return ""
-	}
-}
-
-// ForkSession copies the live session's messages into a new session and
-// switches to it, saying so; it returns the new id.
-func (h *Host) ForkSession() (string, error) {
-	sid := h.AgentSessionID()
-	if sid == "" || h.DB == nil {
-		return "", Usagef("no session to fork")
-	}
-	if h.AgentActive() {
-		return "", errTurnRunning
-	}
-	if err := h.tasks.stillRunning(func(p string) bool { return p == sid }); err != nil {
-		return "", err
-	}
-	sess, err := h.DB.GetSession(sid)
-	if err != nil {
-		return "", err
-	}
-	id := store.ShortID()
-	if err := h.DB.ForkSession(sess, id, strings.TrimSuffix(sess.Title, " (fork)")+" (fork)"); err != nil {
-		return "", err
-	}
-	// the copied history is the parent's to reflect on when it closes; the
-	// fork's delta is only what it adds, so a rejected memory is not proposed twice
-	if n, err := h.DB.MessageCount(id); err == nil {
-		h.reflectSeen(id, n)
-	}
-	if err := h.ResumeSession(id); err != nil {
-		return "", err
-	}
-	h.Notify(slog.LevelInfo, "Session forked", "the original stays in /sessions")
-	return id, nil
-}
-
-// todoSnapshot is the live session's todo list for widgets, reloaded only
-// after the todos tool wrote or the session changed.
+// todoSnapshot is the live todo list for widgets, reloaded only after the
+// todos tool wrote.
 func (h *Host) todoSnapshot() []store.Todo {
 	sid := h.AgentSessionID()
 	h.todoMu.Lock()
 	defer h.todoMu.Unlock()
 	if h.todoSID != sid || h.todosStale.Swap(false) {
 		h.todoSID, h.todos = sid, nil
-		if sid != "" && h.DB != nil {
+		if h.DB != nil {
 			h.todos, _ = h.DB.Todos(sid)
 		}
 	}

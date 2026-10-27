@@ -1,10 +1,11 @@
 // rewind.go undoes turns: before a write tool first changes a file in a
-// turn, its content is checkpointed against that turn's user message.
-// Rewinding to a message restores every file changed since, drops the
-// message and the rest of the conversation with what it learned and its todo
-// list, and hands its text back to the composer. A shell call's changes are
-// rewound only for repository files git does not ignore, at most
-// snapCheckpoints of them per call.
+// turn, its content is checkpointed against that turn's user message (the
+// log seq it was appended at). Rewinding to a message restores every file
+// changed since, deletes the log rows from it on with every tree node and
+// view line touching them, patches the view's hole with leaf lines,
+// rebuilds the todo list, and hands the prompt text back to the composer.
+// A shell call's changes are rewound only for repository files git does not
+// ignore, at most snapCheckpoints of them per call.
 
 package hostapi
 
@@ -17,18 +18,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
-	"time"
 
-	"charm.land/fantasy"
-
-	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/brain"
-	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/proc"
-	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -36,6 +31,9 @@ import (
 // NOTE: larger files are not checkpointed (a rewind leaves them as they
 // are); raise the cap or store blobs on disk if that bites.
 const maxCheckpointBytes = 4 << 20
+
+// rewindPickerRows is how many prompts the rewind picker lists.
+const rewindPickerRows = 200
 
 // checkpointFile is the pipeline's Checkpoint hook.
 func (h *Host) checkpointFile(path string) {
@@ -54,10 +52,10 @@ func (h *Host) checkpointFile(path string) {
 	h.checkpoint(store.Checkpoint{Path: abs, Existed: existed, Content: data})
 }
 
-func (h *Host) turnMsgID() string {
+func (h *Host) turnSeq() int64 {
 	h.agents.mu.Lock()
 	defer h.agents.mu.Unlock()
-	return h.agents.turnMsgID
+	return h.agents.turnSeq
 }
 
 // checkpoint records a file as it was before the running turn changed it:
@@ -67,15 +65,15 @@ func (h *Host) checkpoint(cp store.Checkpoint) {
 	if h.DB == nil {
 		return
 	}
-	sid, mid := h.AgentSessionID(), h.turnMsgID()
-	if sid == "" || mid == "" {
+	seq := h.turnSeq()
+	if seq < 0 {
 		return
 	}
 	if len(cp.Content) > maxCheckpointBytes {
 		h.uncheckpointed(cp.Path, "is too large to checkpoint")
 		return
 	}
-	if err := h.DB.AddCheckpoint(sid, mid, cp); err != nil {
+	if err := h.DB.AddCheckpoint(seq, cp); err != nil {
 		h.Log.Warn("checkpoint failed", "origin", "rewind", "path", cp.Path, "error", err)
 	}
 }
@@ -84,102 +82,56 @@ func (h *Host) checkpoint(cp store.Checkpoint) {
 // abs: a later rewind reports only the files it restored, and this one would
 // quietly stay changed.
 func (h *Host) uncheckpointed(abs, why string) {
-	if _, said := h.snaps.skipped.LoadOrStore(h.turnMsgID()+"\x00"+abs, true); said {
+	if _, said := h.snaps.skipped.LoadOrStore(strconv.FormatInt(h.turnSeq(), 10)+"\x00"+abs, true); said {
 		return
 	}
 	h.Log.Warn("file not checkpointed", "origin", "rewind", "path", abs, "why", why)
 	h.Notify(slog.LevelWarn, "Checkpoint skipped", filepath.Base(abs)+" "+why+"; a rewind will not restore it")
 }
 
-// userText returns what the user typed in a stored user message; compaction
-// summaries and non-user rows report false.
-func userText(row *store.Message) (string, bool) {
-	var m fantasy.Message
-	if row.Role != string(fantasy.MessageRoleUser) || json.Unmarshal([]byte(row.PartsJSON), &m) != nil {
-		return "", false
-	}
-	if _, ok := summaryOf(m); ok {
-		return "", false
-	}
-	s, _, _ := strings.Cut(concatText(m.Content), agent.AttachMarker)
-	s = strings.TrimSpace(s)
-	return s, s != ""
-}
-
-// RewindTo restores the live session to just before the user message id
-// and returns how many files it restored. Files are restored first; if any
-// fails the conversation is left intact so the rewind can be retried.
-func (h *Host) RewindTo(id string) (int, error) {
+// RewindTo restores the chat to just before the log message seq and returns
+// how many files it restored. Files are restored first; if any fails the
+// conversation is left intact so the rewind can be retried.
+func (h *Host) RewindTo(seq int64) (int, error) {
 	ag := h.agents
 	ag.mu.Lock()
 	if ag.active {
 		ag.mu.Unlock()
 		return 0, errTurnRunning
 	}
-	// claimed like a turn, so no send starts on the history being cut
-	sid, scope := ag.sessionID, h.claim()
+	// claimed like a turn, so no send starts on the log being cut
+	scope := h.claim()
 	ag.mu.Unlock()
 	defer h.handOff(scope)
 	// a detached run writing files would undo the restore right after it
 	if err := h.tasks.stillRunning(func(string) bool { return true }); err != nil {
 		return 0, err
 	}
-	if sid == "" || h.DB == nil {
-		return 0, Usagef("no session to rewind")
+	if h.DB == nil || h.chat == nil {
+		return 0, Usagef("nothing to rewind")
 	}
-	rows, err := h.DB.Messages(sid)
+	row, err := h.DB.LogAt(seq)
+	if errors.Is(err, store.ErrNotFound) {
+		return 0, Usagef("no prompt %d in this chat", seq)
+	}
 	if err != nil {
 		return 0, err
 	}
-	cut := slices.IndexFunc(rows, func(r *store.Message) bool { return r.ID == id })
-	text, ok := "", false
-	if cut >= 0 {
-		text, ok = userText(rows[cut])
+	if row.Kind != kindUser || strings.TrimSpace(row.Text) == "" {
+		return 0, Usagef("message %d is not a prompt", seq)
 	}
-	if !ok {
-		return 0, Usagef("no prompt %q in this session", id)
-	}
-	cps, err := h.DB.CheckpointsFrom(sid, id)
+	cps, err := h.DB.CheckpointsFrom(seq)
 	if err != nil {
 		return 0, err
-	}
-	// snapshots age out: say so before the conversation is cut, or a rewind
-	// that restored nothing looks like one that had nothing to restore. With
-	// some left, a file an aged-out turn changed stays as it is or goes back
-	// only to a later turn's snapshot.
-	aged := 0
-	for _, r := range rows[cut:] {
-		if _, ok := userText(r); ok && time.Since(time.UnixMilli(r.CreatedAt)) > store.CheckpointTTL {
-			aged++
-		}
-	}
-	switch {
-	case aged > 0 && len(cps) == 0:
-		h.Notify(slog.LevelWarn, "Files not restored", "their snapshots for that turn have aged out; only the conversation is cut")
-	case aged > 0:
-		h.Notify(slog.LevelWarn, "Some files not restored", fmt.Sprintf("snapshots older than %d days have aged out (%d of those %s); files changed then may not go back",
-			int(store.CheckpointTTL.Hours()/24), aged, Plural(aged, "turn", "turns")))
 	}
 	if len(cps) > 0 {
 		h.lspDirty() // a restore rewrites files behind the language servers' backs
 	}
-	// fetched before the cut: a failure here must leave the store untruncated
-	sess, err := h.DB.GetSession(sid)
-	if err != nil {
-		return 0, err
-	}
-	// the locks come before any truncation or restore (DESIGN §7): a store
-	// another zemi holds aborts the rewind with both intact
-	var brainFailed bool
+	// the locks come before any cut or restore (DESIGN §7): a store another
+	// zemi holds aborts the rewind with both intact
 	err = func() error {
 		h.cutMu.Lock()
 		defer h.cutMu.Unlock()
-		user, private := h.brainParts()
-		unlockBrain, err := brain.LockAll(private, user)
-		if err != nil {
-			return fmt.Errorf("rewind aborted: %w", err)
-		}
-		defer unlockBrain()
 		var failed []string
 		for _, cp := range cps {
 			if err := restoreCheckpoint(cp); err != nil {
@@ -189,267 +141,100 @@ func (h *Host) RewindTo(id string) (int, error) {
 		if len(failed) > 0 {
 			return fmt.Errorf("could not restore %s", strings.Join(failed, "; "))
 		}
-		brainFailed = h.forgetLearned(sid, rows[cut].CreatedAt, rows[len(rows)-1].CreatedAt, cps)
-		if err := h.DB.TruncateMessages(sid, id); err != nil {
+		// the builder first: quiesced, so no build lands over the cut
+		h.chat.quiesce()
+		if err := h.DB.DeleteLogFrom(seq); err != nil {
 			return err
 		}
-		h.clampReflectSeen(sid, cut)
+		if err := h.patchView(seq); err != nil {
+			return err
+		}
+		h.chat.resume()
 		return nil
 	}()
 	if err != nil {
 		return 0, err
 	}
-	if brainFailed {
-		h.Notify(slog.LevelWarn, "Learned memories not rewound", "the conversation and files are rewound; what the cut turns learned may remain (details in the log)")
-	}
-	todos := todosIn(rows[:cut])
-	if err := h.DB.SetTodos(sid, todos); err != nil {
+	todos := h.todosBefore(seq)
+	if err := h.DB.SetTodos(store.MainSessionID, todos); err != nil {
 		h.Log.Warn("todo list not rewound", "origin", "rewind", "error", err)
 	}
 	h.todosStale.Store(true)
 	h.resetTodoNag(todos)
-	history, tr := resumeHistory(rows[:cut])
+	h.goalRewound(seq)
 	ag.mu.Lock()
-	ag.runner, ag.turnModel = &agent.Runner{History: history}, ""
-	// the stored rows keep tool output a prune cleared, so compactDue must see them
-	ag.lastIn, ag.turnMsgID = estTokens(history...)+ag.promptTokens, ""
-	ag.goal, ag.goalRuns = goalIn(rows[:cut]), 0
+	ag.runner, ag.turnModel, ag.turnSeq = nil, "", -1
+	ag.lastIn = 0
 	ag.mu.Unlock()
-	h.keepLastIn()
 	h.forgetInstructions()
-	h.setTranscript(sess.Title, tr)
+	h.setTranscriptFromLog()
 	if ui := h.hooks(); ui != nil {
-		ui.ComposerEdit(ComposerSet, text, -1)
+		ui.ComposerEdit(ComposerSet, row.Text, -1)
 	}
 	return len(cps), nil
 }
 
-// forgetLearned undoes what session sid learned from its rows from to until:
-// its learned memories and pending proposals go, and what they replaced or
-// the budget cut is live again. The ledger SELECT replays the session's ops
-// onto the files, forget entries per removed id (DESIGN §7), and restores its
-// file-mode writes newest-first, ending at the oldest entry's prior bytes;
-// the frozen table is read-only trail, a live row's import entry replaying
-// as the add it stands for and a frozen row the import superseded coming
-// back too (DESIGN §7). The rewind holds cutMu and the partition locks.
-// NOTE: an accept or a reflector run between two rewound rows goes too.
-func (h *Host) forgetLearned(sid string, from, until int64, cps []store.Checkpoint) bool {
-	failed := false
-	warn := func(err error) {
-		failed = true
-		h.Log.Warn("learned memories not rewound", "origin", "rewind", "error", err)
+// patchView re-covers the messages the cut left behind: every surviving
+// message not covered by a view line whose node survived becomes a leaf line
+// again, which the builder re-merges.
+func (h *Host) patchView(cut int64) error {
+	lines, err := h.DB.LoadView()
+	if err != nil {
+		return err
 	}
-	dbs := []*store.DB{h.DB, h.GlobalDB}
-	for _, db := range dbs {
-		if db == nil {
-			continue
-		}
-		if err := db.DeleteProposalsBetween(sid, from, until); err != nil {
-			warn(err)
+	covered := make([]bool, cut)
+	for _, ln := range lines {
+		n := nodeID{ln.L, ln.I}
+		for s := max(0, n.first()); s < min(cut, n.last()+1); s++ {
+			covered[s] = true
 		}
 	}
-	user, private := h.brainParts()
-	parts := []brain.Partition{private, user}
-	// drop collects the ids each partition loses: a move-out in one
-	// partition removes the line from the other (DESIGN §7)
-	drop := map[brain.Kind][]string{brain.Private: nil, brain.User: nil}
-	var writes []*brain.Op
-	for _, p := range parts {
-		if p.Zero() {
-			continue
-		}
-		lg, err := p.OpenLedger()
-		if err != nil {
-			warn(err)
-			continue
-		}
-		ops, err := lg.Session(sid, from, until)
-		if err != nil {
-			warn(err)
-			_ = lg.Close()
-			continue
-		}
-		var add []brain.Line
-		// lastWrite is the age a restored line carries: its latest writing
-		// op's time in this partition's trail; an import op's own stamps are
-		// the frozen row's (the migration moment is not a write)
-		lastWrite := func(id string, fallback int64) time.Time {
-			if trail, err := lg.ByID(id); err == nil {
-				for _, o := range slices.Backward(trail) {
-					if o.Op == brain.OpAdd || o.Op == brain.OpEdit || o.Op == brain.OpImport || o.Op == brain.OpMoveIn {
-						if o.Op == brain.OpImport && o.UpdatedAt != 0 {
-							return time.UnixMilli(o.UpdatedAt).UTC()
-						}
-						return time.UnixMilli(o.TS).UTC()
-					}
-				}
-			}
-			return time.UnixMilli(fallback).UTC()
-		}
-		for _, op := range ops {
-			switch op.Op {
-			case brain.OpAdd, brain.OpMoveIn, brain.OpImport:
-				// an import replays like the add it stands for: the line it
-				// composed is the session's pre-migration learning (DESIGN §7)
-				if op.Origin == store.OriginLearned {
-					drop[p.Kind] = append(drop[p.Kind], op.ID)
-				}
-			case brain.OpMoveOut:
-				if op.Origin == store.OriginLearned {
-					if p.Kind == brain.User {
-						drop[brain.Private] = append(drop[brain.Private], op.ID)
-					} else {
-						drop[brain.User] = append(drop[brain.User], op.ID)
-					}
-					// the move back restores the source's line - unless the
-					// session wrote it here first, the add being undone
-					if !slices.Contains(drop[p.Kind], op.ID) {
-						add = append(add, brain.Line{ID: op.ID, Origin: op.Origin, Date: lastWrite(op.ID, op.TS), Text: op.Text})
-					}
-				}
-			case brain.OpSupersede, brain.OpArchive:
-				// the line comes back with its last write's age (DESIGN §7); a line
-				// the session itself wrote in the range stays dropped - the
-				// add being undone outranks the cut that later took it - and
-				// an entry without text (the id only the ledger held) has no
-				// line to restore
-				if slices.Contains(drop[p.Kind], op.ID) || op.Text == "" {
-					continue
-				}
-				add = append(add, brain.Line{ID: op.ID, Origin: op.Origin, Date: lastWrite(op.ID, op.TS), Text: op.Text})
-			case brain.OpWrite:
-				writes = append(writes, op)
-			case brain.OpForget, brain.OpEdit:
-				// neither restores a line or a file here
+	for s, ok := range covered {
+		if !ok {
+			if err := h.DB.AppendViewLine(0, int64(s)); err != nil {
+				return err
 			}
 		}
-		// a pre-migration supersede has no op to replay: the frozen row the
-		// dropped import retired comes back with the row's own text and age
-		// (DESIGN §7); one the session dropped itself stays gone
-		if len(drop[p.Kind]) > 0 {
-			db := h.DB
-			if p.Kind == brain.User {
-				db = h.GlobalDB
-			}
-			if db != nil {
-				frozen, err := db.ListMemory(p.Kind.Scope(), true)
-				if err != nil {
-					warn(err)
-				}
-				for _, m := range frozen {
-					if !slices.Contains(drop[p.Kind], m.SupersededBy) || slices.Contains(drop[p.Kind], m.ID) {
-						continue
-					}
-					add = append(add, lineOf(m))
-					// the frozen table has no op to replay, so the revival
-					// journals its own add-shaped entry: the replayed trail
-					// explains the line and lint's hand-edit finding stays quiet
-					revive := &brain.Op{
-						Op: brain.OpAdd, ID: m.ID, Text: m.Text, SessionID: sid,
-						Hash: brain.TextHash(m.Text), Scope: p.Kind.Scope(), Origin: m.Origin,
-						CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt, TS: h.now().UnixMilli(),
-					}
-					if err := lg.Insert(revive); err != nil {
-						warn(err)
-					}
-				}
-			}
-		}
-		if err := brain.RestoreLocked(p, sid, add, drop[p.Kind], h.now()); err != nil {
-			warn(err)
-		}
-		_ = lg.Close()
 	}
-	if h.restoreBrainWrites(private, user, writes, cps) {
-		failed = true
-	}
-	ag := h.agents
-	ag.mu.Lock()
-	ag.brainWrites = nil // the session wrote nothing that survives the rewind
-	ag.mu.Unlock()
-	h.refreshPending()
-	return failed
+	return nil
 }
 
-// restoreBrainWrites rewinds the session's file-mode brain writes: the
-// oldest op's prior bytes win, a creation deletes its file, and a truncated
-// prior defers to the file-tool checkpoint the restore loop already wrote
-// (DESIGN §7). The rewind holds the partition locks.
-func (h *Host) restoreBrainWrites(private, user brain.Partition, writes []*brain.Op, cps []store.Checkpoint) bool {
-	failed := false
-	oldest := map[string]*brain.Op{}
-	for _, op := range writes {
-		// the key is scope-qualified: a name one session promoted in both
-		// partitions journals a write op in each ledger
-		key := string(op.Scope) + "/" + op.ID
-		if _, ok := oldest[key]; !ok {
-			oldest[key] = op
-		}
+// todosBefore is the todo list the last todos call before seq set, paired
+// from the log's tool and echo rows in order.
+// NOTE: two todos calls in one step pair in call order, which the echo rows
+// keep; a refused call's result drops its input.
+func (h *Host) todosBefore(cut int64) []store.Todo {
+	rows, err := h.DB.LogFrom(0, int(cut))
+	if err != nil {
+		return nil
 	}
-	for _, op := range oldest {
-		p := private
-		if op.Scope == store.ScopeUser {
-			p = user
-		}
-		path := filepath.Join(p.Dir, op.ID)
-		// a checkpoint's pre-turn bytes are the fuller truth and were
-		// restored above; this op's prior is only mid-turn state
-		checkpointed := false
-		for _, cp := range cps {
-			if perm.CanonPath(cp.Path) == perm.CanonPath(path) {
-				checkpointed = true
-				break
-			}
-		}
-		if checkpointed {
-			continue
-		}
-		if op.Truncated {
-			h.Notify(slog.LevelWarn, "File partly restored", fmt.Sprintf("%s rewound to its first %d KiB only", filepath.Base(path), brain.ContentCap>>10))
-		}
-		var err error
-		if !op.Existed {
-			if err = os.Remove(path); errors.Is(err, fs.ErrNotExist) {
-				err = nil
-			}
-		} else {
-			err = config.WriteFileAtomic(path, op.Prior)
-		}
-		if err != nil {
-			failed = true
-			h.Log.Warn("brain file not rewound", "origin", "rewind", "path", path, "error", err)
-		}
-	}
-	return failed
-}
-
-// todosIn is the todo list the last todos call in rows that ran set.
-func todosIn(rows []*store.Message) []store.Todo {
-	calls := map[string]string{} // tool call id -> input
+	var pending []string
 	var list []store.Todo
-	for _, row := range rows {
-		var m fantasy.Message
-		if json.Unmarshal([]byte(row.PartsJSON), &m) != nil {
-			continue
-		}
-		for _, part := range m.Content {
-			switch p := part.(type) {
-			case fantasy.ToolCallPart:
-				if p.ToolName == string(tools.ToolTodos) {
-					calls[p.ToolCallID] = p.Input
-				}
-			case fantasy.ToolResultPart:
-				var in map[string]any
-				input, ok := calls[p.ToolCallID]
-				// a refused call set nothing
-				if !ok || p.Output == nil || p.Output.GetType() == fantasy.ToolResultContentTypeError ||
-					json.Unmarshal([]byte(input), &in) != nil {
-					continue
-				}
+	for _, e := range rows {
+		switch e.Kind {
+		case kindTool:
+			if rowTool(e) == string(tools.ToolTodos) {
+				pending = append(pending, e.Text)
+			}
+		case kindEcho:
+			var meta struct {
+				Tool string `json:"tool"`
+				Ok   bool   `json:"ok"`
+			}
+			if json.Unmarshal([]byte(e.MetaJSON), &meta) != nil || meta.Tool != string(tools.ToolTodos) {
+				continue
+			}
+			if len(pending) == 0 || !meta.Ok {
+				pending = nil
+				continue
+			}
+			var in map[string]any
+			if input := pending[0]; json.Unmarshal([]byte(input), &in) == nil {
 				if todos, _, set, err := tools.ParseTodos(in); set && err == nil {
 					list = todos
 				}
 			}
+			pending = pending[1:]
 		}
 	}
 	return list
@@ -479,8 +264,8 @@ func restoreCheckpoint(cp store.Checkpoint) error {
 	return os.WriteFile(cp.Path, cp.Content, 0o644)
 }
 
-// OpenRewind lists the session's prompts, newest first; choosing one
-// rewinds to before it.
+// OpenRewind lists the log's prompts, newest first; choosing one rewinds to
+// before it.
 func (h *Host) OpenRewind() error {
 	if h.AgentActive() {
 		return errTurnRunning
@@ -489,26 +274,25 @@ func (h *Host) OpenRewind() error {
 	if err != nil {
 		return err
 	}
-	sid := h.AgentSessionID()
 	if h.DB == nil {
-		return Usagef("no session to rewind")
+		return Usagef("nothing to rewind")
 	}
-	rows, err := h.DB.Messages(sid)
+	rows, err := h.DB.LogKindBack(kindUser, rewindPickerRows)
 	if err != nil {
 		return err
 	}
-	paths, _ := h.DB.CheckpointPaths(sid)
-	restored := set.Set[string]{} // what rewinding to this prompt restores: its files and every later prompt's
+	paths, _ := h.DB.CheckpointPaths()
+	restored := map[string]bool{} // what rewinding to this prompt restores
 	var items []OverlayItem
 	for _, row := range slices.Backward(rows) {
-		for _, p := range paths[row.ID] {
-			restored.Add(perm.FoldCase(p))
+		for _, p := range paths[row.Seq] {
+			restored[perm.FoldCase(p)] = true
 		}
-		text, ok := userText(row)
-		if !ok {
+		text := strings.TrimSpace(row.Text)
+		if text == "" {
 			continue
 		}
-		desc, restore := ago(row.CreatedAt), ""
+		desc, restore := agoStamp(row.CreatedAt), ""
 		if n := len(restored); n > 0 {
 			files := fmt.Sprintf("%d %s", n, Plural(n, "file", "files"))
 			desc += " · " + files
@@ -521,7 +305,7 @@ func (h *Host) OpenRewind() error {
 			Desc:   desc,
 			Detail: effect + "\n\n" + text, // what it does first: a long prompt scrolls below
 			Keys: []ItemKey{
-				{Key: "r", Desc: "rewind", Danger: true, Run: "rewind " + row.ID},
+				{Key: "r", Desc: "rewind", Danger: true, Run: "rewind " + strconv.FormatInt(row.Seq, 10)},
 			},
 		})
 	}

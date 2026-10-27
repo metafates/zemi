@@ -345,7 +345,6 @@ var lspQuietTool = set.Of(
 	tools.ToolRead, tools.ToolWrite, tools.ToolEdit,
 	tools.ToolGlob, tools.ToolGrep, tools.ToolTodos, tools.ToolPlan, tools.ToolQuestion,
 	tools.ToolSkill, tools.ToolJobList,
-	tools.ToolMemory,
 )
 
 // lspDirty records that something may have changed files without telling

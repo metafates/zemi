@@ -183,7 +183,7 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 	start()
 	for _, c := range []struct {
 		name     string
-		key, set string // the key, and the call init.lua sets it with; "" is models.titles and zemi.config.set
+		key, set string // the key, and the call init.lua sets it with; "" is models.compact and zemi.config.set
 		config   []any  // what init.lua sets the key to, in order
 		pick     any    // through SetConfig; nil picks nothing, "reset" runs /config reset
 		want     any
@@ -201,8 +201,8 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		{name: "a pick outlives the last set", pick: "p/e", want: "p/e", source: "this run"},
 		{name: "a set comes back", config: []any{"p/c"}, want: "p/c", source: "init.lua"},
 		{name: "dropping every set returns the default", want: "", source: "default"},
-		{name: "a Lua number sets a number key", key: "agent.compact_at", config: []any{5.0}, want: 5.0, source: "init.lua"},
-		{name: "so dropping it returns the default", key: "agent.compact_at", want: 80.0, source: "default"},
+		{name: "a Lua number sets a number key", key: "agent.max_background", config: []any{5.0}, want: 5.0, source: "init.lua"},
+		{name: "so dropping it returns the default", key: "agent.max_background", want: 4.0, source: "default"},
 		{name: "a pick persists", pick: "p/b", keep: true, restart: true, want: "p/b", source: "saved"},
 		{name: "init.lua overrides it", config: []any{"p/a"}, restart: true, want: "p/a", source: "init.lua"},
 		{name: "a pick over config lasts the run", config: []any{"p/a"}, pick: "p/c", keep: true, want: "p/c", source: "this run"},
@@ -212,7 +212,7 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		{name: "for good", restart: true, want: "", source: "default"},
 		{name: "a flag is not saved", pick: "p/z", restart: true, want: "", source: "default"},
 	} {
-		key := config.Key(cmp.Or(c.key, "models.titles"))
+		key := config.Key(cmp.Or(c.key, "models.compact"))
 		src := head
 		for _, v := range c.config {
 			src += fmt.Sprintf(cmp.Or(c.set, "zemi.config.set(%[1]q, %[2]s)"), key, luaLiteral(v)) + "\n"
@@ -377,35 +377,6 @@ func TestModelNamespace(t *testing.T) {
 	runExpectErr(t, r, `zemi.provider.add({ id = "typo", kind = "open_ai" })`, "unknown provider kind")
 }
 
-// TestSessionNamespace covers the session surface: empty id before the
-// first send, title set, and store-backed session creation.
-func TestSessionNamespace(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHostDB(t)
-
-	runUser(t, r, `
-		assert(zemi.session.id() == "", "session should start empty")
-		assert(zemi.session.title() == "zemi", "title=" .. zemi.session.title())
-		assert(#zemi.session.messages() == 0, "messages should be empty")
-	`)
-
-	if err := h.ensureSession("hello world"); err != nil {
-		t.Fatalf("ensureSession: %v", err)
-	}
-	if h.AgentSessionID() == "" {
-		t.Fatal("session id still empty after ensureSession")
-	}
-	runUser(t, r, `zemi.session.rename("my session")
-		assert(zemi.session.title() == "my session", "title=" .. zemi.session.title())`)
-	if err := h.persistMessage(fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "hi there"}}}); err != nil {
-		t.Fatal(err)
-	}
-	runUser(t, r, `assert(zemi.session.id() ~= "", "session id missing")
-		local m = zemi.session.messages()[1]
-		assert(m.text == "hi there", "text=" .. tostring(m.text))
-		assert(m.json:find("hi there", 1, true), "json missing")`)
-}
-
 // TestSteeringQueue covers the DESIGN §4 queue: sends during a turn queue
 // in order, taking the queue empties it, leftovers become one follow-up
 // turn with active and a cancellable scope held across the handoff, and
@@ -515,11 +486,9 @@ func TestSteeringQueue(t *testing.T) {
 	if !strings.Contains(notes(), "Waiting for your next message: Background agent a1 (find \"x\") finished") {
 		t.Fatalf("no waiting notice: %q", notes())
 	}
-	if err := h.closeSession(nil); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(notes(), "Background agent a1 (find \"x\") finished: find \"x\"\nx is in y.go") {
-		t.Fatalf("closing dropped the report: %q", notes())
+	// the queued report reaches the next turn's reader whole
+	if _, heads, _ := userRowsFor(agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"find \\\"x\\\"\">\nx is in y.go\n</agent-report>\n</attached-files>"); len(heads) == 0 {
+		t.Fatal("the report drew no head")
 	}
 
 	h.AgentCancel() // no runner: must not panic
@@ -906,38 +875,6 @@ func (f *fakeUI) AskPlan(plan string) (tools.PlanVerdict, bool) {
 	return f.planVerdict, f.planOK
 }
 
-// TestMemoryToolThroughPipeline drives the memory tool as the model sees
-// it: under ask autonomy the memory queues for review, and the answer says
-// so.
-func TestMemoryToolThroughPipeline(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	seedSession(t, h)
-	if _, err := h.Settings.SetQuiet("memory.autonomy", "ask"); err != nil {
-		t.Fatal(err)
-	}
-	run := func(name, input string) fantasy.ToolResponse {
-		t.Helper()
-		for _, ag := range tools.All(h.PipelineFor()) {
-			if ag.Info().Name == name {
-				resp, err := ag.Run(t.Context(), fantasy.ToolCall{ID: "t", Name: name, Input: input})
-				if err != nil {
-					t.Fatalf("%s: %v", name, err)
-				}
-				return resp
-			}
-		}
-		t.Fatalf("no tool %s", name)
-		return fantasy.ToolResponse{}
-	}
-	if resp := run("memory", `{"text":"bump the labels sequence before deploying"}`); resp.IsError || resp.Content != "queued for the user's review" {
-		t.Fatalf("memory: %+v", resp)
-	}
-	if n := len(h.memoryProposals()); n != 1 {
-		t.Fatalf("proposals=%d", n)
-	}
-}
-
 // TestPipelineQuestionToolEndToEnd drives the question tool through
 // PipelineFor and the fakeUI: the structured ask reaches the UI hooks and
 // the chosen label comes back as the tool output; with no UI the pipeline
@@ -982,7 +919,6 @@ func TestPipelineQuestionToolEndToEnd(t *testing.T) {
 func TestPipelineTodos(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	sid := seedSession(t, h)
 
 	pipe := h.PipelineFor()
 	if err := pipe.TodosWrite([]store.Todo{{Content: "first", Status: "in_progress", ActiveForm: "doing first"}}); err != nil {
@@ -992,7 +928,7 @@ func TestPipelineTodos(t *testing.T) {
 	if err != nil || len(rows) != 1 || rows[0].Content != "first" || rows[0].Status != "in_progress" {
 		t.Fatalf("TodosRead: %v %+v", err, rows)
 	}
-	persisted, err := h.DB.Todos(sid)
+	persisted, err := h.DB.Todos(store.MainSessionID)
 	if err != nil || len(persisted) != 1 || persisted[0].Content != "first" {
 		t.Fatalf("todos must persist for the session: %v %+v", err, persisted)
 	}
@@ -1028,7 +964,6 @@ func TestTodoNag(t *testing.T) {
 	t.Run("nags once past the threshold, not again without an update", func(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
-		seedSession(t, h)
 		set(h, both)
 		engage(h, todoNagAfter-1)
 		if got := takeNag(h); got != "" {
@@ -1047,7 +982,6 @@ func TestTodoNag(t *testing.T) {
 	t.Run("a step counts once whatever its calls, none with a todos call", func(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
-		seedSession(t, h)
 		set(h, both)
 		engage(h, 0)
 		s := h.streamHooks()
@@ -1072,7 +1006,6 @@ func TestTodoNag(t *testing.T) {
 	t.Run("a nag the turn ended before delivering starts no turn", func(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
-		seedSession(t, h)
 		set(h, both)
 		engage(h, todoNagAfter) // a StopTurn step (a dismissed question) past the threshold
 		h.agents.mu.Lock()
@@ -1093,7 +1026,6 @@ func TestTodoNag(t *testing.T) {
 	t.Run("a todos write re-arms the tracker", func(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
-		seedSession(t, h)
 		set(h, both)
 		engage(h, todoNagAfter)
 		if takeNag(h) == "" {
@@ -1109,7 +1041,6 @@ func TestTodoNag(t *testing.T) {
 	t.Run("a call while idle does not count", func(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
-		seedSession(t, h)
 		set(h, both)
 		for range todoNagAfter {
 			h.maybeNagTodos() // a background agent's calls, the main agent idle
@@ -1123,7 +1054,6 @@ func TestTodoNag(t *testing.T) {
 	t.Run("a call the interrupt ended arms nothing", func(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
-		seedSession(t, h)
 		set(h, both)
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
@@ -1134,29 +1064,9 @@ func TestTodoNag(t *testing.T) {
 		}
 	})
 
-	t.Run("a closed session takes its tracker with it", func(t *testing.T) {
-		t.Parallel()
-		h, _ := newTestHostDB(t)
-		seedSession(t, h)
-		set(h, both)
-		engage(h, todoNagAfter-1)
-		h.agents.mu.Lock()
-		h.agents.active = false
-		h.agents.mu.Unlock()
-		if err := h.closeSession(nil); err != nil {
-			t.Fatal(err)
-		}
-		seedSession(t, h)
-		engage(h, 1)
-		if got := takeNag(h); got != "" {
-			t.Fatalf("the old session's item nagged the new one: %q", got)
-		}
-	})
-
 	t.Run("a single in_progress item or none never nags", func(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
-		seedSession(t, h)
 		set(h, []store.Todo{{Content: "solo", Status: "in_progress"}})
 		engage(h, todoNagAfter+2)
 		if got := takeNag(h); got != "" {
@@ -1168,49 +1078,6 @@ func TestTodoNag(t *testing.T) {
 			t.Fatalf("all done must not nag: %q", got)
 		}
 	})
-}
-
-// TestTurnDoneRecordsStats covers the turn stat plumbing: the assistant
-// transcript entry carries tokens, thought time and elapsed time; plain
-// appended messages carry none.
-func TestTurnDoneRecordsStats(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	sa := h.streamHooks()
-	sa.ReasoningDelta("pondering")
-	sa.TextDelta("answer")
-	sa.ToolCallStart("t1", "shell", "ls")
-	sa.ToolCallEnd("t1", "shell", out(""), "")
-	sa.TextDelta("done")
-	sa.TurnDone(nil, fantasy.Usage{InputTokens: 100, OutputTokens: 20, TotalTokens: 120})
-
-	// text streamed before a tool call stays above its row
-	var order []string
-	for _, m := range h.Session().Transcript {
-		order = append(order, string(m.Kind)+":"+m.Text)
-	}
-	if got := strings.Join(order, " | "); got != "reasoning:pondering | :answer | tool:ls | :done" {
-		t.Fatalf("transcript order = %s", got)
-	}
-	last := h.Session().Transcript[len(h.Session().Transcript)-1]
-	if last.Role != "assistant" || last.Stat == nil {
-		t.Fatalf("last = %+v, want assistant with stats", last)
-	}
-	if last.Stat.In != 100 || last.Stat.Out != 20 {
-		t.Fatalf("stat = %+v", last.Stat)
-	}
-	if last.Stat.ThoughtMS < 0 || last.Stat.ElapsedMS < 0 {
-		t.Fatalf("negative timing: %+v", last.Stat)
-	}
-	if last.Stat.ThoughtMS > 10_000 || last.Stat.ElapsedMS > 10_000 {
-		t.Fatalf("implausible timing: %+v", last.Stat)
-	}
-
-	h.AppendMessage("user", "hi")
-	user := h.Session().Transcript[len(h.Session().Transcript)-1]
-	if user.Role != "user" || user.Stat != nil {
-		t.Fatalf("user message must carry no stats: %+v", user)
-	}
 }
 
 // TestTurnDoneDropsTheRetry: a turn that ends during a retry backoff (esc,
@@ -1228,56 +1095,6 @@ func TestTurnDoneDropsTheRetry(t *testing.T) {
 	sa.TurnDone(context.Canceled, fantasy.Usage{})
 	if live := h.AgentStream(); live.Retrying || live.Retries != 0 || live.RetryWhy != "" {
 		t.Fatalf("idle view = retrying %v (n=%d why=%q), want the retry dropped with the turn", live.Retrying, live.Retries, live.RetryWhy)
-	}
-}
-
-// TestHeldErrorKeepsItsUsage: a send the provider refused (overflow, images,
-// the output cap) ends the send, not the turn - sendCompacting resends, and
-// the refused send's steps' usage and elapsed time bank for the send that
-// finishes the turn instead of dropping from the readout. Session billing
-// stays per stream.
-func TestHeldErrorKeepsItsUsage(t *testing.T) {
-	t.Parallel()
-	log := slog.New(slog.DiscardHandler)
-	clock := &fakeClock{now: testEpoch}
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, Clock: clock})
-	h := NewHost(r, log, config.NewStore(), config.Dirs{StateHome: t.TempDir(), ProjectDir: t.TempDir()})
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
-		t.Fatal(err)
-	}
-	sa := h.streamHooks()
-	sa.TextDelta("half the work")
-	h.agents.mu.Lock()
-	h.agents.beginTurn()         // the refused send began
-	h.agents.holdOverflow = true // sendCompacting armed the overflow resend
-	h.agents.mu.Unlock()
-	clock.set(testEpoch.Add(3 * time.Second))
-	sa.TurnDone(&fantasy.ProviderError{Message: "prompt is too long", ContextTooLargeErr: true},
-		fantasy.Usage{InputTokens: 100, OutputTokens: 20})
-	if u := h.agents.cutUsage; u.InputTokens != 100 || u.OutputTokens != 20 {
-		t.Fatalf("banked usage = %+v, want the refused send's", u)
-	}
-	h.agents.mu.Lock()
-	h.agents.beginTurn() // the resend
-	h.agents.mu.Unlock()
-	sa.TextDelta("and the rest")
-	clock.set(testEpoch.Add(5 * time.Second))
-	sa.TurnDone(nil, fantasy.Usage{}) // the resend finishes the turn
-	h.evlog.mu.Lock()
-	var finish map[string]any
-	for _, e := range h.evlog.entries {
-		if e.name == EventAgentFinish {
-			finish = e.payload
-		}
-	}
-	h.evlog.mu.Unlock()
-	u, _ := finish["usage"].(map[string]any)
-	if u["in"] != int64(100) || u["out"] != int64(20) {
-		t.Fatalf("agent.finish usage = %v, want the refused send's tokens carried", u)
-	}
-	tr := h.Session().Transcript
-	if last := tr[len(tr)-1]; last.Stat == nil || last.Stat.ElapsedMS != 5000 {
-		t.Fatalf("the turn's readout counts %+v, want the whole turn's 5000 ms", last.Stat)
 	}
 }
 
@@ -1317,7 +1134,6 @@ func TestTurnClockIsTheHostClock(t *testing.T) {
 func TestTurnEndSettlesTodos(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	sid := seedSession(t, h)
 	wrote := []store.Todo{
 		{Content: "a", Status: store.TodoDone},
 		{Content: "b", Status: store.TodoInProgress, ActiveForm: "doing b"},
@@ -1333,7 +1149,7 @@ func TestTurnEndSettlesTodos(t *testing.T) {
 		t.Fatalf("an idle agent started a turn: %q", text)
 	}
 	waitFor(t, func() error {
-		todos, err := h.DB.Todos(sid)
+		todos, err := h.DB.Todos(store.MainSessionID)
 		if err != nil {
 			return err
 		}
@@ -1342,7 +1158,7 @@ func TestTurnEndSettlesTodos(t *testing.T) {
 		}
 		return nil
 	})
-	todos, err := h.DB.Todos(sid)
+	todos, err := h.DB.Todos(store.MainSessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1353,19 +1169,6 @@ func TestTurnEndSettlesTodos(t *testing.T) {
 	}
 	if !slices.Equal(todos, want) {
 		t.Fatalf("settled list = %+v, want %+v", todos, want)
-	}
-}
-
-// TestSendWithoutModelLeavesNoSession: a send that cannot resolve a model
-// fails before it creates a session row.
-func TestSendWithoutModelLeavesNoSession(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	if err := h.AgentSend("hi"); !errors.Is(err, ErrNoModel) {
-		t.Fatalf("AgentSend = %v, want ErrNoModel", err)
-	}
-	if list, err := h.DB.ListSessions(10); err != nil || len(list) != 0 {
-		t.Fatalf("sessions = %v, %v; want none", list, err)
 	}
 }
 
@@ -1863,20 +1666,17 @@ func TestBtw(t *testing.T) {
 	defer waitIdle(t, h)
 	defer h.AgentCancel()
 
-	sid := h.AgentSessionID()
-	rows, _ := h.DB.MessageCount(sid)
-	s, _ := h.DB.GetSession(sid)
+	billed, _ := h.DB.GetSession(store.MainSessionID)
 	answer, err := h.btw(t.Context(), "what failed?")
 	if err != nil || answer != "the build" {
 		t.Fatalf("btw = %q, %v", answer, err)
 	}
-	after, _ := h.DB.MessageCount(sid)
-	billed, _ := h.DB.GetSession(sid)
-	if todos, _ := h.DB.Todos(sid); len(todos) > 0 {
+	after, _ := h.DB.GetSession(store.MainSessionID)
+	if todos, _ := h.DB.Todos(store.MainSessionID); len(todos) > 0 {
 		t.Fatalf("a side question ran a tool: %+v", todos)
 	}
-	if after != rows || billed.CompletionTokens != s.CompletionTokens+7 {
-		t.Fatalf("rows %d -> %d, completion tokens %d -> %d", rows, after, s.CompletionTokens, billed.CompletionTokens)
+	if after.CompletionTokens != billed.CompletionTokens+7 {
+		t.Fatalf("completion tokens %d -> %d, want the aside's 7 on the anchor row", billed.CompletionTokens, after.CompletionTokens)
 	}
 	p := m.call.Prompt
 	sawResult := slices.ContainsFunc(p, func(msg fantasy.Message) bool { return msg.Role == fantasy.MessageRoleTool })
@@ -1913,9 +1713,6 @@ func TestBtw(t *testing.T) {
 func TestRecap(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	if _, err := h.Settings.SetQuiet("session.auto_title", false); err != nil {
-		t.Fatal(err)
-	}
 	m := reflectStub(t, h, "fixing the build;\n\n  next: run  make check\nignored")
 	const recap = "Recap: fixing the build; next: run make check"
 	turn := func(tools bool) func() {
@@ -2028,31 +1825,6 @@ func TestLateReasoningKeepsReplyWhole(t *testing.T) {
 	}
 }
 
-// TestTurnStatResume: the persisted readout comes back with the model that
-// wrote the reply, so a resumed session's stats row still names it.
-func TestTurnStatResume(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	sid := seedSession(t, h)
-	m := fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "done"}}}
-	raw, err := json.Marshal(m, json.Deterministic(true))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := h.DB.AddMessage(&store.Message{SessionID: sid, Role: string(fantasy.MessageRoleAssistant), PartsJSON: string(raw)}); err != nil {
-		t.Fatal(err)
-	}
-	h.persistTurnStat(sid, TurnStat{Out: 120, ElapsedMS: 1500, Ended: 1234, Model: "anthropic/claude-sonnet-4-5"})
-	rows, err := h.DB.Messages(sid)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, tr := historyFrom(rows)
-	if len(tr) != 1 || tr[0].Stat == nil || tr[0].Stat.Model != "anthropic/claude-sonnet-4-5" || tr[0].Stat.Out != 120 {
-		t.Fatalf("resumed rows = %+v, want the stat with its model", tr)
-	}
-}
-
 // TestTypedSendMarksOnlyAQueuedMessage: the handoff signal belongs to a
 // message that joined a running turn (Host.AgentSendUser). One that starts a
 // turn marks nothing, so a foreground call in that turn waits as usual - which
@@ -2068,7 +1840,6 @@ func TestTypedSendMarksOnlyAQueuedMessage(t *testing.T) {
 			return textParts("ok")
 		}}, nil
 	}
-	seedSession(t, h)
 	if err := h.AgentSendUser("start a turn"); err != nil {
 		t.Fatal(err)
 	}

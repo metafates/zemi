@@ -25,7 +25,6 @@ const (
 	SubjectWorkflow = "tool.workflow"
 	SubjectRead     = "fs.read"
 	SubjectWrite    = "fs.write"
-	SubjectMemory   = "memory.write"
 )
 
 const PluginPrefix = "plugin:"

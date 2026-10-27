@@ -95,59 +95,6 @@ func (h *Host) composerNamespace(L *glua.LState) *glua.LTable {
 
 // zemi.session additions
 
-// sessionExtraFns adds list, new, resume, rewind and todos to zemi.session. Switching
-// sessions is a runtime operation: it returns nil, err (a turn is running,
-// no such session) instead of raising.
-func (h *Host) sessionExtraFns(L *glua.LState, tb *glua.LTable) {
-	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		limit := 20
-		if opts, ok := arg[*glua.LTable](L, 1, "zemi.session.list"); ok {
-			if n, ok := opt[glua.LNumber](L, opts, "limit"); ok && n > 0 {
-				limit = min(int(n), 200)
-			}
-		}
-		var rows []any
-		if h.DB != nil {
-			current := h.AgentSessionID()
-			list, _ := h.DB.ListSessions(limit)
-			for _, s := range list {
-				rows = append(rows, map[string]any{
-					"id": s.ID, "title": s.Title, "updated_at": s.UpdatedAt, "ago": ago(s.UpdatedAt),
-					"tokens": s.PromptTokens + s.CompletionTokens, "cost": s.Cost, "current": s.ID == current,
-				})
-			}
-		}
-		L.Push(lua.FromGo(L, rows))
-		return 1
-	}))
-	tb.RawSetString("new", L.NewFunction(func(L *glua.LState) int {
-		return luaResult(L, h.NewSession())
-	}))
-	tb.RawSetString("resume", L.NewFunction(func(L *glua.LState) int {
-		return luaResult(L, h.ResumeSession(L.CheckString(1)))
-	}))
-	// rewind(message_id) -> restored file count, or nil, err
-	tb.RawSetString("rewind", L.NewFunction(func(L *glua.LState) int {
-		n, err := h.RewindTo(L.CheckString(1))
-		if err != nil {
-			return luaResult(L, err)
-		}
-		L.Push(glua.LNumber(n))
-		return 1
-	}))
-	tb.RawSetString("todos", L.NewFunction(func(L *glua.LState) int {
-		var rows []any
-		if sid := h.AgentSessionID(); sid != "" && h.DB != nil {
-			todos, _ := h.DB.Todos(sid)
-			for _, td := range todos {
-				rows = append(rows, map[string]any{"content": td.Content, "status": td.Status, "active_form": td.ActiveForm})
-			}
-		}
-		L.Push(lua.FromGo(L, rows))
-		return 1
-	}))
-}
-
 // agent.assemble
 
 const (

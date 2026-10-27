@@ -162,11 +162,6 @@ test("drivers reach only what the plugin registered", function()
 		{ test.run, "help", "/help is not a command of plugin demo; it registered /demo" },
 		{ test.render, "chat", "chat is not a widget of plugin demo; it registered demo.branch, demo.cost" },
 		{ test.tool, "read", "read is not a tool of plugin demo; it registered weather_now" },
-		{
-			test.emit,
-			"reflector.done",
-			"reflector.done is not a handled event of plugin demo; it registered app.ready, tool.post",
-		},
 	}) do
 		test.raises(function() c[1](c[2]) end, c[3])
 	end

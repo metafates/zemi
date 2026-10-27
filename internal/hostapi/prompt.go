@@ -1,5 +1,5 @@
 // prompt.go assembles the agent's system prompt and context message: the
-// shipped text, instruction files, the environment and the pinned brain
+// shipped text, instruction files and the environment
 // section.
 
 package hostapi
@@ -132,7 +132,6 @@ type promptParts struct {
 	instructions int
 	lua          int
 	skills       int
-	brain        int
 	files        map[string]time.Time // instruction file, or where one would load, -> its mtime as read, zero when missing
 }
 
@@ -198,18 +197,15 @@ func (h *Host) systemFor(sys string, toolset []fantasy.AgentTool, pad string, re
 	}
 	ag := h.agents
 	ag.mu.Lock()
-	brainText, hookText := ag.brain, ag.hookCtx
+	hookText := ag.hookCtx
 	ag.mu.Unlock()
-	if brainText != "" {
-		brainText = "\n\n" + brainText
-	}
 	// The system prompt is the same for every session of the user, so the
 	// provider caches it with the tools once; what varies by project or
 	// session rides the context message after it.
 	system = sys + rules + user + index + luaSections
-	ctxMsg = contextOpener + project + projectIndex + env + brainText + hookText + last + "\n</context>"
-	parts = promptParts{instructions: len(user) + len(project), lua: len(luaSections), skills: len(index) + len(projectIndex), brain: len(brainText), files: mtimes}
-	parts.base = len(system) + len(ctxMsg) - parts.instructions - parts.lua - parts.skills - parts.brain
+	ctxMsg = contextOpener + project + projectIndex + env + hookText + last + "\n</context>"
+	parts = promptParts{instructions: len(user) + len(project), lua: len(luaSections), skills: len(index) + len(projectIndex), files: mtimes}
+	parts.base = len(system) + len(ctxMsg) - parts.instructions - parts.lua - parts.skills
 	return system, ctxMsg, parts
 }
 
@@ -642,7 +638,8 @@ too long for one message is split over several in a row.
 
 Tools:
 - zoom(id, n) opens line id+n into the two lines it was made from;
-- zoom(id, 1) gives message id whole, with its images
+- zoom(id, 1) gives message id whole, with its images; a work message
+  (an agent's report) gives the run it reports for, its transcript paged
 - date(id) gives the date and time of message id
 
 The view is your memory, and its latest word on a thing is the truth. Whenever

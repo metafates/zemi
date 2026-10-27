@@ -94,7 +94,7 @@ zemi.ui.widget.add({
   id = "splash", region = "chat", priority = 5,
   render = function(ctx)
     ctx.version = "v1"
-    ctx.recent = { { id = "a", ago = "1m ago", title = "a" }, { id = "b", ago = "2m ago", title = "b" }, { id = "c", ago = "3m ago", title = "c" } }
+    ctx.projects = { { path = "~/a", root = "/a", ago = "1m ago" }, { path = "~/b", root = "/b", ago = "2m ago" }, { path = "~/c", root = "/c", ago = "3m ago" } }
     return default.splash(ctx)
   end,
 })`)
@@ -128,10 +128,10 @@ func TestSplashTip(t *testing.T) {
 		{"init.lua failed", `init_error = "/cfg/init.lua:12: boom", model = ""`, "● Tip  init.lua:12 failed: /errors", "", false},
 		{"no model", `model = ""`, "● Tip  No model yet: export ANTHROPIC_API_KEY and start zemi again, or\nadd a provider to ~/.config/zemi/init.lua", "", false},
 		{"untrusted", `trusted = false`, "● Tip  /trust lets zemi read this project's instructions and run code", "", false},
-		{"at home", `trusted = false, trustable = false`, "● Tip  /resume picks up the latest session", "", false},
+		{"at home", `trusted = false, trustable = false`, "● Tip  !git status runs in your shell; the output rides your next prompt", "!git status", false},
 		{"no instruction file", `instructions = {}`, "● Tip  /init writes an AGENTS.md, so zemi knows this project", "/init", false},
-		{"other projects", `projects = { { path = "~/p", root = "/p", ago = "now" } }`, "● Tip  /projects switches to one, or type to stay here", "", false},
-		{"a first session", `recent = {}`, `● Tip  !git status runs in your shell; the output rides your next prompt`, "!git status", true},
+		{"other projects", `projects = { { path = "~/p", root = "/p", ago = "now" } }`, "● Tip  /projects switches to one, or type to stay here", "", true},
+		{"a first session", `projects = {}`, `● Tip  !git status runs in your shell; the output rides your next prompt`, "!git status", false},
 	}
 	for _, h := range []int{31, 23} {
 		app, _ := bootAgentApp(t, 100, h)
@@ -143,7 +143,7 @@ zemi.ui.widget.add({
   id = "splash", region = "chat", priority = 5, on_click = require("zemi.tui.text").run_click,
   render = function(ctx)
     ctx.init_error, ctx.model, ctx.model_hint, ctx.trusted, ctx.trustable = "", "a/b", "`+hint+`", true, true
-    ctx.instructions, ctx.recent, ctx.projects = { "AGENTS.md" }, { { id = "a", ago = "1m ago", title = "a" } }, nil
+    ctx.instructions, ctx.projects = { "AGENTS.md" }, nil
     for k, v in pairs({ `+c.ctx+` }) do
       ctx[k] = v
     end
@@ -312,31 +312,18 @@ func TestFarewell(t *testing.T) {
 		{"plain", 80, colorprofile.NoTTY, "Fix the flaky test", 0.42, true, false, true, []string{"+#%#@%@%%#%#:", "--==-\n\n", "cost     $0.42"}, []string{"\x1b"}},
 		{"color", 80, colorprofile.TrueColor, "t", 0, true, false, true, []string{"\x1b[38;"}, []string{"[48;", ";48;2;"}},
 		{"narrow", 30, colorprofile.NoTTY, "t", 0, true, false, true, []string{"+#%#@%@%%#%#:", "--==-\n\n"}, []string{"┗━━ ┗━━ ╹╹╹ ╹"}},
-		{"untitled", 80, colorprofile.NoTTY, "zemi", 0, true, false, false, []string{"fix the build"}, []string{"more", "cost"}},
+		{"untitled", 80, colorprofile.NoTTY, "zemi", 0, true, false, false, []string{"zemi"}, []string{"fix the build", "more", "cost"}},
 		{"control chars", 80, colorprofile.TrueColor, "a\x1b]52;c;x\x07b", 0, true, false, false, []string{"ab"}, []string{"\x1b]52"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			app, host := bootAgentApp(t, c.width, 30)
 			app.colors = c.profile
-			db := testStore(t, host)
 			if c.send {
-				sid := store.ShortID()
-				if err := db.CreateSession(sid, "", c.title, ""); err != nil {
-					t.Fatal(err)
-				}
-				if err := db.AddUsage(sid, 0, 0, 0, 0, c.cost); err != nil {
-					t.Fatal(err)
-				}
-				if err := host.ResumeSession(sid); err != nil {
-					t.Fatal(err)
-				}
-				host.AppendMessage("user", "  fix the build\nmore")
-				// whole even where the terminal wraps it
-				c.want = append(c.want, hostapi.ResumeCommand("", sid))
-				if c.mark {
-					c.want = append(c.want, hostapi.SessionMark(sid)+" "+c.title)
-				}
+				// the tally the exit widget reads; the test host has no turn
+				host.SeedStream(hostapi.StreamSnapshot{SessionCost: c.cost})
+				host.AppendMessage("user", c.title)
+				host.AppendMessage("assistant", "fix the build\nmore")
 			}
 			if c.booting {
 				block, reached := make(chan struct{}), make(chan struct{})

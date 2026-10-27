@@ -500,8 +500,8 @@ func (h *Host) messageRow(idx int, m ChatMessage) OverlayItem {
 	switch {
 	case m.Kind == "" && m.Role == fantasy.MessageRoleUser:
 		head, glyph, hl = cmp.Or(messageHead(text), "(empty prompt)"), "▌", "UserMsg"
-		if m.ID != "" {
-			item.ID = m.ID // r rewinds to it; the list's key checks the rows
+		if m.Seq > 0 {
+			item.ID = strconv.FormatInt(m.Seq, 10) // r rewinds to it; the list's key checks the rows
 		}
 	case m.Kind == "" && text != "":
 		blocks := codeBlocks(text)
@@ -512,7 +512,7 @@ func (h *Host) messageRow(idx int, m ChatMessage) OverlayItem {
 		if len(blocks) > 0 {
 			desc = strings.TrimSpace(desc + " · " + pluralCount(len(blocks), "code block", "code blocks"))
 		}
-	case m.Kind == RowNotice, m.Kind == RowCompact, m.Kind == RowError, m.Kind == RowShell:
+	case m.Kind == RowNotice, m.Kind == RowError, m.Kind == RowShell:
 		if text == "" {
 			return OverlayItem{}
 		}
@@ -545,7 +545,7 @@ func markFor(m ChatMessage) MarkKind {
 	if m.Kind == RowError {
 		return tools.MarkErr
 	}
-	if m.Kind == RowNotice || m.Kind == RowCompact || m.Kind == RowShell {
+	if m.Kind == RowNotice || m.Kind == RowShell {
 		return tools.MarkNote
 	}
 	if k, ok := callMarks[m.Status]; ok {

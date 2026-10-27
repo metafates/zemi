@@ -18,7 +18,7 @@ func TestGoldenModelRoles(t *testing.T) {
 		zemi.provider.add({ id = "anthropic", kind = "openai_compat", base_url = "http://x", api_key = "k", models = {
 			{ id = "claude-sonnet-4-5", display = "Claude Sonnet 4.5" }, { id = "claude-haiku-4-5", display = "Claude Haiku 4.5" } } })
 		zemi.model.set("anthropic/claude-sonnet-4-5")
-		zemi.config.set("models.memory", "anthropic/claude-haiku-4-5")`)
+		zemi.config.set("models.compact", "anthropic/claude-haiku-4-5")`)
 	// main.go owns /model
 	host.Commands.Add(&hostapi.Command{
 		Name: "model", NArgs: "*", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
@@ -42,7 +42,7 @@ func TestGoldenModelRoles(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: tea.KeyDown}) // -> haiku
 	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	frame("picked")
-	if got := host.Settings.Str("models.titles"); got != "anthropic/claude-haiku-4-5" {
-		t.Fatalf("models.titles = %q", got)
+	if got := host.Settings.Str("models.compact"); got != "anthropic/claude-haiku-4-5" {
+		t.Fatalf("models.compact = %q", got)
 	}
 }

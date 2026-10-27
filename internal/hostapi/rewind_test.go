@@ -1,43 +1,25 @@
 package hostapi
 
 import (
-	"database/sql"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
-	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"charm.land/fantasy"
 
-	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 )
 
 // TestRewindRefusesMidTurn: every rewind entry refuses while a turn runs -
-// /rewind's popup, a direct RewindTo (/rewind <id>, the overlay's r key and
-// zemi.session.rewind) and the /messages r key - and none cuts the history
-// the turn is writing; idle, the same entries work.
+// /rewind's popup, a direct RewindTo (the overlay's r key and
+// zemi.session.rewind) and the /messages r key - and none cuts the log the
+// turn is writing; idle, the same entries work.
 func TestRewindRefusesMidTurn(t *testing.T) {
-	// lastNote is the most recent toast, which recordNotify writes before the
-	// UI hook sees it
-	lastNote := func(t *testing.T, h *Host) notifyEntry {
-		t.Helper()
-		waitFor(t, func() error {
-			if len(h.evlog.notes) == 0 {
-				return errors.New("no note recorded")
-			}
-			return nil
-		})
-		return h.evlog.notes[len(h.evlog.notes)-1]
-	}
 	for _, c := range []struct {
 		name    string
 		run     func(h *Host) error
@@ -63,7 +45,7 @@ func TestRewindRefusesMidTurn(t *testing.T) {
 		},
 		{
 			name: "RewindTo",
-			run:  func(h *Host) error { _, err := h.RewindTo("x"); return err },
+			run:  func(h *Host) error { _, err := h.RewindTo(9999); return err },
 			refused: func(t *testing.T, h *Host, err error, ui *fakeUI) {
 				if !errors.Is(err, errTurnRunning) {
 					t.Fatalf("= %v, want the turn-running refusal", err)
@@ -78,33 +60,38 @@ func TestRewindRefusesMidTurn(t *testing.T) {
 		},
 		{
 			name: "the /messages r key",
-			run:  func(h *Host) error { h.rewindTo("x"); return nil },
+			run: func(h *Host) error {
+				// the r key runs RewindTo through a command
+				if _, err := h.Commands.Add(&Command{
+					Name: "rewind", NArgs: NArgsOptional,
+					Origin: lua.OriginBuiltin, Gen: h.currentGen(),
+					GoFn: func(h *Host, args string, _ bool) error {
+						seq, err := atoi64(args)
+						if err != nil {
+							return err
+						}
+						_, err = h.RewindTo(seq)
+						return err
+					},
+				}); err != nil {
+					return err
+				}
+				return h.RunCommand(t.Context(), "rewind", "9999", false)
+			},
 			refused: func(t *testing.T, h *Host, err error, ui *fakeUI) {
-				n := lastNote(t, h)
-				if !strings.Contains(n.title, "Could not rewind") || !strings.Contains(n.body, "a turn is running") {
-					t.Fatalf("note = %q: %q", n.title, n.body)
+				if !errors.Is(err, errTurnRunning) {
+					t.Fatalf("= %v, want the turn-running refusal", err)
 				}
 			},
 			idle: func(t *testing.T, h *Host, err error, ui *fakeUI) {
-				n := lastNote(t, h)
-				// past the turn guard, it refuses on the prompt it cannot find
-				if !strings.Contains(n.body, "no prompt") {
-					t.Fatalf("note = %q: %q", n.title, n.body)
+				if !errors.Is(err, ErrUsage) {
+					t.Fatalf("= %v, want a usage error", err)
 				}
 			},
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
-			// the /rewind command as the CLI registers it (internal/cli/boot.go):
-			// /rewind <id> and the r key run RewindTo through it
-			if _, err := h.Commands.Add(&Command{
-				Name: "rewind", NArgs: NArgsOptional,
-				Origin: lua.OriginBuiltin, Gen: h.currentGen(),
-				GoFn: func(h *Host, args string, _ bool) error { _, err := h.RewindTo(args); return err },
-			}); err != nil {
-				t.Fatal(err)
-			}
 			ui := &fakeUI{}
 			h.SetUIHooks(ui)
 			// a provider that never answers holds the turn open
@@ -122,10 +109,15 @@ func TestRewindRefusesMidTurn(t *testing.T) {
 	}
 }
 
+func atoi64(s string) (int64, error) {
+	var n int64
+	_, err := fmt.Sscanf(s, "%d", &n)
+	return n, err
+}
+
 // TestRewind runs turns that write files and todo lists, then rewinds them
 // one by one: each rewind restores the files and the todo list as they were
-// before that turn, cuts the conversation back to the prompt before it and
-// undoes what the session learned since.
+// before that turn and cuts the log back to the prompt before it.
 func TestRewind(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	t.Chdir(h.Dirs.ProjectDir) // where shell runs and snapshots
@@ -166,16 +158,16 @@ func TestRewind(t *testing.T) {
 			return textParts("?")
 		}}, nil
 	}
-	var prompts []string
+	var prompts []int64
 	for _, text := range []string{"first", "second", "third"} {
 		if err := h.AgentSend(text); err != nil {
 			t.Fatal(err)
 		}
 		waitIdle(t, h)
-		rows, _ := h.DB.Messages(h.AgentSessionID())
+		rows, _ := h.DB.LogKindBack(kindUser, 100)
 		for _, r := range rows {
-			if s, ok := userText(r); ok && s == text {
-				prompts = append(prompts, r.ID)
+			if strings.TrimSpace(r.Text) == text {
+				prompts = append(prompts, r.Seq)
 			}
 		}
 	}
@@ -201,67 +193,16 @@ func TestRewind(t *testing.T) {
 		}
 	}
 
-	// what the session learned in the rewound turns goes; the user's own and
-	// what was learned after the last row (a reflector run, an accept) stay.
-	// Seeded the way the live store holds them: lines in the partition plus
-	// their ledger ops, and one line already imported from the frozen table,
-	// whose entry matches the rewind by the row's created_at.
-	sid := h.AgentSessionID()
-	rows, _ := h.DB.Messages(sid)
-	last := rows[len(rows)-1].CreatedAt
-	private := h.partition(store.ScopeProject)
-	old := &store.Memory{Scope: "project", Text: "old", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: 1, UpdatedAt: 1}
-	learned := &store.Memory{Scope: "project", Text: "learned", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: last, UpdatedAt: last}
-	reflected := &store.Memory{Scope: "project", Text: "reflected", Origin: "learned", ProvenanceSessionID: sid, CreatedAt: last + 1, UpdatedAt: last + 1}
-	mine := &store.Memory{Scope: "project", Text: "mine", Origin: "user", ProvenanceSessionID: sid, CreatedAt: last, UpdatedAt: last}
-	oldLine, _, err := brain.Apply(private, *old, "", time.UnixMilli(1))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := brain.Apply(private, *learned, oldLine.ID, time.UnixMilli(last)); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := brain.Apply(private, *reflected, "", time.UnixMilli(last+1)); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := brain.Apply(private, *mine, "", time.UnixMilli(last)); err != nil {
-		t.Fatal(err)
-	}
-	// a pre-migration row the next open imported: the op ts is the migration
-	// moment, the frozen row's created_at is the session's turn. Its id and
-	// the frozen row's hold only IDShape letters: an off-shape id would ride
-	// memories.md as a bad line no rewind sees.
-	migrated := &store.Memory{
-		ID: "m1g01aaa", Scope: "project", Text: "migrated", Origin: "learned",
-		ProvenanceSessionID: sid, CreatedAt: last, UpdatedAt: last,
-	}
-	if err := brain.Reconcile(private, []*store.Memory{migrated}, time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	// the frozen row that row superseded pre-swap: no op carries it, the
-	// rewind reads the frozen table to bring it back
-	frozenOld := &store.Memory{
-		ID: "01dfrzn1", Scope: "project", Text: "frozen old", Origin: "learned",
-		ProvenanceSessionID: sid, CreatedAt: last, UpdatedAt: last, SupersededBy: "m1g01aaa",
-	}
-	seedFrozen(t, private, frozenOld)
-	for _, at := range []int64{last, last + 1} {
-		payload, _ := json.Marshal(memoryProposal{Scope: "project", Text: strconv.FormatInt(at, 10), Origin: "learned", ProvenanceSessionID: sid}, json.Deterministic(true))
-		if err := h.DB.AddProposal(&store.Proposal{Payload: string(payload), CreatedAt: at}); err != nil {
-			t.Fatal(err)
-		}
-	}
-
 	for _, c := range []struct {
-		prompt           int
-		files            int
-		edited, created  string
-		todos            int
-		transcriptBefore int // user messages left
+		prompt          int
+		files           int
+		edited, created string
+		todos           int
+		promptsLeft     int
 	}{
-		{prompt: 2, files: 2, edited: "v2", created: "x", todos: 2, transcriptBefore: 2},
-		{prompt: 1, files: 1, edited: "v2", created: "<missing>", todos: 1, transcriptBefore: 1},
-		{prompt: 0, files: 1, edited: "v1", created: "<missing>", todos: 0, transcriptBefore: 0},
+		{prompt: 2, files: 2, edited: "v2", created: "x", todos: 2, promptsLeft: 2},
+		{prompt: 1, files: 1, edited: "v2", created: "<missing>", todos: 1, promptsLeft: 1},
+		{prompt: 0, files: 1, edited: "v1", created: "<missing>", todos: 0, promptsLeft: 0},
 	} {
 		n, err := h.RewindTo(prompts[c.prompt])
 		if err != nil {
@@ -273,77 +214,91 @@ func TestRewind(t *testing.T) {
 		if todos := h.todoSnapshot(); len(todos) != c.todos {
 			t.Fatalf("rewind %d: todos %+v, want %d", c.prompt, todos, c.todos)
 		}
-		// the next send's compaction check reads it
-		if h.AgentStream().LastIn == 0 {
-			t.Fatalf("rewind %d: no context estimate", c.prompt)
-		}
-		users := 0
-		for _, m := range h.Session().Transcript {
-			if m.Role == "user" {
-				users++
-			}
-		}
-		rows, _ := h.DB.Messages(h.AgentSessionID())
-		left := 0
-		for _, r := range rows {
-			if _, ok := userText(r); ok {
-				left++
-			}
-		}
-		if users != c.transcriptBefore || left != c.transcriptBefore {
-			t.Fatalf("rewind %d: transcript users %d, stored prompts %d, want %d", c.prompt, users, left, c.transcriptBefore)
+		users, _ := h.DB.LogKindBack(kindUser, 100)
+		if len(users) != c.promptsLeft {
+			t.Fatalf("rewind %d: %d prompts left, want %d", c.prompt, len(users), c.promptsLeft)
 		}
 	}
-	lines, err := brain.Lines(h.partition("project"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var texts []string
-	for _, l := range lines {
-		texts = append(texts, l.Text)
-	}
-	if slices.Sort(texts); !slices.Equal(texts, []string{"frozen old", "mine", "old", "reflected"}) || len(h.memoryProposals()) != 1 {
-		t.Fatalf("memories %q and %d proposals, want frozen old, mine, old and reflected and one", texts, len(h.memoryProposals()))
-	}
-	if _, err := h.RewindTo(prompts[0]); err == nil {
-		t.Fatal("rewinding to a removed prompt must fail")
+	if _, err := h.RewindTo(prompts[0] + 100); err == nil {
+		t.Fatal("rewinding past the log must fail")
 	}
 }
 
-// seedFrozen inserts a frozen-table row the way the pre-brain store's write
-// path did - the table's only writer now (DESIGN §7).
-func seedFrozen(t *testing.T, p brain.Partition, m *store.Memory) {
-	t.Helper()
-	db, err := sql.Open("sqlite", p.DB)
+// TestRewindCutPatch: the cut leaves every surviving message covered - the
+// straddling view line goes and leaf lines patch its hole - no node
+// intersects the cut, and re-appends keep the seq dense.
+func TestRewindCutPatch(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	// twelve messages; the middle four are summarized up to one 4+4 line
+	for _, text := range []string{"m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9", "m10", "m11"} {
+		if _, err := h.DB.AppendLog(kindAgent, text, "", "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, n := range [][2]int64{{0, 0}, {0, 1}, {1, 0}, {0, 4}, {0, 5}, {0, 6}, {0, 7}, {1, 2}, {1, 3}, {2, 1}} {
+		if _, err := h.DB.InsertNode(n[0], n[1], fmt.Sprintf("node %d+%d", n[0], n[1])); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, m := range []store.ViewMerge{{L: 1, I: 0}, {L: 1, I: 2}, {L: 1, I: 3}, {L: 2, I: 1}} {
+		if n, err := h.DB.MergeViewLines([]store.ViewMerge{m}); err != nil || n != 1 {
+			t.Fatalf("merge %v: %d %v", m, n, err)
+		}
+	}
+	// view: 0+4, 4+4 (straddles the cut below), then the leaves 8..11
+	cut := int64(6)
+	h.chat.quiesce()
+	if err := h.DB.DeleteLogFrom(cut); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.patchView(cut); err != nil {
+		t.Fatal(err)
+	}
+	h.chat.resume()
+	lines, err := h.DB.LoadView()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
-	if _, err := db.Exec(`INSERT INTO memory
-		(id, scope, text, quote, provenance_session_id, created_at, updated_at, superseded_by, origin)
-		VALUES (?, ?, ?, '', ?, ?, ?, ?, ?)`,
-		m.ID, m.Scope, m.Text, m.ProvenanceSessionID, m.CreatedAt, m.UpdatedAt, m.SupersededBy, m.Origin); err != nil {
-		t.Fatal(err)
+	covered := make([]bool, cut)
+	for _, ln := range lines {
+		first, end := ln.I<<uint(ln.L), (ln.I+1)<<uint(ln.L)
+		for s := max(int64(0), first); s < min(cut, end); s++ {
+			covered[s] = true
+		}
+	}
+	for s, ok := range covered {
+		if !ok {
+			t.Fatalf("message %d is covered by no view line after the cut", s)
+		}
+	}
+	nodes, _ := h.DB.BuiltNodes()
+	for _, n := range nodes {
+		if end := (n.I + 1) << uint(n.L); end > cut {
+			t.Fatalf("node l%d i%d covers up to %d, past the cut %d", n.L, n.I, end-1, cut)
+		}
+	}
+	for _, text := range []string{"n0", "n1"} {
+		if _, err := h.DB.AppendLog(kindUser, text, "", "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if count, _ := h.DB.LogCount(); count != cut+2 {
+		t.Fatalf("log holds %d rows, want %d dense", count, cut+2)
 	}
 }
 
 // TestRewindSnapshotEdges builds the checkpoint rows by hand: a file
-// checkpointed under a symlink and under its target is one file (also when
-// the first turn creates it through a linked directory), and a
-// rewind over a turn whose snapshots aged out warns even when later turns
-// left some.
+// checkpointed under a symlink and under its target is one file, also when
+// the first turn creates it through a linked directory.
 func TestRewindSnapshotEdges(t *testing.T) {
 	for _, c := range []struct {
-		name     string
-		firstAge time.Duration
-		viaLink  bool   // the first turn names the file through a symlink
-		create   bool   // the first turn creates the file through a linked directory
-		want     string // file content after rewinding to the first turn
-		warn     string // substring of the rewind's warning, "" for none
+		name    string
+		viaLink bool   // the first turn names the file through a symlink
+		create  bool   // the first turn creates the file through a linked directory
+		want    string // file content after rewinding to the first turn
 	}{
 		{name: "symlink and target", viaLink: true, want: "orig"},
 		{name: "created through a linked directory", create: true, want: "<missing>"},
-		{name: "partly aged out", firstAge: store.CheckpointTTL + time.Hour, want: "v1", warn: "1 of those turn"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -362,23 +317,13 @@ func TestRewindSnapshotEdges(t *testing.T) {
 			if c.create {
 				os.Remove(real)
 			}
-			if err := h.DB.CreateSession("s", "", "s", ""); err != nil {
-				t.Fatal(err)
-			}
-			var ids []string
-			for i, text := range []string{"first", "second"} {
-				parts, _ := json.Marshal(fantasy.NewUserMessage(text), json.Deterministic(true))
-				m := &store.Message{SessionID: "s", Role: "user", PartsJSON: string(parts)}
-				if i == 0 && c.firstAge > 0 {
-					m.CreatedAt = time.Now().Add(-c.firstAge).UnixMilli()
-				}
-				if err := h.DB.AddMessage(m); err != nil {
+			var seqs []int64
+			for _, text := range []string{"first", "second"} {
+				seq, err := h.DB.AppendLog(kindUser, text, "", "", "")
+				if err != nil {
 					t.Fatal(err)
 				}
-				ids = append(ids, m.ID)
-			}
-			if err := h.ResumeSession("s"); err != nil {
-				t.Fatal(err)
+				seqs = append(seqs, seq)
 			}
 			for i, v := range []string{"v1", "v2"} {
 				path := real
@@ -388,15 +333,15 @@ func TestRewindSnapshotEdges(t *testing.T) {
 				if i == 0 && c.create {
 					path = filepath.Join(h.Dirs.ProjectDir, "dir", "f.txt")
 				}
-				if i > 0 || c.firstAge == 0 {
-					h.agents.turnMsgID = ids[i]
-					h.checkpointFile(path)
-				}
+				h.agents.mu.Lock()
+				h.agents.turnSeq = seqs[i]
+				h.agents.mu.Unlock()
+				h.checkpointFile(path)
 				if err := os.WriteFile(path, []byte(v), 0o644); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if _, err := h.RewindTo(ids[0]); err != nil {
+			if _, err := h.RewindTo(seqs[0]); err != nil {
 				t.Fatal(err)
 			}
 			got := "<missing>"
@@ -405,15 +350,6 @@ func TestRewindSnapshotEdges(t *testing.T) {
 			}
 			if got != c.want {
 				t.Fatalf("file = %q, want %q", got, c.want)
-			}
-			warned := ""
-			for _, n := range h.evlog.notes {
-				if n.level == "warn" {
-					warned += n.body
-				}
-			}
-			if (c.warn == "") != (warned == "") || !strings.Contains(warned, c.warn) {
-				t.Fatalf("warning %q, want %q", warned, c.warn)
 			}
 		})
 	}
@@ -469,20 +405,19 @@ func TestRewindShellSymlink(t *testing.T) {
 					t.Fatalf("git %v: %v %s", args, err, out)
 				}
 			}
-			h.DB.CreateSession("s", "", "s", "")
-			parts, _ := json.Marshal(fantasy.NewUserMessage("go"), json.Deterministic(true))
-			m := &store.Message{SessionID: "s", Role: "user", PartsJSON: string(parts)}
-			h.DB.AddMessage(m)
-			if err := h.ResumeSession("s"); err != nil {
+			seq, err := h.DB.AppendLog(kindUser, "go", "", "", "")
+			if err != nil {
 				t.Fatal(err)
 			}
-			h.agents.turnMsgID = m.ID
+			h.agents.mu.Lock()
+			h.agents.turnSeq = seq
+			h.agents.mu.Unlock()
 			done := h.shellChanges(dir)
 			if err := c.run(dir); err != nil {
 				t.Fatal(err)
 			}
 			done()
-			if _, err := h.RewindTo(m.ID); err != nil {
+			if _, err := h.RewindTo(seq); err != nil {
 				t.Fatal(err)
 			}
 			got, err := os.Readlink(filepath.Join(dir, c.path))

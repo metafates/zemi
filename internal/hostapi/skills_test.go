@@ -18,6 +18,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/skill"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -281,66 +282,6 @@ func TestSkillRows(t *testing.T) {
 	}
 }
 
-// TestLearnListAndDecide covers the §6.7 surface: list mirrors
-// the memory queue, decide accepts or rejects, and only a user or builtin
-// origin may decide.
-func TestLearnListAndDecide(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHostSkills(t)
-	h.Settings.SetQuiet("memory.autonomy", "ask")
-	seedSession(t, h)
-
-	runUser(t, r, `zemi.memory.add("deploy script lives in bin/deploy")`)
-	runUser(t, r, `
-		local p = zemi.learn.list()
-		assert(#p == 1, "proposals=" .. #p)
-		assert(p[1].quote == "", "quote=" .. tostring(p[1].quote))
-		assert(p[1].id ~= nil and p[1].id ~= "", "id missing")
-	`)
-	runUser(t, r, `zemi.learn.decide(zemi.learn.list()[1].id, "reject")`)
-	runUser(t, r, `
-		assert(#zemi.learn.list() == 0, "rejected proposal still queued")
-	`)
-	if rows := projectMemories(t, h); len(rows) != 0 {
-		t.Fatalf("rejected proposal stored %d memories", len(rows))
-	}
-
-	runUser(t, r, `zemi.memory.add("the fts join needs m-qualified columns")`)
-	runUser(t, r, `zemi.learn.decide(zemi.learn.list()[1].id, "accept")`)
-	if rows := projectMemories(t, h); len(rows) != 1 {
-		t.Fatalf("accepted proposal stored %d memories", len(rows))
-	}
-
-	runUser(t, r, `
-		local ok, err = zemi.learn.decide("missing", "accept")
-		assert(ok == nil and err:find("no such proposal"), tostring(err))
-	`)
-	runExpectErr(t, r, `zemi.learn.decide("x", "maybe")`, "accept or reject")
-
-	if err := r.ExecuteChunk(t.Context(),
-		`local ok, e = zemi.learn.decide("missing", "accept") assert(ok == nil and e:find("no such proposal"), tostring(e))`,
-		"project.lua", lua.OriginProject); err != nil {
-		t.Fatalf("project-origin decide: %v", err)
-	}
-}
-
-// lastUserText is the live session's last stored user message, whole.
-func lastUserText(t *testing.T, h *Host) string {
-	t.Helper()
-	rows, err := h.DB.Messages(h.AgentSessionID())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, r := range slices.Backward(rows) {
-		var m fantasy.Message
-		if r.Role == "user" && json.Unmarshal([]byte(r.PartsJSON), &m) == nil {
-			return concatText(m.Content)
-		}
-	}
-	t.Fatal("no user message stored")
-	return ""
-}
-
 // TestProjectSkills: a trusted project adds its skills to the index, an
 // user skill keeps its name, a skill written later waits for the next
 // trust decision, and an untrusted project adds none.
@@ -498,7 +439,6 @@ func TestRecipes(t *testing.T) {
 	}
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	sid := seedSession(t, h)
 	md := func(sub, name, body string) string {
 		in, _ := json.Marshal(map[string]string{"path": filepath.Join(dir, sub, "SKILL.md"), "content": "---\nname: " + name + "\ndescription: recipe " + name + "\n---\n\n" + body + "\n"}, json.Deterministic(true))
 		return string(in)
@@ -525,13 +465,13 @@ func TestRecipes(t *testing.T) {
 		{name: "trusted lists it, a taken name is dropped", do: func() { h.SetProjectTrusted(true) }, prompt: []string{"rig"}, tool: []string{"rig"}},
 		{name: "written mid-session loads, the prompt stays", do: func() { writeSkill(t, dir, "late", "recipe late", "") }, prompt: []string{"rig"}, tool: late},
 		{name: "a reload's trust step keeps the pin", do: func() { h.SetProjectTrusted(true) }, prompt: []string{"rig"}, tool: late},
-		{name: "compaction pins again", do: func() { h.compactDone(0, false) }, prompt: late, tool: late},
+		{name: "a prompt drop pins again", do: func() { h.agents.mu.Lock(); h.agents.dropPin(); h.agents.mu.Unlock() }, prompt: late, tool: late},
 		{name: "a secret is redacted", prompt: late, tool: written, call: "write", input: tok, out: "redacted lines [6]"},
 		{name: "any file there is scrubbed, whatever its name", prompt: late, tool: written, call: "write", input: strings.Replace(tok, "SKILL.md", "skill.md", 1), out: "redacted lines [6]"},
 		{name: "the redacted file is not stale", prompt: late, tool: written, call: "edit", input: string(edit), out: "tok saved"},
 		{name: "a name the directory does not have", prompt: late, tool: written, call: "write", input: md("bad", "other", "x"), out: "will not load: bad: frontmatter name"},
 		{name: "a name a user skill has", prompt: late, tool: written, call: "write", input: md("ship", "ship", "x"), out: "another skill is named ship"},
-		{name: "a session that fetched says so", do: func() { h.recordToolCall(sid, StreamTool{ID: "c1", Name: "fetch"}, true) }, prompt: late, tool: written, call: "write", input: md("bad", "other", "y"), out: "will not load"},
+		{name: "a session that fetched says so", do: func() { h.recordToolCall(store.MainSessionID, StreamTool{ID: "c1", Name: "fetch"}, true) }, prompt: late, tool: written, call: "write", input: md("bad", "other", "y"), out: "will not load"},
 		{name: "only a recipe is deleted", do: func() {
 			if h.skillsCommand("delete ship", false) == nil || h.skillsCommand("delete lint", false) == nil {
 				t.Error("deleted a skill that is no recipe")

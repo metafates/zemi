@@ -77,7 +77,7 @@ zemi.ui.widget.add({
 				end
 			end
 			if not running and ag.reasoning ~= "" and ag.text == "" then state = "thinking" end
-			if ag.compacting or ag.checking_goal then state = "reading" end
+			if ag.checking_goal then state = "reading" end
 			---@type { [1]: zemi.Line, [2]: integer, [3]: integer }?
 			local tick = { plain(fmt.duration(ag.elapsed, true)), 5, 7 }
 			if ag.retry then

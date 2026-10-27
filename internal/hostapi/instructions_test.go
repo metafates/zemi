@@ -34,7 +34,7 @@ func TestNearestInstructions(t *testing.T) {
 	if got := h.nearestInstructions(file, h.instructionFiles(), h.instructionSent); got != "" {
 		t.Fatalf("they must not repeat in the same session: %q", got)
 	}
-	h.compactDone(0, false)
+	h.forgetInstructions()
 	if got := h.nearestInstructions(file, h.instructionFiles(), h.instructionSent); !strings.Contains(got, "use tabs here") {
 		t.Fatalf("compaction clears the read that carried them, so they come back: %q", got)
 	}

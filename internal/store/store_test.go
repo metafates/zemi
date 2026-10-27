@@ -66,7 +66,7 @@ func TestWriteSessionGone(t *testing.T) {
 			if err := db.CreateSession(sid, "", "s", ""); err != nil {
 				t.Fatal(err)
 			}
-			if err := db.DeleteSession(sid); err != nil {
+			if _, err := db.db.Exec(`DELETE FROM sessions WHERE id = ?`, sid); err != nil {
 				t.Fatal(err)
 			}
 			err := w.write(db, sid)
@@ -111,9 +111,11 @@ func TestMigrationKeepsData(t *testing.T) {
 		t.Fatal(err)
 	}
 	// a store from an older zemi: no goose table, and none of the columns a
-	// later migration added, under the names it used
+	// later migration added, under the names it used. Checkpoints go too: the
+	// baseline recreates the shape it knew, which the later migration retargets.
 	for _, q := range []string{
 		`DROP TABLE goose_db_version`,
+		`DROP TABLE checkpoints`,
 		`ALTER TABLE messages DROP COLUMN row_meta`,
 		`ALTER TABLE sessions RENAME COLUMN agent TO profile`,
 		`PRAGMA user_version = 8`,
@@ -269,20 +271,13 @@ func TestSweepVacuum(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := db.CreateSession("s", "", "t", ""); err != nil {
-				t.Fatal(err)
-			}
 			blob := make([]byte, 16<<10)
 			for i := range c.aged + c.kept {
-				m := &Message{SessionID: "s", Role: "user", PartsJSON: `[]`}
-				if err := db.AddMessage(m); err != nil {
-					t.Fatal(err)
-				}
-				if err := db.AddCheckpoint("s", m.ID, Checkpoint{Path: "/f", Existed: true, Content: blob}); err != nil {
+				if err := db.AddCheckpoint(int64(i), Checkpoint{Path: "/f", Existed: true, Content: blob}); err != nil {
 					t.Fatal(err)
 				}
 				if i < c.aged {
-					if _, err := db.db.Exec(`UPDATE checkpoints SET created_at = 0 WHERE message_id = ?`, m.ID); err != nil {
+					if _, err := db.db.Exec(`UPDATE checkpoints SET created_at = 0 WHERE seq = ?`, i); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -311,24 +306,13 @@ func TestRetentionSweep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"old", "new"} {
-		if err := db.CreateSession(id, "", id, ""); err != nil {
-			t.Fatal(err)
-		}
-		m := &Message{SessionID: id, Role: "user", PartsJSON: `[]`}
-		if err := db.AddMessage(m); err != nil {
-			t.Fatal(err)
-		}
-		if err := db.AddCheckpoint(id, m.ID, Checkpoint{Path: "/tmp/f", Existed: true, Content: []byte("x")}); err != nil {
+	for i := range int64(2) {
+		if err := db.AddCheckpoint(i, Checkpoint{Path: "/tmp/f", Existed: true, Content: []byte("x")}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.db.Exec(`UPDATE sessions SET updated_at = ? WHERE id = 'old'`,
-		time.Now().AddDate(-2, 0, 0).UnixMilli()); err != nil {
-		t.Fatal(err)
-	}
-	// the live session's own checkpoint is old enough to go on its own
-	if _, err := db.db.Exec(`UPDATE checkpoints SET created_at = ? WHERE session_id = 'new'`,
+	// one of the two is old enough to go on its own
+	if _, err := db.db.Exec(`UPDATE checkpoints SET created_at = ? WHERE seq = 1`,
 		time.Now().Add(-CheckpointTTL-time.Hour).UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
@@ -339,18 +323,9 @@ func TestRetentionSweep(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	// a conversation is never deleted on zemi's own initiative
-	if _, err := db.GetSession("old"); err != nil {
-		t.Fatalf("a two year old session was deleted: %v", err)
-	}
-	if msgs, _ := db.Messages("old"); len(msgs) != 1 {
-		t.Fatalf("messages of a kept session = %+v", msgs)
-	}
-	if counts, err := db.CheckpointPaths("new"); err != nil || len(counts) != 0 {
-		t.Fatalf("aged checkpoints survived: %+v %v", counts, err)
-	}
-	if counts, err := db.CheckpointPaths("old"); err != nil || len(counts) != 1 {
-		t.Fatalf("a checkpoint inside the window was dropped: %+v %v", counts, err)
+	paths, err := db.CheckpointPaths()
+	if err != nil || len(paths) != 1 || paths[0] == nil {
+		t.Fatalf("paths = %+v, %v; want only the checkpoint inside the window", paths, err)
 	}
 }
 
@@ -369,7 +344,7 @@ func TestSessionLifecycle(t *testing.T) {
 	if _, err := db.GetSession("missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
-	if err := db.RenameSession("s1", "renamed"); err != nil {
+	if err := db.execOne("rename", `UPDATE sessions SET title = ? WHERE id = ?`, "renamed", "s1"); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.AddUsage("s1", 10, 20, 0, 0, 0.5); err != nil {
@@ -381,7 +356,7 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 	// a vanished session must report the miss, not swallow the update
 	for _, err := range []error{
-		db.RenameSession("ghost", "x"),
+		db.execOne("rename", `UPDATE sessions SET title = ? WHERE id = ?`, "x", "ghost"),
 		db.AddUsage("ghost", 1, 1, 0, 0, 1),
 	} {
 		if !errors.Is(err, ErrNotFound) {
@@ -399,7 +374,7 @@ func TestSessionLifecycle(t *testing.T) {
 		t.Fatal("a message did not bump updated_at")
 	}
 	db.db.Exec(`UPDATE sessions SET updated_at = 1 WHERE id = 's1'`)
-	if err := db.RenameSession("s1", "relabelled"); err != nil {
+	if err := db.execOne("rename", `UPDATE sessions SET title = ? WHERE id = ?`, "relabelled", "s1"); err != nil {
 		t.Fatal(err)
 	}
 	if s, _ = db.GetSession("s1"); s.UpdatedAt != 1 || s.Title != "relabelled" {
@@ -436,9 +411,6 @@ func TestMessagesAndToolCalls(t *testing.T) {
 	if msgs[0].ID != m.ID {
 		t.Fatalf("messages not in order: %+v", msgs)
 	}
-	if n, err := db.MessageCount("s1"); err != nil || n != 2 {
-		t.Fatalf("count = %d %v", n, err)
-	}
 	// Tool telemetry rows stay out of the picker preview; the call and the
 	// message it points at land together.
 	if err := db.AddToolCall(&Message{SessionID: "s1", Role: "tool", PartsJSON: `{}`},
@@ -458,152 +430,28 @@ func TestMessagesAndToolCalls(t *testing.T) {
 		&ToolCall{Tool: "shell", OK: true}); err == nil {
 		t.Fatal("an unknown session must fail")
 	}
-	prev, err := db.SessionPreviews([]string{"s1"})
-	if err != nil || prev["s1"].Count != 2 || prev["s1"].FirstJSON != m.PartsJSON {
-		t.Fatalf("preview: %+v %v", prev, err)
-	}
 }
 
-// TestUserMessagesTopLevel: composer recall draws only the user's own rows,
-// so a subagent session's user rows (agent-written prompts) stay out.
-func TestUserMessagesTopLevel(t *testing.T) {
+// TestCheckpoints: a checkpoint keys on the log seq of the turn's user
+// message, and CheckpointsFrom returns the earliest content per path.
+func TestCheckpoints(t *testing.T) {
 	db := openTest(t)
-	if err := db.CreateSession("top", "", "t", ""); err != nil {
+	if err := db.AddCheckpoint(3, Checkpoint{Path: "/f", Existed: true, Content: []byte("first")}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.CreateSession("child", "top", "", ""); err != nil {
+	if err := db.AddCheckpoint(7, Checkpoint{Path: "/f", Existed: true, Content: []byte("later")}); err != nil {
 		t.Fatal(err)
 	}
-	top := &Message{SessionID: "top", Role: "user", PartsJSON: `{"text":"mine"}`}
-	child := &Message{SessionID: "child", Role: "user", PartsJSON: `{"text":"prompt"}`}
-	if err := db.AddMessage(top); err != nil {
-		t.Fatal(err)
+	cps, err := db.CheckpointsFrom(4)
+	if err != nil || len(cps) != 1 || string(cps[0].Content) != "later" {
+		t.Fatalf("from 4 = %+v, %v; want only the later row", cps, err)
 	}
-	if err := db.AddMessage(child); err != nil {
-		t.Fatal(err)
+	if cps, err = db.CheckpointsFrom(0); err != nil || len(cps) != 1 || string(cps[0].Content) != "first" {
+		t.Fatalf("from 0 = %+v, %v", cps, err)
 	}
-	got, err := db.UserMessages(10)
-	if err != nil || len(got) != 1 {
-		t.Fatalf("UserMessages = %+v, %v; want only the top-level row", got, err)
-	}
-	if got[0].ID != top.ID || got[0].SessionID != "top" {
-		t.Fatalf("recall picked the child row: %+v", got)
-	}
-}
-
-// TestAddCompaction: summary and tail copies land together, and a write that fails leaves none of them behind.
-func TestAddCompaction(t *testing.T) {
-	db := openTest(t)
-	if err := db.CreateSession("s1", "", "t", ""); err != nil {
-		t.Fatal(err)
-	}
-	summary := &Message{Role: "user", PartsJSON: `{"summary":1}`}
-	tail := []*Message{{Role: "tail", PartsJSON: `{"a":1}`}, {Role: "tail", PartsJSON: `{"b":2}`}}
-	if err := db.AddCompaction("s1", summary, tail); err != nil {
-		t.Fatal(err)
-	}
-	msgs, err := db.Messages("s1")
-	if err != nil || len(msgs) != 3 || msgs[0].ID != summary.ID {
-		t.Fatalf("messages = %+v, %v", msgs, err)
-	}
-	if err := db.AddCompaction("ghost", &Message{Role: "user", PartsJSON: `{}`},
-		[]*Message{{Role: "tail", PartsJSON: `{}`}}); err == nil {
-		t.Fatal("an unknown session must fail")
-	}
-	if msgs, _ := db.Messages("ghost"); len(msgs) != 0 {
-		t.Fatalf("rolled back rows remain: %+v", msgs)
-	}
-}
-
-func TestForkSession(t *testing.T) {
-	db := openTest(t)
-	if err := db.CreateSession("s1", "", "t", "p"); err != nil {
-		t.Fatal(err)
-	}
-	summary := &Message{Role: "user", PartsJSON: `{"summary":1}`}
-	if err := db.AddCompaction("s1", summary, []*Message{{Role: "tail", PartsJSON: `{}`}}); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AddCheckpoint("s1", summary.ID, Checkpoint{Path: "/f", Existed: true, Link: true, Content: []byte("x")}); err != nil {
-		t.Fatal(err)
-	}
-	src, _ := db.GetSession("s1")
-
-	// a write failing partway leaves no fork behind
-	if _, err := db.db.Exec(`CREATE TEMP TRIGGER fail BEFORE INSERT ON checkpoints BEGIN SELECT RAISE(ABORT, 'boom'); END`); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.ForkSession(src, "bad", "t (fork)"); err == nil {
-		t.Fatal("want the checkpoint error")
-	}
-	if _, err := db.GetSession("bad"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("half-copied fork: %v", err)
-	}
-	if msgs, _ := db.Messages("bad"); len(msgs) != 0 {
-		t.Fatalf("half-copied messages: %+v", msgs)
-	}
-	if _, err := db.db.Exec(`DROP TRIGGER temp.fail`); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := db.ForkSession(src, "s2", "t (fork)"); err != nil {
-		t.Fatal(err)
-	}
-	fork, err := db.GetSession("s2")
-	if err != nil || fork.Title != "t (fork)" || fork.Agent != "p" || fork.ParentID != "" {
-		t.Fatalf("fork = %+v, %v", fork, err)
-	}
-	msgs, _ := db.Messages("s2")
-	if len(msgs) != 2 || msgs[0].ID == summary.ID || msgs[0].PartsJSON != summary.PartsJSON {
-		t.Fatalf("messages = %+v", msgs)
-	}
-	if cps, err := db.CheckpointsFrom("s2", msgs[0].ID); err != nil || len(cps) != 1 || !cps[0].Link {
-		t.Fatalf("checkpoints = %+v, %v", cps, err)
-	}
-}
-
-// TestDeleteSession: a deleted session takes its subagent runs and every
-// row under them, and its text is gone from the files on disk.
-func TestDeleteSession(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "zemi.db")
-	db, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	const secret = "sk-deleteme-0123456789"
-	for _, s := range [][2]string{{"s1", ""}, {"c1", "s1"}, {"keep", ""}} {
-		if err := db.CreateSession(s[0], s[1], "t", ""); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, sid := range []string{"s1", "c1"} {
-		m := &Message{SessionID: sid, Role: "user", PartsJSON: `{"text":"` + secret + `"}`}
-		if err := db.AddToolCall(m, &ToolCall{Tool: "shell"}); err != nil {
-			t.Fatal(err)
-		}
-		if err := db.AddCheckpoint(sid, m.ID, Checkpoint{Path: "/f", Existed: true, Content: []byte(secret)}); err != nil {
-			t.Fatal(err)
-		}
-		if err := db.SetTodos(sid, []Todo{{Content: secret, Status: "pending"}}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := db.DeleteSession("s1"); err != nil {
-		t.Fatal(err)
-	}
-	var n int
-	if err := db.db.QueryRow(`SELECT (SELECT COUNT(*) FROM sessions WHERE id NOT IN ('keep', 'main')) + (SELECT COUNT(*) FROM messages) +
-		(SELECT COUNT(*) FROM tool_calls) + (SELECT COUNT(*) FROM checkpoints) + (SELECT COUNT(*) FROM todos)`).Scan(&n); err != nil || n != 0 {
-		t.Fatalf("%d rows left, %v", n, err)
-	}
-	for _, f := range []string{path, path + "-wal"} {
-		if b, _ := os.ReadFile(f); strings.Contains(string(b), secret) {
-			t.Fatalf("%s still holds the text", filepath.Base(f))
-		}
-	}
-	if err := db.DeleteSession("s1"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("second delete: %v", err)
+	paths, err := db.CheckpointPaths()
+	if err != nil || len(paths) != 2 || len(paths[3]) != 1 || paths[3][0] != "/f" {
+		t.Fatalf("paths = %+v, %v", paths, err)
 	}
 }
 

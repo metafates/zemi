@@ -22,6 +22,7 @@ import (
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/skill"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -828,12 +829,14 @@ func TestPluginUses(t *testing.T) {
 			if len(ui.asked) != 0 {
 				t.Errorf("the call asked the user: %+v", ui.asked)
 			}
-			// a send starts a turn: let it store its message and end before the
+			// a send starts a turn: let it log and end before the
 			// state dir goes (a late write fails TempDir's cleanup)
 			if c.send {
 				waitFor(t, func() error {
-					msgs, err := h.DB.UserMessages(1)
-					if err != nil || len(msgs) == 0 {
+					// a plugin send is attached text only: its echo row is the
+					// log's record of what the model read
+					rows, err := h.DB.LogKindBack(kindEcho, 50)
+					if err != nil || !slices.ContainsFunc(rows, func(r store.LogEntry) bool { return rowTool(r) == "attach" }) {
 						return errors.New("no message yet")
 					}
 					return nil

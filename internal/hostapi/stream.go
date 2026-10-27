@@ -5,7 +5,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"slices"
-	"strings"
 	"time"
 
 	"charm.land/fantasy"
@@ -209,13 +208,10 @@ func (s *streamAdapter) StepDone(st agent.Step) {
 	h := s.h
 	ag := h.agents
 	ag.mu.Lock()
-	sid, model, touched := ag.sessionID, h.turnModelID(), ag.todoTouched
+	model, touched := h.turnModelID(), ag.todoTouched
 	ag.todoTouched = false
-	// the step's prefix is in the provider's cache now
-	ag.lastSent, ag.lastCore, ag.handoffAsked = ag.pin.key, ag.pin.core, ""
-	ag.lastCache = st.Usage.CacheReadTokens + st.Usage.CacheCreationTokens
 	ag.mu.Unlock()
-	h.emitStep(sid, model, st)
+	h.emitStep(store.MainSessionID, model, st)
 	if !touched {
 		h.maybeNagTodos()
 	}
@@ -225,20 +221,10 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	h := s.h
 	ag := h.agents
 	ag.mu.Lock()
-	// sendCompacting resends a held error or reports it; the steps before it
-	// still ran, so their usage and rows are kept
-	hold := ag.holdOverflow && contextTooLarge(err) || ag.holdImages && imagesRefused(err) || ag.holdCap && maxTokensRefused(err)
+	// a held error is resent without what the provider refused; the turn's
+	// finish, the notification and the error row wait for the resend
+	hold := ag.holdImages && imagesRefused(err) || ag.holdCap && maxTokensRefused(err) || ag.holdOverflow && contextTooLarge(err)
 	ag.holdOverflow, ag.holdImages, ag.holdCap = false, false, false
-	// a Full cut or a held error ends the send, not the turn: sendCompacting
-	// compacts and sends again, so the finish, the notification and the title
-	// wait, and the sent steps' usage joins the final payload
-	if hold || err == nil && ag.holdCut && ag.runner != nil && ag.runner.CutShort() {
-		ag.cutUsage = addUsage(ag.cutUsage, usage)
-		hold = true
-	} else {
-		usage, ag.cutUsage = addUsage(usage, ag.cutUsage), fantasy.Usage{}
-	}
-	ag.holdCut = false
 	now := h.now()
 	model := h.turnModelID()
 	text, tools := ag.textBuf, ag.tools
@@ -247,14 +233,6 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		stat.ElapsedMS = now.Sub(ag.turnStart).Milliseconds()
 	}
 	ag.turnStart = time.Time{}
-	// a held send banks its elapsed beside its usage: the resend reset
-	// turnStart, and the readout at the turn's end joins the legs
-	if hold {
-		ag.cutMS += stat.ElapsedMS
-	} else {
-		stat.ElapsedMS += ag.cutMS
-		ag.cutMS = 0
-	}
 	// the retry state is the turn's too: a turn that ended during a backoff
 	// (esc, or the last retry failing) reports no retry while idle
 	ag.retries, ag.retryAt, ag.retryWhy = 0, time.Time{}, ""
@@ -266,16 +244,10 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		}
 	}
 	h.flushOutput(stat)
-	sid := ag.sessionID
 	ag.mu.Unlock()
 	h.refresh()
 	if hold {
 		return
-	}
-	// the readout rides a telemetry row, and only a turn that ended on text
-	// has a reply row for a resume to attach it to
-	if strings.TrimSpace(text) != "" {
-		h.persistTurnStat(sid, stat)
 	}
 	cost := h.turnCost(model, usage)
 	switch {
@@ -302,9 +274,9 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		if errors.Is(err, context.Canceled) {
 			row.Status = CallCancelled
 		}
-		h.AppendStoredChat(row)
+		h.AppendChat(row)
 	} else {
-		payload := map[string]any{"session": sid, "model": model, "usage": map[string]any{
+		payload := map[string]any{"session": store.MainSessionID, "model": model, "usage": map[string]any{
 			"in": billedInput(usage), "out": usage.OutputTokens, "total": billedInput(usage) + usage.OutputTokens,
 			"cost": cost,
 		}}
@@ -338,21 +310,20 @@ func (s *streamAdapter) ToolInputDelta(id, delta string) {
 
 // StreamSnapshot is the live stream state for widgets.
 type StreamSnapshot struct {
-	Active     bool
-	Text       string
-	Reasoning  string
-	Thinking   bool // a reasoning block is open: the model thinks right now
-	Tools      []StreamTool
-	Model      string
-	Steering   []Queued      // what waits for the turn's next step boundary, oldest first
-	Thought    time.Duration // wall time spent in reasoning blocks
-	Elapsed    time.Duration // whole-turn wall time (0 outside a turn)
-	Retrying   bool          // a provider retry waits or is under way
-	RetryIn    time.Duration // time until the next provider retry, 0 once it is under way
-	Retries    int           // provider retries this turn
-	RetryWhy   string        // what failed, for the retry countdown
-	Turn       int           // the turn these counts belong to (agentHost.turns)
-	Compacting bool          // history is being summarized before the turn
+	Active    bool
+	Text      string
+	Reasoning string
+	Thinking  bool // a reasoning block is open: the model thinks right now
+	Tools     []StreamTool
+	Model     string
+	Steering  []Queued      // what waits for the turn's next step boundary, oldest first
+	Thought   time.Duration // wall time spent in reasoning blocks
+	Elapsed   time.Duration // whole-turn wall time (0 outside a turn)
+	Retrying  bool          // a provider retry waits or is under way
+	RetryIn   time.Duration // time until the next provider retry, 0 once it is under way
+	Retries   int           // provider retries this turn
+	RetryWhy  string        // what failed, for the retry countdown
+	Turn      int           // the turn these counts belong to (agentHost.turns)
 	// the goal is being checked after a turn (/goal); the agent stays active
 	CheckingGoal bool
 	// the running or last chain of turns began with a loop run, which no one
@@ -420,7 +391,7 @@ func (h *Host) streamLocked() StreamSnapshot {
 	}
 	out.Steering = queuedRows(ag.steering)
 	out.Tools = append(out.Tools, ag.tools...)
-	out.Retries, out.Compacting, out.CheckingGoal, out.SessionCost = ag.retries, ag.compacting, ag.checkingGoal, ag.sessCost
+	out.Retries, out.CheckingGoal, out.SessionCost = ag.retries, ag.checkingGoal, ag.sessCost
 	out.Turn = ag.turns
 	if !ag.retryAt.IsZero() {
 		out.Retrying, out.RetryIn, out.RetryWhy = true, max(ag.retryAt.Sub(now), 0), ag.retryWhy
@@ -462,7 +433,7 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 	} else {
 		ag.turnStart = time.Time{}
 	}
-	ag.retries, ag.retryAt, ag.retryWhy, ag.compacting = s.Retries, time.Time{}, "", s.Compacting
+	ag.retries, ag.retryAt, ag.retryWhy = s.Retries, time.Time{}, ""
 	ag.turns = s.Turn
 	if s.Retrying {
 		ag.retryAt, ag.retryWhy = h.now().Add(s.RetryIn), s.RetryWhy

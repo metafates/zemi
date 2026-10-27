@@ -109,29 +109,28 @@ func TestAskTrustNotifiesWhenAway(t *testing.T) {
 
 // TestRecapWhenIdle: once the agent went idle from a turn, a recap starts
 // after the session.recap delay when the turn ended well with no input
-// since, and the next input stops it; the reflector runs after ReflectIdle
-// whatever came. The recap delay comes from the config, so the test sets a
-// non-default one.
+// since, and the next input stops it. The recap delay comes from the config,
+// so the test sets a non-default one.
 func TestRecapWhenIdle(t *testing.T) {
 	t.Parallel()
 	const recapDelay = 4 * time.Minute
 	key := tea.KeyPressMsg{Code: 'x', Text: "x"}
 	for _, c := range []struct {
-		name           string
-		done           turnDoneMsg
-		input          tea.Msg // after the turn ended
-		chain          bool    // the agent reads active on the first frame
-		loop           bool    // a loop run began the chain
-		recap, reflect bool
+		name  string
+		done  turnDoneMsg
+		input tea.Msg // after the turn ended
+		chain bool    // the agent reads active on the first frame
+		loop  bool    // a loop run began the chain
+		recap bool
 	}{
-		{"away since a clean end", turnDoneMsg{}, nil, false, false, true, true},
-		{"a key since", turnDoneMsg{}, key, false, false, false, true},
-		{"focus back since", turnDoneMsg{}, tea.FocusMsg{}, false, false, false, true},
-		{"hover since is not input", turnDoneMsg{}, tea.MouseMotionMsg{}, false, false, true, true},
-		{"stopped", turnDoneMsg{stopped: true}, nil, false, false, false, true},
-		{"failed", turnDoneMsg{err: "boom"}, nil, false, false, false, true},
-		{"a chain goes on", turnDoneMsg{}, nil, true, false, false, false},
-		{"a loop's run", turnDoneMsg{}, nil, false, true, false, true},
+		{"away since a clean end", turnDoneMsg{}, nil, false, false, true},
+		{"a key since", turnDoneMsg{}, key, false, false, false},
+		{"focus back since", turnDoneMsg{}, tea.FocusMsg{}, false, false, false},
+		{"hover since is not input", turnDoneMsg{}, tea.MouseMotionMsg{}, false, false, true},
+		{"stopped", turnDoneMsg{stopped: true}, nil, false, false, false},
+		{"failed", turnDoneMsg{err: "boom"}, nil, false, false, false},
+		{"a chain goes on", turnDoneMsg{}, nil, true, false, false},
+		{"a loop's run", turnDoneMsg{}, nil, false, true, false},
 	} {
 		app, host := notifyApp(t)
 		if _, err := host.Settings.SetQuiet("session.recap", "4m"); err != nil {
@@ -163,45 +162,10 @@ func TestRecapWhenIdle(t *testing.T) {
 				t.Errorf("%s: a key did not stop the recap", c.name)
 			}
 		}
-		now = start.Add(hostapi.ReflectIdle)
-		app.Update(frameTickMsg{})
-		if reflected := app.reflectAt.IsZero(); reflected != c.reflect {
-			t.Errorf("%s: reflected at ReflectIdle %v, want %v", c.name, reflected, c.reflect)
-		}
 	}
 }
 
-// TestCompactWhenIdle: a turn arms agent.compact_idle from the config, the
-// timer fires once the agent is idle for it, and a key set to 0 arms nothing.
-func TestCompactWhenIdle(t *testing.T) {
-	t.Parallel()
-	start := time.Unix(1000, 0)
-	app, host := notifyApp(t)
-	if _, err := host.Settings.SetQuiet("agent.compact_idle", "5m"); err != nil {
-		t.Fatal(err)
-	}
-	now := start
-	app.now = func() time.Time { return now }
-	app.Update(turnDoneMsg{})
-	app.Update(frameTickMsg{})
-	if got := app.compactAt.Sub(start); got != 5*time.Minute {
-		t.Fatalf("compactAt %v after the turn, want 5m", got)
-	}
-	now = start.Add(5 * time.Minute)
-	app.Update(frameTickMsg{})
-	if !app.compactAt.IsZero() {
-		t.Fatal("the timer did not fire at the deadline")
-	}
-
-	app, _ = notifyApp(t)
-	app.now = func() time.Time { return start }
-	app.Update(turnDoneMsg{})
-	app.Update(frameTickMsg{})
-	if !app.compactAt.IsZero() {
-		t.Fatal("the timer armed with the key off")
-	}
-}
-
+// TestStopWording keeps its own file; the next test starts here.
 // TestWindowTitle: the tab title leads with a spinner stepping every 200 ms
 // while a turn runs, ? while a prompt waits, and how a turn ended while the
 // window was away until it is focused again.

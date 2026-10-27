@@ -24,8 +24,8 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
-	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -42,9 +42,20 @@ var imageTypes = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".
 
 // composeUserMessage is the runner's Compose hook: the typed text with its
 // attachments, then any images as file parts. A text-only model gets a
-// note in their place instead of a refused request.
+// note in their place instead of a refused request. What the model reads
+// beyond the user's words - attached files, the !commands' output - lands in
+// the log as echo rows, so the tree can summarize what it saw; a report's
+// body is already a work row of its own.
 func (h *Host) composeUserMessage(text string, images bool) fantasy.Message {
 	expanded, imgs := h.expandAttachments(text, images)
+	if h.chat != nil {
+		if _, attached, ok := strings.Cut(expanded, agent.AttachMarker); ok && strings.TrimSpace(attached) != "" &&
+			!strings.Contains(attached, "<agent-report ") && !strings.Contains(attached, "<agent-update ") {
+			if err := h.chat.Echo("attach", true, attached); err != nil {
+				h.Log.Warn("chat log append failed", "origin", "agent", "error", err)
+			}
+		}
+	}
 	parts := []fantasy.MessagePart{fantasy.TextPart{Text: expanded}}
 	for _, img := range imgs {
 		parts = append(parts, img)
@@ -318,7 +329,7 @@ func (h *Host) saveDrop(base string, data []byte) (string, error) {
 		base = "file"
 	}
 	ext := filepath.Ext(base)
-	stem := learn.Truncate(strings.TrimSuffix(base, ext), max(dropNameMax-len([]rune(ext)), 1))
+	stem := sanitize.Truncate(strings.TrimSuffix(base, ext), max(dropNameMax-len([]rune(ext)), 1))
 	for i := 1; ; i++ {
 		name := stem + ext
 		if i > 1 {

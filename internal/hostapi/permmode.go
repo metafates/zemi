@@ -15,6 +15,7 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -31,6 +32,14 @@ func (h *Host) CheckToolNames() {
 			h.RecordErrorOnce("tools", "", fmt.Sprintf("zemi.tool.override names %q, which no tool is, so it never runs: tools are %s and mcp_<server>_<tool>", name, strings.Join(names, ", ")))
 		}
 	}
+}
+
+// planPath is where the chat's approved plan is saved, "" with no data dir.
+func (h *Host) planPath() string {
+	if h.Dirs.DataHome == "" {
+		return ""
+	}
+	return filepath.Join(h.Dirs.DataHome, "plans", store.MainSessionID+".md")
 }
 
 // approvePlan is the plan tool's hook: it shows a plan in the approval popup.
@@ -52,7 +61,7 @@ func (h *Host) approvePlan(plan string) (tools.PlanVerdict, bool) {
 		v.Feedback = verdict.Feedback
 		return v, true
 	}
-	if path := h.planPath(h.AgentSessionID()); path != "" {
+	if path := h.planPath(); path != "" {
 		err := os.MkdirAll(filepath.Dir(path), 0o700)
 		if err == nil {
 			err = os.WriteFile(path, []byte(plan+"\n"), 0o600)

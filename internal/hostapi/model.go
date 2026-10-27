@@ -343,14 +343,14 @@ func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 		"in", billedInput(u), "out", u.OutputTokens, "cache_read", u.CacheReadTokens, "cost", cost)
 	ag := h.agents
 	ag.mu.Lock()
-	if ag.sessionID == sid || sid == store.MainSessionID {
+	if sid == store.MainSessionID {
 		ag.sessCost += cost
 		ag.sessIn += billedInput(u)
 		ag.sessOut += u.OutputTokens
 		ag.cacheRead, ag.cacheBilled = ag.cacheRead+u.CacheReadTokens, ag.cacheBilled+billedInput(u)
 	}
 	ag.mu.Unlock()
-	if sid != "" && h.DB != nil {
+	if h.DB != nil {
 		_ = h.DB.AddUsage(sid, billedInput(u), u.OutputTokens, u.CacheReadTokens, billedInput(u), cost)
 	}
 }
@@ -361,9 +361,7 @@ func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 var roles = []modelRole{
 	{defaultRole, "the conversation, and every role left unset"},
 	{"agents", "subagents"},
-	{"titles", "session titles"},
 	{"compact", "summaries"},
-	{"memory", "memory review"},
 }
 
 // defaultRole is the conversation's own slot, the root every role left unset

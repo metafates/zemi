@@ -171,14 +171,10 @@ type App struct {
 	armed      armed                // a key whose second press acts (ctrl+c quit, esc interrupt)
 	colors     colorprofile.Profile // what the terminal can show: segStyle quantizes cells to it, never OSC 11
 
-	// an idle recap and an idle auto compact: when each is due (zero for
-	// none), and the stop of a recap in flight
+	// an idle recap: when it is due (zero for none), and the stop of one in
+	// flight
 	recapAt   time.Time
 	recapStop context.CancelFunc
-	compactAt time.Time
-	// when the live session is due for the reflector: no input clears it,
-	// since typing without sending changes nothing it would read
-	reflectAt time.Time
 
 	bootErr        error
 	bootView       viewport          // the boot-failure box's error text
@@ -276,35 +272,34 @@ func (a *App) SignalBoot(err error) {
 }
 
 // relaunchTarget is where main starts zemi again after a Relaunch: a
-// directory, and the session to resume there, "" for none.
-type relaunchTarget struct{ dir, resume string }
+// directory.
+type relaunchTarget struct{ dir string }
 
 // Quit asks the program to exit (/quit).
-func (a *App) Quit() { a.quitTo("", "") }
+func (a *App) Quit() { a.quitTo("") }
 
-// Relaunch leaves like Quit, then main starts zemi again in dir, resuming
-// session resume unless it is "".
-func (a *App) Relaunch(dir, resume string) { a.quitTo(dir, resume) }
+// Relaunch leaves like Quit, then main starts zemi again in dir.
+func (a *App) Relaunch(dir, resume string) { a.quitTo(dir) }
 
 // RelaunchDir is where a Relaunch that got past the quit veto restarts zemi:
-// the directory and the session to resume, both "" for none.
+// the directory, "" for none.
 func (a *App) RelaunchDir() (dir, resume string) {
 	if t := a.relaunch.Load(); t != nil {
-		return t.dir, t.resume
+		return t.dir, ""
 	}
 	return "", ""
 }
 
-// quitTo quits, then main starts zemi in dir unless it is "", resuming
-// session resume. The veto waits on the interpreter and program.Quit must not
-// run inside Update, so both run on a goroutine.
-func (a *App) quitTo(dir, resume string) {
+// quitTo quits, then main starts zemi in dir unless it is "". The veto waits
+// on the interpreter and program.Quit must not run inside Update, so both run
+// on a goroutine.
+func (a *App) quitTo(dir string) {
 	quit := func() {
 		if res := a.host.EmitVetoable(context.Background(), hostapi.EventAppQuit, map[string]any{}); res.Denied {
 			a.Notify(slog.LevelWarn, map[bool]string{true: "Quit blocked", false: "Switch blocked"}[dir == ""], res.Reason)
 			return
 		}
-		a.relaunch.Store(&relaunchTarget{dir, resume})
+		a.relaunch.Store(&relaunchTarget{dir})
 		a.leave()
 	}
 	if a.program != nil {
@@ -732,14 +727,6 @@ func (a *App) onFrame() tea.Cmd {
 		a.recapAt = time.Time{}
 		a.host.Recap(ctx)
 	}
-	if !active && !a.compactAt.IsZero() && !a.now().Before(a.compactAt) {
-		a.compactAt = time.Time{}
-		a.host.AutoCompact()
-	}
-	if !active && !a.reflectAt.IsZero() && !a.now().Before(a.reflectAt) {
-		a.reflectAt = time.Time{}
-		a.host.ReflectLive()
-	}
 	// widgets read these flags, so a change re-renders them; the animation
 	// tick alone does not, it only matters while a turn bumps the frame
 	// anyway, and Ended turning on and off bumps at both ends by itself
@@ -769,13 +756,6 @@ func (a *App) endTurn(msg turnDoneMsg) tea.Cmd {
 			a.recapAt = a.now().Add(d)
 		}
 	}
-	if d := a.host.Settings.Duration(config.KeyAgentCompactIdle); d > 0 {
-		// a loop keeps a session alive forever, and its history is what an
-		// idle compact is for; the timer only fires between runs
-		a.compactAt = a.now().Add(d)
-	}
-	// a failed turn too: a failed tool call is what the reflector learns most from
-	a.reflectAt = a.now().Add(hostapi.ReflectIdle)
 	if msg.stopped {
 		a.turnEnded, a.recapAt = hostapi.TurnCancelled, time.Time{}
 	} else if msg.err != "" {

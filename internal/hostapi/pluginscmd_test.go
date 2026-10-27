@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -258,7 +259,7 @@ func TestPluginsSend(t *testing.T) {
 		link     bool     // the data dir is reached through a symlink
 		headless bool     // no UI, as before the UI attaches
 	}{
-		{args: "modify mine add a flag\nand a test", sent: []string{`/plugin modify mine add a flag\nand a test`, "Change my zemi plugin mine in "}},
+		{args: "modify mine add a flag\nand a test", sent: []string{"/plugin modify mine add a flag\nand a test", "Change my zemi plugin mine in "}},
 		{args: "modify mine", link: true, sent: []string{"Change my zemi plugin mine in "}},
 		{args: "modify theirs fix it", err: "theirs is an installed plugin"},
 		{args: "modify", err: "usage: /plugin modify <name> [what to change]"},
@@ -310,13 +311,22 @@ func TestPluginsSend(t *testing.T) {
 				return nil
 			})
 			waitIdle(t, h)
-			msgs, err := h.DB.UserMessages(1)
-			if err != nil || len(msgs) == 0 {
-				t.Fatalf("messages %v, %v", msgs, err)
+			// the log holds the user's words and, as an echo beside them,
+			// the attached text the model read
+			typed, err := h.DB.LogKindBack(kindUser, 1)
+			if err != nil || len(typed) == 0 {
+				t.Fatalf("messages %v, %v", typed, err)
+			}
+			attached, _ := h.DB.LogKindBack(kindEcho, 20)
+			var logged []string
+			for _, row := range attached {
+				if rowTool(row) == "attach" {
+					logged = append(logged, row.Text)
+				}
 			}
 			for _, s := range c.sent {
-				if !strings.Contains(msgs[0].PartsJSON, s) {
-					t.Errorf("sent %s, want %q in it", msgs[0].PartsJSON, s)
+				if !strings.Contains(typed[0].Text, s) && !slices.ContainsFunc(logged, func(t string) bool { return strings.Contains(t, s) }) {
+					t.Errorf("sent %q, want %q in it", typed[0].Text, s)
 				}
 			}
 		})

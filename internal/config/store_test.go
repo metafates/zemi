@@ -60,9 +60,9 @@ func TestStoreKinds(t *testing.T) {
 		{"list from lua", KeyModelsFavorites, []any{"a/b", "c/d"}, []string{"a/b", "c/d"}, false},
 		{"list from json", KeyModelsFavorites, []string{"a/b"}, []string{"a/b"}, false},
 		{"list refuses a non-string entry", KeyModelsFavorites, []any{"a/b", 2}, nil, true},
-		{"a model key takes an id", KeyModelsTitles, "a/b", "a/b", false},
-		{"a model key takes empty", KeyModelsTitles, "", "", false},
-		{"a model key refuses a role", KeyModelsTitles, "agents", nil, true},
+		{"a model key takes an id", KeyModelsCompact, "a/b", "a/b", false},
+		{"a model key takes empty", KeyModelsCompact, "", "", false},
+		{"a model key refuses a role", KeyModelsCompact, "agents", nil, true},
 		{"a duration takes a go duration", KeySessionRecap, "90s", "90s", false},
 		{"a duration takes empty for the default", KeySessionRecap, "", "", false},
 		{"a duration takes 0 for off", KeySessionRecap, "0", "0", false},
@@ -80,8 +80,8 @@ func TestStoreKinds(t *testing.T) {
 
 // Only a models.<role> key names a model slot: favorites is a list key.
 func TestKeyFamilies(t *testing.T) {
-	if role, ok := ModelRole(KeyModelsTitles); !ok || role != "titles" {
-		t.Fatalf("ModelRole(models.titles) = %q, %v", role, ok)
+	if role, ok := ModelRole(KeyModelsCompact); !ok || role != "compact" {
+		t.Fatalf("ModelRole(models.compact) = %q, %v", role, ok)
 	}
 	if role, ok := ModelRole(KeyModelsFavorites); ok {
 		t.Fatalf("favorites names slot %q", role)

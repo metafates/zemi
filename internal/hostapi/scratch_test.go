@@ -21,10 +21,9 @@ import (
 func TestScratchSweep(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	h.agents.sessionID = store.ShortID()
 	live := h.ScratchDir()
-	if filepath.Base(live) != h.agents.sessionID {
-		t.Fatalf("pad %q is not named by the session id", live)
+	if filepath.Base(live) != store.MainSessionID {
+		t.Fatalf("pad %q is not named by the chat's id", live)
 	}
 	root, old := filepath.Dir(live), time.Now().Add(-2*scratchTTL)
 	cases := []struct {
@@ -181,9 +180,7 @@ func TestPadBoundPerPipeline(t *testing.T) {
 		zemi.event.on("tool.post", function(ev)
 			if ev.tool == "short" then return { output = string.rep("x", 40000) } end
 		end)`)
-	h.agents.sessionID = "s1"
 	old, pad := h.PipelineFor(), h.ScratchDir()
-	h.agents.sessionID = "s2"
 	// a host tool's output, its error and a tool.post rewrite spill where the run's
 	// prompt says, like shell's; a handler that misses its 50ms veto budget
 	// under load leaves the output as it was, so a call may need another turn

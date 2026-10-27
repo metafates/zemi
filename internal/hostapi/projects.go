@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/metafates/zemi/internal/brain"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
@@ -32,9 +31,9 @@ type Project struct {
 	Used    time.Time // when zemi was last started or left there; zero with no root file
 
 	// read with stats: a store zemi cannot read leaves them zero and says why
-	Sessions, Memories int
-	Latest             *store.Session // the newest top-level session
-	StatsErr           error
+	Sessions int
+	Latest   *store.Session // the newest top-level session
+	StatsErr error
 }
 
 // ListProjects lists every root zemi keeps state for, the last used first
@@ -84,18 +83,19 @@ func (p *Project) readStats(stateHome string) {
 	}
 	if err == nil {
 		defer db.Close()
-		var latest []*store.Session
-		if p.Sessions, err = db.SessionCount(); err == nil {
-			latest, err = db.ListSessions(1)
-		}
-		if lines, lerr := brain.Lines(brain.PrivatePartition(stateHome, p.Root)); lerr == nil && lines != nil {
-			p.Memories = len(lines)
-		} else if rows, rerr := db.ListMemory(store.ScopeProject, false); rerr == nil {
-			// never opened since the swap, so its rows are still the live ones
-			p.Memories = len(rows)
-		}
-		if len(latest) > 0 {
-			p.Latest = latest[0]
+		// sessions now counts the chat log's messages: runs and the anchor
+		// row no longer say how much a project has been used
+		var n int64
+		if n, err = db.LogCount(); err == nil {
+			p.Sessions = int(n)
+			var latest []store.LogEntry
+			if latest, err = db.LogTail(1); err == nil && len(latest) > 0 {
+				at, perr := time.Parse(time.RFC3339Nano, latest[0].CreatedAt)
+				if perr == nil {
+					line, _, _ := strings.Cut(latest[0].Text, "\n")
+					p.Latest = &store.Session{ID: store.MainSessionID, Title: line, UpdatedAt: at.UnixMilli()}
+				}
+			}
 		}
 	}
 	p.StatsErr = err
@@ -122,8 +122,11 @@ func (p Project) TrustWord() string {
 // every frame a job runs; forget and delete mark it stale.
 func (h *Host) splashProjects() []Project {
 	root := h.trustRoot()
-	if !TrustUnsaved(root) && len(h.recentSessions()) > 0 {
-		return nil
+	// the chat has begun: the splash's picks would bury the chat's tail
+	if !TrustUnsaved(root) {
+		if n, _ := h.DB.LogCount(); n > 0 {
+			return nil
+		}
 	}
 	h.splashMu.Lock()
 	defer h.splashMu.Unlock()
@@ -297,15 +300,12 @@ func (h *Host) deleteProject(p Project) error {
 	if p.Root == "" || h.Dirs.StateHome == "" {
 		return Usagef("zemi keeps nothing for %s; /projects lists what it does", perm.TildePath(p.Root))
 	}
-	ids, release, err := store.ClaimForDelete(store.ProjectDBPath(h.Dirs.StateHome, p.Root))
+	_, release, err := store.ClaimForDelete(store.ProjectDBPath(h.Dirs.StateHome, p.Root))
 	if errors.Is(err, store.ErrInUse) {
 		return Usagef("zemi has %s open in another window; quit it there first", perm.TildePath(p.Root))
 	}
 	if err != nil {
 		return err
-	}
-	for _, id := range ids {
-		h.removeSessionFiles(id)
 	}
 	err = errors.Join(os.RemoveAll(projectState(h.Dirs.StateHome, p.Root)))
 	release()
@@ -355,7 +355,7 @@ func (h *Host) projectItems() (items []OverlayItem, sel int) {
 		case p.Missing:
 			item.Detail = perm.TildePath(p.Root) + " no longer exists. Delete erases what zemi kept for it."
 		default:
-			item.Detail = "Switch restarts zemi there: a job still running here stops, as on quit. Delete erases what zemi keeps for it: sessions, memories, recipes and the trust decision. The project's own files stay."
+			item.Detail = "Switch restarts zemi there: a job still running here stops, as on quit. Delete erases what zemi keeps for it: sessions, recipes and the trust decision. The project's own files stay."
 		}
 		if sel < 0 && !p.Missing {
 			sel = i
@@ -391,15 +391,12 @@ func (h *Host) trustWord(p Project) string {
 // left out. Its trust is the decision a gone root keeps too, and its path
 // repeats the detail's title, which the UI shows only when the title clips.
 func (h *Host) projectFields(p Project) []Field {
-	sessions, memories, recipes, errText := "", "", "", ""
+	sessions, recipes, errText := "", "", ""
 	if p.Latest != nil {
 		sessions = fmt.Sprintf("%d · latest %s", p.Sessions, ago(p.Latest.UpdatedAt))
 		if t := sanitize.Line(p.Latest.Title); t != "" {
 			sessions += ": " + markedTitle(p.Latest.ID, t) // as /sessions draws it
 		}
-	}
-	if p.Memories > 0 {
-		memories = strconv.Itoa(p.Memories)
 	}
 	state := projectState(h.Dirs.StateHome, p.Root)
 	if dirs, _ := os.ReadDir(filepath.Join(state, "skills")); len(dirs) > 0 {
@@ -409,6 +406,6 @@ func (h *Host) projectFields(p Project) []Field {
 		errText = p.StatsErr.Error()
 	}
 	trust := h.trustWord(Project{Root: p.Root, Trust: p.Trust})
-	return fieldList("trust", trust, "sessions", sessions, "memories", memories, "recipes", recipes,
+	return fieldList("trust", trust, "sessions", sessions, "recipes", recipes,
 		"path", sanitize.String(perm.TildePath(p.Root)), "data", perm.TildePath(state), "error", errText)
 }

@@ -14,14 +14,12 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// TestExportAndFork: a finished exchange exports as markdown, /copy takes
-// a reply with no code blocks at once, and a fork switches to a new session holding the same conversation.
-func TestExportAndFork(t *testing.T) {
+// TestExportAndCopy: a finished exchange exports the log as markdown, /copy
+// takes a reply with no code blocks at once.
+func TestExportAndCopy(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	reflectStub(t, h, "pong")
-	h.reflectMu.Lock() // no detached reflector racing the session switch
-	defer h.reflectMu.Unlock()
 	if err := h.AgentSend("ping"); err != nil {
 		t.Fatal(err)
 	}
@@ -35,22 +33,17 @@ func TestExportAndFork(t *testing.T) {
 	if !strings.Contains(string(md), "## You\n\nping") || !strings.Contains(string(md), "## zemi\n\npong") {
 		t.Fatalf("export:\n%s", md)
 	}
-	// full follows with each subagent run's transcript
-	run := "a1b2c3d4"
-	h.DB.CreateSession(run, h.AgentSessionID(), "look around", "explore")
-	addText(t, h, run, "user", "find the widget")
-	if path, err = h.ExportSession(path, true); err != nil {
+	if _, err := h.ExportSession(path, true); err != nil {
 		t.Fatal(err)
 	}
-	md, _ = os.ReadFile(path)
-	if !strings.Contains(string(md), "\n## Agent run a1b2c3d4 (explore): look around\n\n### You\n\nfind the widget\n") {
+	if md, _ = os.ReadFile(path); !strings.Contains(string(md), "## You\n\nping") {
 		t.Fatalf("full export:\n%s", md)
 	}
 	// the toast names the file as the user finds it, short enough to read whole
 	if _, err := h.ExportSession("", false); err != nil {
 		t.Fatal(err)
 	}
-	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.body != "saved to zemi-"+h.AgentSessionID()+".md" {
+	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.body != "saved to zemi-chat.md" {
 		t.Fatalf("export toast: %q", n.body)
 	}
 
@@ -58,28 +51,6 @@ func TestExportAndFork(t *testing.T) {
 	h.SetUIHooks(ui)
 	if err := h.CopyReply(""); err != nil || ui.copied != "pong" {
 		t.Fatalf("copy = %q, %v", ui.copied, err)
-	}
-
-	orig := h.AgentSessionID()
-	id, err := h.ForkSession()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if id == orig || h.AgentSessionID() != id {
-		t.Fatalf("fork %q, live %q, original %q", id, h.AgentSessionID(), orig)
-	}
-	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.title != "Session forked" {
-		t.Fatalf("fork said nothing: %+v", n)
-	}
-	a, _ := h.DB.Messages(orig)
-	b, _ := h.DB.Messages(id)
-	// a fork re-captures its own context note (role context), which may land
-	// after the copy; the conversation is what the fork must hold
-	conv := func(ms []*store.Message) []*store.Message {
-		return slices.DeleteFunc(slices.Clone(ms), func(m *store.Message) bool { return m.Role == contextRole })
-	}
-	if ca, cb := conv(a), conv(b); len(ca) == 0 || len(ca) != len(cb) || len(h.Session().Transcript) != 2 {
-		t.Fatalf("fork holds %d of %d conversation messages, transcript %d rows", len(cb), len(ca), len(h.Session().Transcript))
 	}
 }
 
@@ -91,8 +62,6 @@ func TestCopyReply(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	reply := "Two:\n\n```go\nx := 1\n```\n\n~~~\ny\n~~~"
 	reflectStub(t, h, reply)
-	h.reflectMu.Lock()
-	defer h.reflectMu.Unlock()
 	if err := h.AgentSend("ping"); err != nil {
 		t.Fatal(err)
 	}
@@ -130,19 +99,17 @@ func TestCopyReply(t *testing.T) {
 }
 
 // TestCopyRunReply: with a run's transcript in view, /copy takes the run's
-// last reply, not the session's.
+// last reply, not the chat's.
 func TestCopyRunReply(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	reflectStub(t, h, "pong")
-	h.reflectMu.Lock()
-	defer h.reflectMu.Unlock()
 	if err := h.AgentSend("ping"); err != nil {
 		t.Fatal(err)
 	}
 	waitIdle(t, h)
 	run := "a1b2c3d4"
-	h.DB.CreateSession(run, h.AgentSessionID(), "look around", "explore")
+	h.DB.CreateSession(run, store.MainSessionID, "look around", "explore")
 	addText(t, h, run, "user", "find the widget")
 	addText(t, h, run, "assistant", "it is in the corner")
 	ui := &fakeUI{}
@@ -157,66 +124,29 @@ func TestCopyRunReply(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := h.CopyReply("reply"); err != nil || ui.copied != "pong" {
-		t.Fatalf("session copy = %q, %v", ui.copied, err)
+		t.Fatalf("chat copy = %q, %v", ui.copied, err)
 	}
 }
 
-func TestExportMarkdown(t *testing.T) {
-	user := func(s string) ChatMessage { return ChatMessage{Role: fantasy.MessageRoleUser, Text: s} }
-	reply := func(s string) ChatMessage { return ChatMessage{Role: fantasy.MessageRoleAssistant, Text: s} }
-	shell := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "shell", Text: "go test ./...", Label: "run the tests", Status: CallOK}
-	failed := shell
-	failed.Status = CallErr
-	fenced := shell
-	fenced.Label, fenced.Output, fenced.Diff = "", "```\nx\n```", "- a\n+ b"
-	agentRow := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "agent", Label: "Find it", Run: "a1b2c3d4", Status: CallOK}
-	thought := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "hmm\n\nso", Stat: &TurnStat{ThoughtMS: 4200}}
-	for _, c := range []struct {
-		name string
-		full bool
-		tr   []ChatMessage
-		want string
-	}{
-		{
-			"speakers merge",
-			false,
-			[]ChatMessage{user("hi"), shell, shell, reply("done")},
-			"\n## You\n\nhi\n\n## zemi\n\n- `shell` run the tests\n- `shell` run the tests\n\ndone\n",
-		},
-		{"failed tool says so", false, []ChatMessage{failed}, "\n## zemi\n\n- `shell` run the tests (failed)\n"},
-		{"reasoning left out", false, []ChatMessage{user("hi"), thought, user("again")}, "\n## You\n\nhi\n\n## You\n\nagain\n"},
-		{"reasoning quoted in full", true, []ChatMessage{thought, reply("ok")}, "\n## zemi\n\n> _Thought for 4.2s_\n>\n> hmm\n>\n> so\n\nok\n"},
-		{
-			"tool expands in full",
-			true,
-			[]ChatMessage{failed, agentRow},
-			"\n## zemi\n\n**shell** run the tests (failed)\n```sh\ngo test ./...\n```\n\n**agent** Find it\nrun a1b2c3d4, below\n",
-		},
-		{
-			"fence outlasts backticks",
-			true,
-			[]ChatMessage{fenced},
-			"\n## zemi\n\n**shell** go test ./...\n```diff\n- a\n+ b\n```\n````\n```\nx\n```\n````\n",
-		},
-		{
-			"notice and compaction",
-			false,
-			[]ChatMessage{{Role: fantasy.MessageRoleAssistant, Kind: RowCompact, Text: "Compacted earlier messages"}, {Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "agent explore finished"}},
-			"\n## zemi\n\n_Compacted earlier messages_\n\n_agent explore finished_\n",
-		},
-		{
-			"headings sink below the speaker outside fences, to six hashes at most",
-			false,
-			[]ChatMessage{reply("## Plan\n~~~\n# not a heading\n```\n# still code\n~~~\n# Summary\n##### Deep")},
-			"\n## zemi\n\n#### Plan\n~~~\n# not a heading\n```\n# still code\n~~~\n### Summary\n###### Deep\n",
-		},
-		{"escapes stripped", false, []ChatMessage{reply("\x1b[31mred\x1b[0m")}, "\n## zemi\n\nred\n"},
-	} {
-		var b strings.Builder
-		exportMarkdown(&b, c.tr, 2, c.full)
-		if b.String() != c.want {
-			t.Errorf("%s:\n%q\nwant\n%q", c.name, b.String(), c.want)
-		}
+// TestExportLogMarkdown renders log rows as markdown, one header per run of
+// one speaker, tool calls as list rows or expanded in full.
+func TestExportLogMarkdown(t *testing.T) {
+	rows := []store.LogEntry{
+		{Kind: kindUser, Text: "hi"},
+		{Kind: kindTool, Text: `{"command":"go test ./..."}`, MetaJSON: `{"tool":"shell"}`},
+		{Kind: kindAgent, Text: "done"},
+		{Kind: kindNote, Text: "chapter"},
+	}
+	var b strings.Builder
+	exportLog(&b, rows, 2, false)
+	want := "\n## You\n\nhi\n\n## zemi\n- `shell` go test ./...\n\ndone\n\n> _note: chapter_\n"
+	if b.String() != want {
+		t.Errorf("export:\n%q\nwant\n%q", b.String(), want)
+	}
+	var full strings.Builder
+	exportLog(&full, rows[:3], 2, true)
+	if !strings.Contains(full.String(), "**shell**") || !strings.Contains(full.String(), "```") {
+		t.Errorf("full export lost the tool body: %q", full.String())
 	}
 }
 

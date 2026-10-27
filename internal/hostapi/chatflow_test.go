@@ -213,7 +213,7 @@ func TestBuilderWakesOnRealTurns(t *testing.T) {
 	h.SetUIHooks(&fakeUI{})
 	line := strings.Repeat("u", 600) // over the leaf budget: a model call per row
 	for range 4 {
-		if err := h.chat.User(line, ""); err != nil {
+		if _, err := h.chat.User(line, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -288,11 +288,11 @@ func TestZoomAndDateRoundTrip(t *testing.T) {
 	if err := h.chat.Echo("shell", true, strings.Repeat("e", 20_000)); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.chat.User("short one", ""); err != nil {
+	if _, err := h.chat.User("short one", ""); err != nil {
 		t.Fatal(err)
 	}
 	for _, line := range []string{strings.Repeat("u", 450), strings.Repeat("v", 450)} {
-		if err := h.chat.User(line, ""); err != nil {
+		if _, err := h.chat.User(line, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -400,33 +400,16 @@ func TestUserImagesZoomBack(t *testing.T) {
 	}
 }
 
-// TestLogSessionKeepsWorking: the old persist path stores the same turn
-// beside the log, so the transcript and a resume read on until the later
-// chunk deletes it.
-func TestLogSessionKeepsWorking(t *testing.T) {
+// TestLogHoldsTheTurn: the turn's messages land in the log as they happen:
+// the user's words, the reply.
+func TestLogHoldsTheTurn(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	m := reflectStub(t, h, "kept")
 	h.SetUIHooks(&fakeUI{})
 	sendTurns(t, h, m, "hello")
-	rows, err := h.DB.Messages(h.AgentSessionID())
-	if err != nil {
-		t.Fatal(err)
-	}
-	var users, assistants int
-	for _, r := range rows {
-		switch r.Role {
-		case "user":
-			users++
-		case "assistant":
-			assistants++
-		}
-	}
-	if users == 0 || assistants == 0 {
-		t.Fatalf("session rows: %d user, %d assistant", users, assistants)
-	}
 	logRows, err := h.DB.LogTail(2)
-	if err != nil || len(logRows) != 2 || logRows[0].Kind != kindUser || logRows[0].Text != "hello" || logRows[1].Kind != kindAgent {
+	if err != nil || len(logRows) != 2 || logRows[0].Kind != kindUser || logRows[0].Text != "hello" || logRows[1].Kind != kindAgent || logRows[1].Text != "kept" {
 		t.Fatalf("log rows = %+v, %v", logRows, err)
 	}
 }
@@ -442,7 +425,7 @@ func TestToolMarkBudgetOnTheFlow(t *testing.T) {
 	m.toolStep.Store(1) // the first step ends in a tool call, so a second runs
 	h.SetUIHooks(&fakeUI{})
 	for range 5 { // five lines: two view parts, so the newest stable block is marked
-		if err := h.chat.User(strings.Repeat("w", 30), ""); err != nil {
+		if _, err := h.chat.User(strings.Repeat("w", 30), ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -474,7 +457,7 @@ func TestChatlogConcurrencyUnderTurns(t *testing.T) {
 	for range 8 {
 		wg.Go(func() {
 			for range 10 {
-				if err := h.chat.User("x", ""); err != nil {
+				if _, err := h.chat.User("x", ""); err != nil {
 					t.Error(err)
 					return
 				}

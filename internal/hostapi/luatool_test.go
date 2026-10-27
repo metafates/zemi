@@ -29,7 +29,6 @@ func TestAgentSelfAccess(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.ProjectDir = outsideTemp(t)
-	h.agents.sessionID = "s1"
 	ctx := t.Context()
 
 	out, err := h.runModelLua(ctx, `print("hi", 1 + 1) leak = 1 return { n = #zemi.agent.list() }`, luaToolChunk)
@@ -41,30 +40,8 @@ func TestAgentSelfAccess(t *testing.T) {
 	}
 
 	pad := h.ScratchDir()
-	if !strings.Contains(pad, filepath.Join("scratch", "s1")) {
+	if !strings.Contains(pad, filepath.Join("scratch", store.MainSessionID)) {
 		t.Fatalf("pad = %q", pad)
-	}
-
-	if _, err := h.Settings.SetQuiet("memory.autonomy", "auto"); err != nil {
-		t.Fatal(err)
-	}
-	h.SetProjectTrusted(true)
-	res, err := h.proposeMemory(h.AgentSessionID(), store.OriginLearned, "project", "the build uses make", "", "")
-	if err != nil || res.ID == "" {
-		t.Fatalf("propose: %+v %v", res, err)
-	}
-	if msg, err := h.memoryTool(h.PipelineFor(), h.AgentSessionID(), tools.MemoryCall{Scope: "project", Text: "the build uses go build", Replaces: res.ID}); err != nil || !strings.HasPrefix(msg, "saved as ") {
-		t.Fatalf("replace: %q %v", msg, err)
-	}
-	_, m, _ := h.locateMemory(res.ID)
-	if m.SupersededBy == "" {
-		t.Fatalf("replaced memory still live: %+v", m)
-	}
-	if _, err := h.Settings.SetQuiet("memory.autonomy", "ask"); err != nil {
-		t.Fatal(err)
-	}
-	if msg, err := h.memoryTool(h.PipelineFor(), h.AgentSessionID(), tools.MemoryCall{Scope: "project", Replaces: m.SupersededBy}); err != nil || !strings.Contains(msg, "queued") {
-		t.Fatalf("forget without auto autonomy must wait for review: %q %v", msg, err)
 	}
 }
 

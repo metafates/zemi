@@ -207,7 +207,7 @@ func (h *Host) callViewRow(n int) (row ChatMessage, took time.Duration, ok bool)
 var callTitles = map[tools.ToolName]string{
 	tools.ToolShell: "Command", tools.ToolEdit: "Edit", tools.ToolWrite: "Write", tools.ToolRead: "Read",
 	tools.ToolGrep: "Search", tools.ToolGlob: "Find", tools.ToolSkill: "Skill",
-	tools.ToolPlan: "Plan", tools.ToolLua: "Script", tools.ToolTodos: "Todos", tools.ToolMemory: "Memory",
+	tools.ToolPlan: "Plan", tools.ToolLua: "Script", tools.ToolTodos: "Todos",
 }
 
 // callWords say where a call stands, beside its mark.
@@ -227,7 +227,7 @@ var callMarks = map[CallStatus]MarkKind{
 var callArg = map[tools.ToolName]string{
 	tools.ToolRead: "file", tools.ToolEdit: "file", tools.ToolWrite: "file", tools.ToolGrep: "pattern",
 	tools.ToolGlob: "pattern", tools.ToolSkill: "skill",
-	tools.ToolMemory: "memory", tools.ToolTodos: "what",
+	tools.ToolTodos: "what",
 }
 
 // callInput is the input a call acted on, what copying a call row means to

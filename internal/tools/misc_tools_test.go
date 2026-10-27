@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -18,7 +17,6 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/metafates/zemi/internal/learn"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/runtime"
 )
@@ -469,26 +467,6 @@ func TestParseNetURL(t *testing.T) {
 	for _, raw := range []string{"http://example.com/", "https://example.com:8443/x?y=1"} {
 		if _, err := ParseNetURL(raw); err != nil {
 			t.Fatalf("ParseNetURL(%q): %v", raw, err)
-		}
-	}
-}
-
-// TestMemoryExamplesStore: every example the memory tool's description
-// quotes is stored under auto, not queued as instruction-shaped.
-func TestMemoryExamplesStore(t *testing.T) {
-	var desc string
-	for _, tl := range All(&Pipeline{}) {
-		if tl.Info().Name == string(ToolMemory) {
-			desc = tl.Info().Description
-		}
-	}
-	examples := regexp.MustCompile(`"([^"]+)"`).FindAllStringSubmatch(desc, -1)
-	if len(examples) < 2 {
-		t.Fatalf("examples: %q", desc)
-	}
-	for _, m := range examples {
-		if learn.InstructionShaped(m[1]) {
-			t.Errorf("example reads as instruction: %q", m[1])
 		}
 	}
 }

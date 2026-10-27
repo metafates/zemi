@@ -18,6 +18,13 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
+// contextTooLarge also matches Anthropic's "input length and `max_tokens`
+// exceed context limit", which fantasy does not flag.
+func contextTooLarge(err error) bool {
+	pe, ok := errors.AsType[*fantasy.ProviderError](err)
+	return ok && (pe.IsContextTooLarge() || strings.Contains(pe.Message, "exceed context limit"))
+}
+
 // explain turns a turn failure into what happened and what to do about it;
 // advice is "" when the raw error is all there is. The raw error still
 // goes to the log and /errors.
@@ -45,9 +52,9 @@ func (h *Host) explain(err error) (cause, advice string) {
 	case errors.Is(err, context.Canceled):
 		return "interrupted", ""
 	case errors.Is(err, store.ErrSessionGone):
-		return "the session was deleted under this window", "/new starts a fresh one"
+		return "the run was deleted under this window", ""
 	case pe != nil && pe.IsContextTooLarge():
-		return "the conversation no longer fits the model's context", "/compact or /new"
+		return "the conversation no longer fits the model's context", "zemi merges a view batch and retries once; if it fails again, the model's window is too small"
 	case pe != nil && (pe.AuthError || pe.StatusCode == http.StatusUnauthorized || pe.StatusCode == http.StatusForbidden):
 		return "the provider rejected the API key", key
 	case pe != nil && pe.StatusCode == http.StatusTooManyRequests:

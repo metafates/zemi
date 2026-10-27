@@ -158,12 +158,12 @@ func (h *Host) shellChanges(dir string) func() (note, diff string, paths []strin
 	s.state.Unlock()
 	jobs := h.jobsRunningCount() > 0
 	root, env, before := h.snapshot(dir)
-	mid := h.turnMsgID()
+	mid := h.turnSeq()
 	return func() (string, string, []string) {
 		_, _, after := h.snapshot(dir)
 		// a command adopted as a job reports after its turn: its changes
 		// belong to no later prompt's rewind
-		ckpt := mid != "" && mid == h.turnMsgID()
+		ckpt := mid >= 0 && mid == h.turnSeq()
 		s.state.Lock()
 		mixed, wrote := s.mixed || jobs || h.jobsRunningCount() > 0, s.wrote
 		if s.open--; s.open == 0 {

@@ -109,20 +109,6 @@ zemi.ui.widget.add({
 })
 
 -- Learned proposals waiting for review; they persist across restarts.
-zemi.ui.widget.add({
-	id = "statusline.learn",
-	region = "statusline.left",
-	priority = 30,
-	on_click = fmt.run_click,
-	---@param ctx zemi.WidgetCtx
-	---@return zemi.Line[]
-	render = function(ctx)
-		local n = ctx.pending_memory or 0
-		if n == 0 then return {} end
-		return { fmt.hint(tostring(n), n == 1 and "memory" or "memories", "memory") }
-	end,
-})
-
 -- The keys of a bound sequence typed so far, waiting for the rest.
 zemi.ui.widget.add({
 	id = "statusline.keys",
@@ -165,23 +151,6 @@ zemi.ui.widget.add({
 		return { fmt.hint("ctrl+c", "again to quit") }
 	end,
 })
-
-zemi.event.on("reflector.done", function(ev)
-	if ev.error then return end
-	---@type string[]
-	local parts = {}
-	---@param n integer?
-	---@param one string
-	---@param many string
-	local function add(n, one, many)
-		if n and n > 0 then parts[#parts + 1] = fmt.count(n, one, many) end
-	end
-	add(ev.stored, "memory stored", "memories stored")
-	add(ev.queued, "memory to review in /memory", "memories to review in /memory")
-	-- a session with nothing worth keeping ends quietly
-	if #parts == 0 then return end
-	zemi.notify({ title = "Memories learned", body = table.concat(parts, ", ") })
-end)
 
 -- Statusline right, read left to right: "$0.12 · 24.5k/200k ctx
 -- · effort · model"; the lowest priority (model) sits at the right

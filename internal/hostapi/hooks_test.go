@@ -17,6 +17,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/skill"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -209,10 +210,7 @@ func TestClaudeHookChild(t *testing.T) {
 		{"matcher":"Bash","hooks":[{"type":"command","command":"env | grep ^CLAUDE > %s; pwd > %s; cat > %s"}]},
 		{"matcher":"Read","hooks":[{"type":"command","command":"echo drained > %s"}]}]}}`, envPath, cwdPath, inPath, drainPath)
 	h, root := claudeFixHost(t, hooks, "{}")
-	sid := "s-hook"
-	h.agents.mu.Lock()
-	h.agents.sessionID = sid
-	h.agents.mu.Unlock()
+	sid := store.MainSessionID
 
 	h.consultHooks("tool.post", map[string]any{"tool_name": "shell", "tool_input": map[string]any{"cmd": "ls"}})
 	waitFile(t, inPath)
@@ -256,15 +254,13 @@ func TestClaudeHookChild(t *testing.T) {
 // and drops a pinned prompt so the next send rebuilds with it.
 func TestSessionStartCapture(t *testing.T) {
 	cases := []struct {
-		name      string
-		command   string
-		sessionID string
-		want      string
+		name    string
+		command string
+		want    string
 	}{
-		{"additionalContext", `echo '{"hookSpecificOutput":{"additionalContext":"CTX line"}}'`, "s1", "CTX line"},
-		{"plain stdout", `echo plain text`, "s1", "plain text"},
-		{"a hook the timeout killed", "sleep 30; echo late", "s1", ""},
-		{"a capture for a session gone", `echo gone`, "s2", ""},
+		{"additionalContext", `echo '{"hookSpecificOutput":{"additionalContext":"CTX line"}}'`, "CTX line"},
+		{"plain stdout", `echo plain text`, "plain text"},
+		{"a hook the timeout killed", "sleep 30; echo late", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -281,10 +277,9 @@ func TestSessionStartCapture(t *testing.T) {
 				{"hooks":[{"type":"command","command":"echo drained > %s"}]}]}}`, timeout, c.command, drain)
 			h, _ := claudeFixHost(t, hooks, "{}")
 			h.agents.mu.Lock()
-			h.agents.sessionID = c.sessionID
 			h.agents.pin.key = "pin"
 			h.agents.mu.Unlock()
-			h.captureSessionContext("s1", "startup")
+			h.captureSessionContext()
 			hookText := func() string { h.agents.mu.Lock(); defer h.agents.mu.Unlock(); return h.agents.hookCtx }
 			if c.want == "" {
 				waitFile(t, drain)
@@ -363,32 +358,6 @@ func TestClaudePluginLayers(t *testing.T) {
 	}
 }
 
-// TestSessionEndHookSeesEndingSession: the close consult names the session
-// that ended, not the live one the swap already put in place.
-func TestSessionEndHookSeesEndingSession(t *testing.T) {
-	t.Parallel()
-	dst := t.TempDir()
-	inPath := filepath.Join(dst, "in")
-	hooks := fmt.Sprintf(`{"hooks":{"SessionEnd":[{"hooks":[{"type":"command","command":"cat > %s"}]}]}}`, inPath)
-	h, _ := claudeFixHost(t, hooks, "{}")
-	h.agents.mu.Lock()
-	h.agents.sessionID = "s-old"
-	h.agents.mu.Unlock()
-	if err := h.closeSession(func() {
-		h.agents.sessionID = "s-new" // open runs under ag.mu
-	}); err != nil {
-		t.Fatal(err)
-	}
-	waitFile(t, inPath)
-	var payload map[string]any
-	if err := json.Unmarshal(readFile(t, inPath), &payload); err != nil {
-		t.Fatal(err)
-	}
-	if payload["session_id"] != "s-old" || payload["hook_event_name"] != "SessionEnd" {
-		t.Fatalf("payload: %v", payload)
-	}
-}
-
 // A capture landing while a pin build is in flight (pin.key still empty)
 // invalidates that build, so the text reaches the session's next send.
 func TestCaptureInvalidatesBuildInFlight(t *testing.T) {
@@ -396,10 +365,9 @@ func TestCaptureInvalidatesBuildInFlight(t *testing.T) {
 	hooks := `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"sleep 0.4; echo late text"}]}]}}`
 	h, _ := claudeFixHost(t, hooks, "{}")
 	h.agents.mu.Lock()
-	h.agents.sessionID = "s1"
 	drops := h.agents.pinDrops
 	h.agents.mu.Unlock()
-	h.captureSessionContext("s1", "startup")
+	h.captureSessionContext()
 	// a build running now reads hookText empty; it stores only if no drop
 	// counted against it by the time it finished
 	waitFor(t, func() error {
@@ -431,10 +399,7 @@ func TestCaptureContextCapped(t *testing.T) {
 	t.Parallel()
 	hooks := `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"awk 'BEGIN{for(i=0;i<40000;i++)printf \"x\"}'"}]}]}}`
 	h, _ := claudeFixHost(t, hooks, "{}")
-	h.agents.mu.Lock()
-	h.agents.sessionID = "s1"
-	h.agents.mu.Unlock()
-	h.captureSessionContext("s1", "startup")
+	h.captureSessionContext()
 	waitFor(t, func() error {
 		h.agents.mu.Lock()
 		defer h.agents.mu.Unlock()
@@ -458,10 +423,7 @@ func TestSessionStartMatcher(t *testing.T) {
 		{"matcher":"resume","hooks":[{"type":"command","command":"echo resumed"}]},
 		{"matcher":"startup","hooks":[{"type":"command","command":"echo started"}]}]}}`
 	h, _ := claudeFixHost(t, hooks, "{}")
-	h.agents.mu.Lock()
-	h.agents.sessionID = "s1"
-	h.agents.mu.Unlock()
-	h.captureSessionContext("s1", "startup")
+	h.captureSessionContext()
 	waitFor(t, func() error {
 		h.agents.mu.Lock()
 		defer h.agents.mu.Unlock()
