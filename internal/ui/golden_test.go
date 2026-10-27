@@ -15,6 +15,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/store"
 	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
@@ -250,6 +251,51 @@ func TestGoldenMessages(t *testing.T) {
 	app.renderSync(t)
 	app.Frame()
 	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	app.renderSync(t)
+	golden.RequireEqual(t, app.Frame())
+}
+
+// TestGoldenMemories pins the memories browser (§8): the live view one row
+// per line exactly as the model reads it, the unbuilt tail's placeholder, the
+// stats line in the footer, and the selected line's message banded in the
+// chat.
+func TestGoldenMemories(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 24)
+	testStore(t, host)
+	reloadUI(t, host)
+	for range 6 {
+		if _, err := host.DB.AppendLog("user", strings.Repeat("row ", 200), "", "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := range 5 {
+		if _, err := host.DB.InsertNode(0, int64(i), fmt.Sprintf("message %d: the work it asked for", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := host.DB.InsertNode(1, 0, "the first exchange settled the goal"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := host.DB.InsertNode(1, 1, "the second exchange took the change"); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := host.DB.MergeViewLines([]store.ViewMerge{{L: 1, I: 0}, {L: 1, I: 1}}); err != nil || n != 2 {
+		t.Fatalf("the merges: %d applied, %v", n, err)
+	}
+	tr := make([]hostapi.ChatMessage, 6)
+	for i := range tr {
+		tr[i] = hostapi.ChatMessage{Role: "user", Text: fmt.Sprintf("prompt %d about the change", i), Seq: int64(i)}
+	}
+	host.SetTranscript(tr)
+
+	app.timeStr = "09:41"
+	app.renderSync(t)
+	app.Frame()
+	if err := host.MemoriesCommand(""); err != nil {
 		t.Fatal(err)
 	}
 	for app.Pump() {

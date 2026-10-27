@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"encoding/json/v2"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -65,8 +66,114 @@ func (h *Host) SetTranscript(tr []ChatMessage) {
 	h.session.Transcript, h.view = tr, nil
 	h.trEpoch.Add(1)
 	h.tMu.Unlock()
+	// the loaded pages and the stamping cursor speak the cut log's shape, and
+	// the window is stamped whole from the log
+	h.msgMu.Lock()
+	h.msgOld, h.msgFrom = nil, -1
+	h.msgMu.Unlock()
+	h.stampReset(tr)
 	h.scroll(ScrollBottom, "")
 	h.refresh()
+}
+
+// stampedTail is the seq the transcript's stamping resumes from: the last
+// logged row's, so the log rows after it are the unclaimed ones.
+func (h *Host) stampedTail(tr []ChatMessage) int64 {
+	for _, m := range slices.Backward(tr) {
+		if m.Seq > 0 {
+			return m.Seq + 1
+		}
+	}
+	return 0
+}
+
+// stampLogSeqs fills the transcript rows' Seq from the log: the log's rows
+// pair with the window's stampable ones in order, by kind - the log receives
+// the same stretches in the same order, sometimes ahead of the flush that
+// draws them, so an unpaired head waits for its row. stampRow is the window
+// row the pairing sits at (stampCursor moves it when rows shift); rows before
+// it are claimed, whatever seq they carry, the log's own 0 included.
+func (h *Host) stampLogSeqs() {
+	if h.DB == nil {
+		return
+	}
+	h.tMu.Lock()
+	defer h.tMu.Unlock()
+	tr := h.session.Transcript
+	rows, err := h.DB.LogFrom(h.stampFrom, stampBatch)
+	if err != nil || len(rows) == 0 {
+		return
+	}
+	type stamp struct {
+		at   int
+		seq  int64
+		gone bool // the row's log write failed: it draws, but names no message
+	}
+	var stamps []stamp
+	w := min(h.stampRow, len(tr))
+	consumed := 0
+	for _, row := range rows {
+		for w < len(tr) && !stampable(tr[w]) {
+			w++ // a notice, a thought or an error row: the log row it follows pairs past it
+		}
+		if w >= len(tr) {
+			break
+		}
+		m := tr[w]
+		if (row.Kind == kindTool) != (m.Kind == RowTool) ||
+			row.Kind != kindTool && (row.Kind == kindUser) != (m.Role == fantasy.MessageRoleUser) {
+			break // the log is ahead of the flush that draws its row: wait for it
+		}
+		if row.Kind != kindTool && row.Text != m.Text {
+			// the log write for this row failed: the row draws unstamped and
+			// the log row pairs with the next one
+			stamps = append(stamps, stamp{at: w, gone: true})
+			w++
+			continue
+		}
+		if m.Seq != row.Seq {
+			stamps = append(stamps, stamp{at: w, seq: row.Seq})
+		}
+		w++
+		consumed++
+	}
+	if len(stamps) > 0 {
+		tr = slices.Clone(tr)
+		for _, s := range stamps {
+			if s.gone {
+				tr[s.at].Seq = -1 // names no message, now or ever
+			} else {
+				tr[s.at].Seq = s.seq
+			}
+		}
+		h.session.Transcript = tr
+	}
+	h.stampRow, h.stampFrom = w, h.stampFrom+int64(consumed)
+}
+
+// stampCursor moves the pairing's window row when the transcript shifts
+// under it: rows cut from the head or spliced out before it.
+func (h *Host) stampCursor(cut int) {
+	h.stampRow = max(h.stampRow-cut, 0)
+}
+
+// stampReset points the pairing past a window that is stamped whole: a
+// rewind's swap, the boot seed.
+func (h *Host) stampReset(tr []ChatMessage) {
+	h.tMu.Lock()
+	h.stampRow = len(tr)
+	h.stampFrom = h.stampedTail(tr)
+	h.tMu.Unlock()
+}
+
+// stampable reports whether a transcript row comes from a log row the
+// stamping can name: the user's words, a reply's stretch, a tool call.
+// Notices, thoughts, errors and !commands have no log row of their own.
+func stampable(m ChatMessage) bool {
+	if m.Kind == RowTool {
+		return true
+	}
+	return m.Kind == "" && m.Text != ""
 }
 
 // logRows converts log rows into the transcript rows the chat draws: a user

@@ -83,7 +83,7 @@ function M.hint(noun, cmd, click, hl)
 end
 
 --- What the session still waits on as one row: the runs and jobs of other
---- work, the jobs the user waits on, and a compaction. Its labels breathe,
+--- work, and the jobs the user waits on. Its labels breathe,
 --- so the row ticks the frame clock while it lives; nil when nothing pends.
 ---@param ctx zemi.WidgetCtx
 ---@return zemi.Line?
@@ -103,7 +103,6 @@ function M.pending(ctx)
 		if #busy > 1 then label = label .. ", and " .. (#busy - 1) .. " more" end
 		parts[#parts + 1] = label
 	end
-	if (ctx.agent or {}).compacting then parts[#parts + 1] = "compacting the conversation" end
 	if #parts == 0 then return nil end
 	---@type zemi.Mark
 	local mark = zemi.ui.marks.bg

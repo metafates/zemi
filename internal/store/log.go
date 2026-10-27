@@ -237,6 +237,25 @@ func (s *DB) LoadView() ([]ViewLine, error) {
 	})
 }
 
+// ViewLineText is one view line with its node's text and byte size, the
+// placeholder's when the node is not built yet (Text empty).
+type ViewLineText struct {
+	L, I int64
+	Text string
+	Size int
+}
+
+// ViewLines reads the persisted view with each line's node text in one
+// query, oldest first: what the view message and the /memories browser draw.
+func (s *DB) ViewLines() ([]ViewLineText, error) {
+	rows, err := s.db.Query(`SELECT v.l, v.i, COALESCE(n.text, ''), COALESCE(n.size, 0)
+		FROM view_lines v LEFT JOIN nodes n ON n.l = v.l AND n.i = v.i ORDER BY v.ord`)
+	return collect(rows, err, func(r scanner) (v ViewLineText, err error) {
+		err = r.Scan(&v.L, &v.I, &v.Text, &v.Size)
+		return v, err
+	})
+}
+
 // MainSessionID is the anchor session row's id: billing and todos ride it
 // once the chat is the memory.
 const MainSessionID = "main"

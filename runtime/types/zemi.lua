@@ -720,7 +720,6 @@ function zemi.event.stats() end
 ---@field steering zemi.QueuedMessage[] Messages waiting for the turn's next step boundary, oldest first; while ctx.view is set, the ones queued for that agent run.
 ---@field thought number Seconds spent reasoning.
 ---@field elapsed number Seconds since the turn started; while ctx.view is set, since that run did.
----@field compacting boolean History is being summarized.
 ---@field checking_goal boolean The goal is being checked after a turn (/goal); the agent stays active.
 ---@field retry? { attempt: integer, why: string, next_in: number } Set while a provider retry waits or is under way (next_in 0).
 

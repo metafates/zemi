@@ -606,6 +606,9 @@ func (h *Host) dropHeldRow(held *heldPrompt) {
 		// replaced whole, like setTranscript: readers share the old array
 		h.session.Transcript = append(slices.Clip(t[:held.base]), t[held.base+1:]...)
 		h.trEpoch.Add(1)
+		if held.base < h.stampRow { // the held row's log write never happened
+			h.stampRow--
+		}
 	}
 	h.tMu.Unlock()
 	h.refresh()
@@ -1253,6 +1256,11 @@ func (h *Host) cutAssistantRows(n int) {
 		// (Host.Session) and the chat widget caches rows by index
 		h.session.Transcript = append(slices.Clip(t[:n]), kept...)
 		h.trEpoch.Add(1)
+		// the cut rows never settled in the log (their step re-streams), so
+		// the pairing waits at the cut
+		if h.stampRow > n {
+			h.stampRow = n
+		}
 	}
 	h.tMu.Unlock()
 	h.refresh()
@@ -1344,6 +1352,7 @@ func (h *Host) flushOutput(stat TurnStat) {
 	}
 	ag.reasonBuf, ag.tools, ag.textBuf, ag.thought = "", slices.Clone(ag.tools[done:]), "", 0
 	h.appendTranscript(rows...)
+	h.stampLogSeqs()
 	h.refreshMessagesFrom(h.pickerTranscriptLocked()) // the picker shows a row as it settles
 }
 
@@ -1577,6 +1586,9 @@ func (h *Host) persistMessage(msg fantasy.Message) error {
 	if err != nil {
 		h.Log.Warn("chat log append failed", "origin", "agent", "error", err)
 		return nil
+	}
+	if seq >= 0 {
+		h.stampLogSeqs()
 	}
 	if msg.Role == fantasy.MessageRoleUser && seq >= 0 {
 		ag := h.agents

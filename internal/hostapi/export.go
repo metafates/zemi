@@ -396,6 +396,15 @@ func (h *Host) OpenUsage() error {
 				text(ChromeHint, fmt.Sprintf("  %3d%%", p.chars*100/sum))))
 		}
 	}
+	// the view's own size: what the eternal chat keeps the next turn reading
+	if b, lines, levels, unbuilt := h.viewStats(); lines > 0 {
+		section("View", text(ChromeHint, " the chat the model reads"))
+		detail := fmt.Sprintf("  %s · %s · %s", fmtBytes(int64(b)), pluralCount(lines, "line", "lines"), pluralCount(levels, "level", "levels"))
+		if unbuilt > 0 {
+			detail += " · " + pluralCount(unbuilt, "line", "lines") + " unbuilt"
+		}
+		rows = append(rows, []Segment{text(ChromeValue, detail)})
+	}
 	type window struct {
 		label string
 		u     store.Usage

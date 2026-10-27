@@ -31,21 +31,28 @@ func (h *Host) messagesCommands() []*Command {
 
 // MessagesCommand is /messages and the levels under it: no argument lists
 // the conversation, "rail N" opens one run's rail, "view N" reads one row
-// whole.
+// whole (a "#seq" names a loaded page's log row).
 func (h *Host) MessagesCommand(args string) error {
 	verb, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
 	switch verb {
 	case "":
 		return h.OpenMessages()
-	case "rail", "view":
+	case "rail":
 		n, err := strconv.Atoi(strings.TrimSpace(rest))
 		if err != nil {
-			return Usagef("/messages %s <row> (a row the list shows)", verb)
+			return Usagef("/messages rail <row> (a row the list shows)")
 		}
-		if verb == "rail" {
-			return h.openMessagesRail(n)
+		return h.openMessagesRail(n)
+	case "view":
+		rest = strings.TrimSpace(rest)
+		if n, err := strconv.Atoi(rest); err == nil {
+			return h.openMessageView(n)
 		}
-		return h.openMessageView(n)
+		seq, err := strconv.ParseInt(strings.TrimPrefix(rest, "#"), 10, 64)
+		if err != nil {
+			return Usagef("/messages view <row> (a row the list shows)")
+		}
+		return h.openLogView(seq)
 	}
 	return Usagef("usage: /messages [rail <row> | view <row>]")
 }
@@ -180,6 +187,9 @@ func (h *Host) refreshMessagesFrom(p pickTr) {
 // false for an id it no longer holds. A refresh keeps whatever the reader
 // selected, so it names no row to open on.
 func (h *Host) messagesLevel(id string, p pickTr) (Overlay, bool) {
+	if id == "memories" {
+		return h.memoriesOverlay(), true
+	}
 	if _, rail, ok := strings.Cut(id, " rail "); ok { // a run's rail level
 		if n, err := strconv.Atoi(rail); err == nil {
 			return h.messagesRailOverlay(p, n, 0)
@@ -267,12 +277,22 @@ func messagesTurns(p pickTr) []msgTurn {
 }
 
 // messagesList is /messages: every turn's rows in order under a header that
-// names the turn, so one list reads the whole conversation. The row the
-// reader was at, when given, selects the element holding it.
+// names the turn, so one list reads the whole conversation, with the pages a
+// page-up loaded ahead of them. The row the reader was at, when given,
+// selects the element holding it.
 func (h *Host) messagesList(p pickTr, at int) Overlay {
 	o := Overlay{
 		ID: "messages", Title: "Messages", Origin: lua.OriginBuiltin,
 		Anchor: OverlayBottomRight, Follow: true, Empty: "No messages yet.",
+	}
+	h.msgMu.Lock()
+	old := slices.Clone(h.msgOld)
+	h.msgMu.Unlock()
+	for _, m := range old {
+		if item := olderRow(m); item.Text != "" {
+			item.Section = "Earlier"
+			o.Items = append(o.Items, item)
+		}
 	}
 	for _, t := range messagesTurns(p) {
 		section := turnSection(p, t)
@@ -281,7 +301,7 @@ func (h *Host) messagesList(p pickTr, at int) Overlay {
 			if e.run != nil {
 				item = railRow(*e.run)
 			} else {
-				item = h.messageRow(e.idx, p.at(e.idx))
+				item = messageRow(e.idx, p.at(e.idx))
 			}
 			if item.Text == "" {
 				continue
@@ -300,7 +320,74 @@ func (h *Host) messagesList(p pickTr, at int) Overlay {
 			}
 		}
 	}
+	o.More = h.messagesOlder
 	return o
+}
+
+// chatPageRows is how many log rows one page-up of the picker loads.
+const chatPageRows = 250
+
+// olderRow is a loaded page row: what it reads as, its log seq for the
+// rewind key on a prompt, and the view that reads it whole. It names no
+// transcript row: the chat window does not hold it.
+func olderRow(m ChatMessage) OverlayItem {
+	item := messageRow(0, m)
+	if m.Seq > 0 {
+		item.Run = "messages view #" + strconv.FormatInt(m.Seq, 10)
+	}
+	return item
+}
+
+// messagesOlder loads the page of log rows before the oldest loaded one and
+// returns the list rebuilt with it; ok false when nothing older is left. It
+// runs on the UI worker, never on the key path.
+func (h *Host) messagesOlder() (Overlay, bool) {
+	if h.DB == nil {
+		return Overlay{}, false
+	}
+	// the window's oldest claimed row: the pages stop before it, whatever seq
+	// it carries, the log's own 0 included
+	h.tMu.RLock()
+	tr, claimed := h.session.Transcript, h.stampRow
+	h.tMu.RUnlock()
+	head := int64(-1)
+	if claimed > 0 && len(tr) > 0 {
+		head = tr[0].Seq
+	} else {
+		for _, m := range tr {
+			if m.Seq > 0 {
+				head = m.Seq
+				break
+			}
+		}
+	}
+	h.msgMu.Lock()
+	oldest := h.msgFrom
+	h.msgMu.Unlock()
+	if oldest < 0 {
+		if head <= 0 {
+			return Overlay{}, false
+		}
+		oldest = head
+	}
+	lo := max(int64(0), oldest-chatPageRows)
+	if lo >= oldest {
+		return Overlay{}, false
+	}
+	rows, err := h.DB.LogFrom(lo, int(oldest-lo))
+	if err != nil || len(rows) == 0 {
+		return Overlay{}, false
+	}
+	page := logRows(rows)
+	h.msgMu.Lock()
+	// a rewind cut the log under the loaded pages: only what is still before
+	// the window's first logged row survives it
+	if head > 0 {
+		page = append(page, slices.DeleteFunc(h.msgOld, func(m ChatMessage) bool { return m.Seq >= head })...)
+	}
+	h.msgOld, h.msgFrom = page, lo
+	h.msgMu.Unlock()
+	return h.messagesList(h.pickerTranscript(), 0), true
 }
 
 // turnSection is the header a turn's rows sit under: its number, the clock
@@ -492,7 +579,7 @@ func messageCallRow(idx int, m ChatMessage) OverlayItem {
 // messageRow is one row of a turn: what it reads as, what y copies, and the
 // actions that open it or rewind to it. Its text is empty for a row the list
 // leaves out.
-func (h *Host) messageRow(idx int, m ChatMessage) OverlayItem {
+func messageRow(idx int, m ChatMessage) OverlayItem {
 	text := strings.TrimSpace(m.Text)
 	item := OverlayItem{Anchor: idx}
 	var glyph, hl string
@@ -584,6 +671,43 @@ func (h *Host) openMessageView(n int) error {
 	}
 	ui.OpenOverlay(Overlay{
 		ID: "messages view " + strconv.Itoa(n), Title: title, Origin: lua.OriginBuiltin,
+		Body: text, BodyMD: md,
+	})
+	return nil
+}
+
+// openLogView reads one log row whole: the row a loaded page names by its
+// seq, what "messages view <row>" is for the chat's window.
+func (h *Host) openLogView(seq int64) error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	row, err := h.DB.LogAt(seq)
+	if err != nil {
+		return Usagef("no message %d in the log", seq)
+	}
+	text := strings.TrimSpace(row.Text)
+	if text == "" {
+		return Usagef("message %d has no text", seq)
+	}
+	title, md := "Message", false
+	switch row.Kind {
+	case kindUser:
+		title, md = "Prompt", true
+	case kindAgent:
+		title, md = "Reply", true
+	case kindNote:
+		title = "Note"
+	case kindEcho:
+		title = "Result"
+	case kindWork:
+		title = "Report"
+	case kindTool:
+		title = upperFirst(cmp.Or(rowTool(row), "Tool"))
+	}
+	ui.OpenOverlay(Overlay{
+		ID: "messages view #" + strconv.FormatInt(seq, 10), Title: title, Origin: lua.OriginBuiltin,
 		Body: text, BodyMD: md,
 	})
 	return nil

@@ -252,6 +252,15 @@ func clipBytes(s string, bytes int) string {
 // many view lines, so a turn's parts extend the last turn's whole.
 const viewLinesPerPart = 4
 
+// renderLine renders one view line as the model reads it: "id+n|text", the
+// placeholder's when the node is not built yet (text empty).
+func renderLine(l, i int64, text string) string {
+	if text == "" {
+		text = placeholder
+	}
+	return nodeID{l, i}.id() + "|" + strings.ReplaceAll(text, "\n", " ")
+}
+
 // viewMessage is the fresh turn's opening message: the persisted view, one
 // text part per viewLinesPerPart lines, oldest first. The mark sits on the
 // newest complete block that has a part after it - a complete last block
@@ -259,7 +268,7 @@ const viewLinesPerPart = 4
 // part keeps its bytes while the view only grows at its end. ok is false
 // while the log is empty.
 func (c *chatLog) viewMessage() (msg fantasy.Message, ok bool) {
-	lines, err := c.h.DB.LoadView()
+	lines, err := c.h.DB.ViewLines()
 	if err != nil || len(lines) == 0 {
 		return fantasy.Message{}, false
 	}
@@ -267,15 +276,10 @@ func (c *chatLog) viewMessage() (msg fantasy.Message, ok bool) {
 	for start := 0; start < len(lines); start += viewLinesPerPart {
 		var b strings.Builder
 		for _, ln := range lines[start:min(start+viewLinesPerPart, len(lines))] {
-			text := placeholder
-			if n, err := c.h.DB.NodeAt(ln.L, ln.I); err == nil {
-				text = n.Text
-			}
-			id := nodeID{ln.L, ln.I}
 			if b.Len() > 0 {
 				b.WriteByte('\n')
 			}
-			b.WriteString(id.id() + "|" + strings.ReplaceAll(text, "\n", " "))
+			b.WriteString(renderLine(ln.L, ln.I, ln.Text))
 		}
 		texts = append(texts, b.String())
 	}
@@ -461,12 +465,11 @@ func rowTool(row store.LogEntry) string {
 
 // zoomChild renders one child line of node(l,i), a placeholder when unbuilt.
 func zoomChild(db *store.DB, l, i int64) string {
-	id := nodeID{l, i}
-	text := placeholder
+	text := ""
 	if n, err := db.NodeAt(l, i); err == nil {
 		text = n.Text
 	}
-	return id.id() + "|" + strings.ReplaceAll(text, "\n", " ")
+	return renderLine(l, i, text)
 }
 
 // zoomImages replays a message's stored images. NOTE: one image per zoom

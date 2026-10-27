@@ -804,6 +804,33 @@ func (a *App) stepUnder(run string) {
 	}
 }
 
+// moreAtTop extends a list that loads its older rows when a move held at the
+// first row: the reader walked off the top of what is loaded. The load runs
+// on the worker and replaces the list where it stands.
+func (a *App) moreAtTop(st *overlayState, key string, was int) {
+	if st.o.More == nil || was != 0 {
+		return
+	}
+	switch key {
+	case "up", "k", "pgup", "ctrl+u":
+	default:
+		return
+	}
+	o := st.o
+	a.background(func() {
+		next, ok := o.More()
+		if !ok {
+			return
+		}
+		a.do(func() {
+			if i := a.overlayIndex(o.ID); i >= 0 && a.overlays[i].o.Gen == o.Gen {
+				a.replaceOverlay(i, next)
+				a.bump()
+			}
+		})
+	})
+}
+
 // overlayKey routes keys to the topmost overlay; text is what the key types
 // (printable keys filter the list).
 func (a *App) overlayKey(key, text string) tea.Cmd {
@@ -825,8 +852,10 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	}
 	// a filter takes its keys first; then a body that overflows takes the
 	// scroll keys, and the list keys too when there is no list to move in
+	sel := st.selected
 	if !st.back && st.filterable && st.edit(key, text) || st.body.overflows() && scrollKey(&st.body, key, len(o.Items) == 0) ||
 		moveSel(&st.selected, len(st.visible), st.view.pageItems(len(st.visible)), key) {
+		a.moreAtTop(st, key, sel)
 		return nil
 	}
 	if !st.active { // an open filter types; until then left and right alias h and l
@@ -1407,12 +1436,19 @@ func (a *App) overlayBox(st *overlayState, w, h int, top bool) [][]hostapi.Segme
 		if measuring { // the box grows to what the footer keeps, so no hint drops
 			footW = inner
 		}
-		foot := hint(footW, hints...)
+		statW := 0
+		if st.o.Foot != "" {
+			statW = ansi.StringWidth(st.o.Foot) + 3
+		}
+		foot := hint(footW-statW, hints...)
 		if st.armed {
 			foot = armedHint(footW, "enter", st.items[st.visible[st.selected]].label)
 		}
 		if d := st.keyDesc(st.keyArmed); d != "" {
 			foot = armedHint(footW, st.keyArmed, d)
+		}
+		if s := st.o.Foot; s != "" {
+			foot = append([]hostapi.Segment{{Text: s, HL: hostapi.ChromeHint}, {Text: " · ", HL: hostapi.ChromeHint}}, foot...)
 		}
 		tail = len(stack(tight, pane, oneRow))
 		rows := stack(tight, body, slices.Concat(head, list, fixed), pane, [][]hostapi.Segment{foot})

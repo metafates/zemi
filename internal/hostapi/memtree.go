@@ -70,6 +70,16 @@ func (n nodeID) id() string {
 	return strconv.FormatInt(n.first(), 10) + "+" + strconv.FormatInt(n.span(), 10)
 }
 
+// key is the node's stable item identity across rebuilds.
+func (n nodeID) key() string {
+	return strconv.FormatInt(n.l, 10) + ":" + strconv.FormatInt(n.i, 10)
+}
+
+// args is the node as a /memories subcommand's arguments: "3 12".
+func (n nodeID) args() string {
+	return strconv.FormatInt(n.l, 10) + " " + strconv.FormatInt(n.i, 10)
+}
+
 // viewLine is one line of a view: a node and the bytes its text fills, the
 // placeholder's when the node is not built yet.
 type viewLine struct {

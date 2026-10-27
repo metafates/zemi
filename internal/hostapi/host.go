@@ -180,6 +180,16 @@ type Overlay struct {
 	// It runs on the UI worker, never on the key path.
 	Reload func() []OverlayItem
 
+	// More loads a browsing list's older rows when the reader pages up past
+	// its first one; ok false when nothing older is left. It runs on the UI
+	// worker, never on the key path, and the list is replaced with what it
+	// returns.
+	More func() (Overlay, bool)
+
+	// Foot is the stats line a Go screen draws ahead of its footer's keys:
+	// live numbers a rebuild refreshes, never keys.
+	Foot string
+
 	// Next and Prev are the commands that open the next and the previous
 	// view on the same rail in this one's place (ctrl+j, ctrl+k), so walking
 	// a turn's calls takes no trip back to the chat.
@@ -522,6 +532,17 @@ type Host struct {
 	callID    string // that call's id, which names the row it settles at
 	callServe int    // the row the live call view's watcher serves, so an
 	// opened view supersedes the last watcher instead of adding one
+	// memZoom is /memories' stack of lines zoomed into their children, and
+	// msgOld the pages of log rows a page-up loaded past the window
+	memZoom []nodeID
+	msgOld  []ChatMessage
+	msgFrom int64 // the oldest log seq the pages loaded, -1 for none
+
+	// stampFrom is the log seq the transcript's seq stamping pairs from, and
+	// stampRow the window row it pairs at: rows before it are claimed
+	// (stampLogSeqs). Both move only under tMu.
+	stampFrom int64
+	stampRow  int
 
 	// agentRows caches ctx.agent's tool subtables between renders: a finished
 	// tool's fields never change, so a long turn rebuilds only the rows that
@@ -791,6 +812,9 @@ type Session struct {
 // through zoom and the paged store reads.
 const chatWindowRows = 1000
 
+// stampBatch bounds one read of the log rows the seq stamping pairs.
+const stampBatch = 256
+
 // appendTranscript appends rows to the window and trims its head once it
 // passes chatWindowRows. Replaced whole, like setTranscript: readers share
 // the old array and the chat widget caches rows by index.
@@ -803,6 +827,7 @@ func (h *Host) appendTranscript(rows ...ChatMessage) {
 	if cut := len(tr) - chatWindowRows; cut > 0 {
 		tr = slices.Clone(tr[cut:])
 		h.trEpoch.Add(1)
+		h.stampCursor(cut) // the pairing's row moved down with the head
 	}
 	h.session.Transcript = tr
 	h.tMu.Unlock()
@@ -866,6 +891,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		// no resume, only more of itself
 		if rows, err := h.DB.LogTail(chatWindowRows); err == nil {
 			h.session.Transcript = logRows(rows)
+			h.stampReset(h.session.Transcript)
 		}
 		h.loadGoal()
 	}

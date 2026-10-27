@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -11,6 +12,18 @@ import (
 
 	"github.com/metafates/zemi/internal/tools"
 )
+
+// rowKey is an item's identity across rebuilds, what the ui keeps a
+// selection by: its id, else the transcript row it names, else its text.
+func rowKey(it OverlayItem) string {
+	switch {
+	case it.ID != "":
+		return it.ID
+	case it.Anchor != 0:
+		return "row " + strconv.Itoa(it.Anchor)
+	}
+	return it.Text
+}
 
 // TestMessagesList: /messages lists every turn's rows in order, each turn a
 // section header naming its clock and what it held; a prompt row names the
@@ -345,5 +358,71 @@ func TestRefreshMessagesKeepsNewLevels(t *testing.T) {
 	h.refreshMessagesFrom(pickTr{tr: nil})
 	if slices.Contains(h.msgLevels, "messages rail 2") {
 		t.Fatalf("levels = %v, the dropped level stayed", h.msgLevels)
+	}
+}
+
+// TestMessagesPageUp: a page-up past the picker's first row loads the page of
+// log rows before the window and extends the list with it; the window's rows
+// keep their anchors and identities (the chat's bands and jumps read them),
+// the loaded rows name no transcript row, and nothing loads past the log's
+// first message.
+func TestMessagesPageUp(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	for i := range 1100 {
+		if _, err := h.DB.AppendLog(kindUser, fmt.Sprintf("message %d", i), "", "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// the window opened on the log's tail at boot, when the log was empty:
+	// the rows land and the chat opens on their tail the way a full log does
+	rows, err := h.DB.LogTail(chatWindowRows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.SetTranscript(logRows(rows))
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	before := ui.opened[len(ui.opened)-1]
+	if len(before.Items) != chatWindowRows {
+		t.Fatalf("the window lists %d rows", len(before.Items))
+	}
+	if before.Items[0].Anchor != 1 {
+		t.Fatalf("the window's first row anchors %d", before.Items[0].Anchor)
+	}
+	o, ok := h.messagesOlder()
+	if !ok {
+		t.Fatal("nothing loaded for a window that opened mid-log")
+	}
+	// the page holds the 100 rows before the window's first: seqs 0..99
+	if len(o.Items) != chatWindowRows+100 {
+		t.Fatalf("the extended list holds %d rows", len(o.Items))
+	}
+	for i := 100; i < len(o.Items); i++ {
+		was := before.Items[i-100]
+		if o.Items[i].Anchor != was.Anchor || rowKey(o.Items[i]) != rowKey(was) {
+			t.Fatalf("window row %d moved: anchor %d key %q, was %d %q",
+				i, o.Items[i].Anchor, rowKey(o.Items[i]), was.Anchor, rowKey(was))
+		}
+	}
+	if o.Items[0].Anchor != 0 || o.Items[0].ID != "" {
+		t.Errorf("a loaded row anchors %d id %q, want none", o.Items[0].Anchor, o.Items[0].ID)
+	}
+	if o.Items[1].ID != "1" || o.Items[1].Run != "messages view #1" {
+		t.Errorf("the loaded prompt = id %q run %q", o.Items[1].ID, o.Items[1].Run)
+	}
+	if _, ok := h.messagesOlder(); ok {
+		t.Error("a page loaded past the log's first message")
+	}
+	// a rewind's swap drops the loaded pages with the rows they name
+	h.SetTranscript(h.Session().Transcript)
+	h.msgMu.Lock()
+	n := len(h.msgOld)
+	h.msgMu.Unlock()
+	if n != 0 {
+		t.Errorf("%d loaded rows survived the swap", n)
 	}
 }
