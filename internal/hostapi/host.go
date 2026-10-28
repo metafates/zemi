@@ -855,14 +855,20 @@ func (h *Host) appendTranscript(rows ...ChatMessage) {
 		}
 	}
 	h.tMu.Lock()
-	tr := append(h.session.Transcript, rows...)
+	h.session.Transcript = h.trimTranscript(append(h.session.Transcript, rows...))
+	h.tMu.Unlock()
+}
+
+// trimTranscript clips a window grown past chatWindowRows to the bound,
+// tMu held: the shed head advances trCut, the delta the chat's key shift
+// absorbs so no wipe is needed, and the pairing's row moves down with it.
+func (h *Host) trimTranscript(tr []ChatMessage) []ChatMessage {
 	if cut := len(tr) - chatWindowRows; cut > 0 {
 		tr = slices.Clone(tr[cut:])
-		h.trCut.Add(int64(cut)) // the chat shifts its keys by the delta; no wipe
-		h.stampCursor(cut)      // the pairing's row moved down with the head
+		h.trCut.Add(int64(cut))
+		h.stampCursor(cut)
 	}
-	h.session.Transcript = tr
-	h.tMu.Unlock()
+	return tr
 }
 
 // NewHost wires the registries and opens the stores (best effort:

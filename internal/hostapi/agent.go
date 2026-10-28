@@ -1399,7 +1399,7 @@ func (h *Host) appendAfterLive(m ChatMessage) {
 	ag.mu.Lock()
 	h.flushOutput(TurnStat{})
 	h.tMu.Lock()
-	h.session.Transcript = append(h.session.Transcript, m)
+	h.session.Transcript = h.trimTranscript(append(h.session.Transcript, m))
 	h.tMu.Unlock()
 	ag.mu.Unlock()
 	h.refresh()
