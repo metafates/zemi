@@ -161,8 +161,8 @@ func TestMemoriesPreviewBody(t *testing.T) {
 	}
 }
 
-// TestMemoriesLeafZoomSaysSo: l on a leaf zooms nothing and says so, instead
-// of doing nothing silently.
+// TestMemoriesLeafZoomSaysSo: a leaf advertises no zoom, and l on it opens
+// the messages it covers, the screen enter opens.
 func TestMemoriesLeafZoomSaysSo(t *testing.T) {
 	t.Parallel()
 	app, host := seedMemoriesApp(t, 100, 24)
@@ -175,10 +175,10 @@ func TestMemoriesLeafZoomSaysSo(t *testing.T) {
 	app.Frame()
 	press(t, app, tea.KeyPressMsg{Code: 'l', Text: "l"})
 	pump(t, app)
-	if toast := lastToast(app); !strings.Contains(toast, "is a leaf") {
-		t.Fatalf("l on a leaf toasted %q", toast)
+	if len(app.overlays) != 2 {
+		t.Fatalf("%d overlays after l on a leaf", len(app.overlays))
 	}
-	if len(app.overlays) != 1 {
-		t.Fatalf("%d overlays after the leaf zoom", len(app.overlays))
+	if top := app.overlays[len(app.overlays)-1].o; top.ID != "memories range 0 4" {
+		t.Fatalf("l on a leaf opened %q", top.ID)
 	}
 }

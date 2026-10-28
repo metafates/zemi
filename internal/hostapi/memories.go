@@ -76,10 +76,10 @@ func (h *Host) openMemories() error {
 // the node's two children under its own line. The gate reaches from the
 // view: the node must be a view line or hang under one - zoom climbs down
 // from what the model reads, never above it. A leaf has no children and
-// refuses, which is the toast that says enter takes the chat to the message.
+// refuses, which is the toast that says enter reads the messages it covers.
 func (h *Host) openMemoriesZoom(id nodeID) error {
 	if id.l == 0 {
-		return Usagef("%s is a leaf: enter takes the chat to the message", id.id())
+		return Usagef("%s is a leaf: enter reads the messages it covers", id.id())
 	}
 	if h.DB == nil {
 		return errors.New("no chat log in this boot")
@@ -196,7 +196,9 @@ func (h *Host) memoriesRow(id nodeID, text string, winLo int64) OverlayItem {
 	} else {
 		item.Run, item.Verb = "memories view "+id.args(), VerbOpen
 	}
-	item.Keys = append(item.Keys, ItemKey{Key: "l", Desc: "zoom", Run: "memories zoom " + id.args(), Verb: VerbOpen})
+	if id.l > 0 {
+		item.Keys = append(item.Keys, ItemKey{Key: "l", Desc: "zoom", Run: "memories zoom " + id.args(), Verb: VerbOpen})
+	}
 	item.Keys = append(item.Keys, ItemKey{Key: "v", Desc: "preview", Run: "memories view " + id.args(), Verb: VerbOpen})
 	return item
 }
