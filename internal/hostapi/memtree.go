@@ -15,6 +15,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -53,16 +55,16 @@ const (
 	leafWaitLines = 8
 	// syncBatch bounds one read of the appends a wake stands for.
 	syncBatch = 1000
-	// buildCoolCap is the longest rate-limit cooldown: consecutive
-	// rate-limited rounds double buildCoolBase up to it.
+	// buildCoolCap is the longest provider cooldown: consecutive
+	// rate-limited or empty-parked rounds double buildCoolBase up to it.
 	buildCoolCap = 5 * time.Minute
 )
 
-// buildCoolBase is the first cooldown a rate-limited build arms. Unlike an
-// ordinary failure, which rides no timer, a rate limit is about the clock:
-// the cooldown retries the failed builds without fresh rows, a quiet
-// session's placeholders wait out the provider's rate window instead of
-// parking until its next message.
+// buildCoolBase is the first cooldown a rate-limited or empty-parked build
+// arms. Unlike an ordinary failure, which rides no timer, both are about the
+// clock: the cooldown retries the failed builds without fresh rows, a quiet
+// session's placeholders wait out the provider's mood instead of parking
+// until its next message.
 var buildCoolBase = 20 * time.Second
 
 // buildMaxRetries is the provider retries one builder call gets, below the
@@ -77,8 +79,17 @@ const placeholder = "(not summarized yet: zoom it)"
 // its output on reasoning or the gateway ended the turn with nothing, and an
 // identical re-request answers the same way. One corrected retry - the
 // thinking handed back, or the miss named on the prompt - then the node
-// parks on its first failure, for fresh rows to requeue.
+// parks on its second failure. The empty replies come in bursts (measured on
+// acme-gateway: a vLLM backend that ends its turn inside the reasoning
+// channel), so a parked node requeues on the cooldown too, not only on fresh
+// rows - the same conversation meets the mood again, a later one does not.
 var errEmptyReply = errors.New("empty compaction reply")
+
+// errEmptyTwice marks the parked build. The error names the finish reason and
+// the token spend - the facts that tell a gateway which wrote nothing from
+// one whose line never left the thinking - and the reply's exact parts land
+// in compaction-dumps.jsonl beside the store.
+var errEmptyTwice = fmt.Errorf("%w - the model returned no line twice", errEmptyReply)
 
 // errWiped: the log shrank under the builder's cursor - another window's
 // /reset. The run loop answers it with a rebuild.
@@ -672,7 +683,7 @@ func (b *memTree) dispatchLeaf() bool {
 	b.h.GoSafe("memtree leaf", func() {
 		defer b.calls.Done()
 		defer b.endLeaf()
-		text, err := b.build(prompt, first, wait)
+		text, err := b.build(nodeID{0, seq}, prompt, first, wait)
 		b.send(buildResult{leaf: true, seq: seq, text: text, err: err})
 	})
 	return true
@@ -717,7 +728,7 @@ func (b *memTree) dispatchMerge() bool {
 		}
 		b.h.GoSafe("memtree merge", func() {
 			defer b.calls.Done()
-			text, err := b.build(prompt, first, wait)
+			text, err := b.build(parent, prompt, first, wait)
 			b.send(buildResult{parent: parent, text: text, err: err})
 		})
 		return true
@@ -776,12 +787,15 @@ func (b *memTree) apply(r buildResult) {
 	b.insertBuilt(r.parent, r.text)
 }
 
-// coolDown arms the rate-limit cooldown on a rate-limited build: dispatch
-// holds until the timer fires, which requeues the failed builds without
-// fresh rows. Consecutive rate-limited rounds double the wait up to the
-// cap; any success resets the streak.
+// coolDown arms the provider cooldown on a rate-limited build or an
+// empty-parked one: dispatch holds until the timer fires, which requeues the
+// failed builds without fresh rows. Consecutive cooldowns double the wait up
+// to the cap; any success resets the streak.
 func (b *memTree) coolDown(err error) {
-	if !rateLimited(err) || b.cool != nil {
+	if b.cool != nil {
+		return
+	}
+	if !rateLimited(err) && !errors.Is(err, errEmptyTwice) {
 		return
 	}
 	b.streak++
@@ -1030,15 +1044,51 @@ func reasoningOf(content []fantasy.Content) string {
 	return strings.TrimSpace(b.String())
 }
 
+// dumpEmpty appends one line per empty compaction reply to
+// compaction-dumps.jsonl beside the store: the reply's exact content parts,
+// the only record of what the gateway actually sent when no line came back.
+func (b *memTree) dumpEmpty(id nodeID, model string, res *fantasy.AgentResult) {
+	if b.h.DB == nil {
+		return
+	}
+	parts := make([]map[string]any, 0, len(res.Response.Content))
+	for _, p := range res.Response.Content {
+		switch c := p.(type) {
+		case fantasy.TextContent:
+			parts = append(parts, map[string]any{"kind": "text", "text": c.Text})
+		case fantasy.ReasoningContent:
+			parts = append(parts, map[string]any{"kind": "reasoning", "text": c.Text})
+		default:
+			parts = append(parts, map[string]any{"kind": fmt.Sprintf("%T", p)})
+		}
+	}
+	row, err := json.Marshal(map[string]any{
+		"at": time.Now().UTC().Format(time.RFC3339Nano), "node": id.id(), "model": model,
+		"finish": string(res.Response.FinishReason), "out": res.TotalUsage.OutputTokens, "parts": parts,
+	})
+	if err != nil {
+		return
+	}
+	path := filepath.Join(filepath.Dir(b.h.DB.Path()), "compaction-dumps.jsonl")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return // the error line already carries the facts; the dump is the depth
+	}
+	defer f.Close()
+	if _, err := f.Write(append(row, '\n')); err != nil {
+		b.h.Log.Debug("compaction dump unwritable", "origin", "chat builder", "error", err.Error())
+	}
+}
+
 // build runs one compaction: up to buildTryMax tries in one conversation, the
 // shortest fitting line kept. retry is nil on purpose: the retry path stomps
 // the shared h.agents.retryAt a turn is counting down, and a builder burst
 // would stomp it constantly. first and wait come from the slot takeCall
 // dispatch already made synchronously.
-func (b *memTree) build(prompt string, first bool, wait chan struct{}) (string, error) {
+func (b *memTree) build(id nodeID, prompt string, first bool, wait chan struct{}) (string, error) {
 	defer b.endCall(first)
-	id := b.h.modelRef(compactRole)
-	model, err := b.h.resolveTurnModel(id)
+	ref := b.h.modelRef(compactRole)
+	model, err := b.h.resolveTurnModel(ref)
 	if err != nil {
 		return "", err
 	}
@@ -1050,33 +1100,40 @@ func (b *memTree) build(prompt string, first bool, wait chan struct{}) (string, 
 	if first {
 		model = burstModel{LanguageModel: model, started: sync.OnceFunc(b.openBurst)}
 	}
-	maxOut := cmp.Or(b.h.maxOutput(id), buildMaxOutput)
+	maxOut := cmp.Or(b.h.maxOutput(ref), buildMaxOutput)
 	// a builder call runs at the model's own lowest effort, when it lists	// levels: its default effort is what starved the line into reasoning. A
 	// model that lists no levels gets the force-off on an openai_compat
-	// gateway: effort low plus the no-thinking body field - reasoning models
-	// spend the whole output cap on thinking and return no line otherwise
-	// (measured on acme-gateway and DeepSeek: effort low alone turns thinking
-	// ON on DeepSeek, the thinking field alone does nothing on the gateway).
+	// gateway: effort low plus two no-thinking body fields - reasoning models
+	// spend the whole output cap on thinking and return no line otherwise.
+	// The thinking field works on the gateway's GLM backends (measured on
+	// GLM-5.3-Flash: effort low alone turns thinking ON on DeepSeek, the
+	// thinking field alone does nothing there); chat_template_kwargs is
+	// vLLM's way and holds the DeepSeek backends, which reason on every call
+	// without it and end the turn inside the thinking when it runs long.
 	effort, suppress := "low", false
 	opts := fantasy.ProviderOptions(nil)
-	if m, ok := b.h.modelSpec(id); ok && len(m.Efforts) > 0 {
-		effort = b.h.Providers.Effort(agent.ModelID(id), "low")
-		opts = b.h.Providers.CallOptions(agent.ModelID(id), effort, store.MainSessionID)
-	} else if prov, _, ok := agent.ModelID(id).Split(); ok {
+	if m, ok := b.h.modelSpec(ref); ok && len(m.Efforts) > 0 {
+		effort = b.h.Providers.Effort(agent.ModelID(ref), "low")
+		opts = b.h.Providers.CallOptions(agent.ModelID(ref), effort, store.MainSessionID)
+	} else if prov, _, ok := agent.ModelID(ref).Split(); ok {
 		if spec, ok := b.h.Providers.Lookup(prov); ok {
 			switch spec.Kind {
 			case agent.KindOpenAICompat:
 				suppress = true
 				opts = openaicompat.NewProviderOptions(&openaicompat.ProviderOptions{
 					ReasoningEffort: new(openai.ReasoningEffort(effort)),
-					ExtraBody:       map[string]any{"thinking": map[string]string{"type": "disabled"}},
+					ExtraBody: map[string]any{
+						"thinking":             map[string]string{"type": "disabled"},
+						"chat_template_kwargs": map[string]bool{"enable_thinking": false},
+					},
 				})
 			default:
-				opts = b.h.Providers.CallOptions(agent.ModelID(id), effort, store.MainSessionID)
+				opts = b.h.Providers.CallOptions(agent.ModelID(ref), effort, store.MainSessionID)
 			}
 		}
 	}
 	var best string
+	var firstOut, firstThought int64
 	convo := []fantasy.Message{agent.UserMessage(prompt)}
 	// resampled: a clean finish with no line earns one corrected retry, not
 	// an identical re-request - the reply's thinking handed back (the line is
@@ -1094,7 +1151,7 @@ func (b *memTree) build(prompt string, first bool, wait chan struct{}) (string, 
 		if err != nil {
 			return "", err
 		}
-		b.h.bill(store.MainSessionID, id, res.TotalUsage)
+		b.h.bill(store.MainSessionID, ref, res.TotalUsage)
 		reply := strings.TrimSpace(concatText(res.Response.Content))
 		switch {
 		case reply == "":
@@ -1111,11 +1168,15 @@ func (b *memTree) build(prompt string, first bool, wait chan struct{}) (string, 
 				}
 				return "", fmt.Errorf("%w at the output cap - lower the model's reasoning effort or raise its output cap", errEmptyReply)
 			}
+			b.dumpEmpty(id, ref, res)
 			if resampled {
-				return "", fmt.Errorf("%w - the model returned no line twice", errEmptyReply)
+				return "", fmt.Errorf("%w (finish %s, out %d+%d tok, %d reasoning bytes)", errEmptyTwice,
+					res.Response.FinishReason, firstOut, res.TotalUsage.OutputTokens, firstThought)
 			}
 			resampled = true
+			firstOut = res.TotalUsage.OutputTokens
 			if thought := reasoningOf(res.Response.Content); thought != "" {
+				firstThought = int64(len(thought))
 				convo = append(convo, assistantMessage(thought), agent.UserMessage(emptyLineNote))
 			} else {
 				convo[0] = agent.UserMessage(prompt + "\n\n" + emptyLineNote)

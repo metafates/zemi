@@ -1,11 +1,13 @@
 package hostapi
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"math/bits"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -1046,11 +1048,32 @@ func TestBuilderEmptyRetryAsksDifferently(t *testing.T) {
 	waitFor(t, func() error {
 		for _, msg := range h.errorsSince(time.Time{}, "chat builder") {
 			if strings.Contains(msg, "empty compaction reply") {
+				if !strings.Contains(msg, "finish stop, out 0+0 tok, 0 reasoning bytes") {
+					return fmt.Errorf("error %q, want the finish and the token spend named", msg)
+				}
 				return nil
 			}
 		}
 		return errors.New("no empty-reply error recorded")
 	})
+	// the parked node requeues on the cooldown too, not only on fresh rows
+	waitFor(t, func() error {
+		if row := h.builderRow(); !strings.Contains(row.Detail, "cooling down") {
+			return fmt.Errorf("builder row = %q, want the cooldown armed", row.Detail)
+		}
+		return nil
+	})
+	// the empty replies' exact parts land beside the store, one row per call
+	dumps, err := os.ReadFile(filepath.Join(filepath.Dir(h.DB.Path()), "compaction-dumps.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := bytes.Count(dumps, []byte("\n")); n != 2 {
+		t.Fatalf("%d dump rows, want one per empty reply", n)
+	}
+	if !bytes.Contains(dumps, []byte(`"kind":"text"`)) {
+		t.Fatalf("dump rows %s, want the reply's parts named", dumps)
+	}
 }
 
 // TestBuilderRetryPerMessage: a failing build tries once per fresh batch of
@@ -1139,7 +1162,7 @@ func TestBuilderCoolDownOnRateLimit(t *testing.T) {
 		}
 	}
 	waitFor(t, func() error {
-		if row := h.builderRow(); !strings.Contains(row.Detail, "rate-limits") {
+		if row := h.builderRow(); !strings.Contains(row.Detail, "cooling down") {
 			return fmt.Errorf("builder row = %q, want the cooldown named", row.Detail)
 		} else if strings.Contains(row.Detail, "/errors") {
 			return fmt.Errorf("builder row = %q, want no errors pointer while cooling", row.Detail)

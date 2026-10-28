@@ -268,7 +268,7 @@ func (h *Host) builderRow() HealthRow {
 	how, cooling := "they retry when new messages land", false
 	if until := h.chat.tree.health.coolingUntil.Load(); until > 0 {
 		if left := time.Until(time.Unix(0, until)); left > 0 {
-			how, cooling = fmt.Sprintf("the provider rate-limits, the next try is in %s", left.Round(time.Second)), true
+			how, cooling = fmt.Sprintf("the provider is cooling down, the next try is in %s", left.Round(time.Second)), true
 		}
 	}
 	switch {

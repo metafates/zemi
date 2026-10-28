@@ -2603,16 +2603,22 @@ through its results channel, a reset through `RebuildQueues`. No lease: a
 second window races on `INSERT OR IGNORE` and on merges of children already
 gone, so a race wastes one cheap call and nothing else. A failed build
 retries at the next log row - no timer loop, the failure parks until fresh
-rows land. The exception is a rate-limited one (`429`): it arms a cooldown
-(`buildCoolBase`, doubling per consecutive rate-limited round up to
-`buildCoolCap`) that holds dispatch and retries the failed builds when the
-timer fires, since a rate limit passes with the clock and a quiet session
-must heal without a next message; a success resets the doubling. An empty
+rows land. The exception is a rate-limited one (`429`) or an empty one that
+parked: either arms a cooldown (`buildCoolBase`, doubling per consecutive
+round up to `buildCoolCap`) that holds dispatch and retries the failed
+builds when the timer fires, since both are the provider's mood and pass
+with the clock, while a quiet session must heal without a next message; a
+success resets the doubling. An empty
 reply earns one corrected retry in its own conversation - the reply's
 thinking handed back as the assistant turn, where the line usually already
 sits, else the miss named on the prompt, since an identical re-request
-answers the same way - and parks on its second. A builder call
-keeps fewer provider retries than a turn (`buildMaxRetries`): a
+answers the same way - and parks on its second. A gateway whose empty
+replies persist (measured on acme-gateway: a vLLM backend that ends its
+turn inside the reasoning channel, `finish_reason: stop`, no content)
+leaves its exact reply parts in `compaction-dumps.jsonl` beside the store,
+one row per empty call, and the park error names the finish reason and the
+token spend, so the provider's mood is on record without a rerun. A builder
+call keeps fewer provider retries than a turn (`buildMaxRetries`): a
 rate-limited round should fail into the cooldown, not have 8 slots each
 burn a full retry pass. The view self-heals.
 
@@ -2633,11 +2639,13 @@ the model's own cap, 8192 when it names none, at the model's lowest listed
 reasoning effort: a reasoning model must have budget left to write the
 line, not only to think. A model that lists no effort levels (a user-spec
 gateway model) gets the force-off on an openai_compat gateway: effort low
-plus a `thinking: {"type": "disabled"}` body field - measured on
-acme-gateway and DeepSeek, where effort low alone turns thinking ON on
-DeepSeek and the thinking field alone does nothing on the gateway; a model
-that ignores both still burns it, and the failure says to pick a plain
-model.
+plus two no-thinking body fields - `thinking: {"type": "disabled"}`, which
+the gateway's GLM backends need (a bare effort low turns thinking ON on
+DeepSeek), and `chat_template_kwargs: {"enable_thinking": false}`, which is
+vLLM's way and holds the gateway's DeepSeek backends, which otherwise reason
+on every call and can end the turn inside the reasoning (`finish_reason:
+stop`, no content); a model that ignores both still burns it, and the
+failure says to pick a plain model.
 
 ### 10.3 The view
 

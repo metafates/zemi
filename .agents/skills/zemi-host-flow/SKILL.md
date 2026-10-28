@@ -251,16 +251,21 @@ applied one. A store made before goose only gains its version table: the baselin
   calls on `models.compact` carrying the compaction view as context and the 512-dash ruler.
   Up to 8 calls at once (`buildSlots`), each build up to 5 tries in one conversation with
   the shortest fitting line kept; a failed build retries at the next message, no timer -
-  except a rate-limited one, which arms a doubling cooldown (`buildCoolBase` to
-  `buildCoolCap`) that retries without fresh rows, and leaves no /errors entry: a rate
-  limit is a wait, not a failure - `/health`'s builder row carries it. An empty reply, which no
-  try can fix, parks on its first one. Builder calls get the model's own output cap (8192
+  except a rate-limited one, or an empty one that parked: either arms a doubling cooldown
+  (`buildCoolBase` to `buildCoolCap`) that retries without fresh rows (both are the
+  provider's mood, and it passes with the clock). A rate limit leaves no /errors entry: a
+  rate limit is a wait, not a failure - `/health`'s builder row carries it. An empty reply
+  earns one corrected retry in its conversation - the thinking handed back, else the miss
+  named on the prompt - then parks on its second, with the /errors entry naming the finish
+  reason and the token spend and the reply's exact parts appended to
+  `compaction-dumps.jsonl` beside the store. Builder calls get the model's own output cap (8192
   when it names none) and, when the model lists effort levels, its lowest. A model that lists
-  none (a user-spec gateway model) gets the force-off: effort low plus a
-  `thinking: {"type": "disabled"}` extra-body field - reasoning models spend the whole output
-  cap on thinking and return no line otherwise; the pair is measured on acme-gateway
-  (GLM-5.3-Flash) and DeepSeek, where a bare effort low would turn thinking ON and the
-  thinking field alone does nothing on the gateway. The view is the
+  none (a user-spec gateway model) gets the force-off: effort low plus two no-thinking
+  extra-body fields - `thinking: {"type": "disabled"}` (the gateway's GLM backends need it; a
+  bare effort low turns thinking ON on DeepSeek) and `chat_template_kwargs: {"enable_thinking":
+  false}` (vLLM's way, what the gateway's DeepSeek backends honor; without it they reason on
+  every call and sometimes end the turn inside the reasoning, `finish_reason: stop` with no
+  content). The corrected retry, the cooldown and the compaction dump carry the rest. The view is the
   persisted sawtooth (DESIGN §10.3): one line per message, then one batch past 128,000 bytes
   merges the most due pairs down to 64,000; the compaction view is the second sawtooth in
   kv. A reset quiesces the builder - a fence: nothing
