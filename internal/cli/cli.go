@@ -450,7 +450,11 @@ func pluginCommand(o *options) *cobra.Command {
 		{"enable <name>", "load the plugin from the next start", nargs(1), completePlugins, nil},
 		{"disable <name>", "stop loading the plugin", nargs(1), completePlugins, nil},
 	} {
-		cmd.AddCommand(&cobra.Command{Use: v.use, Aliases: v.aliases, Short: v.short, Args: v.args, ValidArgsFunction: v.names, RunE: run})
+		sub := &cobra.Command{Use: v.use, Aliases: v.aliases, Short: v.short, Args: v.args, ValidArgsFunction: v.names, RunE: run}
+		if v.use == "list" { // both spellings list, so both print JSON
+			jsonFlag(sub)
+		}
+		cmd.AddCommand(sub)
 	}
 	// the only doors installs come through: a marketplace registered here,
 	// then its entries installed by name
@@ -574,6 +578,9 @@ func modelsCommand(o *options) *cobra.Command {
 		Short: "list the models -m takes",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
+			if err := checkModelFlag(o.model); err != nil {
+				return err
+			}
 			h, done, err := bootHeadless(*o, true, os.Stderr)
 			if err != nil {
 				return err
@@ -951,6 +958,21 @@ func applyOptions(h *hostapi.Host, o options) error {
 		if err := h.SetTargetModel("default", o.model); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// checkModelFlag validates -m's syntax for the commands that never boot a
+// host (db, models), where applyOptions has nothing to check a catalog
+// against: the id carries a slash with both halves named, as ModelID.Split
+// reads it everywhere. A well-formed unknown provider stays their no-op.
+func checkModelFlag(id string) error {
+	if id == "" {
+		return nil
+	}
+	prov, model, ok := agent.ModelID(id).Split()
+	if !ok || prov == "" || model == "" {
+		return fmt.Errorf("-m %q is not a provider/model id", id)
 	}
 	return nil
 }

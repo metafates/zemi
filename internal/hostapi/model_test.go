@@ -427,8 +427,9 @@ func TestModelFavorites(t *testing.T) {
 	}
 }
 
-// TestNoModelHint: the no-model sentence names the first missing key; with
-// nothing left to name it points at init.lua.
+// TestNoModelHint: the no-model sentence names every missing key up to
+// three, the generic noun past that; with nothing left to name it points at
+// init.lua.
 func TestNoModelHint(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
@@ -437,9 +438,24 @@ func TestNoModelHint(t *testing.T) {
 		want    string
 	}{
 		{
-			"no key exported",
-			agent.Catalog{Missing: []agent.MissingKey{{ID: "anthropic", Env: "ANTHROPIC_API_KEY"}, {ID: "deepseek", Env: "DEEPSEEK_API_KEY"}}},
+			"one key missing",
+			agent.Catalog{Missing: []agent.MissingKey{{ID: "anthropic", Env: "ANTHROPIC_API_KEY"}}},
 			"export ANTHROPIC_API_KEY and start zemi again, or press enter on a provider in /model to paste its key",
+		},
+		{
+			"two keys missing name both",
+			agent.Catalog{Missing: []agent.MissingKey{{ID: "anthropic", Env: "ANTHROPIC_API_KEY"}, {ID: "deepseek", Env: "DEEPSEEK_API_KEY"}}},
+			"export ANTHROPIC_API_KEY or DEEPSEEK_API_KEY and start zemi again, or press enter on a provider in /model to paste its key",
+		},
+		{
+			"three keys missing name all",
+			agent.Catalog{Missing: []agent.MissingKey{{ID: "anthropic", Env: "ANTHROPIC_API_KEY"}, {ID: "deepseek", Env: "DEEPSEEK_API_KEY"}, {ID: "openai", Env: "OPENAI_API_KEY"}}},
+			"export ANTHROPIC_API_KEY or DEEPSEEK_API_KEY or OPENAI_API_KEY and start zemi again, or press enter on a provider in /model to paste its key",
+		},
+		{
+			"four keys missing name none",
+			agent.Catalog{Missing: []agent.MissingKey{{ID: "anthropic", Env: "ANTHROPIC_API_KEY"}, {ID: "deepseek", Env: "DEEPSEEK_API_KEY"}, {ID: "openai", Env: "OPENAI_API_KEY"}, {ID: "x", Env: "X_API_KEY"}}},
+			"export a provider's API key and start zemi again, or press enter on a provider in /model to paste its key",
 		},
 	} {
 		h, _ := newTestHost(t)

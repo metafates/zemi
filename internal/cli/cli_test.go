@@ -105,6 +105,9 @@ func TestCLI(t *testing.T) {
 		{name: "a parent takes no args", args: []string{"models", "are", "slow"}, code: 2, stderr: `unknown command "are" for "zemi models"`},
 		{name: "models lists what init.lua adds", args: []string{"models"}, stdout: "gw/m1\n"},
 		{name: "-m parses before a subcommand", args: []string{"-m", "gw/m1", "models"}, stdout: "gw/m1\n"},
+		{name: "-m without a slash refuses db", args: []string{"-m", "nope", "db", "select 1"}, code: 1, stderr: `zemi: db: -m "nope" is not a provider/model id`},
+		{name: "-m with an empty half refuses models", args: []string{"-m", "nope/", "models"}, code: 1, stderr: `zemi: models: -m "nope/" is not a provider/model id`},
+		{name: "-m a well-formed unknown provider stays db's no-op", args: []string{"-m", "nope/x", "db", "select 1"}, stdout: "1"},
 		{name: "complete a model", args: []string{"__complete", "-m", ""}, stdout: "gw/m1\n"},
 		{name: "a failure is 1", args: []string{"db", "select * from nope"}, code: 1, stderr: `zemi: db: SQL logic error: no such table: nope`},
 		// the TUI's chat opens on the log's tail; the CLI keeps no session surface
@@ -123,6 +126,7 @@ func TestCLI(t *testing.T) {
 		{name: "plugin list is the bare verb", args: []string{"plugin", "list"}, stdout: "rub  local  on  "},
 		{name: "plugins as JSON", args: []string{"plugin", "--json"}, stdout: `{"name":"rub","version":"local","local":true,"enabled":true,"source":"`},
 		{name: "the JSON carries the declared uses", args: []string{"plugin", "--json"}, stdout: `"uses":["job"]`},
+		{name: "plugin list as JSON", args: []string{"plugin", "list", "--json"}, stdout: `{"name":"rub","version":"local","local":true,"enabled":true,"source":"`},
 		{name: "a local plugin's manifest is the version it lists", args: []string{"plugin"}, stdout: "ver  1.2.0  on  "},
 		{name: "delete with yes", args: []string{"plugin", "delete", "--yes", "zzq"}},
 		{name: "the delete took", args: []string{"plugin"}, stdout: "rub", notStdout: "zzq"},

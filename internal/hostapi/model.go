@@ -74,12 +74,21 @@ func (h *Host) initPath() string { return perm.TildePath(filepath.Join(h.Dirs.Co
 
 func (h *Host) addProvider() string { return "add a provider to " + h.initPath() }
 
-// NoModelHint is the one sentence that says how to get a model: the first
-// builtin provider's key to export (read at start), or the paste route the
-// model picker offers. It fits the splash tip's two rows.
+// NoModelHint is the one sentence that says how to get a model: the missing
+// builtin keys to export (read at start), or the paste route the model picker
+// offers. It fits the splash tip's two rows; past three names the generic
+// noun, so the hint never becomes a wall.
 func (h *Host) NoModelHint() string {
 	if missing := h.Providers.Missing(); len(missing) > 0 {
-		return "export " + missing[0].Env + " and start zemi again, or press enter on a provider in /model to paste its key"
+		names := "a provider's API key"
+		if len(missing) <= 3 {
+			envs := make([]string, len(missing))
+			for i, m := range missing {
+				envs[i] = m.Env
+			}
+			names = strings.Join(envs, " or ")
+		}
+		return "export " + names + " and start zemi again, or press enter on a provider in /model to paste its key"
 	}
 	return h.addProvider()
 }
