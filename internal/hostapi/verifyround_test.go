@@ -193,7 +193,7 @@ func TestVerifyLockOrderUnderTurnContention(t *testing.T) {
 	spin(func(int) {
 		_ = h.Session()
 		_ = h.AgentStream()
-		_ = h.chatJumpRows()
+		_ = h.chatWindowLo()
 		_, _ = h.Goal()
 	})
 	spin(func(i int) {

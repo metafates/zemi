@@ -222,27 +222,26 @@ func TestMemoriesZoomDeep(t *testing.T) {
 	}
 }
 
-// TestMemoriesJump: a row's anchor is the window row the chat draws the
-// line's first covered message at, and a line the window does not reach
-// names none.
-func TestMemoriesJump(t *testing.T) {
+// TestMemoriesWindowReach: a line the chat window no longer holds says so;
+// one it reaches reads clean, and every leaf's enter reads its messages -
+// the browser is an overview and never moves the chat.
+func TestMemoriesWindowReach(t *testing.T) {
 	t.Parallel()
 	h, _ := seedMemories(t)
 	rows, err := h.DB.LogFrom(0, 6)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.SetTranscript(logRows(rows)) // window rows 1..6, seqs 0..5
+	h.SetTranscript(logRows(rows)) // window seqs 0..5
 
 	o := h.memoriesOverlay()
 	for _, c := range []struct {
-		line string
-		want int
+		line, run string
 	}{
-		{"msgs 0-1", 1}, // its first message is the chat's first row
-		{"msgs 2-3", 3},
-		{"msg 4", 5},
-		{"(not summarized yet: zoom it)", 6},
+		{"msgs 0-1", "memories zoom 1 0"},
+		{"msgs 2-3", "memories zoom 1 1"},
+		{"msg 4", "memories view 0 4"},
+		{"(not summarized yet: zoom it)", "memories view 0 5"},
 	} {
 		i := 0
 		for ; i < len(o.Items) && o.Items[i].Text != c.line; i++ {
@@ -250,44 +249,33 @@ func TestMemoriesJump(t *testing.T) {
 		if i == len(o.Items) {
 			t.Fatalf("no row %q", c.line)
 		}
-		if got := o.Items[i].Anchor; got != c.want {
-			t.Errorf("%s anchors row %d, want %d", c.line, got, c.want)
+		if it := o.Items[i]; it.Desc != "" || it.Run != c.run || it.Verb != VerbOpen {
+			t.Errorf("%s = %+v, want %s opened", c.line, it, c.run)
 		}
 	}
-
-	// a drill-in's children anchor at their own first messages
+	// a drill-in's leaf children read their own messages
 	z, ok := h.memoriesZoomOverlay(nodeID{1, 1})
 	if !ok {
 		t.Fatal("the drill-in refused")
 	}
-	if got := z.Items[0].Anchor; got != 3 || z.Items[1].Anchor != 4 {
-		t.Errorf("children anchor %d and %d, want 3 and 4", z.Items[0].Anchor, z.Items[1].Anchor)
+	if z.Items[0].Run != "memories view 0 2" || z.Items[1].Run != "memories view 0 3" {
+		t.Errorf("children = %+v, %+v", z.Items[0], z.Items[1])
 	}
 
-	// the window cut down to its tail: the merged lines reach past it and
-	// name no row; the tail's leaves still do
-	if err := h.MemoriesCommand(""); err != nil { // a fresh browser
-		t.Fatal(err)
-	}
+	// the window cut down to its tail: the merged lines past it say so, the
+	// tail's own lines read clean
 	h.SetTranscript(logRows(rows[4:]))
 	o = h.memoriesOverlay()
-	if got := o.Items[0].Anchor; got != 0 {
-		t.Errorf("a line past the window anchors %d", got)
-	}
-	// a merged line the chat does not reach still drills: the desc says why
-	// the chat cannot jump, the run keeps the zoom
 	if it := o.Items[0]; it.Desc != "older than the chat window" || it.Run != "memories zoom 1 0" {
 		t.Errorf("a merged line past the window = %+v", it)
 	}
-	if got := o.Items[3].Anchor; got != 2 {
-		t.Errorf("the tail's leaf anchors %d, want 2", got)
+	if it := o.Items[2]; it.Desc != "" || it.Run != "memories view 0 4" {
+		t.Errorf("the tail's leaf = %+v", it)
 	}
-
-	// a leaf past the window: enter reads its preview instead of closing on
-	// a place the chat does not show
+	// a leaf past the window still reads its messages
 	h.SetTranscript(logRows(rows[5:]))
 	o = h.memoriesOverlay()
-	if it := o.Items[2]; it.Anchor != 0 || it.Desc != "older than the chat window" ||
+	if it := o.Items[2]; it.Desc != "older than the chat window" ||
 		it.Run != "memories view 0 4" || it.Verb != VerbOpen {
 		t.Errorf("a leaf past the window = %+v", it)
 	}
@@ -331,8 +319,8 @@ func TestMemoriesRange(t *testing.T) {
 }
 
 // TestSeqZeroIsARealMessage: the log's first message is seq 0, not a
-// sentinel - the stamping names a live row with it, the jump map and the
-// /memories and /messages rows anchor it, zoom opens it, nothing older is
+// sentinel - the stamping names a live row with it, the /memories row reads
+// it in-window and offers its preview, zoom opens it, nothing older is
 // offered past it.
 func TestSeqZeroIsARealMessage(t *testing.T) {
 	t.Parallel()
@@ -348,22 +336,21 @@ func TestSeqZeroIsARealMessage(t *testing.T) {
 	if tr := h.Session().Transcript; tr[0].Seq != 0 {
 		t.Fatalf("the first turn's row carries seq %d, want the log's 0", tr[0].Seq)
 	}
-	// the stamping cursor sits past it, and the jump map answers for it
+	// the stamping cursor sits past it
 	h.tMu.RLock()
 	from := h.stampFrom
 	h.tMu.RUnlock()
 	if from != 1 {
 		t.Fatalf("the stamping resumes from %d, want 1", from)
 	}
-	jumps := h.chatJumpRows()
-	if got := jumps.at(0, 0); got != 1 {
-		t.Fatalf("seq 0 jumps to row %d, want 1", got)
-	}
 
-	// the browser's line and the picker's row anchor and name it
+	// the browser's line reads as on the screen, its window at the log's 0
 	o := h.memoriesOverlay()
-	if len(o.Items) != 1 || o.Items[0].Anchor != 1 {
-		t.Fatalf("the view lists %+v, want one line anchored at 1", o.Items)
+	if len(o.Items) != 1 || o.Items[0].Desc != "" {
+		t.Fatalf("the view lists %+v, want one line the window reaches", o.Items)
+	}
+	if o.Items[0].Run != "memories view 0 0" || o.Items[0].Verb != VerbOpen {
+		t.Fatalf("the view's leaf = %+v, want the preview opened", o.Items[0])
 	}
 	if err := h.OpenMessages(); err != nil {
 		t.Fatal(err)
@@ -426,10 +413,9 @@ func TestStampLogSeqs(t *testing.T) {
 	if stamped < 4 { // every message named its row, the log's own 0 included
 		t.Fatalf("%d rows stamped", stamped)
 	}
-	// the jump map answers for the newest message
-	jumps := h.chatJumpRows()
-	if got := jumps.at(count-1, count-1); got == 0 {
-		t.Error("the log's newest message names no chat row")
+	// the newest message's line reads as on the screen
+	if lo := h.chatWindowLo(); lo != 0 {
+		t.Errorf("the window starts at %d, want the log's 0", lo)
 	}
 }
 

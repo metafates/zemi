@@ -101,9 +101,10 @@ func TestMemoriesZoomKeys(t *testing.T) {
 	}
 }
 
-// TestMemoriesLeafJump: enter on a leaf closes the browser with the chat
-// standing at the message the leaf covers.
-func TestMemoriesLeafJump(t *testing.T) {
+// TestMemoriesLeafPreview: enter on a leaf reads the messages it covers over
+// the browser, and the chat stays where it was - the browser is an overview;
+// finding a turn's place on the screen is /messages' job.
+func TestMemoriesLeafPreview(t *testing.T) {
 	t.Parallel()
 	app, host := seedMemoriesApp(t, 100, 24)
 	app.renderSync(t)
@@ -113,20 +114,21 @@ func TestMemoriesLeafJump(t *testing.T) {
 	}
 	pump(t, app)
 	ov := &app.overlays[len(app.overlays)-1]
-	// the built leaf, message 4: the fifth chat row
+	// the built leaf, message 4
 	ov.selected = 2
 	app.Frame()
-	chat := app.scrolls["chat"]
-	if got := ov.selectedAnchor(); got != 5 {
-		t.Fatalf("the leaf anchors %d, want the chat's fifth row", got)
-	}
+	before := app.scrolls["chat"].focus
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
 	pump(t, app)
-	if len(app.overlays) != 0 {
-		t.Fatalf("%d overlays open after enter", len(app.overlays))
+	st := &app.overlays[len(app.overlays)-1]
+	if st.o.ID != "memories range 0 4" {
+		t.Fatalf("enter on a leaf opened %s, want the preview", st.o.ID)
 	}
-	if chat.focus != 5 {
-		t.Fatalf("enter left the chat at focus %d, want the leaf's message", chat.focus)
+	if len(app.overlays) != 2 {
+		t.Fatalf("%d overlays open, want the browser under the preview", len(app.overlays))
+	}
+	if got := app.scrolls["chat"].focus; got != before {
+		t.Fatalf("enter moved the chat to %d, want it left at %d", got, before)
 	}
 }
 
@@ -178,35 +180,5 @@ func TestMemoriesLeafZoomSaysSo(t *testing.T) {
 	}
 	if len(app.overlays) != 1 {
 		t.Fatalf("%d overlays after the leaf zoom", len(app.overlays))
-	}
-}
-
-// TestMemoriesFollowBands: moving the selection takes the chat to the line's
-// first covered message and bands it.
-func TestMemoriesFollowBands(t *testing.T) {
-	t.Parallel()
-	app, host := seedMemoriesApp(t, 100, 24)
-	app.renderSync(t)
-	app.Frame()
-	if err := host.MemoriesCommand(""); err != nil {
-		t.Fatal(err)
-	}
-	pump(t, app)
-	ov := &app.overlays[len(app.overlays)-1]
-	ov.selected = 1 // msgs 2-3: the chat's third row
-	app.Frame()
-	if got := bandedChatRows(app); len(got) == 0 {
-		t.Fatal("the line's covered messages drew unbanded")
-	}
-	if chat := app.scrolls["chat"]; chat.focus != 3 {
-		t.Fatalf("the chat sits at focus %d, want the line's first message", chat.focus)
-	}
-	press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
-	pump(t, app)
-	if len(app.overlays) != 0 {
-		t.Fatalf("%d overlays open after esc", len(app.overlays))
-	}
-	if chat := app.scrolls["chat"]; !chat.follow {
-		t.Fatal("esc should hand the chat back to its tail")
 	}
 }

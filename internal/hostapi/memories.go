@@ -10,7 +10,6 @@ package hostapi
 import (
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -113,12 +112,13 @@ func (h *Host) openMemoriesZoom(id nodeID) error {
 }
 
 // memoriesOverlay is the browser: one row per line of the live view, oldest
-// first. The rows the chat draws the line's first covered message at are the
-// anchors, so moving the selection takes the chat there (/messages' jump
-// path) and enter on a leaf keeps it.
+// first, an overview of what the model reads. The chat stays where it is:
+// finding a turn's place on the screen is /messages' job.
 func (h *Host) memoriesOverlay() Overlay {
 	o := Overlay{
 		ID: "memories", Title: "Memories", Origin: lua.OriginBuiltin,
+		// Follow holds the browsing-menu identity (esc closes the lot); the
+		// rows carry no anchor, so nothing follows the selection
 		Anchor: OverlayBottomRight, Follow: true, Empty: "The chat's view is empty.",
 	}
 	if h.DB == nil {
@@ -129,9 +129,9 @@ func (h *Host) memoriesOverlay() Overlay {
 		return o
 	}
 	b, n, levels, unbuilt := viewStatsOf(lines)
-	jumps := h.chatJumpRows()
+	lo := h.chatWindowLo()
 	for _, ln := range lines {
-		o.Items = append(o.Items, h.memoriesRow(nodeID{ln.L, ln.I}, ln.Text, jumps))
+		o.Items = append(o.Items, h.memoriesRow(nodeID{ln.L, ln.I}, ln.Text, lo))
 	}
 	if n > 0 {
 		o.Foot = fmt.Sprintf("%s · %s · %s · %s unbuilt", fmtBytes(int64(b)), pluralCount(n, "line", "lines"),
@@ -162,20 +162,21 @@ func (h *Host) memoriesZoomOverlay(id nodeID) (Overlay, bool) {
 	} else {
 		o.Foot = pluralCount(int(id.span()), "message", "messages")
 	}
-	jumps := h.chatJumpRows()
+	lo := h.chatWindowLo()
 	for _, child := range []nodeID{{id.l - 1, id.i * 2}, {id.l - 1, id.i*2 + 1}} {
 		text := ""
 		if n, err := h.DB.NodeAt(child.l, child.i); err == nil {
 			text = n.Text
 		}
-		o.Items = append(o.Items, h.memoriesRow(child, text, jumps))
+		o.Items = append(o.Items, h.memoriesRow(child, text, lo))
 	}
 	return o, true
 }
 
 // memoriesRow is one browser row: the line's text as the model reads it, the
-// model's id for the line as the right-hand tag.
-func (h *Host) memoriesRow(id nodeID, text string, jumps chatJumps) OverlayItem {
+// model's id for the line as the right-hand tag. A line the chat window no
+// longer holds says so; enter reads the messages either way.
+func (h *Host) memoriesRow(id nodeID, text string, winLo int64) OverlayItem {
 	if text == "" {
 		text = placeholder
 	}
@@ -186,20 +187,13 @@ func (h *Host) memoriesRow(id nodeID, text string, jumps chatJumps) OverlayItem 
 		Copy: id.id(),
 		Tag:  id.id(),
 	}
-	at := jumps.at(id.first(), id.last())
-	if at > 0 {
-		item.Anchor = at
-	} else {
-		// the chat window holds none of the line's messages: there is no row
-		// to move the chat to, and the row says so
+	if id.last() < winLo {
+		// the window's oldest row is younger than everything the line covers
 		item.Desc = "older than the chat window"
 	}
-	switch {
-	case id.l > 0:
+	if id.l > 0 {
 		item.Run, item.Verb = "memories zoom "+id.args(), VerbOpen
-	case at == 0:
-		// a leaf the chat does not reach: enter reads its preview instead of
-		// closing on a place the chat does not show
+	} else {
 		item.Run, item.Verb = "memories view "+id.args(), VerbOpen
 	}
 	item.Keys = append(item.Keys, ItemKey{Key: "l", Desc: "zoom", Run: "memories zoom " + id.args(), Verb: VerbOpen})
@@ -207,43 +201,19 @@ func (h *Host) memoriesRow(id nodeID, text string, jumps chatJumps) OverlayItem 
 	return item
 }
 
-// chatJumps is where the chat draws the logged messages now: the stamped
-// rows' seqs in order, each with its window row, so a browser row finds the
-// first message its range holds that the chat shows.
-type chatJumps struct {
-	seqs []int64
-	rows map[int64]int
-}
-
-// chatJumpRows reads the jump map from the transcript window: a row whose
-// seq the stamping filled names the row the chat draws it at; a row the
-// pairing marked NoSeq (a failed log write, or not stamped yet) names
-// nothing.
-func (h *Host) chatJumpRows() chatJumps {
+// chatWindowLo is the seq of the oldest logged message the chat window
+// holds: the log is append-only and the window is its suffix, so every
+// message from here on is on the screen. -1 when the window holds none.
+func (h *Host) chatWindowLo() int64 {
 	h.tMu.RLock()
 	tr := h.session.Transcript
 	h.tMu.RUnlock()
-	j := chatJumps{rows: make(map[int64]int, len(tr))}
-	for i, m := range tr {
+	for _, m := range tr {
 		if m.Seq != NoSeq {
-			j.seqs = append(j.seqs, m.Seq)
-			j.rows[m.Seq] = i + 1
+			return m.Seq
 		}
 	}
-	return j
-}
-
-// at is the window row of the first message in [first, last] the chat holds,
-// 0 when it holds none of them.
-func (j chatJumps) at(first, last int64) int {
-	k, _ := slices.BinarySearch(j.seqs, first)
-	if k >= len(j.seqs) {
-		return 0
-	}
-	if seq := j.seqs[k]; seq <= last {
-		return j.rows[seq]
-	}
-	return 0
+	return -1
 }
 
 // rangePreviewRows bounds one preview body: a top-level line covers the
