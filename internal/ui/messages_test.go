@@ -87,7 +87,7 @@ func TestMessagesHomeLoadsPages(t *testing.T) {
 	}
 	for app.Pump() {
 	}
-	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome})  // to the first row
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome}) // to the first row
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome}) // held there, so it loads
 	o := app.overlays[len(app.overlays)-1].o
 	if o.Items[0].Section != "Earlier" {

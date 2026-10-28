@@ -74,8 +74,10 @@ var buildMaxRetries = 2
 const placeholder = "(not summarized yet: zoom it)"
 
 // errEmptyReply is a compaction that came back with no line: the model spent
-// its output on reasoning or a cap cut it, so the same conversation answers
-// the same way and no retry can fix it - the node parks on its first one.
+// its output on reasoning or the gateway ended the turn with nothing, and an
+// identical re-request answers the same way. One corrected retry - the
+// thinking handed back, or the miss named on the prompt - then the node
+// parks on its first failure, for fresh rows to requeue.
 var errEmptyReply = errors.New("empty compaction reply")
 
 // errWiped: the log shrank under the builder's cursor - another window's
@@ -670,7 +672,7 @@ func (b *memTree) dispatchLeaf() bool {
 	b.h.GoSafe("memtree leaf", func() {
 		defer b.calls.Done()
 		defer b.endLeaf()
-		text, err := b.build([]fantasy.Message{agent.UserMessage(prompt)}, first, wait)
+		text, err := b.build(prompt, first, wait)
 		b.send(buildResult{leaf: true, seq: seq, text: text, err: err})
 	})
 	return true
@@ -715,7 +717,7 @@ func (b *memTree) dispatchMerge() bool {
 		}
 		b.h.GoSafe("memtree merge", func() {
 			defer b.calls.Done()
-			text, err := b.build([]fantasy.Message{agent.UserMessage(prompt)}, first, wait)
+			text, err := b.build(prompt, first, wait)
 			b.send(buildResult{parent: parent, text: text, err: err})
 		})
 		return true
@@ -1010,12 +1012,30 @@ func assistantMessage(text string) fantasy.Message {
 	}
 }
 
+// emptyLineNote is the same-conversation correction an empty compaction
+// reply earns: an identical re-request answers the same way, so the retry
+// carries the miss.
+const emptyLineNote = "Your previous reply carried no line. Write the line now for the same <input>: the line alone, nothing else."
+
+// reasoningOf collects a reply's reasoning parts: a reasoning model that
+// stops with no line spent its reply there, and the line is usually
+// already in it.
+func reasoningOf(content []fantasy.Content) string {
+	var b strings.Builder
+	for _, p := range content {
+		if r, ok := p.(fantasy.ReasoningContent); ok {
+			b.WriteString(r.Text)
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
 // build runs one compaction: up to buildTryMax tries in one conversation, the
 // shortest fitting line kept. retry is nil on purpose: the retry path stomps
 // the shared h.agents.retryAt a turn is counting down, and a builder burst
 // would stomp it constantly. first and wait come from the slot takeCall
 // dispatch already made synchronously.
-func (b *memTree) build(convo []fantasy.Message, first bool, wait chan struct{}) (string, error) {
+func (b *memTree) build(prompt string, first bool, wait chan struct{}) (string, error) {
 	defer b.endCall(first)
 	id := b.h.modelRef(compactRole)
 	model, err := b.h.resolveTurnModel(id)
@@ -1057,9 +1077,10 @@ func (b *memTree) build(convo []fantasy.Message, first bool, wait chan struct{})
 		}
 	}
 	var best string
-	// resampled: a clean finish with no line is not deterministic the way the
-	// output cap is - the model said nothing this sample and can say the line
-	// on the next one, so the reply gets one fresh sample before parking.
+	convo := []fantasy.Message{agent.UserMessage(prompt)}
+	// resampled: a clean finish with no line earns one corrected retry, not
+	// an identical re-request - the reply's thinking handed back (the line is
+	// usually already in it), or the miss named on the prompt itself.
 	resampled := false
 	for range buildTryMax {
 		res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(chatSystem)).Stream(b.ctx, fantasy.AgentStreamCall{
@@ -1094,6 +1115,11 @@ func (b *memTree) build(convo []fantasy.Message, first bool, wait chan struct{})
 				return "", fmt.Errorf("%w - the model returned no line twice", errEmptyReply)
 			}
 			resampled = true
+			if thought := reasoningOf(res.Response.Content); thought != "" {
+				convo = append(convo, assistantMessage(thought), agent.UserMessage(emptyLineNote))
+			} else {
+				convo[0] = agent.UserMessage(prompt + "\n\n" + emptyLineNote)
+			}
 		case len(reply) <= nodeBytes:
 			return reply, nil
 		default:

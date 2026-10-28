@@ -31,7 +31,9 @@ var errBuildFails = errors.New("compaction failed")
 // fails them all. rate fails them all with a 429, the builder's cooldown
 // trigger. finish, when set, replaces the reply's finish reason. compact,
 // when set, answers every call with a function of its own prompt instead of
-// the script - the real fake's compaction shape.
+// the script - the real fake's compaction shape. think answers with the
+// script as reasoning and no text, the reasoning-only reply, until the
+// conversation holds an assistant turn - the carryover's own shape.
 type treeModel struct {
 	mu        sync.Mutex
 	replies   []string
@@ -43,6 +45,7 @@ type treeModel struct {
 	fail      atomic.Bool
 	rate      atomic.Bool
 	burn      atomic.Bool
+	think     atomic.Bool
 	finish    fantasy.FinishReason
 	compact   func([]fantasy.Message) string
 }
@@ -80,6 +83,16 @@ func (m *treeModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Stre
 	}
 	if m.burn.Load() {
 		reply = ""
+	}
+	if m.think.Load() && !slices.ContainsFunc(m.convo[i], func(msg fantasy.Message) bool {
+		return msg.Role == fantasy.MessageRoleAssistant
+	}) {
+		return slices.Values([]fantasy.StreamPart{
+			{Type: fantasy.StreamPartTypeReasoningStart, ID: "r"},
+			{Type: fantasy.StreamPartTypeReasoningDelta, ID: "r", Delta: reply},
+			{Type: fantasy.StreamPartTypeReasoningEnd, ID: "r"},
+			{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonStop},
+		}), nil
 	}
 	parts := textParts(reply)
 	if m.finish != "" {
@@ -965,6 +978,79 @@ func TestBuilderEmptyReplyLadder(t *testing.T) {
 		t.Fatalf("%d calls, want the two retries and the new leaf", calls)
 	}
 	coverage(t, h.DB, 3)
+}
+
+// TestBuilderEmptyReplyCarriesThinking: a reasoning model that stops with no
+// line has usually written it inside the thinking, so the corrected retry
+// hands that thinking back as the assistant turn and asks for the line -
+// which lands in one more call.
+func TestBuilderEmptyReplyCarriesThinking(t *testing.T) {
+	t.Parallel()
+	h, cl, m := newTree(t, "thought it through", "the line")
+	m.think.Store(true)
+	if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		n, err := h.DB.NodeAt(0, 0)
+		if err != nil {
+			return err
+		}
+		if n.Text != "the line" {
+			return fmt.Errorf("the node drew %q, want the reply after the carryover", n.Text)
+		}
+		return nil
+	})
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.calls != 2 {
+		t.Fatalf("%d calls, want the empty reply and the carryover", m.calls)
+	}
+	// the prompt rides the system message, so: system, prompt, thinking, note
+	if len(m.convo[1]) != 4 {
+		t.Fatalf("the retry sent %d messages, want system, prompt, thinking, note", len(m.convo[1]))
+	}
+	if got := concatText(m.convo[1][2].Content); got != "thought it through" {
+		t.Fatalf("the retry's assistant turn reads %q, want the thinking", got)
+	}
+	if note := concatText(m.convo[1][3].Content); !strings.Contains(note, "carried no line") {
+		t.Fatalf("the retry's note reads %q, want the empty-line note", note)
+	}
+}
+
+// TestBuilderEmptyRetryAsksDifferently: an empty reply with nothing to hand
+// back still must not re-request identical bytes - the note names the miss
+// on the prompt - and a second empty reply parks the node with the error.
+func TestBuilderEmptyRetryAsksDifferently(t *testing.T) {
+	t.Parallel()
+	h, cl, m := newTree(t, strings.Repeat("s", 100))
+	m.burn.Store(true) // every reply empty, no reasoning: the gateway hiccup
+	if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if m.callCount() < 2 {
+			return errors.New("the corrected retry has not run")
+		}
+		return nil
+	})
+	m.mu.Lock()
+	first, again := m.convo[0][1].Content, m.convo[1][1].Content
+	m.mu.Unlock()
+	if concatText(first) == concatText(again) {
+		t.Fatal("the retry re-sent identical bytes")
+	}
+	if note := concatText(again); !strings.Contains(note, "carried no line") {
+		t.Fatalf("the retry's prompt reads %q, want the miss named", note)
+	}
+	waitFor(t, func() error {
+		for _, msg := range h.errorsSince(time.Time{}, "chat builder") {
+			if strings.Contains(msg, "empty compaction reply") {
+				return nil
+			}
+		}
+		return errors.New("no empty-reply error recorded")
+	})
 }
 
 // TestBuilderRetryPerMessage: a failing build tries once per fresh batch of

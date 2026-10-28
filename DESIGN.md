@@ -2607,8 +2607,11 @@ rows land. The exception is a rate-limited one (`429`): it arms a cooldown
 (`buildCoolBase`, doubling per consecutive rate-limited round up to
 `buildCoolCap`) that holds dispatch and retries the failed builds when the
 timer fires, since a rate limit passes with the clock and a quiet session
-must heal without a next message; a success resets the doubling, and an
-empty reply, which no wait can fix, parks on its first one. A builder call
+must heal without a next message; a success resets the doubling. An empty
+reply earns one corrected retry in its own conversation - the reply's
+thinking handed back as the assistant turn, where the line usually already
+sits, else the miss named on the prompt, since an identical re-request
+answers the same way - and parks on its second. A builder call
 keeps fewer provider retries than a turn (`buildMaxRetries`): a
 rate-limited round should fail into the cooldown, not have 8 slots each
 burn a full retry pass. The view self-heals.
