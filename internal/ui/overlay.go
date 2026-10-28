@@ -812,7 +812,7 @@ func (a *App) moreAtTop(st *overlayState, key string, was int) {
 		return
 	}
 	switch key {
-	case "up", "k", "pgup", "ctrl+u":
+	case "up", "k", "pgup", "ctrl+u", "home", "ctrl+home", "g":
 	default:
 		return
 	}

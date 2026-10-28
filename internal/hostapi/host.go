@@ -544,7 +544,9 @@ type Host struct {
 	callID    string // that call's id, which names the row it settles at
 	callServe int    // the row the live call view's watcher serves, so an
 	// opened view supersedes the last watcher instead of adding one
-	// msgOld the pages of log rows a page-up loaded past the window
+	// msgOld the pages of log rows a page-up loaded past the window.
+	// NOTE: it grows to the whole log as the reader pages up; bounded today
+	// by the pages being indexed rows, not text (viewCeiling caps a level).
 	msgOld  []ChatMessage
 	msgFrom int64 // the oldest log seq the pages loaded, -1 for none
 
