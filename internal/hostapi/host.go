@@ -874,8 +874,11 @@ func (h *Host) trimTranscript(tr []ChatMessage) []ChatMessage {
 
 // alignTrim clips tr to its last chatWindowRows rows, then sheds further
 // until the head sits on a row that opens a turn, so the window's oldest
-// row never reads as an answer whose question was shed. A turn longer than
-// the clip's slack shrinks the window; the log keeps every row.
+// row never reads as an answer whose question was shed. Standalone notices
+// and errors after a turn's reply hang to that turn and go with it. A run
+// with no turn start after the clip keeps the plain clip instead: the shed
+// never empties the window, and a turn longer than the clip's slack does
+// the same by starting at its own first row.
 func alignTrim(tr []ChatMessage) []ChatMessage {
 	if len(tr) <= chatWindowRows {
 		return tr
