@@ -612,6 +612,13 @@ func TestCompletionNarrowsHome(t *testing.T) {
 		!slices.Equal(got[0].match, []int{2, 3, 4, 5, 6, 7, 8, 9, 10}) {
 		t.Fatalf("home narrowing: %+v", got)
 	}
+	// tab hands the row's canonical spelling back: the bare head joins its
+	// separator only through the completion
+	app.completion.selected = 0
+	app.composerKey("tab", tea.KeyPressMsg{})
+	if got := app.composer.text; got != "@~/Downloads/" || !app.completion.shown() {
+		t.Fatalf("bare-head accept: %q, shown %v", got, app.completion.shown())
+	}
 	open(`@"~Down`)
 	if got := app.completion.paths; len(got) != 1 || got[0].label != `"~/Downloads/` {
 		t.Fatalf("quoted home narrowing: %+v", got)
@@ -628,17 +635,12 @@ func TestCompletionNarrowsHome(t *testing.T) {
 	if got := app.completion.paths; len(got) != 0 {
 		t.Fatalf("stale listing rows: %+v", got)
 	}
-	// the space rule resolves the bare heads the popup narrows: the quote
-	// closes on a word whose path exists, so prose rides outside
+	// a bare-head spelling is not a path: the space keeps the quote open,
+	// the same rule a word mid-typing rides
 	app.composer.text, app.composer.cursor = `@"~Downloads`, 12
 	app.composerKey(" ", tea.KeyPressMsg{Text: " "})
-	if got := app.composer.text; got != `@"~Downloads" ` {
-		t.Fatalf("bare tilde head closed as %q", got)
-	}
-	app.composer.text, app.composer.cursor = `@"..Downloads`, 13
-	app.composerKey(" ", tea.KeyPressMsg{Text: " "})
-	if got := app.composer.text; got != `@"..Downloads" ` {
-		t.Fatalf("bare dotdot head closed as %q", got)
+	if got := app.composer.text; got != `@"~Downloads ` {
+		t.Fatalf("bare tilde head stayed open as %q", got)
 	}
 }
 

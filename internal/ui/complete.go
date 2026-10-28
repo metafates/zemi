@@ -142,7 +142,9 @@ func (a *App) updateCompletion() tea.Cmd {
 // after the space rides outside the word instead of inside the path the
 // grammar reads to the line's end. A word still mid-typing - `@"My Doc`
 // gaining the space that is part of its name - resolves to nothing and
-// keeps its quote open.
+// keeps its quote open, and so does a bare-head spelling the popup narrows
+// (`~Downloads`): shells do not resolve one either, completing the row is
+// what lands the canonical form.
 func (a *App) closeQuotedWord() {
 	c := &a.composer
 	r := c.runes()
@@ -165,13 +167,12 @@ func (a *App) closeQuotedWord() {
 	if w == "" {
 		return
 	}
-	full := perm.JoinHead(w)
-	if strings.HasPrefix(full, "~") {
-		full = perm.ExpandHome(full)
-	} else if !filepath.IsAbs(full) {
-		full = filepath.Join(a.host.Dirs.ProjectDir, full)
+	if strings.HasPrefix(w, "~") {
+		w = perm.ExpandHome(w)
+	} else if !filepath.IsAbs(w) {
+		w = filepath.Join(a.host.Dirs.ProjectDir, w)
 	}
-	if _, err := os.Stat(full); err != nil {
+	if _, err := os.Stat(w); err != nil {
 		return
 	}
 	c.insertFits(string(q))

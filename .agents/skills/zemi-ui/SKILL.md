@@ -163,8 +163,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   word still being typed resolves too; a space closes an open-quoted word
   whose path resolves, so prose after it rides outside). A clipboard image has no source path: it lands a copy as
   `pasted-<ts>.png` in `<data>/drops` and inserts the copy's `@` word. `expandAttachments` looks
-  the whole word up as a skill first, then resolves the path - a bare head
-  joined to its separator (`~Downloads` as `~/Downloads`), `~` under home, the rest against
+  the whole word up as a skill first, then resolves the path - `~` under home, the rest against
   the project, `/` as itself - wherever it lives, a symlink out of the project attaching its
   target; a directory attaches its own entries, as `ls` lists them - one
   name per line, a subdirectory's trailing its slash - capped with the
