@@ -194,7 +194,7 @@ func (a *App) submitComposer() {
 		return
 	}
 	if utf8.RuneCountInString(text) > maxDraftChars {
-		a.draftCapToast()
+		a.draftCapToastNow()
 		return
 	}
 	if strings.HasPrefix(text, "/") {

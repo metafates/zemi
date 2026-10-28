@@ -402,6 +402,12 @@ func (a *App) draftCapToast() {
 		return
 	}
 	a.capToastAt = a.now().Add(capToastTTL)
+	a.draftCapToastNow()
+}
+
+// draftCapToastNow answers a refused send: a deliberate submit always hears
+// why, the throttle is for the key flood a paste flood makes.
+func (a *App) draftCapToastNow() {
 	a.pushToast(slog.LevelWarn, "Draft too long",
 		fmt.Sprintf("the composer holds at most %dk characters; save the text to a file and attach it with @path", maxDraftChars/1000))
 }
