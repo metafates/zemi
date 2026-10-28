@@ -376,6 +376,21 @@ func TestInertBoot(t *testing.T) {
 	}
 }
 
+// TestModelPickerOpensOnCurrent: a bare /model opens with the selection on
+// the model the slot runs, not on the hub rows above the list.
+func TestModelPickerOpensOnCurrent(t *testing.T) {
+	t.Parallel()
+	h, r := newTestHost(t)
+	runUser(t, r, rolesProvider)
+	o := h.modelPicker("")
+	if o.Selected < 0 {
+		t.Fatalf("modelPicker() Selected = %d, want the current model's row", o.Selected)
+	}
+	if got := o.Items[o.Selected].Text; got != "big" {
+		t.Fatalf("modelPicker() Selected = %d (%q), want the current model", o.Selected, o.Items[o.Selected].Text)
+	}
+}
+
 // TestModelFavorites: f marks the model a row names in models.favorites, and
 // the marked models head the picker in the key's own order.
 func TestModelFavorites(t *testing.T) {
