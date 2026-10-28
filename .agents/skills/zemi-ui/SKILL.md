@@ -158,7 +158,8 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   with the trailing slash a completion walks into (a project directory answers by name from the
   corpus, and its name plus the slash lists it). A word a bare token cannot carry - one holding
   whitespace, or ending in the punctuation a sentence ends on - rides quoted, the project frame
-  kept: `@"docs/My Notes.md"` inside the project, `@"~/My Docs/a.txt"` outside, which
+  kept (`'` when the name itself holds `"`): `@"docs/My Notes.md"` inside the project,
+  `@"~/My Docs/a.txt"` outside, which
   `attachRef`'s grammar reads back (the closing quote optional, so a
   word still being typed resolves too; a space closes an open-quoted word
   whose path resolves, so prose after it rides outside). A clipboard image has no source path: it lands a copy as

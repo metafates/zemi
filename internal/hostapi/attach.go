@@ -110,7 +110,7 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 		}
 		// a path, wherever it lives: the user named it, and what attaches
 		// shows in the attach echo
-		path, err := perm.Resolve(h.pathAbs(word))
+		path, err := h.ResolveWord(word)
 		if err != nil {
 			continue
 		}
@@ -244,6 +244,14 @@ func (h *Host) pathAbs(word string) string {
 	return h.projectAbs(word)
 }
 
+// ResolveWord resolves an @ word the way the submit expander does: ~
+// under home, the rest against the project dir, .. and symlinks seen one
+// component at a time. The popup's space rule asks the same question, so
+// its closing quote never vouches for a word submit drops.
+func (h *Host) ResolveWord(word string) (perm.Path, error) {
+	return perm.Resolve(h.pathAbs(word))
+}
+
 // dropsDir holds copies of pasted images, the one attachment with no source
 // path. A reference typed in a message attaches what it names directly, so
 // no copy stands between it and the file.
@@ -254,6 +262,16 @@ func (h *Host) dropsDir() string { return joinIf(h.Dirs.DataHome, "drops") }
 // as a sentence's is.
 func CanRef(word string) bool {
 	return word != "" && !strings.ContainsAny(word, " \t\n\f\r") && strings.TrimRight(word, ".,;:!?)") == word
+}
+
+// FrameQuote is the quote that frames a word in an @ token: ' when the
+// word itself holds ", whose pair would end there. A word holding both
+// quotes rides no token either way.
+func FrameQuote(word string) byte {
+	if strings.ContainsRune(word, '"') {
+		return '\''
+	}
+	return '"'
 }
 
 // AttachWord is the @ word the composer inserts for path: relative for a
@@ -287,7 +305,8 @@ func (h *Host) AttachWord(path string) string {
 	if !CanRef(word) {
 		// the word cannot ride a bare token: quoted, so the expander reads
 		// it whole whatever whitespace or punctuation it carries
-		return `@"` + word + `"`
+		q := string(FrameQuote(word))
+		return "@" + q + word + q
 	}
 	return "@" + word
 }

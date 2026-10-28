@@ -932,6 +932,44 @@ func TestCompletionWalksIn(t *testing.T) {
 	if got := app.composer.text; got != `@"notes  a.txt` {
 		t.Fatalf("mid-word cursor split the word as %q", got)
 	}
+	// the space rule resolves the word the way submit does - component-wise,
+	// through a symlink - so a join-cleaned lookalike never closes the quote
+	if err := os.Symlink(filepath.Join(t.TempDir(), "nowhere"), filepath.Join(proj, "sym")); err != nil {
+		t.Fatal(err)
+	}
+	app.composer.text, app.composer.cursor = `@"sym/../notes a.txt`, 20
+	app.composerKey(" ", tea.KeyPressMsg{Text: " "})
+	if got := app.composer.text; got != `@"sym/../notes a.txt ` {
+		t.Fatalf("a join-cleaned lookalike closed the quote as %q", got)
+	}
+	// a name holding " rides the ' frame: the " frame the row offered would
+	// end at the name's own quote and submit would attach nothing
+	if err := os.MkdirAll(filepath.Join(proj, "My Docs"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(proj, "My Docs", `say "hi".txt`), []byte("hi"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	open(`@"./My`)
+	idx = slices.IndexFunc(app.completion.paths, func(r listItem) bool { return r.label == `"./My Docs/` })
+	if idx < 0 {
+		t.Fatalf("candidates: %+v", app.completion.paths)
+	}
+	app.completion.selected = idx
+	app.acceptCompletion()
+	if got := app.composer.text; got != `@"./My Docs/` || !app.completion.open {
+		t.Fatalf("walked in as %q", got)
+	}
+	app.composer.text += "sa"
+	app.composer.cursor += 2
+	app.updateCompletion()
+	if len(app.completion.paths) != 1 || app.completion.paths[0].label != `"./My Docs/say "hi".txt` {
+		t.Fatalf("candidates: %+v", app.completion.paths)
+	}
+	app.composerKey("enter", tea.KeyPressMsg{})
+	if got := app.composer.text; got != `@'./My Docs/say "hi".txt' ` || app.completion.open {
+		t.Fatalf("a quoted name accepted as %q", got)
+	}
 }
 
 // TestCompletionListingCaps: a bare listing keeps half its rows for each

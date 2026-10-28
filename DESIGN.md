@@ -1716,8 +1716,10 @@ UI extensibility contract:
   line, a subdirectory's trailing its slash - capped with the remainder
   named at the tail; reading deeper is what the model's tools are for. A path
   that cannot ride a bare word (whitespace, trailing sentence punctuation)
-  rides quoted, `@"~/My Docs/a.txt"`; a space ends the word - an open-quoted
-  one whose path resolves takes its closing quote before the space, so prose
+  rides quoted, `@"~/My Docs/a.txt"` - framed `'` when the name itself
+  holds `"`, whose pair would end there; a space ends the word - an
+  open-quoted one whose path resolves, as the expander resolves it,
+  symlinks included, takes its closing quote before the space, so prose
   after it rides outside, while a word still being typed keeps its quote open
   and swallows the line, as a shell's does. While both sections have rows, the
   Files section caps so both headers stay in the window, the Lua extras

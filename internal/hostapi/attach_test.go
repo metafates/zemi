@@ -479,16 +479,21 @@ func TestAttachWord(t *testing.T) {
 	write(filepath.Join(proj, "main.go"), "package main")
 	write(filepath.Join(proj, "a]b.go"), "package a")
 	write(filepath.Join(proj, "todo!"), "done")
+	if err := os.MkdirAll(filepath.Join(proj, "sub"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write(filepath.Join(proj, "sub", `say "hi".txt`), "hi there")
 	shot := filepath.Join(t.TempDir(), "Screen Shot 1.png")
 	write(shot, string(tinyPNG()))
 	out := t.TempDir()
 	for path, want := range map[string]string{
-		filepath.Join(proj, "main.go"): "@main.go",
-		filepath.Join(proj, "a]b.go"):  "@a]b.go",
-		filepath.Join(proj, "todo!"):   `@"todo!"`,
-		shot:                           `@"` + perm.TildePath(shot) + `"`,
-		out:                            "@" + perm.TildePath(out) + "/",
-		proj:                           "@./",
+		filepath.Join(proj, "main.go"):             "@main.go",
+		filepath.Join(proj, "a]b.go"):              "@a]b.go",
+		filepath.Join(proj, "todo!"):               `@"todo!"`,
+		filepath.Join(proj, "sub", `say "hi".txt`): `@'sub/say "hi".txt'`,
+		shot: `@"` + perm.TildePath(shot) + `"`,
+		out:  "@" + perm.TildePath(out) + "/",
+		proj: "@./",
 	} {
 		if got := h.AttachWord(path); got != want {
 			t.Errorf("AttachWord(%s) = %q, want %q", path, got, want)
@@ -502,6 +507,10 @@ func TestAttachWord(t *testing.T) {
 	got, _ = h.expandAttachments("see "+h.AttachWord(filepath.Join(proj, "todo!")), true)
 	if !strings.Contains(got, "done") {
 		t.Fatalf("the quoted relative word reads back: %q", got)
+	}
+	got, _ = h.expandAttachments("see "+h.AttachWord(filepath.Join(proj, "sub", `say "hi".txt`)), true)
+	if !strings.Contains(got, "hi there") {
+		t.Fatalf("the ' frame carries a quote in the name: %q", got)
 	}
 }
 

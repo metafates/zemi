@@ -167,12 +167,11 @@ func (a *App) closeQuotedWord() {
 	if w == "" {
 		return
 	}
-	if strings.HasPrefix(w, "~") {
-		w = perm.ExpandHome(w)
-	} else if !filepath.IsAbs(w) {
-		w = filepath.Join(a.host.Dirs.ProjectDir, w)
+	real, err := a.host.ResolveWord(w)
+	if err != nil {
+		return
 	}
-	if _, err := os.Stat(w); err != nil {
+	if _, err := os.Stat(real.String()); err != nil {
 		return
 	}
 	c.insertFits(string(q))
@@ -529,10 +528,17 @@ func (a *App) acceptCompletion() {
 		rel := f.files[f.matches[sel-n].Index]
 		if strings.HasSuffix(rel, "/") { // a directory walks in
 			word := rel
+			q := byte(0)
 			if len(f.token) > 0 && (f.token[0] == '"' || f.token[0] == '\'') {
-				word = f.token[:1] + word // the frame the word rode in on stays
+				q = f.token[0] // the frame the word rode in on stays
 			} else if !hostapi.CanRef(word) {
-				word = `"` + word
+				q = '"'
+			}
+			if q != 0 {
+				if strings.ContainsRune(word, rune(q)) {
+					q = hostapi.FrameQuote(word)
+				}
+				word = string(q) + word
 			}
 			a.composer.replace(f.start+1, word)
 			a.updateCompletion()
@@ -543,20 +549,36 @@ func (a *App) acceptCompletion() {
 	case sel < n+mt+p:
 		word := f.paths[sel-n-mt].label
 		if strings.HasSuffix(word, "/") { // a directory walks in
-			if q := word[0]; q != '"' && q != '\'' && !hostapi.CanRef(word) {
+			body, q := word, byte(0)
+			if c := word[0]; c == '"' || c == '\'' {
+				body, q = word[1:], c // the frame the word rode in on stays
+			} else if !hostapi.CanRef(word) {
 				// a word a bare token cannot carry rides quoted, the quote
 				// left open: the letters after it keep narrowing, and a
 				// file accept closes the pair
-				word = `"` + word
+				q = '"'
+			}
+			if q != 0 {
+				if strings.ContainsRune(body, rune(q)) {
+					q = hostapi.FrameQuote(body)
+				}
+				word = string(q) + body
 			}
 			a.composer.replace(f.start+1, word)
 			a.updateCompletion()
 			return
 		}
-		if q := word[0]; q == '"' || q == '\'' {
-			word += string(q) // a file closes the quotes a directory leaves open
-		} else if !hostapi.CanRef(word) {
-			word = `"` + word + `"`
+		body, q := word, byte(0)
+		if c := word[0]; c == '"' || c == '\'' {
+			body, q = word[1:], c
+		}
+		if hostapi.CanRef(body) {
+			word = body // rides bare, nothing to close
+		} else {
+			if q == 0 || strings.ContainsRune(body, rune(q)) {
+				q = hostapi.FrameQuote(body)
+			}
+			word = string(q) + body + string(q) // a file closes the pair a directory leaves open
 		}
 		a.composer.replace(f.start+1, word+" ")
 		f.close()
