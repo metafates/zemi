@@ -862,6 +862,10 @@ func (h *Host) appendTranscript(rows ...ChatMessage) {
 // trimTranscript clips a window grown past chatWindowRows to the bound,
 // tMu held: the shed head advances trCut, the delta the chat's key shift
 // absorbs so no wipe is needed, and the pairing's row moves down with it.
+// NOTE: a shed deeper than the clip (alignTrim's turn start) can cut past
+// the pairing cursor - rows shed unpaired between stampRow and the cut,
+// a text-coincidence later would stamp one with another row's seq; that
+// needs a thousand unpaired rows between stamps, a pathological window.
 func (h *Host) trimTranscript(tr []ChatMessage) []ChatMessage {
 	kept := alignTrim(tr)
 	if cut := len(tr) - len(kept); cut > 0 {
