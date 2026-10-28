@@ -1024,6 +1024,12 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		}
 		a.cancelOverlay(o)
 	}
+	// a printable key nothing acts on starts the filter with its letter, so
+	// a word typed to a picker narrows it instead of dying: the keys the
+	// footer and the rows list act, the rest filter, as the / popups type
+	if text != "" && strings.TrimSpace(text) != "" && st.filterable && len(st.items) > 0 && st.edit("/", "/") {
+		st.edit(key, text)
+	}
 	return nil
 }
 
