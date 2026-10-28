@@ -212,9 +212,17 @@ func TestVerifyLockOrderUnderTurnContention(t *testing.T) {
 		_ = h.AgentSend(fmt.Sprintf("turn %d", i))
 		time.Sleep(2 * time.Millisecond)
 	})
-	// a hang names its owner: dump every goroutine's stack once
+	// a hang names its owner: dump every goroutine's stack once. The watch
+	// dies with the test, so a fast run's watch never errors into a later
+	// one - the panic on a log after the test completed.
+	watchDone := make(chan struct{})
+	defer close(watchDone)
 	go func() {
-		<-time.After(45 * time.Second)
+		select {
+		case <-time.After(45 * time.Second):
+		case <-watchDone:
+			return
+		}
 		buf := make([]byte, 1<<20)
 		buf = buf[:runtime.Stack(buf, true)]
 		t.Errorf("hung: %s", buf)
