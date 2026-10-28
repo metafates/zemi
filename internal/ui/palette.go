@@ -26,6 +26,7 @@ type cmdPalette struct {
 	query    string // what the list was narrowed by; a new one selects its first row
 	view     viewport
 	size     boxSize // typing never narrows or shortens the popup
+	suppress string  // a failed line's draft: the palette stays closed while it stands
 }
 
 func (p *cmdPalette) count() int {
@@ -41,6 +42,13 @@ func (a *App) updatePalette() {
 	r := a.composer.runes()
 	cur := a.composer.cursor
 	if cur == 0 || len(r) == 0 || r[0] != '/' {
+		a.palette.close()
+		return
+	}
+	// the palette that just failed this line stays closed while the line
+	// stands: its toast suggested a retype, and a silent reopen would glue
+	// that retype onto the failed query
+	if a.palette.suppress == string(r) {
 		a.palette.close()
 		return
 	}
@@ -241,6 +249,7 @@ func (a *App) runSlashCommand(text string) {
 		a.pushToast(slog.LevelWarn, "Unknown command", detail)
 		// the line stays for fixing, but not under the palette that failed
 		// it: a retype there would glue onto the old query
+		a.palette.suppress = a.composer.text
 		a.palette.close()
 		return
 	}
