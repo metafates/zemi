@@ -1462,14 +1462,18 @@ func toolSummary(tool, input string) string {
 	if json.Unmarshal([]byte(input), &m) != nil {
 		return input
 	}
-	if list, ok := m["todos"].([]any); ok {
+	if _, ok := m["todos"]; ok {
+		var in struct {
+			Todos []store.Todo `json:"todos"`
+		}
+		_ = json.Unmarshal([]byte(input), &in) // the map decoded, so this does too
 		done := 0
-		for _, td := range list {
-			if t, ok := td.(map[string]any); ok && t["status"] == "done" {
+		for _, td := range in.Todos {
+			if td.Status == store.TodoDone {
 				done++
 			}
 		}
-		return fmt.Sprintf("%d todos, %d done", len(list), done)
+		return fmt.Sprintf("%d todos, %d done", len(in.Todos), done)
 	}
 	if qs, ok := m["questions"].([]any); ok && len(qs) > 0 {
 		q, _ := qs[0].(map[string]any)

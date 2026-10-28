@@ -180,9 +180,9 @@ var TodoStatuses = []TodoStatus{TodoPending, TodoInProgress, TodoDone}
 
 // Todo is one item of a session's todo list.
 type Todo struct {
-	Content    string
-	Status     TodoStatus
-	ActiveForm string
+	Content    string     `json:"content"`
+	Status     TodoStatus `json:"status"`
+	ActiveForm string     `json:"active_form,omitempty"`
 }
 
 // SetTodos replaces a session's todo list.
