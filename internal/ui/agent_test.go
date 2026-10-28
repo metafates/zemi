@@ -321,7 +321,7 @@ func TestAgentViewFolds(t *testing.T) {
 	rows := func() []string { return chatRows(t, app, 98) }
 	rows() // the first render forgets what was opened before it
 	closed := rows()
-	if !slices.Contains(closed, "· 1 file") || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
+	if !slices.Contains(closed, "· 1 file · main.go") || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
 		t.Fatalf("the viewed run does not fold:\n%s", strings.Join(closed, "\n"))
 	}
 	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "turn:1"}); err != nil {
@@ -591,9 +591,9 @@ func TestChatFoldOpensItsRun(t *testing.T) {
 		}
 		return out
 	}
-	const digest = "· 1 command · thought 6.4s"
+	const digest = "· 1 command · make · thought 6.4s"
 	closed := rows()
-	if !slices.Contains(closed, digest) || slices.ContainsFunc(closed, func(r string) bool { return strings.Contains(r, "make") }) {
+	if !slices.Contains(closed, digest) || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
 		t.Fatalf("the settled turn does not fold into its digest:\n%s", strings.Join(closed, "\n"))
 	}
 	// the digest stays as the run's header over a rail whose rows are framed
@@ -1919,7 +1919,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}
 	host.SeedStream(hostapi.StreamSnapshot{})
-	if got, want := rows(), append(closed[:3:3], "· 1 file"); !slices.Equal(got, want) {
+	if got, want := rows(), append(closed[:3:3], "· 1 file · c.go"); !slices.Equal(got, want) {
 		t.Fatalf("ended turn:\n%s", strings.Join(got, "\n"))
 	}
 }
@@ -2322,7 +2322,7 @@ func TestCallRowClickIDs(t *testing.T) {
 		return click
 	}
 	for text, want := range map[string]string{
-		"· 1 file":                "turn:2",
+		"· 1 file · b.go":         "turn:2",
 		"│ ✻ thought 6.0s":        "call:5",
 		"│ ✓ edit /w/a.go +1 -1":  "call:-1",
 		"│ ✓ read 2 files":        "step:-2",
@@ -2490,10 +2490,10 @@ func TestDigestCountsEveryFamily(t *testing.T) {
 		want  string
 	}{
 		{"mcp", []string{"mcp_gitlab_get_commit", "mcp_gitlab_list_issues"}, "2 gitlab tools"},
-		{"agent", []string{"agent"}, "1 agent run"},
-		{"workflow", []string{"workflow"}, "1 workflow"},
-		{"lua", []string{"lua"}, "1 script"},
-		{"tool_search", []string{"tool_search"}, "1 tool"},
+		{"agent", []string{"agent"}, "1 agent run · x"},
+		{"workflow", []string{"workflow"}, "1 workflow · x"},
+		{"lua", []string{"lua"}, "1 script · x"},
+		{"tool_search", []string{"tool_search"}, "1 tool · x"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			host.AppendMessage("user", "go")

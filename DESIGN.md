@@ -2349,7 +2349,7 @@ view; a reset's wipe drops the row with the chat.
 - **Default keymaps** (all rebindable by user config except the
   Go-reserved cancel and reload triggers, §6.2; a keymap bound to plain
   `esc` shadows the esc chords, so they are a default, never a guarantee):
-  `enter` sends, `esc` twice within 2s interrupts the turn
+  `enter` sends, `esc` twice within 4s interrupts the turn
   (`esc` in an agent view goes back; the esc chord stops a busy job),
   `ctrl+c` moves a draft into the history first, mid-turn included, then on
   an empty composer interrupts a turn at once and twice within 2s when idle
@@ -2371,6 +2371,8 @@ view; a reset's wipe drops the row with the chat.
   `/reset` (wipe the chat's log, every summary and the view, vacuum the
   store so the text is gone from disk, and start the log over at seq 0;
   asks first, a screen's armed key or `--yes` answers),
+  `/compact` (merge the view down toward its floor now, one batch, what it
+  saved in a toast; the builder keeps compacting on its own afterwards),
   `/goal <condition>` (work until
   it holds, §6.3; alone, what it spent; `stop` drops it), `/loop [interval] <prompt>`
   (§6.3; alone, what it ran; `stop` stops it), `/btw <question>` (a side question

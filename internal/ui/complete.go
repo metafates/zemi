@@ -36,10 +36,11 @@ type wordCompleter struct {
 	view      viewport
 	size      boxSize // the last drawn size, kept for a frame with no matches to show
 
-	scanning bool
-	walkGen  int      // bumps so stale scan results are dropped
-	dirDir   string   // the directory the listing holds, spelled out
-	dirList  []string // its entries, "/"-suffixed for directories
+	scanning   bool
+	walkGen    int      // bumps so stale scan results are dropped
+	dirDir     string   // the directory the listing holds, spelled out
+	dirList    []string // its entries, "/"-suffixed for directories
+	dirPending string   // the directory a listing fetch is in flight for
 }
 
 // scanMaxFiles caps the scan so a walk that never ends cannot eat memory.
@@ -232,7 +233,7 @@ func (f *wordCompleter) close() {
 	f.selected, f.view, f.size = 0, viewport{}, boxSize{}
 	f.matches, f.extra = f.matches[:0], nil
 	f.skillRows, f.paths = nil, nil
-	f.dirDir, f.dirList = "", nil
+	f.dirDir, f.dirList, f.dirPending = "", nil, ""
 }
 
 func (f *wordCompleter) count() int {
@@ -329,10 +330,15 @@ func (a *App) resolveDir(token string) string {
 
 // listDir lists dir off the UI goroutine, into the completer's cache.
 func (a *App) listDir(dir string) {
+	f := &a.completion
+	f.dirPending = dir
 	a.background(func() {
 		entries := readDir(dir)
 		a.do(func() {
 			f := &a.completion
+			if f.dirPending == dir {
+				f.dirPending = ""
+			}
 			if !f.open || f.trigger != '@' || a.resolveDir(f.token) != dir {
 				return // the popup closed, or the token walked somewhere else
 			}
@@ -623,6 +629,9 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	if f.count() == 0 {
 		if f.scanning && len(f.files) == 0 && !pathHeaded(unquoteToken(f.token)) {
 			return [][]hostapi.Segment{note("scanning files…")}
+		}
+		if f.dirPending != "" && f.dirPending == a.resolveDir(f.token) {
+			return [][]hostapi.Segment{note("listing…")}
 		}
 		return emptyRows(noMatches, maxW)
 	}

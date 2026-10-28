@@ -9,6 +9,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"net/http"
 	"path/filepath"
@@ -341,6 +342,23 @@ func (h *Host) modelAsk(L *glua.LState) int {
 		},
 	})
 	return 1
+}
+
+// CompactNow forces one compaction batch off the UI goroutine: the merge
+// blocks on the builder, and the view it lands may need node builds first,
+// so it reports what this batch saved rather than a final size.
+func (h *Host) CompactNow() {
+	h.GoSafe("compact", func() {
+		saved := h.chat.tree.Compact()
+		if saved < 0 {
+			return
+		}
+		if saved == 0 {
+			h.Notify(slog.LevelInfo, "Compacted", "the view is already at its floor")
+			return
+		}
+		h.Notify(slog.LevelInfo, "Compacted", fmtTokens(int64(saved))+" of view merged")
+	})
 }
 
 // bill adds a model call's usage to session sid, and to the live tally when

@@ -41,8 +41,8 @@ var goKeys = [][2]string{
 
 // listKeys are the keys every list and box takes.
 var listKeys = [][2]string{
-	{"up, down, j, k, ctrl+p, ctrl+n", "move"},
-	{"g, G, home, end", "first row, last row"},
+	{"up, down, j, k, ctrl+p, ctrl+n", "move; j, k type in the / and @ popups"},
+	{"g, G, home, end", "first row, last row; g, G type in the / and @ popups"},
 	{"ctrl+home, ctrl+b", "to the top, bottom"},
 	{"ctrl+d, ctrl+u", "half a page, or scroll the text"},
 	{"pgup, pgdown", "move a page"},
@@ -357,6 +357,9 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 			}
 		} else if utf8.RuneCountInString(a.composer.text) > maxDraftChars {
 			a.clearDraft()
+		} else if len(a.toasts) > 0 {
+			a.toasts = a.toasts[:len(a.toasts)-1]
+			a.frameDirty = true
 		}
 		return nil
 	default:
@@ -526,7 +529,14 @@ func (a *App) arm(key, what string) bool {
 		a.armed = armed{}
 		return true
 	}
-	a.armed = armed{key: key, what: what, until: a.now().Add(2 * time.Second)}
+	// the interrupt waits longer than quit: a stop is pressed, seen, then
+	// pressed again, while a quit arm only guards a double-press
+	window := 2 * time.Second
+	if what == "interrupt" {
+		window = 4 * time.Second
+	}
+	a.armed = armed{key: key, what: what, until: a.now().Add(window)}
+	a.frameDirty = true // the armed notice draws even with no stream event coming
 	return false
 }
 

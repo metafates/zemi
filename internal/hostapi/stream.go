@@ -201,6 +201,8 @@ func (s *streamAdapter) StreamDone(u fantasy.Usage) {
 	ag := s.h.agents
 	ag.mu.Lock()
 	model := s.h.turnModelID()
+	// the context the latest step carried: the statusline's ctx meter reads it
+	ag.lastIn = billedInput(u)
 	ag.mu.Unlock()
 	s.h.bill(store.MainSessionID, model, u)
 }

@@ -31,7 +31,7 @@ type Project struct {
 	Used    time.Time // when zemi was last started or left there; zero with no root file
 
 	// read with stats: a store zemi cannot read leaves them zero and says why
-	Sessions int
+	Messages int
 	Latest   *store.Session // the newest top-level session
 	StatsErr error
 }
@@ -83,11 +83,11 @@ func (p *Project) readStats(stateHome string) {
 	}
 	if err == nil {
 		defer db.Close()
-		// sessions now counts the chat log's messages: runs and the anchor
+		// Messages counts the chat log's rows: runs and the anchor
 		// row no longer say how much a project has been used
 		var n int64
 		if n, err = db.LogCount(); err == nil {
-			p.Sessions = int(n)
+			p.Messages = int(n)
 			var latest []store.LogEntry
 			if latest, err = db.LogTail(1); err == nil && len(latest) > 0 {
 				at, perr := time.Parse(time.RFC3339Nano, latest[0].CreatedAt)
@@ -335,11 +335,11 @@ func (h *Host) projectItems() (items []OverlayItem, sel int) {
 	sel = -1
 	for i, p := range ListProjects(h.Dirs, true) {
 		// each column padded, blank when empty, so the age lines up; a word
-		// like "untrusted this run" fills the sessions column's blank, or
+		// like "untrusted this run" fills the messages column's blank, or
 		// moves only its own row's age
 		sessions := ""
-		if p.Sessions > 0 {
-			sessions = fmt.Sprintf(" · %d %s", p.Sessions, Plural(p.Sessions, "session", "sessions"))
+		if p.Messages > 0 {
+			sessions = fmt.Sprintf(" · %d %s", p.Messages, Plural(p.Messages, "message", "messages"))
 		}
 		desc := fmt.Sprintf("%-24s", fmt.Sprintf("%-9s%s", h.trustWord(p), sessions))
 		if !p.Used.IsZero() {
@@ -391,11 +391,11 @@ func (h *Host) trustWord(p Project) string {
 // left out. Its trust is the decision a gone root keeps too, and its path
 // repeats the detail's title, which the UI shows only when the title clips.
 func (h *Host) projectFields(p Project) []Field {
-	sessions, recipes, errText := "", "", ""
+	msgs, recipes, errText := "", "", ""
 	if p.Latest != nil {
-		sessions = fmt.Sprintf("%d · latest %s", p.Sessions, ago(p.Latest.UpdatedAt))
+		msgs = fmt.Sprintf("%d · latest %s", p.Messages, ago(p.Latest.UpdatedAt))
 		if t := sanitize.Line(p.Latest.Title); t != "" {
-			sessions += ": " + markedTitle(p.Latest.ID, t)
+			msgs += ": " + markedTitle(p.Latest.ID, t)
 		}
 	}
 	state := projectState(h.Dirs.StateHome, p.Root)
@@ -406,6 +406,6 @@ func (h *Host) projectFields(p Project) []Field {
 		errText = p.StatsErr.Error()
 	}
 	trust := h.trustWord(Project{Root: p.Root, Trust: p.Trust})
-	return fieldList("trust", trust, "sessions", sessions, "recipes", recipes,
+	return fieldList("trust", trust, "messages", msgs, "recipes", recipes,
 		"path", sanitize.String(perm.TildePath(p.Root)), "data", perm.TildePath(state), "error", errText)
 }

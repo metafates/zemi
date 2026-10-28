@@ -93,8 +93,8 @@ func TestProjectsCommand(t *testing.T) {
 			want: []string{
 				// the running decision beside the saved one, and a gone root's decision in its detail
 				"desc:untrusted this run       · now", "[trust untrusted this run]", "tag:current",
-				"desc:missing                  · now", "[trust trusted] [sessions ]",
-				"desc:trusted   · 1 session    · now", "[sessions 1 · latest now: " + markedTitle(store.MainSessionID, "fix the flaky test") + "]",
+				"desc:missing                  · now", "[trust trusted] [messages ]",
+				"desc:trusted   · 1 message    · now", "[messages 1 · latest now: " + markedTitle(store.MainSessionID, "fix the flaky test") + "]",
 				"desc:switch to it key:s run:projects switch " + other, "desc:forget trust key:f run:projects forget " + other, "danger:true desc:delete key:x run:projects delete " + other,
 				"Selected:2", // held: the gone root, used last, has nothing to switch to
 			},
@@ -294,7 +294,7 @@ func TestListProjects(t *testing.T) {
 	}
 	var got []string
 	for _, p := range ListProjects(dirs, true) {
-		got = append(got, fmt.Sprintf("%s %s %d", p.Root, p.TrustWord(), p.Sessions))
+		got = append(got, fmt.Sprintf("%s %s %d", p.Root, p.TrustWord(), p.Messages))
 	}
 	want := []string{
 		filepath.Join(tmp, "trusted") + " trusted 2",

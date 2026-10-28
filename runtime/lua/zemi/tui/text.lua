@@ -312,6 +312,12 @@ function M.digest(rows, first, last)
 	if #calls > 0 then
 		parts[#parts + 1] = M.counts(calls)
 		local about = calls[1].label or ""
+		if about == "" and #calls == 1 then
+			-- a lone call that names a thing (a file, a pattern) says which:
+			-- a count over it would hide it, as a rail row over a lone call does
+			local k = M.family(M.tool(calls[1]))
+			if k and k[2] then about = calls[1].text or "" end
+		end
 		if about ~= "" then parts[#parts + 1] = about end
 	end
 	if secs >= 0.05 then parts[#parts + 1] = M.thought(secs) end

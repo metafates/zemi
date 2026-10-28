@@ -553,16 +553,16 @@ func projectsCommand(o *options) *cobra.Command {
 						Root       string    `json:"root"`
 						Trust      string    `json:"trust"`
 						Used       time.Time `json:"used,omitzero"`
-						Sessions   int       `json:"sessions"`
+						Messages   int       `json:"messages"`
 						StatsError string    `json:"stats_error,omitempty"`
-					}{Root: p.Root, Trust: p.TrustWord(), Used: p.Used, Sessions: p.Sessions, StatsError: statsErr})
+					}{Root: p.Root, Trust: p.TrustWord(), Used: p.Used, Messages: p.Messages, StatsError: statsErr})
 					continue
 				}
 				used := "-"
 				if !p.Used.IsZero() {
 					used = p.Used.Format(hostapi.StampLayout)
 				}
-				t.row(used, p.TrustWord(), strconv.Itoa(p.Sessions), p.Root)
+				t.row(used, p.TrustWord(), strconv.Itoa(p.Messages), p.Root)
 			}
 			t.print(out)
 			return nil

@@ -235,12 +235,12 @@ type memTree struct {
 	results chan buildResult
 
 	callMu     sync.Mutex
-	flight     int                // model calls in flight
-	leafFlight int                // leaf calls in flight: the unbuilt lines a leaf waits behind
-	held       bool               // dispatch paused (a reset quiesces); guarded by callMu
-	burst      chan struct{}      // closed when the burst's first response starts
-	force      chan chan struct{} // the overflow guard's one batch, acked when it ran
-	ready      atomic.Bool        // the boot gate: no dispatch before the config step ran
+	flight     int             // model calls in flight
+	leafFlight int             // leaf calls in flight: the unbuilt lines a leaf waits behind
+	held       bool            // dispatch paused (a reset quiesces); guarded by callMu
+	burst      chan struct{}   // closed when the burst's first response starts
+	force      chan compactReq // the overflow guard's one batch, acked when it ran
+	ready      atomic.Bool     // the boot gate: no dispatch before the config step ran
 
 	// owned by the worker goroutine
 	msgs       int64          // messages in the log: seqs 0..msgs-1, dense
@@ -284,7 +284,7 @@ func newMemTree(ctx context.Context, h *Host) *memTree {
 		done:    make(chan struct{}),
 		wake:    make(chan struct{}, 1),
 		rebld:   make(chan struct{}, 1),
-		force:   make(chan chan struct{}, 1),
+		force:   make(chan compactReq, 1),
 		results: make(chan buildResult),
 		built:   map[nodeID]int{},
 	}
@@ -310,6 +310,13 @@ func (b *memTree) RebuildQueues() {
 	}
 }
 
+// compactReq forces one merge batch; merged, when set, takes the view bytes
+// the batch saved.
+type compactReq struct {
+	done   chan struct{}
+	merged *int
+}
+
 // MergeOnce merges one batch now, whatever the view's size, and returns
 // once it ran: the overflow guard's retry rides it when the provider
 // refused the context as too large, and must send the merged view, not the
@@ -317,13 +324,30 @@ func (b *memTree) RebuildQueues() {
 func (b *memTree) MergeOnce() {
 	ack := make(chan struct{})
 	select {
-	case b.force <- ack:
+	case b.force <- compactReq{done: ack}:
 	case <-b.ctx.Done():
 		return
 	}
 	select {
 	case <-ack:
 	case <-b.ctx.Done():
+	}
+}
+
+// Compact merges the whole view down to its floor now and reports the bytes
+// the batch saved, -1 when the builder is closing.
+func (b *memTree) Compact() int {
+	req := compactReq{done: make(chan struct{}), merged: new(int)}
+	select {
+	case b.force <- req:
+	case <-b.ctx.Done():
+		return -1
+	}
+	select {
+	case <-req.done:
+		return *req.merged
+	case <-b.ctx.Done():
+		return -1
 	}
 }
 
@@ -422,9 +446,13 @@ func (b *memTree) run() {
 			if err := b.rebuild(); err != nil {
 				b.h.Log.Error("memtree rebuild failed", "origin", "agent", "error", err)
 			}
-		case ack := <-b.force:
+		case req := <-b.force:
+			before := b.viewBytes
 			b.batch(true)
-			close(ack)
+			if req.merged != nil {
+				*req.merged = before - b.viewBytes
+			}
+			close(req.done)
 		case r := <-b.results:
 			b.apply(r)
 		case <-b.cool:
