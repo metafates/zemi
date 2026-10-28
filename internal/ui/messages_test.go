@@ -2,6 +2,9 @@ package ui
 
 import (
 	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -9,9 +12,12 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
+	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
 // TestUnitAt: a row whose own anchor is not drawn belongs to the nearest unit
@@ -39,6 +45,58 @@ func TestUnitAt(t *testing.T) {
 
 // banded reports whether a composed row carries the picker's band.
 func banded(s hostapi.Segment) bool { return s.Fill == hostapi.FillBand }
+
+// TestMessagesHomeLoadsPages: home at the top of the list loads the pages the
+// window shed, the way a page-up does, so the log's start is reachable from a
+// fresh /messages without walking up row by row.
+func TestMessagesHomeLoadsPages(t *testing.T) {
+	t.Parallel()
+	log := slog.New(slog.DiscardHandler)
+	dirs := config.Dirs{StateHome: resolved(t, t.TempDir()), DataHome: resolved(t, t.TempDir()), ProjectDir: t.TempDir()}
+	if err := os.MkdirAll(filepath.Join(dirs.ProjectDir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root, err := filepath.EvalSymlinks(dirs.ProjectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, seed, err := store.OpenForDirs(dirs.StateHome, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 1100 {
+		if _, err := seed.AppendLog(store.KindUser, fmt.Sprintf("message %d", i), "", "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := seed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, cfg := tempHome(t)
+	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: cfg, Origin: lua.OriginUser}}, RuntimeFS: zemiruntime.FS, Clock: tipClock})
+	host := hostapi.NewHost(rt, log, config.NewStore(), config.Dirs{ConfigHome: cfg, DataHome: dirs.DataHome, StateHome: dirs.StateHome, ProjectDir: dirs.ProjectDir})
+	host.SetProjectTrusted(true)
+	app := NewApp(host, log)
+	host.SetUIHooks(app)
+	app.CaptureHooks()
+	if err := rt.Boot(t.Context(), []lua.BootStep{host.NamespacesStep(), lua.RequireStep("zemi.tui")}); err != nil {
+		t.Fatalf("boot: %v", err)
+	}
+	if err := host.OpenMessages(); err != nil {
+		t.Fatal(err)
+	}
+	for app.Pump() {
+	}
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome})  // to the first row
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome}) // held there, so it loads
+	o := app.overlays[len(app.overlays)-1].o
+	if o.Items[0].Section != "Earlier" {
+		t.Fatalf("home loaded %d rows, first section %q", len(o.Items), o.Items[0].Section)
+	}
+	if len(o.Items) != len(host.Session().Transcript)+100 {
+		t.Fatalf("the extended list holds %d rows", len(o.Items))
+	}
+}
 
 // bandedChatRows is the text of the chat rows the picker's message is banded
 // on, as the last frame drew them.
