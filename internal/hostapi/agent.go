@@ -1350,7 +1350,7 @@ func billedInput(u fantasy.Usage) int64 {
 // stat. Calls still running or waiting stay live, so a flush never settles
 // one early or draws it twice. Both change under ag.mu, which liveView reads
 // them under, so no frame draws a row twice or not at all (ag.mu held).
-func (h *Host) flushOutput(stat TurnStat) {
+func (h *Host) flushOutput(stat TurnStat) int {
 	ag := h.agents
 	ag.endThinking()
 	var rows []ChatMessage
@@ -1376,6 +1376,7 @@ func (h *Host) flushOutput(stat TurnStat) {
 	h.appendTranscript(rows...)
 	h.stampLogSeqs()
 	h.refreshMessagesFrom(h.pickerTranscriptLocked()) // the picker shows a row as it settles
+	return len(rows)
 }
 
 // joinReasoning appends a late reasoning chunk to the row the thought it

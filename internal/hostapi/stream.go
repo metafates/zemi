@@ -247,7 +247,20 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 			ag.tools[i].Status, ag.tools[i].Diff = map[bool]CallStatus{true: CallStopped, false: CallErr}[errors.Is(err, context.Canceled)], ""
 		}
 	}
-	h.flushOutput(stat)
+	n := h.flushOutput(stat)
+	// a dead turn's flush never reaches the log: the interrupted step's
+	// OnStepFinish is gone, so no log row will name these - the pairing
+	// cursor consumes them here, or it sits on the orphan and every later
+	// row of the window stays unnamed (zoom's target lost) until a reset
+	if err != nil && !hold && n > 0 {
+		h.tMu.Lock()
+		if at := len(h.session.Transcript) - n; at >= h.stampRow {
+			// earlier steps' rows are written by the time their step ends,
+			// so the cursor rides just behind the tail it must jump past
+			h.stampRow = len(h.session.Transcript)
+		}
+		h.tMu.Unlock()
+	}
 	thought := ag.turnThought
 	ag.mu.Unlock()
 	h.refresh()
