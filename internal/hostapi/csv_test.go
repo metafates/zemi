@@ -74,3 +74,30 @@ func TestCSVDecodeEdges(t *testing.T) {
 		}
 	}
 }
+
+// TestCSVOptions: the options table reaches the reader and the writer - a
+// semicolon report round-trips, a comment line separates nothing, and a
+// crlf writer pairs with a crlf read.
+func TestCSVOptions(t *testing.T) {
+	text := csvEncodeOpts([][]string{{"name", "age"}, {"ada", "36"}}, ';', true)
+	if text != "name;age\r\nada;36\r\n" {
+		t.Fatalf("encode = %q", text)
+	}
+	rows, err := csvDecodeOpts(text, ';', 0, false, true)
+	if err != nil || len(rows) != 2 || rows[1][1] != "36" {
+		t.Fatalf("decode = %v, %v", rows, err)
+	}
+	// a comment line separates nothing and leading spaces stay when asked
+	rows, err = csvDecodeOpts("# a note\nname; 36\n", ';', '#', false, true)
+	if err != nil || len(rows) != 1 || rows[0][1] != " 36" {
+		t.Fatalf("commented decode = %v, %v", rows, err)
+	}
+	rows, err = csvDecodeOpts("name;36\n", ';', 0, true, true)
+	if err != nil || rows[0][1] != "36" {
+		t.Fatalf("trimmed decode = %v, %v", rows, err)
+	}
+	// strict quotes turn the lenient read into an error
+	if _, err = csvDecodeOpts("ab\"c\n", ',', 0, false, false); err == nil {
+		t.Error("a bare quote decoded with lazy quotes off")
+	}
+}

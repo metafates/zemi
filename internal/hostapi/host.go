@@ -2468,6 +2468,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.workflow", h.workflowNamespace(L), nil},
 		{"zemi.json", h.jsonNamespace(L), nil},
 		{"zemi.csv", h.csvNamespace(L), nil},
+		{"zemi.yaml", h.yamlNamespace(L), nil},
 		{"zemi.composer", h.composerNamespace(L), nil},
 		{"zemi.mcp", h.mcpNamespace(L), nil},
 		{"zemi.lsp", h.lspNamespace(L), nil},
@@ -2483,7 +2484,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.150.0"))
+	api.RawSetString("version", glua.LString("0.151.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

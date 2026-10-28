@@ -15,7 +15,9 @@ import (
 // RFC 4180 text and decode text back, the round trip a report or a handoff
 // to another tool takes. Both sides are encoding/csv, so the rules are the
 // standard ones: quoted fields keep their commas and newlines whole, and a
-// quote beside text reads as text.
+// quote beside text reads as text. Both calls take an optional options
+// table: encode speaks comma and use_crlf, decode speaks comma, comment,
+// trim_leading_space and lazy_quotes.
 func (h *Host) csvNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("encode", L.NewFunction(func(L *glua.LState) int {
@@ -23,11 +25,25 @@ func (h *Host) csvNamespace(L *glua.LState) *glua.LTable {
 		if err != nil {
 			L.RaiseError("zemi.csv.encode: %v", err)
 		}
-		L.Push(glua.LString(csvEncode(rows)))
+		o := codecOpts(L)
+		L.Push(glua.LString(csvEncodeOpts(rows, optRune(L, o, "comma", ","), optBool(L, o, "use_crlf", false))))
 		return 1
 	}))
 	tb.RawSetString("decode", L.NewFunction(func(L *glua.LState) int {
-		rows, err := csvDecode(L.CheckString(1))
+		o := codecOpts(L)
+		var comment rune
+		if s := optString(L, o, "comment", ""); s != "" {
+			if r := []rune(s); len(r) == 1 {
+				comment = r[0]
+			} else {
+				L.RaiseError("comment is %q, want one character", s)
+			}
+		}
+		rows, err := csvDecodeOpts(L.CheckString(1),
+			optRune(L, o, "comma", ","),
+			comment,
+			optBool(L, o, "trim_leading_space", false),
+			optBool(L, o, "lazy_quotes", true))
 		if err != nil {
 			return luaResult(L, err)
 		}
@@ -80,12 +96,18 @@ func luaNumberString(n glua.LNumber) string {
 	return strconv.FormatFloat(float64(n), 'g', -1, 64)
 }
 
-// csvEncode writes the rows as encoding/csv does: a field carrying a
-// separator, a quote, a leading space or a newline is quoted, and a quote
-// inside doubles.
+// csvEncode writes the rows as encoding/csv writes them: the separator
+// defaults to a comma and rows end in a newline.
 func csvEncode(rows [][]string) string {
+	return csvEncodeOpts(rows, ',', false)
+}
+
+// csvEncodeOpts is csvEncode with the writer's settings: the delimiter and
+// whether rows end in a carriage return and newline.
+func csvEncodeOpts(rows [][]string, comma rune, useCRLF bool) string {
 	var b strings.Builder
 	w := csv.NewWriter(&b)
+	w.Comma, w.UseCRLF = comma, useCRLF
 	_ = w.WriteAll(rows) // an in-memory writer cannot fail the write
 	return b.String()
 }
@@ -95,8 +117,16 @@ func csvEncode(rows [][]string) string {
 // newline ends the last row. A blank line separates nothing: the reader
 // skips it.
 func csvDecode(text string) ([][]string, error) {
+	return csvDecodeOpts(text, ',', 0, false, true)
+}
+
+// csvDecodeOpts reads the text with the reader's settings: the delimiter,
+// the comment rune (0 for none), whether leading spaces are trimmed, and
+// whether a quote beside text reads as text.
+func csvDecodeOpts(text string, comma, comment rune, trimLeadingSpace, lazyQuotes bool) ([][]string, error) {
 	r := csv.NewReader(strings.NewReader(text))
+	r.Comma, r.Comment = comma, comment
 	r.FieldsPerRecord = -1 // rows of one report may vary in shape
-	r.LazyQuotes = true
+	r.TrimLeadingSpace, r.LazyQuotes = trimLeadingSpace, lazyQuotes
 	return r.ReadAll()
 }

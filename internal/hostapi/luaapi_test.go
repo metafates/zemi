@@ -32,6 +32,25 @@ func TestLuaAPIAdditions(t *testing.T) {
 		local v, err = zemi.json.decode("{bad")
 		assert(v == nil and err ~= nil, "decode failure returns nil, err")
 
+		local pretty = zemi.json.encode({ a = 1 }, { indent = "  " })
+		assert(pretty == '{\n  "a": 1\n}', "json indent: " .. tostring(pretty))
+		local dup, derr = zemi.json.decode('{"a":1,"a":2}', { allow_duplicate_names = true })
+		assert(dup ~= nil and derr == nil and dup.a == 2, "json duplicate names")
+		local dup2, duperr = zemi.json.decode('{"a":1,"a":2}')
+		assert(dup2 == nil and duperr ~= nil, "json duplicates error by default")
+
+		local y = zemi.yaml.decode(zemi.yaml.encode({ a = { 1, 2 }, b = "x" }))
+		assert(y.a[2] == 2 and y.b == "x", "yaml round trip")
+		local ytxt = zemi.yaml.encode({ a = "x", list = { 1, 2 } }, { indent = 2, indent_sequences = true })
+		assert(ytxt:find("list:", 1, true) and ytxt:find("- 2", 1, true), "yaml encode: " .. tostring(ytxt))
+		local ys, yerr = zemi.yaml.decode("a: 1\nb: [x, y]\n")
+		assert(ys ~= nil and yerr == nil and ys.b[2] == "y", "yaml decode: " .. tostring(yerr))
+		local ys2, yerr2 = zemi.yaml.decode("a: {x: 1}\n", { strict = true })
+		assert(ys2 ~= nil and yerr2 == nil, "yaml strict decode: " .. tostring(yerr2))
+
+		local semi = zemi.csv.decode("a;b\n", { comma = ";" })
+		assert(semi[1][2] == "b", "csv comma option")
+
 		local c = zemi.composer.get()
 		assert(c.text == "draft" and c.cursor == 3, "composer snapshot")
 

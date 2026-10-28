@@ -131,6 +131,10 @@ func fromGo(L *lua.LState, v any, depth int, seen map[uintptr]struct{}) lua.LVal
 		return lua.LNumber(t)
 	case int64:
 		return lua.LNumber(t)
+	case uint:
+		return lua.LNumber(t)
+	case uint64:
+		return lua.LNumber(t)
 	case float64:
 		return lua.LNumber(t)
 	case float32:
@@ -146,6 +150,12 @@ func fromGo(L *lua.LState, v any, depth int, seen map[uintptr]struct{}) lua.LVal
 		tb := L.CreateTable(len(t), 0)
 		for _, item := range t {
 			tb.Append(fromGo(L, item, depth+1, seen))
+		}
+		return tb
+	case [][]string:
+		tb := L.CreateTable(len(t), 0)
+		for _, row := range t {
+			tb.Append(fromGo(L, row, depth+1, seen))
 		}
 		return tb
 	case map[string]any:
