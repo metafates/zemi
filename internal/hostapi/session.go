@@ -292,7 +292,11 @@ func (h *Host) SyncChat() {
 				}
 			}
 		}
-		tr := h.session.Transcript
+		// Session() hands out snapshots of this array under a
+		// never-written-in-place contract, and an insert lands mid-array
+		// whenever a foreign row's seq sorts before the stamped tail: build
+		// the spliced slice fresh, the way a whole replacement does
+		tr := slices.Clone(h.session.Transcript)
 		for _, row := range foreign {
 			// splice at the row's place in the log, so the window draws the
 			// order a restart reads

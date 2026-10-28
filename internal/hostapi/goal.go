@@ -117,18 +117,18 @@ func (h *Host) storeGoal(g *Goal) {
 
 // unstoreGoal drops the kv row only while it still names the goal this
 // window ran: a stale copy must not delete a row the writer's replacement
-// wrote after this window's copy went old.
+// wrote after this window's copy went old. The check and the delete are one
+// transaction, so a re-set landing between them keeps its row.
 func (h *Host) unstoreGoal(g *Goal) {
 	if h.DB == nil {
 		return
 	}
-	if raw, err := h.DB.GetKV(goalKV); err == nil {
+	if _, err := h.DB.DelKVIf(goalKV, func(raw string) bool {
 		var row Goal
-		if json.Unmarshal([]byte(raw), &row) == nil && (row.SetAt != g.SetAt || row.Condition != g.Condition) {
-			return
-		}
+		return json.Unmarshal([]byte(raw), &row) == nil && row.SetAt == g.SetAt && row.Condition == g.Condition
+	}); err != nil {
+		h.Log.Warn("goal row not cleared", "origin", "goal", "error", err)
 	}
-	h.storeGoal(nil)
 }
 
 // SetGoal runs /goal: alone it shows the goal, "stop" drops it, and a

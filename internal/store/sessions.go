@@ -260,6 +260,32 @@ func (s *DB) DelKV(key string) (bool, error) {
 	return s.changed(`DELETE FROM kv WHERE key = ?`, key)
 }
 
+// DelKVIf drops the key only while its value still satisfies want, the check
+// and the delete in one transaction, so a writer re-setting the key between
+// them keeps its write.
+func (s *DB) DelKVIf(key string, want func(raw string) bool) (bool, error) {
+	deleted := false
+	err := s.inTx(func(tx *sql.Tx) error {
+		var raw string
+		err := tx.QueryRow(`SELECT value_json FROM kv WHERE key = ?`, key).Scan(&raw)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !want(raw) {
+			return nil
+		}
+		if _, err := tx.Exec(`DELETE FROM kv WHERE key = ?`, key); err != nil {
+			return err
+		}
+		deleted = true
+		return nil
+	})
+	return deleted, err
+}
+
 // KeysKV lists the keys with a prefix, sorted.
 func (s *DB) KeysKV(prefix string) ([]string, error) {
 	rows, err := s.db.Query(`SELECT key FROM kv WHERE key LIKE ? ESCAPE '\' ORDER BY key`, likePrefix(prefix))
