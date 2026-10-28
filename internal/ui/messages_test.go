@@ -999,9 +999,9 @@ func TestMessagesRail(t *testing.T) {
 	}
 	top := func() *overlayState { return &app.overlays[len(app.overlays)-1] }
 	frame := func() string { return ansi.Strip(app.Frame()) }
-	// folded, the run is its digest alone: what it counted, then the first
-	// call's about; the later calls' labels stay behind the fold
-	if !strings.Contains(frame(), "1 file, 1 pattern, 1 command · read a") || strings.Contains(frame(), "find Parse") {
+	// folded, the run is its digest alone: what it counted, each family of
+	// one naming its call; the later calls' labels stay behind the fold
+	if !strings.Contains(frame(), "1 file: read a, 1 pattern: find Parse, 1 command: run the tests") {
 		t.Fatalf("the settled run is not folded:\n%s", frame())
 	}
 	if err := host.OpenMessages(); err != nil {
@@ -1076,7 +1076,7 @@ func TestMessagesRail(t *testing.T) {
 		t.Fatalf("a closing rail: rail %d, closing %q, %d overlays", app.rail, app.railClose, len(app.overlays))
 	}
 	pump()
-	if strings.Contains(frame(), "find Parse") {
+	if strings.Contains(frame(), "│ ✓") {
 		t.Fatalf("the run stayed open:\n%s", frame())
 	}
 	if got := bandedChatRows(app); len(got) != 1 || !strings.HasPrefix(got[0], "· ") {
@@ -1093,7 +1093,7 @@ func TestMessagesRail(t *testing.T) {
 	if n := len(app.overlays); n != 0 {
 		t.Fatalf("esc on the rail left %d overlays", n)
 	}
-	if app.rail != 0 || strings.Contains(frame(), "find Parse") {
+	if app.rail != 0 || strings.Contains(frame(), "│ ✓") {
 		t.Fatalf("rail %d, the run still open:\n%s", app.rail, frame())
 	}
 }

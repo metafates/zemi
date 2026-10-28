@@ -240,14 +240,14 @@ function M.looks(t) return counted(t) and (t.diff or "") == "" end
 ---@param verb boolean? Lead each part with its family's verb.
 ---@return string
 function M.counts(calls, commands, verb)
-	---@type string[], table<string, integer>, table<string, { [1]: string, [2]: string?, [3]: string? }>
-	local order, n, c = {}, {}, {}
+	---@type string[], table<string, integer>, table<string, { [1]: string, [2]: string?, [3]: string? }>, table<string, zemi.TranscriptRow|zemi.ToolCall>
+	local order, n, c, first = {}, {}, {}, {}
 	for _, t in ipairs(calls) do
 		local k = assert(M.family(M.tool(t)))
 		local key = k[2] or k[1]
 		if not n[key] then
 			order[#order + 1] = key
-			n[key], c[key] = 0, k
+			n[key], c[key], first[key] = 0, k, t
 		end
 		n[key] = n[key] + 1
 	end
@@ -261,6 +261,18 @@ function M.counts(calls, commands, verb)
 		if commands and k == M.COUNT.shell then
 			ran = part .. ": " .. table.concat(commands, ", ")
 		else
+			-- a family of one names its call, as a lone rail row would: a
+			-- count over it would hide the thing it touched
+			if n[key] == 1 and k[2] then
+				local t = first[key]
+				local name = nil
+				if (t.label or "") ~= "" then
+					name = t.label
+				elseif M.tool(t) ~= "shell" and (t.text or "") ~= "" then
+					name = t.text
+				end
+				if name then part = part .. ": " .. name end
+			end
 			parts[#parts + 1] = part
 		end
 	end
@@ -322,19 +334,18 @@ function M.digest(rows, first, last, cwd, home)
 				commands[#commands + 1] = M.relpath(m.text or "", cwd or "", home or ""):gsub("%s+", " ")
 			end
 		end
+		-- counts names a family of one itself: a count over it would hide
+		-- the thing it touched, as a rail row over a lone call does
 		parts[#parts + 1] = M.counts(calls, #commands > 0 and commands or nil)
-		local about = calls[1].label or ""
-		if about == "" and #calls == 1 and #commands == 0 then
-			-- a lone call that names a thing (a file, a pattern) says which:
-			-- a count over it would hide it, as a rail row over a lone call does
-			local k = M.family(M.tool(calls[1]))
-			if k and k[2] then about = calls[1].text or "" end
-		end
-		if about ~= "" then parts[#parts + 1] = about end
 	end
 	if #failed > 0 then
 		if #failed == 1 and #calls == 0 then
-			parts[#parts + 1] = M.title(M.tool(failed[1])) .. " failed"
+			local name = M.title(M.tool(failed[1]))
+			if (failed[1].text or "") ~= "" then
+				parts[#parts + 1] = name .. " failed: " .. failed[1].text
+			else
+				parts[#parts + 1] = name .. " failed"
+			end
 		else
 			parts[#parts + 1] = M.count(#failed, "failed call", "failed calls")
 		end

@@ -321,7 +321,7 @@ func TestAgentViewFolds(t *testing.T) {
 	rows := func() []string { return chatRows(t, app, 98) }
 	rows() // the first render forgets what was opened before it
 	closed := rows()
-	if !slices.Contains(closed, "· 1 file · main.go") || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
+	if !slices.Contains(closed, "· 1 file: main.go") || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
 		t.Fatalf("the viewed run does not fold:\n%s", strings.Join(closed, "\n"))
 	}
 	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "turn:1"}); err != nil {
@@ -1904,7 +1904,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 	}
 	// the reply closes that run as it streams, before its row settles
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Text: "now the next one"})
-	closed := []string{"▌ look around", "· 2 files, 1 command, 1 edit · thought 9.6s", "now the next one"}
+	closed := []string{"▌ look around", "· 2 files, 1 command: list the data, 1 edit: a.go · thought 9.6s", "now the next one"}
 	if got := rows(); !slices.Equal(got, closed) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}
@@ -1919,7 +1919,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}
 	host.SeedStream(hostapi.StreamSnapshot{})
-	if got, want := rows(), append(closed[:3:3], "· 1 file · c.go"); !slices.Equal(got, want) {
+	if got, want := rows(), append(closed[:3:3], "· 1 file: c.go"); !slices.Equal(got, want) {
 		t.Fatalf("ended turn:\n%s", strings.Join(got, "\n"))
 	}
 }
@@ -2322,7 +2322,7 @@ func TestCallRowClickIDs(t *testing.T) {
 		return click
 	}
 	for text, want := range map[string]string{
-		"· 1 file · b.go":         "turn:2",
+		"· 1 file: b.go":         "turn:2",
 		"│ ✻ thought 6.0s":        "call:5",
 		"│ ✓ edit /w/a.go +1 -1":  "call:-1",
 		"│ ✓ read 2 files":        "step:-2",
@@ -2491,13 +2491,16 @@ func TestDigestCountsEveryFamily(t *testing.T) {
 		rows  []hostapi.ChatMessage // when set, these ride instead of the tools
 	}{
 		{name: "mcp", tools: []string{"mcp_gitlab_get_commit", "mcp_gitlab_list_issues"}, want: "2 gitlab tools"},
-		{name: "agent", tools: []string{"agent"}, want: "1 agent run · x"},
-		{name: "workflow", tools: []string{"workflow"}, want: "1 workflow · x"},
-		{name: "lua", tools: []string{"lua"}, want: "1 script · x"},
-		{name: "tool_search", tools: []string{"tool_search"}, want: "1 tool · x"},
-		{name: "mixed names the unlabelled command", want: "1 file, 1 command: make", rows: []hostapi.ChatMessage{
+		{name: "agent", tools: []string{"agent"}, want: "1 agent run: x"},
+		{name: "workflow", tools: []string{"workflow"}, want: "1 workflow: x"},
+		{name: "lua", tools: []string{"lua"}, want: "1 script: x"},
+		{name: "tool_search", tools: []string{"tool_search"}, want: "1 tool: x"},
+		{name: "mixed names the unlabelled command", want: "1 file: a.go, 1 command: make", rows: []hostapi.ChatMessage{
 			{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"},
 			{Role: "assistant", Kind: "tool", Tool: "shell", Text: "make", Status: "ok"},
+		}},
+		{name: "a lone failed call names its target", want: "read failed: gone.txt", rows: []hostapi.ChatMessage{
+			{Role: "assistant", Kind: "tool", Tool: "read", Text: "gone.txt", Status: "err"},
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
