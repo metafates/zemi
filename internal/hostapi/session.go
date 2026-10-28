@@ -525,7 +525,18 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 			}
 			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
 			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "[" + meta.Name + "] " + firstLine(row.Text), Run: meta.Run, Seq: row.Seq})
-		case store.KindEcho, store.KindNote:
+		case store.KindEcho:
+		case store.KindNote:
+			// a chapter mark the model reads, so the chat shows where; the
+			// wipe's own system note stays off the transcript
+			var meta struct {
+				System bool `json:"system"`
+			}
+			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
+			if meta.System {
+				continue
+			}
+			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(row.Text), Seq: row.Seq})
 		}
 	}
 	return tr

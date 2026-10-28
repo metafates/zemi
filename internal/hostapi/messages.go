@@ -444,21 +444,15 @@ func turnSection(p pickTr, t msgTurn) string {
 	if m := p.at(t.first); m.SentAt > 0 {
 		desc = append(desc, time.UnixMilli(m.SentAt).Format(ClockLayout))
 	}
-	replies, steps := 0, 0
+	replies := 0
 	for _, idx := range t.rows[1:] {
 		r := p.at(idx)
-		switch {
-		case r.Kind == "" && strings.TrimSpace(r.Text) != "":
+		if r.Kind == "" && strings.TrimSpace(r.Text) != "" {
 			replies++
-		case r.Kind == RowTool || r.Kind == RowReasoning:
-			steps++
 		}
 	}
 	if replies > 0 {
 		desc = append(desc, pluralCount(replies, "reply", "replies"))
-	}
-	if steps > 0 {
-		desc = append(desc, pluralCount(steps, "step", "steps"))
 	}
 	if len(desc) == 0 {
 		return "Turn " + strconv.Itoa(t.n)

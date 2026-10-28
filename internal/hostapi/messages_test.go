@@ -64,7 +64,7 @@ func TestMessagesList(t *testing.T) {
 	for _, it := range o.Items {
 		got = append(got, row{it.Text, it.Section, string(it.Mark), it.Run, it.Anchor})
 	}
-	turn1, turn2 := "Turn 1 · "+clock+" · 1 reply · 2 steps", "Turn 2 · "+clock+" · 1 reply"
+	turn1, turn2 := "Turn 1 · "+clock+" · 1 reply", "Turn 2 · "+clock+" · 1 reply"
 	want := []row{
 		{"ping", turn1, "", "messages view 1", 1},
 		{"2 steps", turn1, "", "messages rail 2", 2},

@@ -93,6 +93,13 @@ func (c *chatLog) Note(text string) error {
 	return err
 }
 
+// systemNote records a note the chat's transcript draws nothing of: the
+// wipe's trace, reachable by zoom and the picker alone.
+func (c *chatLog) systemNote(text string) error {
+	_, _, err := c.append(store.KindNote, text, `{"system":true}`, "")
+	return err
+}
+
 // Thought logs one settled reasoning stretch: its text and the wall time its
 // flush measured, which the rebuilt row and the run digest read back.
 func (c *chatLog) Thought(text string, ms int64) error {
