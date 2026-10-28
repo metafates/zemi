@@ -149,7 +149,7 @@ func TestHealthModelRows(t *testing.T) {
 		{"no provider", "providers", ``, x, "warn", "none usable"},
 		{"a builtin waits for its key", "providers", anthropic, x, "ok", "a; 1 builtin without a key exported"},
 		{"keyless", "providers", `zemi.provider.add({ id = "d", kind = "openai_compat", base_url = "http://x", models = { { id = "m" } } })`, nil, "ok", "d (no key)"},
-		{"no model", "model", ``, openai, "error", "no model yet: export OPENAI_API_KEY and start zemi again, or add a provider to init.lua"},
+		{"no model", "model", ``, openai, "error", "no model yet: export OPENAI_API_KEY and start zemi again, or press enter on a provider in /model to paste its key"},
 		{"unknown provider", "model", `zemi.config.set("models.default", "nobody/m")`, openai, "error", `provider "nobody" is not registered: add a provider to `},
 		{"builtin without key", "model", `zemi.config.set("models.default", "openai/gpt-5")`, openai, "error", `builtin provider "openai" needs its key: export OPENAI_API_KEY and start zemi again`},
 		{"empty key", "model", `zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "m" } } })`, openai, "error", "a: api_key is empty in "},
