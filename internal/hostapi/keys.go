@@ -83,7 +83,7 @@ func missingKeyRow(m agent.MissingKey) OverlayItem {
 // the ones waiting under their own section. provider, when named, is the row
 // a rebuild selects.
 func (h *Host) keysOverlay(provider string) Overlay {
-	o := Overlay{ID: "keys", Title: "Keys", Origin: lua.OriginBuiltin, Empty: "No provider yet: " + h.addProvider() + "."}
+	o := Overlay{ID: "keys", Title: "API keys", Origin: lua.OriginBuiltin, Empty: "No provider yet: " + h.addProvider() + "."}
 	for _, s := range h.Providers.List() {
 		o.Items = append(o.Items, h.keyRow(s))
 	}

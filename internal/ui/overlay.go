@@ -80,7 +80,15 @@ type listFilter struct {
 
 func (f *listFilter) apply() {
 	f.visible, f.match = f.visible[:0], f.match[:0]
-	for _, h := range hostapi.Match(f.query, f.labels, f.texts) {
+	// the palette's order: a name match leads a description match, so Enter
+	// runs what the driver typed, not the alphabet's first hit. An empty
+	// query keeps the list's own order: with every score equal the rank
+	// would sort it by label length instead
+	hits := hostapi.Match(f.query, f.labels, f.texts)
+	if f.query != "" {
+		hits = hostapi.Rank(hits, f.labels, len(f.labels))
+	}
+	for _, h := range hits {
 		f.visible, f.match = append(f.visible, h.Index), append(f.match, h.Pos)
 	}
 	f.selected = max(0, min(f.selected, len(f.visible)-1))
