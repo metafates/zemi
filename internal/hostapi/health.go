@@ -475,7 +475,12 @@ func (h *Host) goHealthRows() []HealthRow {
 	default:
 		var parts []string
 		for _, st := range slices.Sorted(maps.Keys(counts)) {
-			parts = append(parts, fmt.Sprintf("%d %s", counts[st], st))
+			n := counts[st]
+			part := fmt.Sprintf("%d %s", n, st)
+			if st == StatusSignIn { // the phrase agrees with its count
+				part = fmt.Sprintf("%d %s sign-in", n, Plural(n, "needs", "need"))
+			}
+			parts = append(parts, part)
 		}
 		level := HealthWarn
 		if counts[StatusReady]+counts[StatusStarting] == len(servers) {

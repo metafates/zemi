@@ -88,9 +88,9 @@ func (c *chatLog) Agent(text string) error {
 }
 
 // Note logs a memory from before the chat: a chapter mark.
-func (c *chatLog) Note(text string) error {
-	_, _, err := c.append(store.KindNote, text, "", "")
-	return err
+func (c *chatLog) Note(text string) (int64, error) {
+	first, _, err := c.append(store.KindNote, text, "", "")
+	return first, err
 }
 
 // systemNote records a note the chat's transcript draws nothing of: the
@@ -712,5 +712,15 @@ func (h *Host) Note(text string) error {
 	if h.chat == nil {
 		return errors.New("no chat log in this boot")
 	}
-	return h.chat.Note(strings.TrimSpace(text))
+	text = strings.TrimSpace(text)
+	first, err := h.chat.Note(text)
+	if err != nil {
+		return err
+	}
+	// the chapter mark joins the live transcript at once; a rebuilt window
+	// reads the same row from the log
+	if first >= 0 {
+		h.appendTranscript(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(text), Seq: first})
+	}
+	return nil
 }

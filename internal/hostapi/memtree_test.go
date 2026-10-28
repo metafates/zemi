@@ -550,7 +550,7 @@ func TestChatLogKinds(t *testing.T) {
 	if err := cl.Work("run1", "Scout", "[Scout] done"); err != nil {
 		t.Fatal(err)
 	}
-	if err := cl.Note("before the chat"); err != nil {
+	if _, err := cl.Note("before the chat"); err != nil {
 		t.Fatal(err)
 	}
 	if err := cl.Tool("shell", `{"cmd":"make check"}`, ""); err != nil {
