@@ -10,8 +10,10 @@ usage: zemi-lab [-n name] command [args]
 
   up [-x W -y H] [--theme T] [--asks] [--untrusted]
                      build, throwaway tree, fake model, TUI, wait for boot
-  peer [-x W -y H]   a second zemi on the same tree and store: what two
-                     windows on one project see, for sync and presence work
+  peer [-x W -y H] [NAME]
+                     another zemi on the same tree and store: what windows on
+                     one project see, for sync and presence work; a third
+                     window takes a name (default peer)
   -s main|peer       which window the drive commands act on
   prompt TEXT        clear a leftover draft, type TEXT, Enter, wait for idle
   type TEXT          literal text into the composer, no Enter
@@ -307,30 +309,31 @@ cmd_size() { [ $# -eq 2 ] || die "size: W H"; tmux -L "$SERVER" resize-window -t
 # the config and the fake model exactly as two real windows on one project
 # do. `-s peer` points the drive commands at it.
 cmd_peer() {
-	W=140 H=40
+	W=140 H=40 WIN=peer
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			-x) W=$2; shift 2 ;;
 			-y) H=$2; shift 2 ;;
-			*) die "peer: unknown flag $1" ;;
+			-*) die "peer: unknown flag $1" ;;
+			*) WIN=$1; shift ;;
 		esac
 	done
 	load
 	BIN=${ZEMI_BIN:-$REPO/bin/zemi}
 	case $BIN in /*) ;; *) BIN=$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN") ;; esac
 	[ -x "$BIN" ] || die "no zemi binary at $BIN"
-	tmux -L "$SERVER" has-session -t peer 2>/dev/null && die "the peer is already up (zemi-lab down reboots both)"
-	tmux -L "$SERVER" new-session -d -s peer -x "$W" -y "$H" -c "$TREE/proj" \
+	tmux -L "$SERVER" has-session -t "$WIN" 2>/dev/null && die "window '$WIN' is already up (zemi-lab down reboots all)"
+	tmux -L "$SERVER" new-session -d -s "$WIN" -x "$W" -y "$H" -c "$TREE/proj" \
 		"env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' '$DIR/zemi-safe' '$TREE' $LAB_TRUST" ||
 		die "tmux new-session failed"
 	i=0
 	while [ "$i" -lt 60 ]; do
-		case "$(tmux -L "$SERVER" capture-pane -t peer -p 2>/dev/null)" in *"Ask anything"*) break ;; esac
+		case "$(tmux -L "$SERVER" capture-pane -t "$WIN" -p 2>/dev/null)" in *"Ask anything"*) break ;; esac
 		i=$((i + 1))
 		sleep 0.5
 	done
-	[ "$i" -lt 60 ] || die "the peer did not boot in 30s"
-	say "peer up on the same store: drive it with zemi-lab -s peer prompt|cap|wait"
+	[ "$i" -lt 60 ] || die "window '$WIN' did not boot in 30s"
+	say "window $WIN up on the same store: drive it with zemi-lab -s $WIN prompt|cap|wait"
 }
 
 cmd_last() {
