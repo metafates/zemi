@@ -66,11 +66,17 @@ checks() {
     bad=$(sqlite3 "$db" "select count(*) from (select seq - lag(seq) over (order by seq) d from log) where d is not null and d != 1" 2>&1)
     [ "$bad" = "0" ] || { echo "  FAIL: log seq not dense: $bad"; fail=1; }
     # the supervisor sh and the zemi-safe wrapper both outlive a
-    # crash-looping zemi, so the alive check names the real process: the
-    # exec'd binary's argv is "<ZB> <tree> --trust", nothing else carries it
+    # crash-looping zemi, and the exec'd binary carries no argv (the tree
+    # rides the env), so the alive check names the pane's own terminal: a
+    # zemi process on it is the lab's
+    pane_tty=$(tmux -L z$NAME display -p -t $NAME '#{pane_tty}' 2>/dev/null)
+    pane_tty=${pane_tty#/dev/}
     ok=""
     for _ in 1 2 3 4 5; do
-        pgrep -f "$(basename "$ZB") $T" >/dev/null && { ok=1; break; }
+        if ps -eo tty=,comm= | awk -v tty="$pane_tty" '$1 == tty && $2 ~ /\/zemi$/ { found = 1 } END { exit !found }'; then
+            ok=1
+            break
+        fi
         sleep 1
     done
     [ -n "$ok" ] || { echo "  FAIL: the process is gone"; fail=1; }
