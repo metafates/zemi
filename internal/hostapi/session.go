@@ -376,7 +376,10 @@ func logRowMatches(row store.LogEntry, m ChatMessage) bool {
 		return m.Kind == RowShell && row.Text == m.Text
 	case store.KindWork:
 		return m.Kind == RowNotice // its text needs the row's meta; the kind is identity enough
-	default: // an echo or note: no transcript row carries their seq
+	case store.KindNote:
+		// the chapter mark the transcript carries: first line, as it draws
+		return m.Kind == RowNotice && firstLine(text) == strings.TrimSpace(m.Text)
+	default: // an echo: no transcript row carries its seq
 		return false
 	}
 }
