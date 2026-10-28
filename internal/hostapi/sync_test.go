@@ -1,8 +1,10 @@
 package hostapi
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -448,5 +450,45 @@ func TestLogRowsToolWithoutEcho(t *testing.T) {
 				t.Fatalf("the call drew %v, want %v", tr[0].Status, c.want)
 			}
 		})
+	}
+}
+
+// TestSyncChatLoadsAForeignGoal: a goal another window set joins a live
+// window's state on the tick, so the chain moves here once the writer's
+// heartbeat is gone instead of leaving the goal unowned; while the writer
+// lives, this window holds the row but does not run its chain.
+func TestSyncChatLoadsAForeignGoal(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a, _ := newWindow(t, state, proj)
+	b, _ := newWindow(t, state, proj)
+	peerHeartbeat(t, a)
+	peerHeartbeat(t, b)
+	if _, err := a.DB.AppendLog(kindUser, "the goal's message", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(Goal{Condition: "check is clean", SetAt: 0, Writer: a.origin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.DB.SetKV(goalKV, string(raw)); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := b.Goal(); ok {
+		t.Fatal("b holds the goal before any sync")
+	}
+	b.SyncChat()
+	g, ok := b.Goal()
+	if !ok || g.Condition != "check is clean" {
+		t.Fatalf("b's goal after the sync = %+v, want the foreign one loaded", g)
+	}
+	if b.goalMine(&g) {
+		t.Fatal("b runs the chain while the writer's heartbeat is fresh")
+	}
+	if err := os.Remove(a.peersPath); err != nil {
+		t.Fatal(err)
+	}
+	if !b.goalMine(&g) {
+		t.Fatal("b refuses the chain with the writer's heartbeat gone")
 	}
 }

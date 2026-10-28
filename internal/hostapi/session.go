@@ -227,6 +227,15 @@ func (h *Host) SyncChat() {
 			h.refresh()
 		}
 	}
+	// a goal another window set joins this window live, so the chain can
+	// move here once the writer's heartbeat is gone: goalMine decides at the
+	// check whether this window runs it
+	if _, ok := h.Goal(); !ok {
+		h.loadGoal()
+		if _, ok := h.Goal(); ok {
+			h.refresh()
+		}
+	}
 	h.tMu.Lock()
 	count, err := h.DB.LogCount()
 	if err != nil {
