@@ -100,7 +100,7 @@ func TestFailedTurnLeavesErrorRow(t *testing.T) {
 		call         string
 	}{
 		{errors.New("dial tcp: no route to host"), "Dial tcp: no route to host", "", "err"},
-		{context.Canceled, "Interrupted", "cancelled", "stopped"},
+		{context.Canceled, "Interrupted\nwhile read ran", "cancelled", "stopped"},
 	} {
 		sa.ToolCallStart("a", "glob", `{"pattern":"*"}`)
 		sa.ToolCallEnd("a", "glob", out("x.go"), "")

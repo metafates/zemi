@@ -51,22 +51,23 @@ const (
 var nargsSpecs = []NArgs{NArgsNone, NArgsOptional, NArgsSome, NArgsAny}
 
 // nargsOK validates a raw argument string against command name's nargs spec.
-// Attached text is no argument.
+// Attached text is no argument. A failed arity is a usage error, the kind a
+// warn toast answers - a driver's typo is not a recorded failure.
 func nargsOK(name string, nargs NArgs, args string) error {
 	typed, _ := agent.CutAttached(args)
 	fields := strings.Fields(typed)
 	switch nargs {
 	case NArgsNone:
 		if len(fields) != 0 {
-			return fmt.Errorf("/%s takes no arguments", name)
+			return Usagef("/%s takes no arguments", name)
 		}
 	case NArgsOptional:
 		if len(fields) > 1 {
-			return fmt.Errorf("/%s takes at most one argument", name)
+			return Usagef("/%s takes at most one argument", name)
 		}
 	case NArgsSome:
 		if len(fields) == 0 {
-			return fmt.Errorf("/%s requires an argument", name)
+			return Usagef("/%s requires an argument", name)
 		}
 	case NArgsAny:
 	}

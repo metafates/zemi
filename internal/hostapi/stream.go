@@ -231,7 +231,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	ag.holdOverflow, ag.holdImages, ag.holdCap = false, false, false
 	now := h.now()
 	model := h.turnModelID()
-	text, tools := ag.textBuf, ag.tools
+	text, live := ag.textBuf, ag.tools
 	// the reply row's stat carries the turn's whole thought: the live digest
 	// reads it the way the rebuilt window reads the log's row
 	stat := TurnStat{In: usage.InputTokens, Out: usage.OutputTokens, Ended: now.Unix(), Model: model, ThoughtMS: (ag.turnThought + ag.thought).Milliseconds()}
@@ -290,7 +290,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	}
 	ui := h.hooks()
 	if ui != nil {
-		stopped := errors.Is(err, context.Canceled) || text == "" && slices.ContainsFunc(tools, func(t StreamTool) bool { return t.Status == CallStopped })
+		stopped := errors.Is(err, context.Canceled) || text == "" && slices.ContainsFunc(live, func(t StreamTool) bool { return t.Status == CallStopped })
 		ui.TurnDone(h.friendlyError(err), stopped)
 	}
 	if err != nil {
@@ -300,6 +300,18 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		row := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: clipRunes(sanitize.String(h.errorRowText(err)), 400)}
 		if errors.Is(err, context.Canceled) {
 			row.Status = CallCancelled
+			// a call the interrupt cut off names itself here: its row never
+			// reached the log, so this is the only trace of what was running
+			for _, t := range live {
+				if t.Status != CallStopped {
+					continue
+				}
+				name := string(tools.ToolName(t.Name))
+				if t.Label != "" {
+					name += ": " + t.Label
+				}
+				row.Text = clipRunes(row.Text+"\nwhile "+name+" ran", 400)
+			}
 		}
 		if h.chat != nil {
 			if err := h.chat.Error(row.Text, row.Status == CallCancelled); err != nil {
