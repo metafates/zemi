@@ -15,7 +15,7 @@ manifest's `uses`) sit in the gate:
 - the vetoable `permission.request` event, once per action request: `{ decision = "deny", reason }`
   refuses, `{ decision = "ask", reason }` runs the ask path, nil runs;
 - `zemi.perm.ask({subject=, arg=, reason=, preview=})`, a plugin's own ask from a task, whose
-  handle's `:wait()` returns `{ answer = "allow" | "deny" | "told" }`.
+  handle's `:wait()` returns `{ decision = "allow" | "deny" | "told" }`.
 
 Both need the manifest's `perm` word: steering the gate is a declared capability, and enabling
 the plugin is the consent.
