@@ -119,11 +119,11 @@ func (a *App) updateCompletion() tea.Cmd {
 	}
 	f.reskill()
 	f.rematch()
+	a.repaths()
 	if _, _, ok := pathToken(f.token); ok {
 		if want := a.resolveDir(f.token); want != f.dirDir {
 			a.listDir(want)
 		}
-		a.repaths()
 	}
 	// Rescan on every open so files created since show up; the old list
 	// stays until the new one lands. A path-headed token asks the listing,
@@ -220,16 +220,26 @@ func (f *wordCompleter) reskill() {
 
 // pathToken splits a path-headed token into the directory the listing
 // answers, as typed without its quotes and always ending in its
-// separator, and the entry base the cursor narrows.
+// separator, and the entry base the cursor narrows. A head typed without
+// its separator - `~Downloads`, `..Docs` - still heads one: its letters
+// narrow the head's listing, like the letters after a slash narrow the
+// last one.
 func pathToken(token string) (dir, base string, ok bool) {
 	w := unquoteToken(token)
 	if !pathHeaded(w) {
 		return "", "", false
 	}
-	if i := strings.LastIndexByte(w, '/'); i >= 0 {
+	if i := strings.LastIndexByte(w, '/'); i > 0 {
 		return w[:i+1], w[i+1:], true
 	}
-	return w + "/", "", true
+	switch {
+	case strings.HasPrefix(w, "~"):
+		return "~/", w[1:], true
+	case strings.HasPrefix(w, ".."):
+		return "../", w[2:], true
+	default:
+		return "/", w[1:], true
+	}
 }
 
 // unquoteToken strips one wrapping quote pair: the opening quote, and the
@@ -251,10 +261,12 @@ func unquoteToken(t string) string {
 }
 
 // pathHeaded reports whether a word names a directory for the listing,
-// where a bare name is one of the corpus's files.
+// where a bare name is one of the corpus's files. A head spelled without
+// its separator - `~x`, `..x` - names one too; `.` alone does not, so a
+// hidden name still answers from the corpus.
 func pathHeaded(w string) bool {
-	return w == "~" || w == ".." || strings.HasPrefix(w, "~/") ||
-		strings.HasPrefix(w, "/") || strings.HasPrefix(w, "../") || strings.HasPrefix(w, "./")
+	return strings.HasPrefix(w, "~") || strings.HasPrefix(w, "..") ||
+		strings.HasPrefix(w, "/") || strings.HasPrefix(w, "./")
 }
 
 // resolveDir spells a token's directory out, where the listing keys its
@@ -327,10 +339,11 @@ func readDir(dir string) []string {
 }
 
 // repaths rebuilds the directory candidates for a path-headed token from
-// the listing the cache holds; a directory it does not hold leaves none.
-// The token's base narrows the entries fuzzily, like the corpus's files,
-// and a candidate joins the token's directory as typed, quote included,
-// so the user's frame survives the walk.
+// the listing the cache holds. It runs on every keystroke: a word that
+// stops being a path drops the rows a path left behind. The token's base
+// narrows the entries fuzzily, like the corpus's files, and a candidate
+// joins the token's directory as typed, quote included, so the user's
+// frame survives the walk.
 func (a *App) repaths() {
 	f := &a.completion
 	f.paths = f.paths[:0]

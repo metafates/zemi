@@ -556,8 +556,14 @@ func TestPathToken(t *testing.T) {
 	}{
 		{"~", "~/", "", true},
 		{"~/", "~/", "", true},
+		{"~Downloads", "~/", "Downloads", true},
+		{`"~Downloads`, "~/", "Downloads", true},
 		{"..", "../", "", true},
+		{"..Downloads", "../", "Downloads", true},
+		{"...", "../", ".", true},
 		{"/", "/", "", true},
+		{"/Users", "/", "Users", true},
+		{"./x", "./", "x", true},
 		{"~/Sub/a", "~/Sub/", "a", true},
 		{`"~/`, `~/`, "", true},
 		{"name", "", "", false},
@@ -566,6 +572,59 @@ func TestPathToken(t *testing.T) {
 		if dir != c.dir || base != c.base || ok != c.ok {
 			t.Errorf("pathToken(%q) = %q, %q, %v; want %q, %q, %v", c.token, dir, base, ok, c.dir, c.base, c.ok)
 		}
+	}
+}
+
+// TestCompletionNarrowsHome: a head typed without its separator - `@~`,
+// `@..` - keeps narrowing its directory's listing as the letters land,
+// and a word that stops being a path leaves no listing row behind.
+func TestCompletionNarrowsHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home) // os.UserHomeDir reads it; no t.Parallel beside it
+	for _, d := range []string{"Downloads", "Documents", filepath.Join("proj", "sub")} {
+		if err := os.MkdirAll(filepath.Join(home, d), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(home, "decoy.txt"), []byte("d"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app := newTestApp(t, filepath.Join(home, "proj"))
+	open := func(token string) {
+		app.composer.text, app.composer.cursor = token, len([]rune(token))
+		app.updateCompletion()
+	}
+	labels := func() []string {
+		out := make([]string, len(app.completion.paths))
+		for i, p := range app.completion.paths {
+			out[i] = p.label
+		}
+		return out
+	}
+	open("@~")
+	if got := labels(); !slices.Contains(got, "~/Downloads/") || !slices.Contains(got, "~/decoy.txt") {
+		t.Fatalf("home listing: %q", got)
+	}
+	open("@~Downloads")
+	if got := app.completion.paths; len(got) != 1 || got[0].label != "~/Downloads/" ||
+		!slices.Equal(got[0].match, []int{2, 3, 4, 5, 6, 7, 8, 9, 10}) {
+		t.Fatalf("home narrowing: %+v", got)
+	}
+	open(`@"~Down`)
+	if got := app.completion.paths; len(got) != 1 || got[0].label != `"~/Downloads/` {
+		t.Fatalf("quoted home narrowing: %+v", got)
+	}
+	open("@..")
+	if got := labels(); !slices.Contains(got, "../Downloads/") {
+		t.Fatalf("parent listing: %q", got)
+	}
+	open("@..Downloads")
+	if got := app.completion.paths; len(got) != 1 || got[0].label != "../Downloads/" {
+		t.Fatalf("parent narrowing: %+v", got)
+	}
+	open("@decoy")
+	if got := app.completion.paths; len(got) != 0 {
+		t.Fatalf("stale listing rows: %+v", got)
 	}
 }
 
