@@ -80,6 +80,11 @@ zemi.ui.widget.add({
 			if ag.checking_goal then state = "reading" end
 			---@type { [1]: zemi.Line, [2]: integer, [3]: integer }?
 			local tick = { plain(fmt.duration(ag.elapsed, true)), 5, 7 }
+			if ctx.interrupt_armed then
+				-- the number by the armed key is the window it still waits, not
+				-- the turn's clock, so the countdown reads as one
+				tick = { plain(fmt.duration(math.ceil(ctx.interrupt_in or 0), true)), 5, 7 }
+			end
 			if ag.retry then
 				state = "error"
 				local why = ag.retry.why ~= "" and " - " .. fmt.clip(ag.retry.why, 60) or ""

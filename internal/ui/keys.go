@@ -544,6 +544,14 @@ func (a *App) isArmed(key string) bool {
 	return a.armed.key == key && a.now().Before(a.armed.until)
 }
 
+// interruptIn is how long the interrupt arm still waits, 0 when it does not.
+func (a *App) interruptIn() float64 {
+	if !a.isArmed("esc") || a.armed.what != "interrupt" {
+		return 0
+	}
+	return a.armed.until.Sub(a.now()).Seconds()
+}
+
 // focusedNode is the layout node taking keys: the host's focus while the
 // last frame drew it, else "" (the composer).
 func (a *App) focusedNode() string {

@@ -1892,15 +1892,23 @@ func (h *Host) aside(ctx context.Context, text string) (string, error) {
 	ag.mu.Lock()
 	live := ag.runner
 	ag.mu.Unlock()
-	if live == nil {
+	// a settled turn left no runner: the conversation is its view, the same
+	// message the next send would carry, so the answer still reads the chat
+	var history []fantasy.Message
+	if live != nil {
+		history = live.Snapshot()
+	} else if msg, ok := h.viewMessage(); ok {
+		history = []fantasy.Message{msg}
+	} else {
 		return "", errNothingToAsk
 	}
-	history := live.Snapshot()
 	r, err := h.ensureRunner(h.mainTools())
 	if err != nil {
 		return "", err
 	}
-	r.Continue(live) // what live last sent decides which thinking still holds
+	if live != nil {
+		r.Continue(live) // what live last sent decides which thinking still holds
+	}
 	res, err := r.Aside(ctx, history, text)
 	if err != nil {
 		return "", err

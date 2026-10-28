@@ -286,7 +286,7 @@ function M.thought(secs) return secs >= 0.05 and "thought " .. M.duration(secs) 
 ---@return string
 function M.digest(rows, first, last)
 	---@type zemi.TranscriptRow[]
-	local calls = {}
+	local calls, failed = {}, {}
 	local secs, reasoned = 0, false
 	for i = first, last do
 		local m = rows[i]
@@ -295,6 +295,10 @@ function M.digest(rows, first, last)
 			reasoned = true
 		elseif digests(m) then
 			calls[#calls + 1] = m
+		elseif (m.kind or "") == "tool" and m.status == "err" then
+			-- a failed call leaves no count, so the digest says it did: the
+			-- model's reply repeating the error is otherwise the only trace
+			failed[#failed + 1] = m
 		end
 	end
 	-- the turn's thought, when the run drew no thought rows: logs written
@@ -319,6 +323,13 @@ function M.digest(rows, first, last)
 			if k and k[2] then about = calls[1].text or "" end
 		end
 		if about ~= "" then parts[#parts + 1] = about end
+	end
+	if #failed > 0 then
+		if #failed == 1 and #calls == 0 then
+			parts[#parts + 1] = M.title(M.tool(failed[1])) .. " failed"
+		else
+			parts[#parts + 1] = M.count(#failed, "failed call", "failed calls")
+		end
 	end
 	if secs >= 0.05 then parts[#parts + 1] = M.thought(secs) end
 	return table.concat(parts, " · ")

@@ -33,6 +33,9 @@ func (h *Host) RunShell(cmd string) {
 	h.GoSafe("shell", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), shellTimeout)
 		defer cancel()
+		// the working rule names the command and a double esc stops it, as
+		// every other wait the user watches does
+		defer h.Busy("! "+clipLine(cmd, 60), cancel)()
 		c := proc.CommandContext(ctx, "sh", "-c", cmd)
 		c.Dir = h.Dirs.ProjectDir
 		env := append(os.Environ(), proc.NonInteractiveEnv...)

@@ -400,9 +400,13 @@ func (h *Host) OpenUsage() error {
 		} else if pct >= 80 {
 			hl = ChromeWarn
 		}
+		pctText := strconv.Itoa(int(pct)) + "%"
+		if pct < 1 {
+			pctText = fmt.Sprintf("%.1f%%", pct) // a filled cell beside a rounded "0%" reads as a lie
+		}
 		section("Context")
 		rows = append(rows, append(append([]Segment{text("", "  ")}, bar(s.LastIn, s.CtxWindow, 32, hl)...),
-			text(ChromeValue, fmtTokens(s.LastIn)), text(ChromeHint, fmt.Sprintf(" of %s · %d%%", fmtTokens(s.CtxWindow), int(pct)))))
+			text(ChromeValue, fmtTokens(s.LastIn)), text(ChromeHint, fmt.Sprintf(" of %s · %s", fmtTokens(s.CtxWindow), pctText))))
 	}
 	if parts, total := h.promptBreakdown(); total > 0 {
 		section("Prompt", text(ChromeValue, "  "+fmtTokens(total)), text(ChromeHint, " sent with every request"))
@@ -457,30 +461,25 @@ func (h *Host) OpenUsage() error {
 	spec, _ := h.modelSpec(id)
 	priced := spec.CostPer1MIn > 0 || spec.CostPer1MOut > 0 || s.SessionCost > 0 || windows[len(windows)-1].u.Cost > 0
 	// the live session's cache share, when there is one: a broken prefix has
-	// no other symptom than the bill, and an unlabelled column reads as one
+	// no other symptom than the bill. It rides the title as a note, since
+	// only the live session answers it and a column of blanks would too
 	cached := ""
 	if s.CacheBilled > 0 {
-		cached = fmt.Sprintf("%.1f%%", float64(s.CacheRead)*100/float64(s.CacheBilled))
+		cached = fmt.Sprintf("cached %.1f%%", float64(s.CacheRead)*100/float64(s.CacheBilled))
 	}
 	head := fmt.Sprintf("%18s%9s", "in", "out") // over the rows' columns, past the 6 cells of the title
 	if priced {
 		head += "      cost"
 	}
 	if cached != "" {
-		head += fmt.Sprintf("%11s", "cached")
+		section("Tokens", text(ChromeHint, "  "+cached), text(ChromeHint, head))
+	} else {
+		section("Tokens", text(ChromeHint, head))
 	}
-	section("Tokens", text(ChromeHint, head))
-	for i, w := range windows {
+	for _, w := range windows {
 		row := []Segment{text(ChromeValue, fmt.Sprintf("  %-14s%8s%9s", w.label, fmtTokens(w.u.Prompt), fmtTokens(w.u.Completion)))}
 		if priced {
 			row = append(row, text(ChromeValue, fmt.Sprintf("%10s", fmtCost(w.u.Cost))))
-		}
-		if cached != "" {
-			share := "" // only the live session answers it
-			if i == 0 {
-				share = cached
-			}
-			row = append(row, text(ChromeValue, fmt.Sprintf("%11s", share)))
 		}
 		rows = append(rows, row)
 	}
