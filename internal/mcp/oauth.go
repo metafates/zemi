@@ -56,6 +56,7 @@ type Auth struct {
 	Name      string // shown on the browser page
 	ServerURL string
 	Path      string
+	DataHome  string // the tree's data home: the keychain account's scope
 	// ClientID and ClientSecret are a client registered with the server by
 	// hand; empty means register on the fly (RFC 7591).
 	ClientID     string
@@ -77,9 +78,11 @@ var tokenHTTP = &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*htt
 	return http.ErrUseLastResponse
 }}
 
-// Ref is the grant's store: the OS keychain, the file as the fallback.
+// Ref is the grant's store: the OS keychain scoped to the tree's data home
+// (the account carries the scope, so a lab cannot touch the real install's
+// grant), the file as the fallback.
 func (a *Auth) Ref() keyring.Ref {
-	return keyring.Ref{Account: "mcp:" + a.Name, File: a.Path}
+	return keyring.Scoped(a.DataHome, "mcp:"+a.Name, a.Path)
 }
 
 // load reads the stored grant once; a grant for another URL is ignored.

@@ -21,9 +21,11 @@ import (
 )
 
 // keyRef is where a provider's pasted key lives: the keychain under zemi's
-// service, a 0600 file beside the MCP grants where no chain answers.
+// service, scoped to this tree's data home so a throwaway tree cannot touch
+// the real install's key, a 0600 file beside the MCP grants where no chain
+// answers.
 func (h *Host) keyRef(providerID string) keyring.Ref {
-	return keyring.Ref{Account: "key:" + providerID, File: filepath.Join(h.Dirs.DataHome, "keys", providerID)}
+	return keyring.Scoped(h.Dirs.DataHome, "key:"+providerID, filepath.Join(h.Dirs.DataHome, "keys", providerID))
 }
 
 // KeysCommand is the /keys command's body: the keys list alone, a provider's

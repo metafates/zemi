@@ -179,3 +179,55 @@ func TestRef(t *testing.T) {
 		})
 	}
 }
+
+// mapChain answers per account, so the scoping tests can hold a legacy
+// copy and a scoped copy apart.
+type mapChain map[string]string
+
+func (m mapChain) Get(_, account string) (string, error) {
+	s, ok := m[account]
+	if !ok {
+		return "", ErrNotFound
+	}
+	return s, nil
+}
+
+func (m mapChain) Set(_, account, secret string) error { m[account] = secret; return nil }
+func (m mapChain) Delete(_, account string) error      { delete(m, account); return nil }
+
+// TestScopedRef: the account is scoped by the tree, so another tree's
+// writes are invisible, and a pre-scope copy migrates to the scoped
+// account on the first read and leaves no trace.
+func TestScopedRef(t *testing.T) {
+	old := Chain
+	t.Cleanup(func() { Chain = old })
+	chain := mapChain{"key:openai": "the real key"}
+	Chain = chain
+	a := Scoped("/home/user/.local/share/zemi", "key:openai", filepath.Join(t.TempDir(), "openai"))
+	b := Scoped("/tmp/lab-tree/data", "key:openai", filepath.Join(t.TempDir(), "openai"))
+
+	if s, _, ok := a.Get(); !ok || s != "the real key" {
+		t.Fatalf("Get = (%q, %v), want the migrated real key", s, ok)
+	}
+	if _, ok := chain[a.Account]; !ok {
+		t.Fatalf("the scoped account %q never received the migrated key", a.Account)
+	}
+	if _, ok := chain["key:openai"]; ok {
+		t.Fatal("the legacy account survived the migration")
+	}
+	if _, _, ok := b.Get(); ok {
+		t.Fatal("a second tree read the first tree's key")
+	}
+	if _, err := b.Set("lab key"); err != nil {
+		t.Fatal(err)
+	}
+	if s, _, _ := a.Get(); s == "lab key" {
+		t.Fatal("the lab tree's write leaked into the real tree")
+	}
+	if err := b.Delete(); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok := b.Get(); ok {
+		t.Fatal("the lab key survived its delete")
+	}
+}

@@ -6,6 +6,7 @@
 package keyring
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -74,15 +75,34 @@ func (osChain) Delete(service, account string) error {
 }
 
 // Ref is one secret's store: Account in the keychain under Service, with
-// File as the 0600 fallback.
+// File as the 0600 fallback. Legacy, when set, is the account the same
+// secret lived under before the tree scope existed; the first read moves
+// the value across.
 type Ref struct {
-	Account string // "mcp:<server>", "key:<provider>"
+	Account string // "mcp:<server>@<scope>", "key:<provider>@<scope>"
+	Legacy  string // "mcp:<server>", "key:<provider>": the pre-scope account
 	File    string
+}
+
+// Scoped refs the secret of account under the tree stateHome names. The
+// keychain is machine-global, so an unscoped account lets a throwaway tree
+// overwrite the real install's stored secret and then clear it; the scope
+// is 12 hex of the state home's sha256, stable for the install, distinct
+// per tree.
+func Scoped(stateHome, account, file string) Ref {
+	sum := sha256.Sum256([]byte(stateHome))
+	return Ref{
+		Account: fmt.Sprintf("%s@%x", account, sum[:6]),
+		Legacy:  account,
+		File:    file,
+	}
 }
 
 // Get reads the secret, keychain first; false means neither store holds
 // one, and chain is whether the keychain itself answered - where a key
-// lives is what the UI says about it.
+// lives is what the UI says about it. A scoped miss falls to the legacy
+// account once and moves the value over, so an upgrade loses nothing: the
+// chain copy is authoritative there, as it was when it was written.
 func (r Ref) Get() (secret string, chain, ok bool) {
 	c := Chain // captured once: the call may outlive the deadline, and tests swap Chain under it
 	var s string
@@ -92,6 +112,19 @@ func (r Ref) Get() (secret string, chain, ok bool) {
 		return err
 	}); err == nil && s != "" {
 		return s, true, true
+	}
+	if r.Legacy != "" {
+		if err := bound(func() error {
+			var err error
+			s, err = c.Get(Service, r.Legacy)
+			return err
+		}); err == nil && s != "" {
+			if setErr := bound(func() error { return c.Set(Service, r.Account, s) }); setErr == nil {
+				_ = bound(func() error { return c.Delete(Service, r.Legacy) })
+				_ = os.Remove(r.File)
+			}
+			return s, true, true
+		}
 	}
 	if b, err := os.ReadFile(r.File); err == nil && len(b) > 0 {
 		return string(b), false, true
@@ -107,6 +140,9 @@ func (r Ref) Set(secret string) (inChain bool, err error) {
 	c := Chain
 	if err := bound(func() error { return c.Set(Service, r.Account, secret) }); err == nil {
 		_ = os.Remove(r.File) // ErrNotExist is the usual case, a cleanup miss no news
+		if r.Legacy != "" {   // a pre-scope copy would linger with the old value
+			_ = bound(func() error { return c.Delete(Service, r.Legacy) })
+		}
 		return true, nil
 	}
 	// the chain refused this write, but an older copy it holds would shadow
@@ -116,15 +152,25 @@ func (r Ref) Set(secret string) (inChain bool, err error) {
 		return false, err
 	}
 	_ = bound(func() error { return c.Delete(Service, r.Account) })
+	if r.Legacy != "" {
+		_ = bound(func() error { return c.Delete(Service, r.Legacy) })
+	}
 	return false, nil
 }
 
-// Delete removes the secret from both stores; absent is fine. A chain that
-// stalls past the deadline is an error: the copy may still be there.
+// Delete removes the secret from both stores - the scoped account and, for
+// a ref that has one, the pre-scope account a migration may not have
+// reached; absent is fine. A chain that stalls past the deadline is an
+// error: the copy may still be there.
 func (r Ref) Delete() error {
 	c := Chain
-	if err := bound(func() error { return c.Delete(Service, r.Account) }); err != nil && !errors.Is(err, ErrNotFound) {
-		return err
+	for _, account := range [...]string{r.Account, r.Legacy} {
+		if account == "" {
+			continue
+		}
+		if err := bound(func() error { return c.Delete(Service, account) }); err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
 	}
 	if err := os.Remove(r.File); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err

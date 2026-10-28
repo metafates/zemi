@@ -1233,7 +1233,7 @@ func hasHeader(headers map[string]string, name string) bool {
 // keychain, and mcp-auth/ holds the fallback file.
 func (h *Host) mcpAuth(s *mcpServer) *mcp.Auth {
 	return &mcp.Auth{
-		Name: s.name, ServerURL: s.spec.URL, Path: filepath.Join(h.Dirs.DataHome, "mcp-auth", s.name+".json"),
+		Name: s.name, ServerURL: s.spec.URL, Path: filepath.Join(h.Dirs.DataHome, "mcp-auth", s.name+".json"), DataHome: h.Dirs.DataHome,
 		ClientID: s.spec.ClientID, ClientSecret: s.spec.ClientSecret, CallbackPort: s.spec.CallbackPort,
 	}
 }

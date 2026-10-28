@@ -1192,7 +1192,10 @@ comes from `zemi.env.get` and is never exposed back to Lua.
 
 A key can also be pasted into the TUI (`/keys`, or enter on a provider in
 `/model`'s "Needs a key" section): zemi stores it in the OS keychain under
-`key:<provider>`, with a 0600 file in the data dir where no chain answers,
+`key:<provider>@<scope>`, the scope 12 hex of the data dir's hash so a
+throwaway tree cannot touch the real install's key (a pre-scope copy under
+`key:<provider>` migrates on its first read), with a 0600 file in the data
+dir where no chain answers,
 and it is zemi's own - a key config or the environment already answers for
 outranks it, so the hints that name those stay true, and a paste on such a
 provider is refused with the way back named. The precedence is config, then
