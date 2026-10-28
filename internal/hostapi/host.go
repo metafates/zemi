@@ -528,7 +528,7 @@ type Host struct {
 
 	rendering atomic.Bool
 
-	tMu      sync.RWMutex
+	tMu      sync.RWMutex // transcript lock; agents.mu is always taken first, never under this one
 	session  *Session
 	view     *agentRun // the agent run the chat shows instead of the session, nil for none
 	viewBack string    // the command that reopens the screen view came from
