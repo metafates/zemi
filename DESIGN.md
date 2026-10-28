@@ -1273,7 +1273,7 @@ during the check goes instead of the note, an interrupt or a failed turn
 ends the chain with the goal kept, and at 20 turns in a row the goal
 started itself it pauses; a loop run does not reset that count. Each verdict is a notice
 row while it happens; a reset drops it (the chat it was set in is
-gone), and a crash keeps it, since the row lives in the store. Lua reads it
+gone), and a crash keeps it, since the row lives in the store. A window takes the chain over when the one that set the goal is gone (its presence heartbeat died) and never judges a live writer's goal. Lua reads it
 (`ctx.goal`, `ctx.agent.checking_goal`) and does not drive it: the check
 must hold the claim.
 
