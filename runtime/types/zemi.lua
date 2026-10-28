@@ -1859,7 +1859,7 @@ function zemi.agent.list() end
 function zemi.agent.run(spec, on_done) end
 
 -- zemi.workflow: run() and list() in config Lua; the rest exist only inside
--- a workflow script, which also has zemi.json and nothing else of zemi.
+-- a workflow script, which also has zemi.json and zemi.csv and nothing else of zemi.
 
 ---@class zemi.WorkflowRunSpec
 ---@field script? string Workflow source to run.
@@ -2476,6 +2476,26 @@ function zemi.json.encode(value) end
 ---@return any|nil value
 ---@return string|nil err
 function zemi.json.decode(s) end
+
+-- zemi.csv
+
+---@class zemi.csv
+zemi.csv = {}
+
+---Encode rows of strings and numbers as RFC 4180: a field carrying a comma,
+---a quote or a newline is quoted, a quote inside doubles.
+---@param rows zemi.csv.Row[]
+---@return string
+function zemi.csv.encode(rows) end
+
+---Decode RFC 4180 text into rows of strings; a quoted field may carry
+---commas, doubled quotes and newlines.
+---@param s string
+---@return string[][]|nil rows
+---@return string|nil err
+function zemi.csv.decode(s) end
+
+---@alias zemi.csv.Row string[]|number[]
 
 -- zemi.skills
 

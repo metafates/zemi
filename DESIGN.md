@@ -1101,7 +1101,8 @@ reports nothing, and `wait` and `stop` refuse each other.
 
 A workflow is a Lua script that starts subagents: `zemi.workflow.agent`,
 `parallel`, `pipeline` (Lua over `parallel`), `phase`, `log` and `args`,
-nothing else of zemi but `zemi.json`; a bare `agent` or `print` raises
+nothing else of zemi but `zemi.json` and `zemi.csv`; a bare `agent` or
+`print` raises
 naming its `zemi.workflow` spelling. The `workflow` tool takes one of
 `script`, `name` or `run` (`script` joins `run` for action `rerun`), and
 `action list` on its own names this session's runs, newest first, with the id
@@ -1723,7 +1724,8 @@ zemi.skills.list(); zemi.skills.enable("local-integration", true)
 ```
 
 The rest of the installed surface (`internal/hostapi/host.go` holds the
-list): `zemi.json` (`encode`, `decode`), `zemi.composer` (`get`, `set`,
+list): `zemi.json` (`encode`, `decode`), `zemi.csv` (`encode`, `decode`,
+RFC 4180 over rows of strings and numbers), `zemi.composer` (`get`, `set`,
 `insert`, `submit`, `history_prev`, `history_next`, `paste`, `edit`, over
 a snapshot the UI publishes and edits it applies on its own goroutine;
 the same actions are `zemi.composer.*` keymap strings), `zemi.health` (`add(name, fn)`,

@@ -665,6 +665,7 @@ func (r *wfRun) open(args any) *glua.LState {
 	zemi := L.NewTable()
 	zemi.RawSetString("workflow", wf)
 	zemi.RawSetString("json", r.h.jsonNamespace(L))
+	zemi.RawSetString("csv", r.h.csvNamespace(L))
 	L.SetGlobal("zemi", zemi)
 	if err := L.DoString(workflowPrelude); err != nil {
 		panic(err) // a constant: every workflow test fails first
