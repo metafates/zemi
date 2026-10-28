@@ -239,6 +239,9 @@ func (a *App) runSlashCommand(text string) {
 			detail += "; did you mean /" + near + "?"
 		}
 		a.pushToast(slog.LevelWarn, "Unknown command", detail)
+		// the line stays for fixing, but not under the palette that failed
+		// it: a retype there would glue onto the old query
+		a.palette.close()
 		return
 	}
 	a.clearComposer()
