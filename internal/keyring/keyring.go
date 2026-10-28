@@ -84,13 +84,13 @@ type Ref struct {
 	File    string
 }
 
-// Scoped refs the secret of account under the tree stateHome names. The
+// Scoped refs the secret of account under the tree dataHome names. The
 // keychain is machine-global, so an unscoped account lets a throwaway tree
 // overwrite the real install's stored secret and then clear it; the scope
-// is 12 hex of the state home's sha256, stable for the install, distinct
+// is 12 hex of the data home's sha256, stable for the install, distinct
 // per tree.
-func Scoped(stateHome, account, file string) Ref {
-	sum := sha256.Sum256([]byte(stateHome))
+func Scoped(dataHome, account, file string) Ref {
+	sum := sha256.Sum256([]byte(dataHome))
 	return Ref{
 		Account: fmt.Sprintf("%s@%x", account, sum[:6]),
 		Legacy:  account,

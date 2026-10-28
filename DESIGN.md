@@ -2143,7 +2143,8 @@ view; a reset's wipe drops the row with the chat.
   same numbers, so the picker's selection scrolls the chat to that unit's
   first row and bands all of its rows (`Overlay.Follow`), while the picker
   opens on the unit the reader is at. The window sheds its head past
-  `chatWindowRows`; the chat then keys its cached rows by their place in the
+  `chatWindowRows`, onward to the next turn's first row so the window never
+  opens on an answer whose question was shed; the chat then keys its cached rows by their place in the
   log's tail (the index plus the ctx's `transcript_cut`) and restamps the
   drawn rows' anchors and calls by the delta, so a trim neither re-renders
   the window nor drops a fold the reader opened. A banded message is the one thing a

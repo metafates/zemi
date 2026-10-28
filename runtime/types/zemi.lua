@@ -2483,7 +2483,7 @@ function zemi.json.decode(s) end
 zemi.csv = {}
 
 ---Encode rows of strings and numbers as RFC 4180: a field carrying a comma,
----a quote or a newline is quoted, a quote inside doubles.
+---a quote, a carriage return or a newline is quoted, a quote inside doubles.
 ---@param rows zemi.csv.Row[]
 ---@return string
 function zemi.csv.encode(rows) end
