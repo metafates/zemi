@@ -203,8 +203,8 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 
 // attachDir is what a directory attaches: its own entries, as `ls` lists
 // them - one name per line, a subdirectory's trailing its slash - capped at
-// dirListMax with the remainder named at the tail. Reading deeper is what
-// the model's tools are for.
+// dirListMax entries and the file byte budget, the remainder named at the
+// tail. Reading deeper is what the model's tools are for.
 func attachDir(b *strings.Builder, abs, name string, refused *[]string) {
 	des, err := os.ReadDir(abs)
 	if err != nil {
@@ -215,12 +215,13 @@ func attachDir(b *strings.Builder, abs, name string, refused *[]string) {
 	var body strings.Builder
 	shown := 0
 	for _, de := range des {
-		if shown == dirListMax {
-			break
-		}
 		n := de.Name()
 		if de.IsDir() {
 			n += "/"
+		}
+		// a line that would push the body past the budget ends the listing
+		if shown == dirListMax || body.Len()+len(n)+1 > attachMax {
+			break
 		}
 		body.WriteString(n + "\n")
 		shown++

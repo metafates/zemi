@@ -127,8 +127,9 @@ func (a *App) updateCompletion() tea.Cmd {
 	}
 	// Rescan on every open so files created since show up; the old list
 	// stays until the new one lands. A path-headed token asks the listing,
-	// not the corpus, so the scan waits for a word that is a name.
-	if opening && !pathHeaded(f.token) {
+	// not the corpus, so the scan waits for a word that is a name - asked
+	// by the path it holds, quote frame aside.
+	if opening && !pathHeaded(unquoteToken(f.token)) {
 		a.completion.scanning = true
 		a.completion.walkGen++
 		return a.scanFilesCmd(a.host.Session().CWD, a.completion.walkGen)
@@ -528,7 +529,7 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 		return []hostapi.Segment{{Text: text, HL: hostapi.ChromeHint}}
 	}
 	if f.count() == 0 {
-		if f.scanning && len(f.files) == 0 && !pathHeaded(f.token) {
+		if f.scanning && len(f.files) == 0 && !pathHeaded(unquoteToken(f.token)) {
 			return [][]hostapi.Segment{note("scanning files…")}
 		}
 		return emptyRows(noMatches, maxW)

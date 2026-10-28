@@ -370,6 +370,11 @@ func TestDirListingCaps(t *testing.T) {
 	}
 	write(filepath.Join(mixed, "sub"), "inner.txt")
 
+	long := mk("long")
+	for i := range dirListMax + 20 {
+		write(long, fmt.Sprintf("%0147d.txt", i)) // 151 chars: the byte budget binds before the entry cap
+	}
+
 	cases := []struct {
 		name   string
 		dir    string
@@ -381,6 +386,7 @@ func TestDirListingCaps(t *testing.T) {
 		{"count cap", many, []string{"... 30 more"}, "", dirListMax + 30, dirListMax},
 		{"one level", mixed, []string{"a.txt\n", "sub/\n"}, "inner.txt", 2, 2},
 		{"empty", mk("empty"), []string{"(empty)"}, "", 0, 0},
+		{"byte cap", long, []string{fmt.Sprintf("... %d more", dirListMax+20-attachMax/152)}, "", dirListMax + 20, attachMax / 152},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -394,6 +400,9 @@ func TestDirListingCaps(t *testing.T) {
 			body := got[strings.Index(got, ">\n")+2 : strings.LastIndex(got, "\n</")]
 			if lines := strings.Count(body, "\n"); lines != c.shown {
 				t.Errorf("%d lines shown, want %d: %q", lines, c.shown, body)
+			}
+			if len(body) > attachMax {
+				t.Errorf("body exceeds the file budget: %d bytes", len(body))
 			}
 			for _, want := range c.want {
 				if !strings.Contains(got, want) {

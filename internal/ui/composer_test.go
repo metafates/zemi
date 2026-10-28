@@ -718,6 +718,12 @@ func TestCompletionWalksIn(t *testing.T) {
 	if got := app.completion.paths; len(got) != 1 || got[0].label != `"`+spacey+"/Deep/" {
 		t.Fatalf("quoted candidates: %+v", got)
 	}
+	// the quote and the walked dir shift the match offsets with them
+	open(`@"` + spacey + `/De`)
+	if got := app.completion.paths[0]; got.label != `"`+spacey+"/Deep/" ||
+		!slices.Equal(got.match, []int{len(spacey) + 2, len(spacey) + 3}) {
+		t.Fatalf("quoted match offsets: %+v", app.completion.paths)
+	}
 	app.composerKey("enter", tea.KeyPressMsg{})
 	if got := app.composer.text; got != `@"`+spacey+"/Deep/" {
 		t.Fatalf("quoted walk landed on %q", got)
