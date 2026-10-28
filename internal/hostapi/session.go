@@ -417,8 +417,9 @@ func stampable(m ChatMessage) bool {
 func logRows(rows []store.LogEntry) []ChatMessage {
 	// the echo each tool row answers: by the call id both metas carry, else
 	// the oldest unconsumed echo of the same name, the order parallel calls
-	// of one tool answer in
-	echo := make(map[string]int, len(rows))
+	// of one tool answer in; a repeated id answers in log order, so the
+	// queues hold every echo and a call takes the oldest past itself
+	echo := make(map[string][]int, len(rows))
 	fifo := make(map[string][]int, len(rows))
 	for i, row := range rows {
 		if row.Kind != store.KindEcho {
@@ -430,10 +431,21 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 		}
 		_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
 		if meta.ID != "" {
-			echo[meta.ID] = i
+			echo[meta.ID] = append(echo[meta.ID], i)
 		} else {
 			fifo[meta.Tool] = append(fifo[meta.Tool], i)
 		}
+	}
+	// nextEcho pops the oldest echo below the call: rows above it belong to
+	// calls the window shed
+	next := func(q []int, i int) ([]int, int) {
+		for len(q) > 0 && q[0] <= i {
+			q = q[1:]
+		}
+		if len(q) == 0 {
+			return nil, -1
+		}
+		return q[1:], q[0]
 	}
 	tr := make([]ChatMessage, 0, len(rows))
 	for i, row := range rows {
@@ -481,12 +493,10 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 			_ = json.Unmarshal([]byte(row.MetaJSON), &call)
 			j := -1
 			if call.ID != "" {
-				if e, ok := echo[call.ID]; ok {
-					j = e
-					delete(echo, call.ID)
-				}
-			} else if q := fifo[name]; len(q) > 0 {
-				j, fifo[name] = q[0], q[1:]
+				echo[call.ID], j = next(echo[call.ID], i)
+			}
+			if j < 0 {
+				fifo[name], j = next(fifo[name], i)
 			}
 			var out string
 			var status CallStatus

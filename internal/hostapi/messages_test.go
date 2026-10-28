@@ -616,6 +616,14 @@ func TestLogRowsPairsParallelCalls(t *testing.T) {
 	if len(tr) != 3 || tr[0].Output != "one" || tr[1].Output != "two" {
 		t.Fatalf("legacy rows drew %+v", tr)
 	}
+	// one id on every call, the shape a fake model logs: each call still
+	// reads its own echo, the oldest past it, in log order
+	tr = logRows([]store.LogEntry{
+		tool(0, "t1"), echo(1, "t1", "one"), tool(2, "t1"), echo(3, "t1", "two"), user(4),
+	})
+	if len(tr) != 3 || tr[0].Output != "one" || tr[1].Output != "two" {
+		t.Fatalf("repeated ids drew %+v, want each call its own echo", tr)
+	}
 }
 
 // TestMessagesPagesFromBoot: a boot over a log longer than the window fills
