@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"slices"
 	"strings"
 
 	glua "github.com/yuin/gopher-lua"
@@ -30,8 +31,26 @@ func codecOpts(L *glua.LState) *glua.LTable {
 	return L.Get(2).(*glua.LTable)
 }
 
+// checkOpts rejects an option name the call does not speak: a typo would
+// otherwise fall back to the default and flip behavior with no word. The
+// workflow agent's options raise the same way.
+func checkOpts(L *glua.LState, call string, opts *glua.LTable, names ...string) {
+	if opts == nil {
+		return
+	}
+	if len(names) == 0 {
+		L.RaiseError("%s takes no options", call)
+		return
+	}
+	opts.ForEach(func(k, _ glua.LValue) {
+		if name := glua.LVAsString(k); !slices.Contains(names, name) {
+			L.RaiseError("%s: unknown option %q; have %s", call, name, strings.Join(names, ", "))
+		}
+	})
+}
+
 // optString reads a string field of the options table, def when absent.
-func optString(L *glua.LState, opts *glua.LTable, name, def string) string {
+func optString(L *glua.LState, opts *glua.LTable, call, name, def string) string {
 	if opts == nil {
 		return def
 	}
@@ -41,13 +60,13 @@ func optString(L *glua.LState, opts *glua.LTable, name, def string) string {
 	case glua.LString:
 		return string(v)
 	default:
-		L.RaiseError("%s is a %s, want a string", name, v.Type().String())
+		L.RaiseError("%s: %s is a %s, want a string", call, name, v.Type().String())
 	}
 	return def
 }
 
 // optBool reads a boolean field of the options table, def when absent.
-func optBool(L *glua.LState, opts *glua.LTable, name string, def bool) bool {
+func optBool(L *glua.LState, opts *glua.LTable, call, name string, def bool) bool {
 	if opts == nil {
 		return def
 	}
@@ -57,13 +76,14 @@ func optBool(L *glua.LState, opts *glua.LTable, name string, def bool) bool {
 	case glua.LBool:
 		return bool(v)
 	default:
-		L.RaiseError("%s is a %s, want a boolean", name, v.Type().String())
+		L.RaiseError("%s: %s is a %s, want a boolean", call, name, v.Type().String())
 	}
 	return def
 }
 
-// optInt reads a whole-number field of the options table, def when absent.
-func optInt(L *glua.LState, opts *glua.LTable, name string, def int) int {
+// optInt reads a whole-number field of the options table, def when absent;
+// 1.5 is not a legal indent.
+func optInt(L *glua.LState, opts *glua.LTable, call, name string, def int) int {
 	if opts == nil {
 		return def
 	}
@@ -71,20 +91,23 @@ func optInt(L *glua.LState, opts *glua.LTable, name string, def int) int {
 	switch v := v.(type) {
 	case *glua.LNilType:
 	case glua.LNumber:
+		if v != glua.LNumber(int64(v)) {
+			L.RaiseError("%s: %s is %v, want a whole number", call, name, v)
+		}
 		return int(v)
 	default:
-		L.RaiseError("%s is a %s, want a number", name, v.Type().String())
+		L.RaiseError("%s: %s is a %s, want a number", call, name, v.Type().String())
 	}
 	return def
 }
 
 // optRune reads a one-character string field of the options table (a
 // delimiter or a comment marker), the def's rune when absent.
-func optRune(L *glua.LState, opts *glua.LTable, name, def string) rune {
-	s := optString(L, opts, name, def)
+func optRune(L *glua.LState, opts *glua.LTable, call, name, def string) rune {
+	s := optString(L, opts, call, name, def)
 	r := []rune(s)
 	if len(r) != 1 {
-		L.RaiseError("%s is %q, want one character", name, s)
+		L.RaiseError("%s: %s is %q, want one character", call, name, s)
 	}
 	return r[0]
 }
@@ -92,7 +115,7 @@ func optRune(L *glua.LState, opts *glua.LTable, name, def string) rune {
 // jsonNamespace is zemi.json, in config Lua and in a workflow script. Both
 // calls take an optional options table: encode speaks deterministic (the
 // default), indent, escape_for_html and escape_for_js; decode speaks
-// allow_duplicate_names and match_case_insensitive_names.
+// allow_duplicate_names.
 func (h *Host) jsonNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("encode", L.NewFunction(func(L *glua.LState) int {
@@ -102,14 +125,15 @@ func (h *Host) jsonNamespace(L *glua.LState) *glua.LTable {
 		}
 		opts := []json.Options{json.Deterministic(true)}
 		if o := codecOpts(L); o != nil {
-			opts[0] = json.Deterministic(optBool(L, o, "deterministic", true))
-			if indent := optString(L, o, "indent", ""); indent != "" {
+			checkOpts(L, "zemi.json.encode", o, "deterministic", "indent", "escape_for_html", "escape_for_js")
+			opts[0] = json.Deterministic(optBool(L, o, "zemi.json.encode", "deterministic", true))
+			if indent := optString(L, o, "zemi.json.encode", "indent", ""); indent != "" {
 				opts = append(opts, jsontext.WithIndent(indent))
 			}
-			if optBool(L, o, "escape_for_html", false) {
+			if optBool(L, o, "zemi.json.encode", "escape_for_html", false) {
 				opts = append(opts, jsontext.EscapeForHTML(true))
 			}
-			if optBool(L, o, "escape_for_js", false) {
+			if optBool(L, o, "zemi.json.encode", "escape_for_js", false) {
 				opts = append(opts, jsontext.EscapeForJS(true))
 			}
 		}
@@ -123,11 +147,9 @@ func (h *Host) jsonNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("decode", L.NewFunction(func(L *glua.LState) int {
 		var opts []json.Options
 		if o := codecOpts(L); o != nil {
-			if optBool(L, o, "allow_duplicate_names", false) {
+			checkOpts(L, "zemi.json.decode", o, "allow_duplicate_names")
+			if optBool(L, o, "zemi.json.decode", "allow_duplicate_names", false) {
 				opts = append(opts, jsontext.AllowDuplicateNames(true))
-			}
-			if optBool(L, o, "match_case_insensitive_names", false) {
-				opts = append(opts, json.MatchCaseInsensitiveNames(true))
 			}
 		}
 		var v any

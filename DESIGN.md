@@ -1730,8 +1730,9 @@ zemi.skills.list(); zemi.skills.enable("local-integration", true)
 The rest of the installed surface (`internal/hostapi/host.go` holds the
 list): `zemi.json` (`encode`, `decode`), `zemi.csv` (`encode`, `decode`,
 RFC 4180 over rows of strings and numbers), `zemi.yaml` (`encode`,
-`decode`), each taking an optional options table naming the reader's or
-writer's settings, `zemi.composer` (`get`, `set`,
+`decode`), each `encode` and the csv decode taking an optional options
+table naming the reader's or writer's settings (an unknown name raises;
+`zemi.yaml.decode` takes none), `zemi.composer` (`get`, `set`,
 `insert`, `submit`, `history_prev`, `history_next`, `paste`, `edit`, over
 a snapshot the UI publishes and edits it applies on its own goroutine;
 the same actions are `zemi.composer.*` keymap strings), `zemi.health` (`add(name, fn)`,

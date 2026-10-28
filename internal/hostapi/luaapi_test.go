@@ -45,8 +45,11 @@ func TestLuaAPIAdditions(t *testing.T) {
 		assert(ytxt:find("list:", 1, true) and ytxt:find("- 2", 1, true), "yaml encode: " .. tostring(ytxt))
 		local ys, yerr = zemi.yaml.decode("a: 1\nb: [x, y]\n")
 		assert(ys ~= nil and yerr == nil and ys.b[2] == "y", "yaml decode: " .. tostring(yerr))
-		local ys2, yerr2 = zemi.yaml.decode("a: {x: 1}\n", { strict = true })
-		assert(ys2 ~= nil and yerr2 == nil, "yaml strict decode: " .. tostring(yerr2))
+		assert(zemi.yaml.encode({ 1, 2.5 }) == "- 1\n- 2.5\n", "yaml whole numbers: " .. zemi.yaml.encode({ 1, 2.5 }))
+		local ok, why = pcall(zemi.yaml.decode, "a: 1", { strict = true })
+		assert(not ok and tostring(why):find("takes no options"), "yaml decode options: " .. tostring(why))
+		local ok2, why2 = pcall(zemi.csv.decode, "a,b", { commma = ";" })
+		assert(not ok2 and tostring(why2):find("unknown option \"commma\""), "csv unknown option: " .. tostring(why2))
 
 		local semi = zemi.csv.decode("a;b\n", { comma = ";" })
 		assert(semi[1][2] == "b", "csv comma option")

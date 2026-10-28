@@ -2469,10 +2469,10 @@ function zemi.env.get(name) end
 zemi.json = {}
 
 ---@class zemi.json.EncodeOpts
----@field deterministic boolean sort map keys so equal values encode equal (the default)
----@field indent string pretty-print with this indentation
----@field escape_for_html boolean escape <, > and & in strings
----@field escape_for_js boolean escape the characters a script tag or literal breaks
+---@field deterministic? boolean sort map keys so equal values encode equal (the default)
+---@field indent? string pretty-print with this indentation
+---@field escape_for_html? boolean escape <, > and & in strings
+---@field escape_for_js? boolean escape the characters a script tag or literal breaks
 
 ---@param value any
 ---@param opts zemi.json.EncodeOpts?
@@ -2480,8 +2480,7 @@ zemi.json = {}
 function zemi.json.encode(value, opts) end
 
 ---@class zemi.json.DecodeOpts
----@field allow_duplicate_names boolean repeated object keys stop being an error
----@field match_case_insensitive_names boolean
+---@field allow_duplicate_names? boolean repeated object keys stop being an error
 
 ---@param s string
 ---@param opts zemi.json.DecodeOpts?
@@ -2495,23 +2494,21 @@ function zemi.json.decode(s, opts) end
 zemi.yaml = {}
 
 ---@class zemi.yaml.EncodeOpts
----@field indent number spaces per level
----@field indent_sequences boolean indent the items of a list under its key
----@field literal_multiline boolean write multi-line strings as | blocks
+---@field indent? number spaces per level
+---@field indent_sequences? boolean indent the items of a list under its key
+---@field literal_multiline? boolean write multi-line strings as | blocks
 
 ---@param value any
 ---@param opts zemi.yaml.EncodeOpts?
 ---@return string
 function zemi.yaml.encode(value, opts) end
 
----@class zemi.yaml.DecodeOpts
----@field strict boolean refuse unknown fields
-
+---Decode yaml text; a repeated key is an error and the call takes no
+---options.
 ---@param s string
----@param opts zemi.yaml.DecodeOpts?
 ---@return any|nil value
 ---@return string|nil err
-function zemi.yaml.decode(s, opts) end
+function zemi.yaml.decode(s) end
 
 -- zemi.csv
 
@@ -2519,21 +2516,22 @@ function zemi.yaml.decode(s, opts) end
 zemi.csv = {}
 
 ---@class zemi.csv.EncodeOpts
----@field comma string the field separator, one character (default ",")
----@field use_crlf boolean end rows with a carriage return and newline
+---@field comma? string the field separator, one character (default ",")
+---@field use_crlf? boolean end rows with a carriage return and newline
 
----Encode rows of strings and numbers as RFC 4180: a field carrying a comma,
----a quote, a carriage return or a newline is quoted, a quote inside doubles.
+---Encode rows of strings and numbers as RFC 4180: a field carrying the
+---delimiter, a quote, a carriage return, a newline or a leading space is
+---quoted, a quote inside doubles.
 ---@param rows zemi.csv.Row[]
 ---@param opts zemi.csv.EncodeOpts?
 ---@return string
 function zemi.csv.encode(rows, opts) end
 
 ---@class zemi.csv.DecodeOpts
----@field comma string the field separator, one character (default ",")
----@field comment string a line starting with it reads as a comment
----@field trim_leading_space boolean
----@field lazy_quotes boolean a quote beside text reads as text (the default)
+---@field comma? string the field separator, one character (default ",")
+---@field comment? string a line starting with it reads as a comment
+---@field trim_leading_space? boolean
+---@field lazy_quotes? boolean a quote beside text reads as text (the default)
 
 ---Decode RFC 4180 text into rows of strings; a quoted field may carry
 ---commas, doubled quotes and newlines, and a blank line separates nothing.

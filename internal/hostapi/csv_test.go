@@ -21,10 +21,10 @@ func TestCSVRoundTrip(t *testing.T) {
 		{"a newline quotes", [][]string{{"one", "two\nlines"}}, "one,\"two\nlines\"\n"},
 		{"an empty field", [][]string{{"", "x", ""}}, ",x,\n"},
 	} {
-		if got := csvEncode(c.rows); got != c.want {
+		if got := csvEncodeOpts(c.rows, ',', false); got != c.want {
 			t.Errorf("%s: encode = %q, want %q", c.name, got, c.want)
 		}
-		back, err := csvDecode(c.want)
+		back, err := csvDecodeOpts(c.want, ',', 0, false, true)
 		if err != nil {
 			t.Errorf("%s: decode: %v", c.name, err)
 			continue
@@ -58,7 +58,7 @@ func TestCSVDecodeEdges(t *testing.T) {
 		{"a quote beside text reads as text", "ab\"c\n", [][]string{{`ab"c`}}},
 		{"an unterminated quote reads to the end", "\"never closed\n", [][]string{{"never closed\n"}}},
 	} {
-		got, err := csvDecode(c.in)
+		got, err := csvDecodeOpts(c.in, ',', 0, false, true)
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue

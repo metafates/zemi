@@ -26,24 +26,26 @@ func (h *Host) csvNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.csv.encode: %v", err)
 		}
 		o := codecOpts(L)
-		L.Push(glua.LString(csvEncodeOpts(rows, optRune(L, o, "comma", ","), optBool(L, o, "use_crlf", false))))
+		checkOpts(L, "zemi.csv.encode", o, "comma", "use_crlf")
+		L.Push(glua.LString(csvEncodeOpts(rows, optRune(L, o, "zemi.csv.encode", "comma", ","), optBool(L, o, "zemi.csv.encode", "use_crlf", false))))
 		return 1
 	}))
 	tb.RawSetString("decode", L.NewFunction(func(L *glua.LState) int {
 		o := codecOpts(L)
+		checkOpts(L, "zemi.csv.decode", o, "comma", "comment", "trim_leading_space", "lazy_quotes")
 		var comment rune
-		if s := optString(L, o, "comment", ""); s != "" {
+		if s := optString(L, o, "zemi.csv.decode", "comment", ""); s != "" {
 			if r := []rune(s); len(r) == 1 {
 				comment = r[0]
 			} else {
-				L.RaiseError("comment is %q, want one character", s)
+				L.RaiseError("zemi.csv.decode: comment is %q, want one character", s)
 			}
 		}
 		rows, err := csvDecodeOpts(L.CheckString(1),
-			optRune(L, o, "comma", ","),
+			optRune(L, o, "zemi.csv.decode", "comma", ","),
 			comment,
-			optBool(L, o, "trim_leading_space", false),
-			optBool(L, o, "lazy_quotes", true))
+			optBool(L, o, "zemi.csv.decode", "trim_leading_space", false),
+			optBool(L, o, "zemi.csv.decode", "lazy_quotes", true))
 		if err != nil {
 			return luaResult(L, err)
 		}
@@ -55,21 +57,22 @@ func (h *Host) csvNamespace(L *glua.LState) *glua.LTable {
 
 // csvRows flattens one checked Lua table: a row is a table of strings and
 // numbers - a csv cell has no shape for a nested table, and nil would
-// silently drop a field.
+// silently drop a field. A bad cell names its row and field, the only
+// address a 500-row report gives.
 func csvRows(t *glua.LTable) ([][]string, error) {
 	rows := make([][]string, 0, t.Len())
 	var rerr error
-	t.ForEach(func(_, row glua.LValue) {
+	t.ForEach(func(k, row glua.LValue) {
 		if rerr != nil {
 			return
 		}
 		rt, ok := row.(*glua.LTable)
 		if !ok {
-			rerr = fmt.Errorf("row %v is not a table", row)
+			rerr = fmt.Errorf("row %s is a %s, want a table", glua.LVAsString(k), row.Type().String())
 			return
 		}
 		fields := make([]string, 0, rt.Len())
-		rt.ForEach(func(_, v glua.LValue) {
+		rt.ForEach(func(fk, v glua.LValue) {
 			if rerr != nil {
 				return
 			}
@@ -79,7 +82,7 @@ func csvRows(t *glua.LTable) ([][]string, error) {
 			case glua.LNumber:
 				fields = append(fields, luaNumberString(v))
 			default:
-				rerr = fmt.Errorf("field %v is a %s, want a string or a number", v, v.Type().String())
+				rerr = fmt.Errorf("row %s field %s is a %s, want a string or a number", glua.LVAsString(k), glua.LVAsString(fk), v.Type().String())
 			}
 		})
 		rows = append(rows, fields)
@@ -96,14 +99,9 @@ func luaNumberString(n glua.LNumber) string {
 	return strconv.FormatFloat(float64(n), 'g', -1, 64)
 }
 
-// csvEncode writes the rows as encoding/csv writes them: the separator
-// defaults to a comma and rows end in a newline.
-func csvEncode(rows [][]string) string {
-	return csvEncodeOpts(rows, ',', false)
-}
-
-// csvEncodeOpts is csvEncode with the writer's settings: the delimiter and
-// whether rows end in a carriage return and newline.
+// csvEncodeOpts writes the rows as encoding/csv writes them: the separator
+// defaults to a comma and rows end in a newline, or a carriage return and
+// newline on useCRLF.
 func csvEncodeOpts(rows [][]string, comma rune, useCRLF bool) string {
 	var b strings.Builder
 	w := csv.NewWriter(&b)
@@ -112,17 +110,11 @@ func csvEncodeOpts(rows [][]string, comma rune, useCRLF bool) string {
 	return b.String()
 }
 
-// csvDecode reads the text as encoding/csv does: quoted fields may carry
-// commas and newlines, a quote beside text reads as text, and a trailing
-// newline ends the last row. A blank line separates nothing: the reader
-// skips it.
-func csvDecode(text string) ([][]string, error) {
-	return csvDecodeOpts(text, ',', 0, false, true)
-}
-
 // csvDecodeOpts reads the text with the reader's settings: the delimiter,
 // the comment rune (0 for none), whether leading spaces are trimmed, and
-// whether a quote beside text reads as text.
+// whether a quote beside text reads as text. Quoted fields may carry commas
+// and newlines, a trailing newline ends the last row, and a blank line
+// separates nothing: the reader skips it.
 func csvDecodeOpts(text string, comma, comment rune, trimLeadingSpace, lazyQuotes bool) ([][]string, error) {
 	r := csv.NewReader(strings.NewReader(text))
 	r.Comma, r.Comment = comma, comment
