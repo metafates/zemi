@@ -97,7 +97,7 @@ act() {
     6) tmux -L z$NAME send-keys -t $NAME '/messages' Enter; sleep 1; tmux -L z$NAME send-keys -t $NAME Escape ;;
     7) echo $(( (i % 5) + 1 )) > "$T/out/rate_fail" ;;
     8) echo $(( (i % 3) + 1 )) > "$T/out/drop" ;;
-    9) tmux -L z$NAME resize-window -t $NAME -x $(( 100 + (i % 4) * 20 )) 2>/dev/null ;;
+    9) tmux -L z$NAME resize-window -t $NAME -x $(( 100 + (i % 4) * 20 )) -y $(( 30 + (i % 3) * 5 )) 2>/dev/null ;;
     10) # SIGKILL mid-anything: the worst exit a machine deals; the pane is
         # fish > sh(supervisor) > zemi, so the kill takes the sh's children
         # and the loop boots the next window in a second
