@@ -42,8 +42,9 @@ func TestCSVRoundTrip(t *testing.T) {
 }
 
 // TestCSVDecodeEdges pins the reader: crlf ends a row, a quoted field keeps
-// its commas and newlines whole, a final field without a newline lands, and
-// an unterminated quote is the error every reader raises.
+// its commas and newlines whole, a final field without a newline lands, a
+// blank line separates nothing, and a quote beside text reads as text - the
+// reader's own rules, not zemi's.
 func TestCSVDecodeEdges(t *testing.T) {
 	for _, c := range []struct {
 		name, in string
@@ -53,7 +54,9 @@ func TestCSVDecodeEdges(t *testing.T) {
 		{"quoted commas and newline", "\"x,y\"\n\"a\nb\"\n", [][]string{{"x,y"}, {"a\nb"}}},
 		{"doubled quotes in a quoted field", `"he said ""ok"""` + "\n", [][]string{{"he said \"ok\""}}},
 		{"no trailing newline", "a,b", [][]string{{"a", "b"}}},
-		{"an empty line is an empty row", "a\n\nb\n", [][]string{{"a"}, {""}, {"b"}}},
+		{"a blank line separates nothing", "a\n\nb\n", [][]string{{"a"}, {"b"}}},
+		{"a quote beside text reads as text", "ab\"c\n", [][]string{{`ab"c`}}},
+		{"an unterminated quote reads to the end", "\"never closed\n", [][]string{{"never closed\n"}}},
 	} {
 		got, err := csvDecode(c.in)
 		if err != nil {
@@ -69,8 +72,5 @@ func TestCSVDecodeEdges(t *testing.T) {
 				t.Errorf("%s: row %d = %q, want %q", c.name, i, row, c.want[i])
 			}
 		}
-	}
-	if _, err := csvDecode("\"never closed\n"); err == nil {
-		t.Error("an unterminated quote decoded without an error")
 	}
 }

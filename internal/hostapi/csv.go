@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"encoding/csv"
 	"fmt"
 	"strconv"
 	"strings"
@@ -12,7 +13,9 @@ import (
 
 // csvNamespace is zemi.csv, beside zemi.json: encode a table of rows into
 // RFC 4180 text and decode text back, the round trip a report or a handoff
-// to another tool takes.
+// to another tool takes. Both sides are encoding/csv, so the rules are the
+// standard ones: quoted fields keep their commas and newlines whole, and a
+// quote beside text reads as text.
 func (h *Host) csvNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	tb.RawSetString("encode", L.NewFunction(func(L *glua.LState) int {
@@ -77,71 +80,23 @@ func luaNumberString(n glua.LNumber) string {
 	return strconv.FormatFloat(float64(n), 'g', -1, 64)
 }
 
-// csvEncode writes RFC 4180: a field carrying a comma, a quote, a carriage
-// return or a newline is quoted, and a quote inside doubles.
+// csvEncode writes the rows as encoding/csv does: a field carrying a
+// separator, a quote, a leading space or a newline is quoted, and a quote
+// inside doubles.
 func csvEncode(rows [][]string) string {
 	var b strings.Builder
-	for _, row := range rows {
-		for i, field := range row {
-			if i > 0 {
-				b.WriteByte(',')
-			}
-			if strings.ContainsAny(field, ",\"\n\r") {
-				b.WriteByte('"')
-				b.WriteString(strings.ReplaceAll(field, `"`, `""`))
-				b.WriteByte('"')
-			} else {
-				b.WriteString(field)
-			}
-		}
-		b.WriteByte('\n')
-	}
+	w := csv.NewWriter(&b)
+	w.WriteAll(rows) // an in-memory writer cannot fail the write
 	return b.String()
 }
 
-// csvDecode reads RFC 4180: quoted fields may carry commas, doubled quotes
-// and newlines; a trailing newline ends the last row, and a final
-// unterminated quoted field is the error it would be for any reader.
+// csvDecode reads the text as encoding/csv does: quoted fields may carry
+// commas and newlines, a quote beside text reads as text, and a trailing
+// newline ends the last row. A blank line separates nothing: the reader
+// skips it.
 func csvDecode(text string) ([][]string, error) {
-	var rows [][]string
-	var row []string
-	var field strings.Builder
-	inQuotes, fieldQuoted := false, false
-	for i := 0; i < len(text); i++ {
-		c := text[i]
-		switch {
-		case inQuotes:
-			if c == '"' {
-				if i+1 < len(text) && text[i+1] == '"' {
-					field.WriteByte('"')
-					i++
-				} else {
-					inQuotes = false
-				}
-			} else {
-				field.WriteByte(c)
-			}
-		case c == '"' && field.Len() == 0 && !fieldQuoted:
-			inQuotes, fieldQuoted = true, true
-		case c == ',':
-			row = append(row, field.String())
-			field, fieldQuoted = strings.Builder{}, false
-		case c == '\n' || c == '\r':
-			if c == '\r' && i+1 < len(text) && text[i+1] == '\n' {
-				i++
-			}
-			rows = append(rows, append(row, field.String()))
-			row, field = nil, strings.Builder{}
-			fieldQuoted = false
-		default:
-			field.WriteByte(c)
-		}
-	}
-	if inQuotes {
-		return nil, fmt.Errorf("a quoted field never closes")
-	}
-	if field.Len() > 0 || fieldQuoted || len(row) > 0 {
-		rows = append(rows, append(row, field.String()))
-	}
-	return rows, nil
+	r := csv.NewReader(strings.NewReader(text))
+	r.FieldsPerRecord = -1 // rows of one report may vary in shape
+	r.LazyQuotes = true
+	return r.ReadAll()
 }
