@@ -98,7 +98,7 @@ func TestCLI(t *testing.T) {
 		{name: "dash dash keeps a command name", args: []string{"--", "plugin", "x"}, want: &options{prompt: "plugin x"}},
 		{name: "one-word typo", args: []string{"helth"}, code: 2, stderr: "did you mean health"},
 		{name: "continue with resume", args: []string{"-c", "-r", "s1"}, code: 2, stderr: "unknown shorthand flag: 'c'"},
-		{name: "print flag is gone", args: []string{"-p", "hi"}, code: 2, stderr: "unknown shorthand flag: 'p'"},
+		{name: "print mode takes the prompt", args: []string{"-p", "hi"}, want: &options{print: true, prompt: "hi"}},
 		{name: "trust false", args: []string{"--trust=false"}, want: &options{trust: new(false)}},
 		{name: "version", args: []string{"--version"}, stdout: "zemi "},
 		{name: "health takes no args", args: []string{"health", "x"}, code: 2, stderr: "Run 'zemi health --help'"},

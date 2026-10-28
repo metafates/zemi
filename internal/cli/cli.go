@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"charm.land/fantasy"
 	"github.com/charmbracelet/colorprofile"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
@@ -59,6 +60,7 @@ var version string
 type options struct {
 	model  string
 	prompt string
+	print  bool   // -p: send the prompt, print the final reply, exit
 	dir    string // -C
 	trust  *bool  // --trust for this run; nil when not given
 	// dirs are this run's, resolved once by the root's hook after -C; a
@@ -185,10 +187,12 @@ func newRoot(o *options, launch func(options) int) *cobra.Command {
 @zemi a terminal coding agent
 
 With no command zemi opens the TUI; a prompt is sent as the first message,
-or run when it names a command (zemi "/review HEAD~1").`,
+or run when it names a command (zemi "/review HEAD~1"). With -p the prompt
+runs headless: the final reply prints and zemi exits.`,
 		Example: `  zemi "fix the failing test"
   zemi "/review HEAD~1"
-  zemi -- plugins are not loading      after --, it is all prompt`,
+  zemi -- plugins are not loading      after --, it is all prompt
+  zemi -p "say hi"                     one-shot: the reply prints, zemi exits`,
 		Version:       versionString(),
 		Args:          o.finish,
 		SilenceErrors: true,
@@ -204,6 +208,7 @@ or run when it names a command (zemi "/review HEAD~1").`,
 	// -m is persistent, so a subcommand parses it (zemi -m <id> health)
 	root.PersistentFlags().StringVarP(&o.model, "model", "m", "", "model for the conversation, by provider/model `id`")
 	_ = root.RegisterFlagCompletionFunc("model", completeBooted((*hostapi.Host).ModelIDs))
+	root.Flags().BoolVarP(&o.print, "print", "p", false, "send the prompt, print the final reply and exit; the prompt is the arguments or piped stdin")
 
 	var healthJSON *bool
 	health := &cobra.Command{
@@ -318,7 +323,7 @@ func completeEntries(c *cobra.Command, args []string, _ string) ([]cobra.Complet
 // word that is a near miss of a command is refused: sent, it would open the
 // TUI and pay for a model call on a typo.
 func (o *options) finish(c *cobra.Command, args []string) error {
-	if !c.HasParent() && len(args) == 1 && c.ArgsLenAtDash() < 0 {
+	if !c.HasParent() && len(args) == 1 && c.ArgsLenAtDash() < 0 && !o.print {
 		if s := c.SuggestionsFor(args[0]); len(s) > 0 {
 			return fmt.Errorf("%q is not a command; did you mean %s? (a one-word prompt: zemi -- %s)", args[0], s[0], args[0])
 		}
@@ -1036,4 +1041,65 @@ func sendPrompt(ctx context.Context, h *hostapi.Host, prompt string) error {
 		return ctx.Err()
 	}
 	return h.SendHeld(prompt)
+}
+
+// runPrint is -p: the one-shot the other harnesses offer (codex exec, pi
+// --print, opencode run). It boots headless, sends the prompt - the
+// arguments, or piped stdin - and prints the turn's final reply. No UI
+// hooks run, so a permission ask fails closed and the turn carries on
+// without the denied call.
+func runPrint(o options, stdout, stderr io.Writer) int {
+	prompt := o.prompt
+	if prompt == "" {
+		b, err := io.ReadAll(os.Stdin)
+		if err != nil || strings.TrimSpace(string(b)) == "" {
+			usageHint(stderr, "zemi", "give a prompt: as the arguments or piped on stdin")
+			return 2
+		}
+		prompt = string(b)
+	}
+	h, done, err := bootHeadless(o, false, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, "zemi:", err)
+		return 1
+	}
+	defer done()
+	// a hung turn or model is the user's ctrl-c: the signal ends the wait
+	// and the deferred cleanup reaps what the turn started
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	defer stop()
+	if err := sendPrompt(ctx, h, prompt); err != nil {
+		fmt.Fprintln(stderr, "zemi:", err)
+		return 1
+	}
+	for h.AgentActive() {
+		select {
+		case <-ctx.Done():
+			fmt.Fprintln(stderr, "zemi: interrupted")
+			return 1
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	tr := h.Session().Transcript
+	failed := false
+	reply := ""
+	for i := len(tr) - 1; i >= 0; i-- {
+		m := tr[i]
+		switch {
+		case m.Role == fantasy.MessageRoleUser: // the prompt itself: the turn's rows end here
+			i = -1
+		case m.Kind == hostapi.RowError:
+			failed = true
+		case m.Role == fantasy.MessageRoleAssistant && m.Kind == hostapi.RowMessage && reply == "":
+			reply = m.Text
+		}
+	}
+	if reply != "" {
+		fmt.Fprintln(stdout, reply)
+	}
+	if failed {
+		headline(stderr, "zemi:", "the turn failed; its rows are in /errors")
+		return 1
+	}
+	return 0
 }
