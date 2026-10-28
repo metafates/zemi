@@ -1709,8 +1709,9 @@ UI extensibility contract:
   path-headed (`~`, `/`, `../`, `./`, quoted forms too), from the listing of
   the directory it names - `@~/Downloads/`, `@../sibling/`, `@/etc/` walk
   in shell-tab style, a directory accept keeping the popup open. On submit
-  a directory attaches its files listed, one path relative to it per line,
-  shallowest first, capped with the remainder named at the tail. A path
+  a directory attaches its own entries, as `ls` lists them - one name per
+  line, a subdirectory's trailing its slash - capped with the remainder
+  named at the tail; reading deeper is what the model's tools are for. A path
   that cannot ride a bare word (whitespace, trailing sentence punctuation)
   rides quoted, `@"~/My Docs/a.txt"`. While both sections have rows, the
   Files section caps so both headers stay in the window; the Files ranking

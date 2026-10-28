@@ -178,7 +178,7 @@ func TestExpandAttachments(t *testing.T) {
 	}
 
 	// the composer hands out @dir/ tokens (a completion, a drop): a directory
-	// attaches its files listed, one relative path per line
+	// attaches its own entries, as ls lists them
 	if err := os.MkdirAll(filepath.Join(proj, "src", "deep"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -190,12 +190,15 @@ func TestExpandAttachments(t *testing.T) {
 	}
 	got, _ = h.expandAttachments("look at @src/", true)
 	for _, want := range []string{
-		`<dir path="src" files=2>`,
-		"\na.txt\ndeep/b.txt\n",
+		`<dir path="src" entries=2>`,
+		"\na.txt\ndeep/\n",
 	} {
 		if !strings.Contains(got, want) {
-			t.Fatalf("the directory must list its files: %q", got)
+			t.Fatalf("the directory must list its entries: %q", got)
 		}
+	}
+	if strings.Contains(got, "b.txt") {
+		t.Fatalf("the listing is one level, not a tree: %q", got)
 	}
 
 	// the same file named twice attaches once: a repeated @word, the same
@@ -339,8 +342,7 @@ func TestOutsideAttachment(t *testing.T) {
 }
 
 // TestDirListingCaps: a listing never understates its directory. The count
-// names every file the walk saw, the tail names what the listing does not
-// show, and so does an unreadable subdirectory.
+// names every entry, and the tail names what the listing does not show.
 func TestDirListingCaps(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -361,37 +363,24 @@ func TestDirListingCaps(t *testing.T) {
 	for i := range dirListMax + 30 {
 		write(many, fmt.Sprintf("f%03d.txt", i))
 	}
-	// names 131 bytes long: attachMax fits 496 of them, so the byte cap,
-	// not the count cap, breaks this listing
-	long := mk("long")
-	for i := range 520 {
-		write(long, strings.Repeat("n", 124)+fmt.Sprintf("%03d.txt", i))
-	}
 	mixed := mk("mixed")
-	write(mixed, "visible.txt")
-	locked := filepath.Join(mixed, "locked")
-	if err := os.Mkdir(locked, 0o755); err != nil {
+	write(mixed, "a.txt")
+	if err := os.Mkdir(filepath.Join(mixed, "sub"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	write(locked, "inside.txt")
-	if err := os.Chmod(locked, 0); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chmod(locked, 0o755) // TempDir cleanup needs the mode back
+	write(filepath.Join(mixed, "sub"), "inner.txt")
 
 	cases := []struct {
-		name      string
-		dir       string
-		wantLines int    // file lines the listing shows
-		total     int    // the count the element names
-		want      string // the tail
+		name   string
+		dir    string
+		want   []string // lines the listing must carry
+		absent string   // a line it must not (nothing under a subdirectory)
+		total  int      // the count the element names
+		shown  int      // entry lines shown
 	}{
-		{"count cap", many, dirListMax, dirListMax + 30, "... 30 more"},
-		{"byte cap", long, 496, 520, "... 24 more"},
-		{"unreadable subdir", mixed, 1, 1, "locked/ unreadable"},
-	}
-	if _, err := os.ReadDir(locked); err == nil {
-		cases = cases[:2] // root reads through the mode bits
+		{"count cap", many, []string{"... 30 more"}, "", dirListMax + 30, dirListMax},
+		{"one level", mixed, []string{"a.txt\n", "sub/\n"}, "inner.txt", 2, 2},
+		{"empty", mk("empty"), []string{"(empty)"}, "", 0, 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -399,14 +388,20 @@ func TestDirListingCaps(t *testing.T) {
 			var refused []string
 			attachDir(&b, c.dir, c.name, &refused)
 			got := b.String()
-			if lines := strings.Count(got, ".txt\n"); lines != c.wantLines {
-				t.Errorf("%d file lines, want %d", lines, c.wantLines)
+			if !strings.Contains(got, fmt.Sprintf(`entries=%d`, c.total)) {
+				t.Errorf("the count names every entry: %q", got)
 			}
-			if !strings.Contains(got, c.want) {
-				t.Errorf("missing %q in:\n%s", c.want, got)
+			body := got[strings.Index(got, ">\n")+2 : strings.LastIndex(got, "\n</")]
+			if lines := strings.Count(body, "\n"); lines != c.shown {
+				t.Errorf("%d lines shown, want %d: %q", lines, c.shown, body)
 			}
-			if !strings.Contains(got, fmt.Sprintf(`files=%d`, c.total)) {
-				t.Errorf("the count names every file: %q", got)
+			for _, want := range c.want {
+				if !strings.Contains(got, want) {
+					t.Errorf("missing %q in:\n%s", want, got)
+				}
+			}
+			if c.absent != "" && strings.Contains(got, c.absent) {
+				t.Errorf("the listing is one level, yet names %q: %s", c.absent, got)
 			}
 		})
 	}

@@ -1,10 +1,10 @@
-// attach.go expands @ references in a user message: each referenced skill or
-// file - a project file, or any path outside it - is appended to what the
-// model receives, behind agent.AttachMarker, while the transcript keeps the
-// typed text. Images (png, jpeg, gif, webp) travel as file parts for vision
-// models. A file that is too big, not text or not there gets a note saying
-// so in place of its content, so the model knows to reach for it with its
-// tools.
+// attach.go expands @ references in a user message: each referenced skill,
+// file or directory - a project file, or any path outside it - is appended
+// to what the model receives, behind agent.AttachMarker, while the
+// transcript keeps the typed text. Images (png, jpeg, gif, webp) travel as
+// file parts for vision models. A file that is too big, not text or not
+// there gets a note saying so in place of its content, so the model knows
+// to reach for it with its tools.
 
 package hostapi
 
@@ -16,7 +16,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -141,7 +140,7 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 		}
 		// a FIFO blocks the read, and an @word naming no file is just prose;
 		// a path that is there but not a regular file says why, like every
-		// other refusal - but a directory attaches its files listed
+		// other refusal - but a directory attaches its entries listed
 		if fi, err := os.Stat(abs); err == nil && !fi.Mode().IsRegular() {
 			if fi.IsDir() {
 				attachDir(&b, abs, name, &refused)
@@ -202,13 +201,12 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 	return text + agent.AttachMarker + b.String() + "\n</attached-files>", imgs
 }
 
-// attachDir is what a directory attaches: its files listed, one path
-// relative to it per line, shallowest first, so the model sees the tree
-// and reads what it needs with its tools. The listing shows at most
-// dirListMax files and attachMax bytes; the tail names what it does not
-// show, and so does an unreadable subdirectory.
+// attachDir is what a directory attaches: its own entries, as `ls` lists
+// them - one name per line, a subdirectory's trailing its slash - capped at
+// dirListMax with the remainder named at the tail. Reading deeper is what
+// the model's tools are for.
 func attachDir(b *strings.Builder, abs, name string, refused *[]string) {
-	l, err := listDir(abs)
+	des, err := os.ReadDir(abs)
 	if err != nil {
 		b.WriteString(agent.AttachElement(fmt.Sprintf("dir path=%q", name), "not attached: it could not be read"))
 		*refused = append(*refused, perm.TildePath(name)+": it could not be read")
@@ -216,109 +214,24 @@ func attachDir(b *strings.Builder, abs, name string, refused *[]string) {
 	}
 	var body strings.Builder
 	shown := 0
-	for _, p := range l.files {
-		if body.Len()+len(p)+1 > attachMax {
+	for _, de := range des {
+		if shown == dirListMax {
 			break
 		}
-		body.WriteString(p + "\n")
+		n := de.Name()
+		if de.IsDir() {
+			n += "/"
+		}
+		body.WriteString(n + "\n")
 		shown++
 	}
-	for _, rel := range l.unreadable {
-		body.WriteString(rel + "/ unreadable\n")
-	}
-	if shown < l.total {
-		fmt.Fprintf(&body, "... %d more", l.total-shown)
+	if shown < len(des) {
+		fmt.Fprintf(&body, "... %d more", len(des)-shown)
 	}
 	if body.Len() == 0 {
-		body.WriteString("(no files)")
+		body.WriteString("(empty)")
 	}
-	b.WriteString(agent.AttachElement(fmt.Sprintf("dir path=%q files=%d", name, l.total), body.String()))
-}
-
-// dirList is what a directory holds: the files the listing names (capped at
-// dirListMax), the count of every file the walk saw, and the subdirectories
-// it could not read.
-type dirList struct {
-	files      []string
-	total      int
-	unreadable []string
-}
-
-// listWait bounds a directory's walk, the bound git's file listing and the
-// popup's listing take too (tools.listWait, ui.dirListWait).
-const listWait = 2 * time.Second
-
-// listDir walks the regular files under dir under the listWait bound, so a
-// mount that answers slowly cannot hold a turn.
-func listDir(root string) (dirList, error) {
-	type res struct {
-		l   dirList
-		err error
-	}
-	ch := make(chan res, 1)
-	go func() {
-		l, err := walkDir(root)
-		ch <- res{l, err}
-	}()
-	select {
-	case r := <-ch:
-		return r.l, r.err
-	case <-time.After(listWait):
-		// NOTE: a mount hung past the bound leaves the walk goroutine parked on its read
-		return dirList{}, errors.New("listing timed out")
-	}
-}
-
-// walkDir walks the regular files under dir, by path relative to it,
-// shallow-first, counting past the cap so the tail can name the true
-// remainder. It skips .git and the directories tools.SkipDir names -
-// matched against the name as-is and dot-stripped, so .venv dies with
-// venv - and keeps every other hidden entry. The root's own read error
-// returns; a subdirectory's is named in unreadable. listDir bounds it.
-func walkDir(root string) (l dirList, rootErr error) {
-	var walk func(dir, rel string, top bool)
-	walk = func(dir, rel string, top bool) {
-		des, err := os.ReadDir(dir)
-		if err != nil {
-			if top {
-				rootErr = err
-			} else {
-				l.unreadable = append(l.unreadable, rel)
-			}
-			return
-		}
-		var subs, subrels []string
-		for _, de := range des {
-			name := de.Name()
-			if de.IsDir() {
-				if name == ".git" || tools.SkipDir(name) || tools.SkipDir(strings.TrimPrefix(name, ".")) {
-					continue
-				}
-				subs = append(subs, filepath.Join(dir, name))
-				subrels = append(subrels, path.Join(rel, name))
-				continue
-			}
-			if !de.Type().IsRegular() {
-				continue
-			}
-			l.total++
-			if len(l.files) >= dirListMax {
-				continue
-			}
-			if r, err := filepath.Rel(root, filepath.Join(dir, name)); err == nil {
-				l.files = append(l.files, filepath.ToSlash(r))
-			}
-		}
-		for i, sub := range subs {
-			walk(sub, subrels[i], false)
-		}
-	}
-	walk(root, ".", true)
-	if rootErr != nil {
-		return
-	}
-	tools.SortShallow(l.files)
-	return l, nil
+	b.WriteString(agent.AttachElement(fmt.Sprintf("dir path=%q entries=%d", name, len(des)), body.String()))
 }
 
 // pathAbs spells an @ word out to a path: ~ under home, the rest against the
