@@ -271,8 +271,7 @@ func (a *App) publishComposer() {
 		return
 	}
 	a.published = composerSnap{text: a.composer.text, cursor: a.composer.cursor}
-	a.palette.suppress = "" // the draft moved: a failed line's quiet no longer applies
-	a.frameDirty = true     // the draft edits here too: a paste, the editor
+	a.frameDirty = true // the draft edits here too: a paste, the editor
 	a.host.SetComposerSnapshot(a.composer.text, a.composer.cursor)
 }
 

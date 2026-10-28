@@ -1186,12 +1186,13 @@ func TestPaletteComplete(t *testing.T) {
 		t.Fatalf("submit: ran=%q text=%q", ran, app.composer.text)
 	}
 
-	// An unknown slash line is not sent and keeps the text for fixing.
+	// An unknown slash line is not sent: the line goes with the palette, the
+	// toast is its record.
 	app.composer.text, app.composer.cursor = "/nope", 5
 	app.updatePalette()
 	app.composerKey("enter", tea.KeyPressMsg{})
-	if got := app.composer.text; got != "/nope" {
-		t.Fatalf("unknown submit cleared text: %q", got)
+	if got := app.composer.text; got != "" {
+		t.Fatalf("unknown submit kept text: %q", got)
 	}
 	if len(app.toasts) == 0 {
 		t.Fatal("no toast for unknown command")
@@ -1229,7 +1230,7 @@ func TestPaletteDispatch(t *testing.T) {
 	}{
 		{"a fuzzy hit runs", "/eho", 4, nil, "/echo", "echo ", ""},
 		{"a prefix hit runs with the arguments", "/ec hi", 3, nil, "/echo", "echo hi", ""},
-		{"a fuzzy hit is not listed before arguments", "/eho hi", 4, nil, "", "", "/eho hi"},
+		{"a fuzzy hit is not listed before arguments", "/eho hi", 4, nil, "", "", ""},
 		{"the moved-to row runs over a typed name", "/zq hi", 3, []string{"down"}, "/zqa", "zqa hi", ""},
 		{"the reserved reload lists no row to claim it", "/reload", 7, nil, "", "", ""},
 	} {
