@@ -546,6 +546,29 @@ func TestSkillCompletion(t *testing.T) {
 // TestCompletionScan: the popup's own walk lists the project's files,
 // ignored ones included, and skips .git and the build directories - a
 // hidden venv with the visible one, dotfiles listed.
+// pathToken pins the split every listing consumer joins with: the
+// directory always ends in its separator, so `@~` labels entries as
+// `~/name`, not `~name`.
+func TestPathToken(t *testing.T) {
+	for _, c := range []struct {
+		token, dir, base string
+		ok               bool
+	}{
+		{"~", "~/", "", true},
+		{"~/", "~/", "", true},
+		{"..", "../", "", true},
+		{"/", "/", "", true},
+		{"~/Sub/a", "~/Sub/", "a", true},
+		{`"~/`, `~/`, "", true},
+		{"name", "", "", false},
+	} {
+		dir, base, ok := pathToken(c.token)
+		if dir != c.dir || base != c.base || ok != c.ok {
+			t.Errorf("pathToken(%q) = %q, %q, %v; want %q, %q, %v", c.token, dir, base, ok, c.dir, c.base, c.ok)
+		}
+	}
+}
+
 func TestCompletionScan(t *testing.T) {
 	dir := t.TempDir()
 	for _, d := range []string{".git", "node_modules", "internal", filepath.Join(".venv", "lib"), "lib"} {

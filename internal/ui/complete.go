@@ -219,8 +219,8 @@ func (f *wordCompleter) reskill() {
 }
 
 // pathToken splits a path-headed token into the directory the listing
-// answers, as typed without its quotes, and the entry base the cursor
-// narrows.
+// answers, as typed without its quotes and always ending in its
+// separator, and the entry base the cursor narrows.
 func pathToken(token string) (dir, base string, ok bool) {
 	w := unquoteToken(token)
 	if !pathHeaded(w) {
@@ -229,7 +229,7 @@ func pathToken(token string) (dir, base string, ok bool) {
 	if i := strings.LastIndexByte(w, '/'); i >= 0 {
 		return w[:i+1], w[i+1:], true
 	}
-	return w, "", true
+	return w + "/", "", true
 }
 
 // unquoteToken strips one wrapping quote pair: the opening quote, and the
