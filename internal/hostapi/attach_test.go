@@ -414,6 +414,22 @@ func TestDirListingCaps(t *testing.T) {
 			}
 		})
 	}
+
+	// the unreadable branch: the listing refuses with its note (root reads
+	// anything, and TempDir cleanup needs the mode back)
+	if os.Geteuid() != 0 {
+		locked := mk("locked")
+		if err := os.Chmod(locked, 0); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Chmod(locked, 0o755)
+		var b strings.Builder
+		var refused []string
+		attachDir(&b, locked, "locked", &refused)
+		if !strings.Contains(b.String(), "not attached: it could not be read") || len(refused) != 1 {
+			t.Errorf("an unreadable directory refuses: %q %v", b.String(), refused)
+		}
+	}
 }
 
 // TestAttachHome: ~ spells home out, wherever the word sits.
