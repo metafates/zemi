@@ -913,8 +913,10 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 				a.reloadOverlay(o, nil)
 				return nil
 			}
-			// the screen the key opens takes over, as the same key on a row does
-			a.closeOverlayByID(o.ID)
+			// the screen the key opens takes over, as the same key on a row
+			// does; the close waits behind it, so a burst's next key lands in
+			// the screen, never in the draft under a closed box
+			a.do(func() { a.closeOverlayByID(o.ID) })
 			return nil
 		}
 		item := st.selectedItem()
