@@ -533,8 +533,9 @@ func (h *Host) agentSend(text string) (queued bool, err error) {
 type heldPrompt struct {
 	scope     *turnScope
 	text      string
-	base      int  // transcript rows before the message's row landed
-	cancelled bool // the user took it back (AgentCancel); the turn never starts
+	base      int   // transcript rows before the message's row landed
+	cut       int64 // the head cut when the row landed, so a trim shifts base
+	cancelled bool  // the user took it back (AgentCancel); the turn never starts
 }
 
 // HoldPrompt shows a command-line prompt as the first message from the TUI's
@@ -550,8 +551,8 @@ func (h *Host) HoldPrompt(prompt string) {
 	}
 	h.tMu.RLock()
 	base := len(h.session.Transcript)
+	held := &heldPrompt{scope: h.claim(), text: agent.Defuse(prompt), base: base, cut: h.trCut.Load()}
 	h.tMu.RUnlock()
-	held := &heldPrompt{scope: h.claim(), text: agent.Defuse(prompt), base: base}
 	ag.held = held
 	ag.beginTurn()
 	ag.mu.Unlock()
@@ -587,6 +588,13 @@ func (h *Host) SendHeld(prompt string) error {
 	return nil
 }
 
+// heldBase is where the held prompt's row sits now: its landing index minus
+// the rows a trim shed after it. Negative, the row itself was shed and
+// nothing at any index is the hold's to remove.
+func (h *Host) heldBase(held *heldPrompt) int {
+	return held.base - int(h.trCut.Load()-held.cut)
+}
+
 // heldRow reports whether the transcript still holds the held prompt's
 // message where it landed: the turn that finally sends the same text keeps
 // that row instead of adding a second one. A reset mid-boot replaced the
@@ -595,8 +603,9 @@ func (h *Host) heldRow(held *heldPrompt) bool {
 	shown, _, _ := userRowsFor(held.text)
 	h.tMu.RLock()
 	defer h.tMu.RUnlock()
+	base := h.heldBase(held)
 	t := h.session.Transcript
-	return len(t) > held.base && t[held.base].Role == fantasy.MessageRoleUser && t[held.base].Text == shown
+	return base >= 0 && len(t) > base && t[base].Role == fantasy.MessageRoleUser && t[base].Text == shown
 }
 
 // dropHeldRow removes the held prompt's message from the transcript where it
@@ -604,12 +613,13 @@ func (h *Host) heldRow(held *heldPrompt) bool {
 func (h *Host) dropHeldRow(held *heldPrompt) {
 	shown, _, _ := userRowsFor(held.text)
 	h.tMu.Lock()
+	base := h.heldBase(held)
 	t := h.session.Transcript
-	if len(t) > held.base && t[held.base].Role == fantasy.MessageRoleUser && t[held.base].Text == shown {
+	if base >= 0 && len(t) > base && t[base].Role == fantasy.MessageRoleUser && t[base].Text == shown {
 		// replaced whole, like setTranscript: readers share the old array
-		h.session.Transcript = append(slices.Clip(t[:held.base]), t[held.base+1:]...)
+		h.session.Transcript = append(slices.Clip(t[:base]), t[base+1:]...)
 		h.trEpoch.Add(1)
-		if held.base < h.stampRow { // the held row's log write never happened
+		if base < h.stampRow { // the held row's log write never happened
 			h.stampRow--
 		}
 	}

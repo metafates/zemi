@@ -217,10 +217,20 @@ func (h *Host) SyncChat() {
 	if h.DB == nil || h.DB.Origin == "" {
 		return
 	}
-	// a foreign goal the kv row no longer holds was met or stopped in the
-	// window that set it: drop the copy, with no judge run here
+	// a foreign goal the kv row no longer holds (met or stopped where it was
+	// set, or replaced by a newer goal) leaves this window's copy stale: drop
+	// it, with no judge run here
 	if g, ok := h.Goal(); ok && g.Writer != "" && g.Writer != h.origin {
-		if _, err := h.DB.GetKV(goalKV); errors.Is(err, store.ErrNotFound) {
+		stale := false
+		if raw, err := h.DB.GetKV(goalKV); errors.Is(err, store.ErrNotFound) {
+			stale = true
+		} else if err == nil {
+			var row Goal
+			if json.Unmarshal([]byte(raw), &row) == nil && (row.SetAt != g.SetAt || row.Condition != g.Condition) {
+				stale = true
+			}
+		}
+		if stale {
 			h.agents.mu.Lock()
 			h.agents.goal = nil
 			h.agents.mu.Unlock()
@@ -236,16 +246,23 @@ func (h *Host) SyncChat() {
 			h.refresh()
 		}
 	}
+	// the agents lock leads the transcript lock everywhere (the turn path
+	// holds ag.mu across its appends), so the tick's splice never takes
+	// ag.mu inside tMu: that order made a turn starting inside this section
+	// freeze both sides of the pair
+	h.agents.mu.Lock()
 	h.tMu.Lock()
 	count, err := h.DB.LogCount()
 	if err != nil {
 		h.tMu.Unlock()
+		h.agents.mu.Unlock()
 		return
 	}
 	if (count < h.stampFrom || h.logWipedLocked()) && h.reloadChatLocked() {
 		// the log shrank under this window's cursor, or the row it stamped
 		// reads differently: another window reset, its regrown rows included
 		h.tMu.Unlock()
+		h.agents.mu.Unlock()
 		h.chatDropped()
 		h.refreshMessages()
 		h.scroll(ScrollBottom, "")
@@ -256,9 +273,7 @@ func (h *Host) SyncChat() {
 	h.stampLogSeqsLocked()
 	foreign := h.foreignPend
 	h.foreignPend = nil
-	h.agents.mu.Lock()
 	active := h.agents.active
-	h.agents.mu.Unlock()
 	if len(foreign) > 0 && active {
 		// a turn owns the tail: its unstamped rows are the pairing's to
 		// claim, not a splice's to step over - the next tick splices them
@@ -301,6 +316,7 @@ func (h *Host) SyncChat() {
 		h.trEpoch.Add(1)
 	}
 	h.tMu.Unlock()
+	h.agents.mu.Unlock()
 	if len(foreign) > 0 {
 		h.refresh()
 		// a draft in the composer can be answered by what just arrived: say

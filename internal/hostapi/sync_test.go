@@ -3,6 +3,7 @@ package hostapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
 
@@ -40,6 +42,102 @@ func newWindow(t *testing.T, stateHome, projectDir string) (*Host, *replyStubMod
 		t.Fatalf("Boot: %v", err)
 	}
 	return h, m
+}
+
+// TestSyncChatReplacesAStaleForeignGoal: a window that adopted a gone
+// writer's goal drops the stale copy when the writer returns with a new one,
+// and the live row keeps standing - the stale copy never deletes it.
+func TestSyncChatReplacesAStaleForeignGoal(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a, _ := newWindow(t, state, proj)
+	peerHeartbeat(t, a)
+	if err := a.SetGoal("goal one holds"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, a)
+	b, _ := newWindow(t, state, proj)
+	peerHeartbeat(t, b)
+	b.SyncChat()
+	if g, ok := b.Goal(); !ok || g.Condition != "goal one holds" {
+		t.Fatalf("b loaded %+v, want goal one", g)
+	}
+
+	// the writer returns: fresh heartbeat, and the goal replaced
+	peerHeartbeat(t, a)
+	if err := a.SetGoal("goal two holds"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, a)
+
+	// b's next sync sees a row that names another goal: the stale copy drops
+	// and the live goal takes its place
+	b.SyncChat()
+	g, ok := b.Goal()
+	if !ok || g.Condition != "goal two holds" {
+		t.Fatalf("b holds %+v, want the writer's goal two", g)
+	}
+	if raw, err := a.DB.GetKV(goalKV); err != nil || !strings.Contains(raw, "goal two holds") {
+		t.Fatalf("the live goal's row = %q (%v), want goal two standing", raw, err)
+	}
+}
+
+// TestSyncChatSplicesAgainstTheTurn: the live append's trim, the settled
+// append's trim and the sync's splice contend on one lock order (the agents
+// lock leads the transcript lock); the invariants are the window bound and
+// the cut accounting.
+func TestSyncChatSplicesAgainstTheTurn(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	h, _ := newWindow(t, state, proj)
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() { // the live append's trim
+		defer wg.Done()
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			ag := h.agents
+			ag.mu.Lock()
+			ag.textBuf = "live"
+			ag.mu.Unlock()
+			h.appendAfterLive(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: fmt.Sprintf("live %d", i)})
+		}
+	}()
+	go func() { // the settled append's trim
+		defer wg.Done()
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: fmt.Sprintf("settled %d", i)})
+		}
+	}()
+	go func() { // the sync tick
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			h.SyncChat()
+		}
+	}()
+	<-time.After(2 * time.Second)
+	close(stop)
+	wg.Wait()
+	tr := h.Session().Transcript
+	if len(tr) > chatWindowRows {
+		t.Fatalf("the window holds %d rows, bound %d", len(tr), chatWindowRows)
+	}
+	if cut := h.trCut.Load(); cut+int64(len(tr)) < chatWindowRows {
+		t.Fatalf("cut %d + window %d shed rows", cut, len(tr))
+	}
 }
 
 // windowText is one window's transcript texts, the order it draws.
