@@ -165,7 +165,7 @@ func (a *App) closeQuotedWord() {
 	if w == "" {
 		return
 	}
-	full := w
+	full := perm.JoinHead(w)
 	if strings.HasPrefix(full, "~") {
 		full = perm.ExpandHome(full)
 	} else if !filepath.IsAbs(full) {

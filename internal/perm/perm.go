@@ -61,6 +61,22 @@ func ExpandHome(w string) string {
 	return w
 }
 
+// JoinHead spells a bare path head the way an @ word reads it: `~Downloads`
+// rides as `~/Downloads` and `..Docs` as `../Docs`, the narrowing the popup
+// teaches, so a word it offered resolves outside the popup too.
+func JoinHead(w string) string {
+	if strings.IndexByte(w, '/') >= 0 {
+		return w
+	}
+	switch {
+	case len(w) > 1 && w[0] == '~':
+		return "~/" + w[1:]
+	case len(w) > 2 && strings.HasPrefix(w, ".."):
+		return "../" + w[2:]
+	}
+	return w
+}
+
 // Under reports whether path is root or below it, and gives its path
 // relative to root. Both must already be resolved; run RealPath first when
 // either may hold a symlink. A real entry whose own name starts with ".."

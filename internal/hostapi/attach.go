@@ -238,6 +238,7 @@ func attachDir(b *strings.Builder, abs, name string, refused *[]string) {
 // pathAbs spells an @ word out to a path: ~ under home, the rest against the
 // project directory.
 func (h *Host) pathAbs(word string) string {
+	word = perm.JoinHead(word)
 	if strings.HasPrefix(word, "~") {
 		return perm.ExpandHome(word)
 	}

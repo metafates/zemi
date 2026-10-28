@@ -452,6 +452,11 @@ func TestAttachHome(t *testing.T) {
 	if !strings.Contains(got, "home notes") {
 		t.Fatalf("a home path attaches: %q", got)
 	}
+	// the popup's bare-head spelling rides: @~Docs is ~/Docs
+	got, _ = h.expandAttachments("see @~Docs", true)
+	if !strings.Contains(got, docs) || !strings.Contains(got, "a.txt") {
+		t.Fatalf("a bare tilde head attaches: %q", got)
+	}
 }
 
 // TestAttachWord: the word the composer inserts reads back by the grammar:

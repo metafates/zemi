@@ -628,6 +628,18 @@ func TestCompletionNarrowsHome(t *testing.T) {
 	if got := app.completion.paths; len(got) != 0 {
 		t.Fatalf("stale listing rows: %+v", got)
 	}
+	// the space rule resolves the bare heads the popup narrows: the quote
+	// closes on a word whose path exists, so prose rides outside
+	app.composer.text, app.composer.cursor = `@"~Downloads`, 12
+	app.composerKey(" ", tea.KeyPressMsg{Text: " "})
+	if got := app.composer.text; got != `@"~Downloads" ` {
+		t.Fatalf("bare tilde head closed as %q", got)
+	}
+	app.composer.text, app.composer.cursor = `@"..Downloads`, 13
+	app.composerKey(" ", tea.KeyPressMsg{Text: " "})
+	if got := app.composer.text; got != `@"..Downloads" ` {
+		t.Fatalf("bare dotdot head closed as %q", got)
+	}
 }
 
 func TestCompletionScan(t *testing.T) {
