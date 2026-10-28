@@ -889,8 +889,8 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 				a.reloadOverlay(o, call)
 				return nil
 			}
-			// the box closes before the work, so a screen it opens is left open
-			a.closeOverlayByID(o.ID)
+			// the box stays put while the work runs: an act that rebuilds it
+			// replaces it in place, and one that opens a screen stacks over it
 			a.background(call)
 			return nil
 		}
@@ -985,7 +985,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	case "l":
 		// one level in, where there is one: a row's view or the screen its run
 		// opens. Its operations are keys of the row, so a row with neither
-		// takes nothing from l.
+		// falls through and the letter filters, as any unclaimed key does.
 		if st.back || len(st.visible) == 0 {
 			return nil
 		}
@@ -993,25 +993,27 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		switch r := st.items[idx].row; {
 		case hasView(r):
 			a.openDetail(st, idx)
+			return nil
 		case r.Danger && !confirmed:
 			// a danger row's run confirms like enter does: the first press arms
 			st.armed = true
+			return nil
 		case r.Run != "" && o.OnSelect == nil:
 			a.runOverlayRow(r)
+			return nil
 		}
-		return nil
 	case "h":
 		// one level back, a view or a level stacked over another only: at the
-		// root there is nowhere back to, and h types into a filter as always
-		if len(a.overlays) == 1 {
+		// root there is nowhere back to, and h filters, as any unclaimed key
+		if len(a.overlays) > 1 {
+			if st.back {
+				a.overlays = a.overlays[:len(a.overlays)-1] // back, with nothing to rebuild
+				a.syncRail()
+				return nil
+			}
+			a.cancelOverlay(o) // the chat back where this level found it
 			return nil
 		}
-		if st.back {
-			a.overlays = a.overlays[:len(a.overlays)-1] // back, with nothing to rebuild
-			a.syncRail()
-			return nil
-		}
-		a.cancelOverlay(o) // the chat back where this level found it
 	case "esc":
 		if st.back {
 			a.overlays = a.overlays[:len(a.overlays)-1] // back, with nothing to rebuild
