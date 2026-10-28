@@ -96,10 +96,10 @@ func (f *listFilter) apply() {
 
 // edit applies a filtering key. "/" starts typing a query on a list with
 // rows; typed text inserts at the cursor and the composer's editing keys
-// move or edit around it; enter keeps it and gives the keys back to the
-// list, where "/" types on and esc clears it; esc while typing, or
-// backspace on an empty query, clears it too. It reports whether the key
-// was used.
+// move or edit around it; enter acts on the row the filter narrowed to, as
+// the footer's verb says, and leaves the query applied - "/" types on and
+// esc clears it, as does backspace on an empty query. It reports whether
+// the key was used.
 func (f *listFilter) edit(key, text string) bool {
 	if !f.active {
 		switch {
@@ -116,8 +116,10 @@ func (f *listFilter) edit(key, text string) bool {
 	q := composerState{text: f.query, cursor: f.cursor}
 	switch {
 	case key == "enter":
+		// enter acts on the row the filter narrowed to, as the footer's
+		// "enter pick" says: the query stays applied, the keys go back
 		f.active = false
-		return true
+		return false
 	case key == "esc" || key == "backspace" && f.query == "":
 		f.active = false
 		f.set("")
@@ -842,6 +844,9 @@ func (a *App) moreAtTop(st *overlayState, key string, was int) {
 // overlayKey routes keys to the topmost overlay; text is what the key types
 // (printable keys filter the list).
 func (a *App) overlayKey(key, text string) tea.Cmd {
+	if len(a.overlays) == 0 {
+		return nil // the enter that acted may have closed the box under a burst
+	}
 	st := &a.overlays[len(a.overlays)-1]
 	o := st.o
 	if o.Input {
@@ -1464,6 +1469,14 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 			hints = append(hints, hintPair{key: "h", verb: "back"})
 		}
 		hints = st.filterHints(append(hints, scroll...), esc)
+		if st.active && len(st.visible) > 0 {
+			// enter runs the row the filter narrowed to, whatever its verb is
+			for i, h := range hints {
+				if h.key == "enter" {
+					hints[i].verb = string(st.enterVerb(st.visible[st.selected]))
+				}
+			}
+		}
 		footW := bodyW
 		if measuring { // the box grows to what the footer keeps, so no hint drops
 			footW = inner

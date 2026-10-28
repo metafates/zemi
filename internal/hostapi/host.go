@@ -198,6 +198,11 @@ type Overlay struct {
 	Next, Prev string
 }
 
+// ReadsOnly reports a reading box - an answer or a report drawn from its
+// body, with no rows to act on and no input of its own. Its keys are esc and
+// the scroll keys; typing belongs to the composer under it.
+func (o Overlay) ReadsOnly() bool { return o.Body != "" && len(o.Items) == 0 && o.Run == "" }
+
 // ServiceStatus is where an MCP server, a language server or a plugin
 // stands: the status word of /mcp, /lsp, /plugin, /health and zemi.*.list.
 type ServiceStatus string

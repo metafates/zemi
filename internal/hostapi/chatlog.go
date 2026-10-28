@@ -670,6 +670,9 @@ func (h *Host) chatCommands() []*Command {
 	return []*Command{{
 		Name: "note", NArgs: NArgsSome, Desc: "add a note to the chat's memory",
 		GoFn: func(h *Host, args string, confirm bool) error {
+			if strings.TrimSpace(args) == "" {
+				return Usagef("usage: /note <text>")
+			}
 			if err := h.Note(args); err != nil {
 				return err
 			}

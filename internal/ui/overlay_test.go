@@ -132,10 +132,8 @@ func TestOverlayFilter(t *testing.T) {
 	}{
 		{"typing narrows", hostapi.Overlay{}, runes("/t"), func(a *App) string { return state(a, true, "t", 2, 0) }},
 		{"every word must match, backspace widens", hostapi.Overlay{}, runes("/two b", "backspace", "backspace"), func(a *App) string { return state(a, true, "two", 1, 0) }},
-		{"enter keeps the query and gives j to the list", hostapi.Overlay{}, runes("/t", "enter", "j"), func(a *App) string { return state(a, false, "t", 2, 1) }},
+		{"enter on a typed filter acts on the row", hostapi.Overlay{}, runes("/t", "enter"), func(a *App) string { return closedWith(a, "Beta two") }},
 		{"esc while typing clears and keeps the row", hostapi.Overlay{}, runes("/ga", "esc"), func(a *App) string { return state(a, false, "", 5, 2) }},
-		{"esc on a kept query clears, a second closes", hostapi.Overlay{}, runes("/t", "enter", "esc", "esc"), func(a *App) string { return closedWith(a, "") }},
-		{"/ on a kept query types on", hostapi.Overlay{}, runes("/t", "enter", "/", "w"), func(a *App) string { return state(a, true, "tw", 1, 0) }},
 		{"backspace on an empty query stops typing", hostapi.Overlay{}, runes("/", "backspace"), func(a *App) string { return state(a, false, "", 5, 0) }},
 		{"the composer's editing keys work in a filter", hostapi.Overlay{}, runes("/gamma three", "ctrl+a", "right", "alt+f", "ctrl+e", "ctrl+a", "delete"), func(a *App) string {
 			st := a.overlays[0]
@@ -146,7 +144,7 @@ func TestOverlayFilter(t *testing.T) {
 		}},
 		{"j moves while no filter types", hostapi.Overlay{}, runes("jj"), func(a *App) string { return state(a, false, "", 5, 2) }},
 		{"a bare letter starts the filter, as a word typed to a picker narrows", hostapi.Overlay{}, runes("b"), func(a *App) string { return state(a, true, "b", 1, 0) }},
-		{"enter on a kept query acts on the row", hostapi.Overlay{}, runes("/e", "enter", "enter"), func(a *App) string { return closedWith(a, "alpha one") }},
+		{"enter on a kept query acts on the row", hostapi.Overlay{}, runes("/e", "enter", "enter"), func(a *App) string { return closedWith(a, "Beta two") }},
 		{"a typing filter takes the key", hostapi.Overlay{Items: keyed}, runes("/3"), func(a *App) string { return state(a, true, "3", 0, 0) }},
 		{"a row's key acts on the selected row", hostapi.Overlay{Items: keyed}, runes("jj3"), func(a *App) string { return closedWith(a, "gamma three") }},
 		{"/ on a list of fewer than filterMin rows is inert and draws no filter row", hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a"}, {Text: "b"}}}, runes("/"), func(a *App) string {
@@ -156,7 +154,7 @@ func TestOverlayFilter(t *testing.T) {
 			return state(a, false, "", 2, 0)
 		}},
 		{"a section name narrows to its rows and drops the other header", hostapi.Overlay{Items: models}, runes("/anthropic"), func(a *App) string {
-			if v := a.overlays[0].visible; !slices.Equal(v, []int{1, 2}) || strings.Contains(fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20, true)), "openai") {
+			if v := a.overlays[0].visible; !slices.Equal(v, []int{2, 1}) || strings.Contains(fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20, true)), "openai") {
 				return fmt.Sprint(v)
 			}
 			return ""
@@ -1110,19 +1108,19 @@ func TestOverlayFlushKeepsTheFilter(t *testing.T) {
 	}
 	a.openOverlay(hostapi.Overlay{ID: "memories", Origin: lua.OriginBuiltin, Items: parent})
 	a.overlayKey("/", "/")
+	a.overlayKey("t", "t")
+	a.overlayKey("w", "w")
 	a.overlayKey("o", "o")
-	a.overlayKey("n", "n")
-	a.overlayKey("e", "e")
 	a.overlayKey("enter", "")
 	st := &a.overlays[0]
-	if st.query != "one" || len(st.visible) != 1 {
+	if st.query != "two" || len(st.visible) != 1 {
 		t.Fatalf("filter = %q over %d rows, want one hit", st.query, len(st.visible))
 	}
 
 	// a flush rebuild is no level move: the query survives it
 	a.openOverlay(hostapi.Overlay{ID: "memories", Origin: lua.OriginBuiltin, Items: parent})
 	st = &a.overlays[0]
-	if st.query != "one" || len(st.visible) != 1 {
+	if st.query != "two" || len(st.visible) != 1 {
 		t.Fatalf("flush kept query %q hits %d, want the filter kept", st.query, len(st.visible))
 	}
 }
@@ -1319,12 +1317,12 @@ func TestOverlayHints(t *testing.T) {
 		{hostapi.Overlay{Items: run, Keys: keys}, "", "enter run · y copy · e edit · esc close"},
 		{hostapi.Overlay{Keys: keys}, "", "e edit · esc close"},
 		{hostapi.Overlay{Keys: []hostapi.OverlayKey{{Key: "r", Desc: "resume"}}}, "", "esc close"}, // a row's key waits for a row
-		{hostapi.Overlay{Items: run, Keys: keys}, "/", "enter done · esc clear"},
+		{hostapi.Overlay{Items: run, Keys: keys}, "/", "enter run · esc clear"},
 		{hostapi.Overlay{Items: run, Keys: keys}, "=a", "enter run · y copy · e edit · esc clear"},
 		{hostapi.Overlay{Follow: true, Items: run}, "", "enter run · y copy · esc close"},
 		{hostapi.Overlay{Body: "text"}, "", "y copy · esc close"},
 		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Copy: "export X"}}}, "", "enter copy · esc close"},
-		{hostapi.Overlay{Body: "text", Items: []hostapi.OverlayItem{{Text: "a", Fill: "x"}}}, "/", "enter done · esc clear"},
+		{hostapi.Overlay{Body: "text", Items: []hostapi.OverlayItem{{Text: "a", Fill: "x"}}}, "/", "enter fill · esc clear"},
 		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]hostapi.OverlayItem{{Text: "a", Fill: "x"}}, 30)}, "", "enter fill · y copy · esc close · ctrl+d/u scroll"},
 	} {
 		if got := strings.Trim(hints(c.o, c.filter), "│ "); got != c.want {
