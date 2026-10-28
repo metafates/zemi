@@ -863,12 +863,37 @@ func (h *Host) appendTranscript(rows ...ChatMessage) {
 // tMu held: the shed head advances trCut, the delta the chat's key shift
 // absorbs so no wipe is needed, and the pairing's row moves down with it.
 func (h *Host) trimTranscript(tr []ChatMessage) []ChatMessage {
-	if cut := len(tr) - chatWindowRows; cut > 0 {
-		tr = slices.Clone(tr[cut:])
+	kept := alignTrim(tr)
+	if cut := len(tr) - len(kept); cut > 0 {
+		tr = slices.Clone(kept)
 		h.trCut.Add(int64(cut))
 		h.stampCursor(cut)
 	}
 	return tr
+}
+
+// alignTrim clips tr to its last chatWindowRows rows, then sheds further
+// until the head sits on a row that opens a turn, so the window's oldest
+// row never reads as an answer whose question was shed. A turn longer than
+// the clip's slack shrinks the window; the log keeps every row.
+func alignTrim(tr []ChatMessage) []ChatMessage {
+	if len(tr) <= chatWindowRows {
+		return tr
+	}
+	cut := len(tr) - chatWindowRows
+	for cut < len(tr) && !turnStart(tr[cut]) {
+		cut++
+	}
+	if cut >= len(tr) { // no turn start in the kept span: the plain clip wins
+		cut = len(tr) - chatWindowRows
+	}
+	return tr[cut:]
+}
+
+// turnStart reports whether row opens a turn: a user message or a shell
+// command. Assistant rows, tool rows and notices hang under one.
+func turnStart(row ChatMessage) bool {
+	return row.Kind == RowShell || row.Kind == RowMessage && row.Role == fantasy.MessageRoleUser
 }
 
 // NewHost wires the registries and opens the stores (best effort:
@@ -938,9 +963,10 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		h.DB.Origin = h.origin
 		h.chat = newChatLog(context.Background(), h)
 		// the window opens on the log's tail: the chat that never ends has
-		// no resume, only more of itself
-		if rows, err := h.DB.LogTail(chatWindowRows); err == nil {
-			h.session.Transcript = logRows(rows)
+		// no resume, only more of itself. The tail is read with slack so
+		// its head can sit on a turn start, not an answer's shed remains.
+		if rows, err := h.DB.LogTail(chatWindowRows * 3); err == nil {
+			h.session.Transcript = alignTrim(logRows(rows))
 			h.stampReset(h.session.Transcript)
 		}
 		h.loadGoal()

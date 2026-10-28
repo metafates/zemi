@@ -7,10 +7,12 @@ package ui
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/lua"
 )
 
 // seedTrimChat fills the window with turns whose activity run is long enough
@@ -31,6 +33,25 @@ func TestChatTrimKeepsTheCache(t *testing.T) {
 	app, host := bootAgentAppOn(t, 140, 40, &lagClock{}, "")
 	seedTrimChat(host, 250) // 13 rows a turn: the window trims to its 1000
 	chat := host.Widgets.Get("chat")
+	// the trim sheds to the next turn start, so the shift the anchors move
+	// by is the cut's delta, read off the widget ctx, not a constant
+	if err := host.RT.ExecuteChunk(t.Context(),
+		`zemi.ui.widget.add({ id = "cutprobe", region = "statusline.right", render = function(ctx) return { { { text = tostring(ctx.transcript_cut) } } } end })`,
+		"cutprobe.lua", lua.OriginUser); err != nil {
+		t.Fatal(err)
+	}
+	cutProbe := func() int {
+		t.Helper()
+		lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("cutprobe"), 60, 1, app.uiState())
+		if err != nil {
+			t.Fatal(err)
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(hostapi.SegsText(lines[0])))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
 	render := func() ([][]hostapi.Segment, bool) {
 		t.Helper()
 		lines, more, err := host.RenderWidget(t.Context(), chat, 138, 40, app.uiState())
@@ -89,7 +110,12 @@ func TestChatTrimKeepsTheCache(t *testing.T) {
 	if !open {
 		t.Fatal("the digest's click did not open the run")
 	}
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Text: "one more settled row"})
+	cutBefore := cutProbe()
+	// one more exchange: 13 rows, enough to cross the window's bound and
+	// trim the head to the next turn start
+	for i := range 13 {
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Text: fmt.Sprintf("one more settled row %d", i)})
+	}
 	// the trim fills: the rows the viewport lost shift down and the units
 	// above restamp a view at a time, like a cold render does
 	open = false
@@ -106,16 +132,26 @@ func TestChatTrimKeepsTheCache(t *testing.T) {
 	if !open {
 		t.Fatal("the trim closed the fold the reader had open")
 	}
-	// every row that drew before the trim sits one row lower now: the anchors
-	// moved with the cut instead of going stale. The head unit is aside - the
-	// cut took its first row, so it rebuilt and re-anchors at 1.
+	// every row that drew before the trim sits shift rows lower now, where
+	// shift is the head cut's delta (the trim sheds to the next turn start):
+	// the anchors moved with the cut instead of going stale. The head unit
+	// is aside - the cut took its first row, so it rebuilt and re-anchors
+	// at 1 - and rows the window gained at its tail drew nowhere before.
+	shift := cutProbe() - cutBefore
+	beforeLen := 0
+	for a := range before {
+		beforeLen = max(beforeLen, a)
+	}
 	after := anchors(lines)
 	for a := range after {
-		if a == 1 || a == 1000 { // the head unit's and the appended row's
+		if a == 1 { // the rebuilt aside
 			continue
 		}
-		if !before[a+1] {
-			t.Fatalf("anchor %d drew after the trim, but no row drew at %d before it", a, a+1)
+		if a+shift > beforeLen { // entered the window with this append
+			continue
+		}
+		if !before[a+shift] {
+			t.Fatalf("anchor %d drew after the trim, but no row drew at %d before it", a, a+shift)
 		}
 	}
 }

@@ -316,7 +316,7 @@ func (h *Host) SyncChat() {
 				h.stampRow++ // the pairing's row moved down with the insert
 			}
 		}
-		h.session.Transcript = tr
+		h.session.Transcript = h.trimTranscript(tr)
 		h.trEpoch.Add(1)
 	}
 	h.tMu.Unlock()
