@@ -37,6 +37,8 @@ const (
 	dropTTL        = 7 * 24 * time.Hour // idle copies age out, like scratchpads
 	// dropNameMax is how long a copied file's name may be
 	dropNameMax = 60
+	// dirListMax is how many files a directory's listing may name
+	dirListMax = 500
 )
 
 var imageTypes = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
@@ -137,10 +139,11 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 			refused = append(refused, perm.TildePath(name)+": "+why)
 		}
 		// a FIFO blocks the read, and an @word naming no file is just prose;
-		// a path that is there but not a file says why, like every other refusal
+		// a path that is there but not a regular file says why, like every
+		// other refusal - but a directory attaches its files listed
 		if fi, err := os.Stat(abs); err == nil && !fi.Mode().IsRegular() {
 			if fi.IsDir() {
-				note("it is a directory")
+				attachDir(&b, abs, name, &refused)
 			} else {
 				note("it is not a regular file")
 			}
@@ -196,6 +199,80 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 		return text, imgs
 	}
 	return text + agent.AttachMarker + b.String() + "\n</attached-files>", imgs
+}
+
+// attachDir is what a directory attaches: its files listed, one path
+// relative to it per line, shallowest first, so the model sees the tree
+// and reads what it needs with its tools. The listing caps at dirListMax
+// files and attachMax bytes, the remainder named at the tail.
+func attachDir(b *strings.Builder, abs, name string, refused *[]string) {
+	paths, err := listDir(abs)
+	if err != nil {
+		b.WriteString(agent.AttachElement(fmt.Sprintf("dir path=%q", name), "not attached: it could not be read"))
+		*refused = append(*refused, perm.TildePath(name)+": it could not be read")
+		return
+	}
+	var body strings.Builder
+	for i, p := range paths {
+		if i == dirListMax || body.Len()+len(p)+1 > attachMax {
+			fmt.Fprintf(&body, "... %d more", len(paths)-i)
+			break
+		}
+		body.WriteString(p + "\n")
+	}
+	if body.Len() == 0 {
+		body.WriteString("(no files)")
+	}
+	b.WriteString(agent.AttachElement(fmt.Sprintf("dir path=%q files=%d", name, len(paths)), body.String()))
+}
+
+// listDir lists the regular files under dir, by path relative to it,
+// shallow-first. It skips .git and the directories tools.SkipDir names -
+// matched against the name as-is and dot-stripped, so .venv dies with
+// venv - and keeps every other hidden entry. An unreadable subdirectory
+// is skipped; the root's own read error returns.
+func listDir(root string) ([]string, error) {
+	var files []string
+	var walk func(dir string, top bool)
+	var rootErr error
+	walk = func(dir string, top bool) {
+		des, err := os.ReadDir(dir)
+		if err != nil {
+			if top {
+				rootErr = err
+			}
+			return
+		}
+		var subs []string
+		for _, de := range des {
+			name := de.Name()
+			if de.IsDir() {
+				if name == ".git" || tools.SkipDir(name) || tools.SkipDir(strings.TrimPrefix(name, ".")) {
+					continue
+				}
+				subs = append(subs, filepath.Join(dir, name))
+				continue
+			}
+			if !de.Type().IsRegular() || len(files) >= dirListMax {
+				continue
+			}
+			if rel, err := filepath.Rel(root, filepath.Join(dir, name)); err == nil {
+				files = append(files, filepath.ToSlash(rel))
+			}
+		}
+		for _, sub := range subs {
+			if len(files) >= dirListMax {
+				return
+			}
+			walk(sub, false)
+		}
+	}
+	walk(root, true)
+	if rootErr != nil {
+		return nil, rootErr
+	}
+	tools.SortShallow(files)
+	return files, nil
 }
 
 // pathAbs spells an @ word out to a path: ~ under home, the rest against the

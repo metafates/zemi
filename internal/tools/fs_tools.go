@@ -1405,6 +1405,17 @@ func SkipDir(name string) bool {
 	return false
 }
 
+// SortShallow orders paths shortest first in depth: fewer separators
+// lead, ties go lexical, so a tree lists its top level before its depth.
+func SortShallow(paths []string) {
+	slices.SortFunc(paths, func(x, y string) int {
+		if c := strings.Count(x, "/") - strings.Count(y, "/"); c != 0 {
+			return c
+		}
+		return strings.Compare(x, y)
+	})
+}
+
 // workdir is the shell execution root.
 func workdir() string {
 	wd, err := os.Getwd()

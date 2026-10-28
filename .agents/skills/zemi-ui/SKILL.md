@@ -162,5 +162,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   `pasted-<ts>.png` in `<data>/drops` and inserts the copy's `@` word. `expandAttachments` looks
   the whole word up as a skill first, then resolves the path - `~` under home, the rest against
   the project, `/` as itself - wherever it lives, a symlink out of the project attaching its
-  target; what attached shows in the attach echo, and a refusal names why with the absolute
+  target; a directory attaches its files listed, one path relative to it per line, shallowest
+  first, capped with the remainder named at the tail; what attached shows in the attach echo, and
+  a refusal names why with the absolute
   path (the read tool refuses `~`).

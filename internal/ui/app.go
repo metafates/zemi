@@ -128,7 +128,7 @@ type App struct {
 	// focusables are the focusable nodes the last frame drew, floats last
 	focusables []string
 
-	completion fileCompleter
+	completion wordCompleter
 	palette    cmdPalette
 
 	overlays []overlayState

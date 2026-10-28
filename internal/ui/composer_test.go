@@ -527,7 +527,7 @@ func TestSkillCompletion(t *testing.T) {
 	}
 	send("@", "l", "i")
 	waitPrompt(t, app, func() bool { return app.completion.shown() })
-	if app.completion.trigger != '@' || app.completion.title() != "Files and skills" || app.completion.count() != 1 {
+	if app.completion.trigger != '@' || app.completion.title() != "Attach" || app.completion.count() != 1 {
 		t.Fatalf("popup after @li: trigger=%q title=%q rows=%d", app.completion.trigger, app.completion.title(), app.completion.count())
 	}
 	// the one row sits under the Skills header
@@ -673,18 +673,25 @@ func TestCompletionWalksIn(t *testing.T) {
 		app.composer.text, app.composer.cursor = token, len([]rune(token))
 		app.updateCompletion()
 	}
-	open("@" + out + "/")
-	// a candidate word replaces what follows the @, the @ stays
-	if got := app.completion.paths; len(got) != 1 || got[0] != out+"/Sub/" {
-		t.Fatalf("candidates: %q", got)
+	open("@" + out + "/Su")
+	// a candidate word replaces what follows the @, the @ stays, and what
+	// the token matched rides highlighted - a prefix by its head, a fuzzy
+	// hit by the runes it took, offset past the directory the token typed
+	if got := app.completion.paths; len(got) != 1 || got[0].label != out+"/Sub/" || !slices.Equal(got[0].match, []int{len(out) + 1, len(out) + 2}) {
+		t.Fatalf("candidates: %+v", got)
 	}
+	open("@" + out + "/ub")
+	if got := app.completion.paths; len(got) != 1 || got[0].label != out+"/Sub/" || !slices.Equal(got[0].match, []int{len(out) + 2, len(out) + 3}) {
+		t.Fatalf("fuzzy candidates: %+v", got)
+	}
+	open("@" + out + "/")
 	// a directory accept walks in: no trailing space, the popup open
 	app.composerKey("enter", tea.KeyPressMsg{})
 	if got := app.composer.text; got != "@"+out+"/Sub/" {
 		t.Fatalf("walked to %q", got)
 	}
-	if !app.completion.open || len(app.completion.paths) != 1 || app.completion.paths[0] != out+"/Sub/a.txt" {
-		t.Fatalf("candidates after the walk: %q open=%v", app.completion.paths, app.completion.open)
+	if !app.completion.open || len(app.completion.paths) != 1 || app.completion.paths[0].label != out+"/Sub/a.txt" {
+		t.Fatalf("candidates after the walk: %+v open=%v", app.completion.paths, app.completion.open)
 	}
 	// a file accept closes the popup
 	app.composerKey("enter", tea.KeyPressMsg{})
@@ -701,8 +708,8 @@ func TestCompletionWalksIn(t *testing.T) {
 		t.Fatal(err)
 	}
 	open(`@"` + spacey + `/`)
-	if got := app.completion.paths; len(got) != 1 || got[0] != `"`+spacey+"/Deep/" {
-		t.Fatalf("quoted candidates: %q", got)
+	if got := app.completion.paths; len(got) != 1 || got[0].label != `"`+spacey+"/Deep/" {
+		t.Fatalf("quoted candidates: %+v", got)
 	}
 	app.composerKey("enter", tea.KeyPressMsg{})
 	if got := app.composer.text; got != `@"`+spacey+"/Deep/" {
@@ -719,10 +726,11 @@ func TestCompletionWalksIn(t *testing.T) {
 	// quoted from an unquoted walk too
 	open("@" + filepath.Dir(spacey) + "/")
 	cand := filepath.Dir(spacey) + "/My Docs/"
-	if !slices.Contains(app.completion.paths, cand) {
-		t.Fatalf("candidates: %q", app.completion.paths)
+	idx := slices.IndexFunc(app.completion.paths, func(r listItem) bool { return r.label == cand })
+	if idx < 0 {
+		t.Fatalf("candidates: %+v", app.completion.paths)
 	}
-	app.completion.selected = slices.Index(app.completion.paths, cand)
+	app.completion.selected = idx
 	app.acceptCompletion()
 	if got := app.composer.text; got != `@"`+spacey+"/\"" || !app.completion.open {
 		t.Fatalf("a spacey directory walked in as %q", got)
@@ -774,7 +782,7 @@ func TestCompletionPopupRefits(t *testing.T) {
 	width := func() int {
 		f := ansi.Strip(app.Frame())
 		for line := range strings.SplitSeq(f, "\n") {
-			i := strings.Index(line, "┌ Files and skills")
+			i := strings.Index(line, "┌ Attach")
 			if i < 0 {
 				continue
 			}
@@ -813,7 +821,7 @@ func TestFileRanking(t *testing.T) {
 		{"READ", "README.md[0 1 2 3]"},
 		{"é", ""},
 	} {
-		f := fileCompleter{token: c.token}
+		f := wordCompleter{token: c.token}
 		f.setFiles(files)
 		f.rematch()
 		var got []string

@@ -211,7 +211,7 @@ func TestGoldenSlashPalette(t *testing.T) {
 // row while a query narrows them down to no match, where the hint names no
 // key that picks.
 func TestPopupKeepsSize(t *testing.T) {
-	for _, c := range []struct{ open, narrow, title string }{{"/mo", "zz", "Commands"}, {"@ap", "zzzq", "Files"}} {
+	for _, c := range []struct{ open, narrow, title string }{{"/mo", "zz", "Commands"}, {"@ap", "zzzq", "Attach"}} {
 		app, host := bootAgentApp(t, 80, 14)
 		host.Commands.Add(&hostapi.Command{Name: "model", Desc: "choose the model", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1)})
 		app.completion.setFiles([]string{"internal/ui/app.go", "main.go"})

@@ -1696,11 +1696,11 @@ UI extensibility contract:
   the source matched them (by meaning, maybe), narrowing only the rows it
   keeps while an answer is pending. A trigger popup with nothing to offer
   is not drawn and takes no keys, so prose with a `#` in it still submits. A
-  popup's top border names what it lists where zemi knows the name: `Files and
-  skills` for `@`, `Commands` for the palette; a source's own trigger titles nothing,
+  popup's top border names what it lists where zemi knows the name: `Attach`
+  for `@`, `Commands` for the palette; a source's own trigger titles nothing,
   since zemi cannot know what it means.
-- The composer has one word trigger, `@`: one popup titled "Files and
-  skills", two sections under headers - `Files`, then `Skills`, each
+- The composer has one word trigger, `@`: one popup titled "Attach",
+  two sections under headers - `Files`, then `Skills`, each
   dropped, header included, when nothing matches it. Skills complete by
   name and attach as `@name` on submit, disabled ones included; files
   complete from a walk of the project (every file, ignored ones included,
@@ -1708,7 +1708,9 @@ UI extensibility contract:
   so the empty token's head is the top level) and, when the word is
   path-headed (`~`, `/`, `../`, `./`, quoted forms too), from the listing of
   the directory it names - `@~/Downloads/`, `@../sibling/`, `@/etc/` walk
-  in shell-tab style, a directory accept keeping the popup open. A path
+  in shell-tab style, a directory accept keeping the popup open. On submit
+  a directory attaches its files listed, one path relative to it per line,
+  shallowest first, capped with the remainder named at the tail. A path
   that cannot ride a bare word (whitespace, trailing sentence punctuation)
   rides quoted, `@"~/My Docs/a.txt"`. While both sections have rows, the
   Files section caps so both headers stay in the window; the Files ranking

@@ -177,12 +177,24 @@ func TestExpandAttachments(t *testing.T) {
 	}
 
 	// the composer hands out @dir/ tokens (a completion, a drop): a directory
-	// is refused with a why, like every other unattachable path
-	if err := os.MkdirAll(filepath.Join(proj, "src"), 0o755); err != nil {
+	// attaches its files listed, one relative path per line
+	if err := os.MkdirAll(filepath.Join(proj, "src", "deep"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ = h.expandAttachments("look at @src/", true); !strings.Contains(got, "not attached: it is a directory") || !strings.Contains(got, `<file path="src">`) {
-		t.Fatalf("the directory must say why: %q", got)
+	if err := os.WriteFile(filepath.Join(proj, "src", "a.txt"), []byte("a"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(proj, "src", "deep", "b.txt"), []byte("b"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = h.expandAttachments("look at @src/", true)
+	for _, want := range []string{
+		`<dir path="src" files=2>`,
+		"\na.txt\ndeep/b.txt\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the directory must list its files: %q", got)
+		}
 	}
 
 	// the same file named twice attaches once: a repeated @word, the same
@@ -290,6 +302,7 @@ func TestOutsideAttachment(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(out, "adir"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	write(filepath.Join(out, "adir", "inner.txt"), "in")
 
 	// a missing path stays prose
 	if got, _ := h.expandAttachments("see @../gone", true); got != "see @../gone" {
@@ -313,10 +326,10 @@ func TestOutsideAttachment(t *testing.T) {
 	if !strings.Contains(got, "spaced out (1)") {
 		t.Fatalf("an open quoted word resolves: %q", got)
 	}
-	// a directory token refuses with a why
+	// a directory token attaches its files listed
 	got, _ = h.expandAttachments("see @"+filepath.Join(out, "adir")+"/", true)
-	if !strings.Contains(got, "not attached: it is a directory") {
-		t.Fatalf("a directory must say why: %q", got)
+	if !strings.Contains(got, `<dir path=`) || !strings.Contains(got, "inner.txt") {
+		t.Fatalf("a directory must list its files: %q", got)
 	}
 	// a missing path stays prose
 	if got, _ = h.expandAttachments("see @"+filepath.Join(out, "gone"), true); got != "see @"+filepath.Join(out, "gone") {

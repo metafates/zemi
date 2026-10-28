@@ -16,12 +16,11 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// fileCompleter is the composer popup after a trigger that starts a word:
-// "@" lists the project's files and the skills, as two sections under
-// headers, and every file by listing the directory a path-headed token
-// names, shell-tab style; any trigger lists what its Lua sources offer
-// (extra, first).
-type fileCompleter struct {
+// wordCompleter holds the composer popup that completes the word after a
+// trigger: "@" lists the project's files, the skills and, for a path-
+// headed word, the entries of the directory it names - sections under
+// headers; any trigger lists what its Lua sources offer (extra, first).
+type wordCompleter struct {
 	open      bool
 	trigger   rune
 	start     int      // rune index of the trigger char in the composer
@@ -31,7 +30,7 @@ type fileCompleter struct {
 	matches   []hostapi.Hit
 	skills    []hostapi.CompletionItem // fetched once per open
 	skillRows []listItem               // the skills narrowed to the token
-	paths     []string                 // directory candidates: the words they insert
+	paths     []listItem               // directory candidates: rows of the words they insert
 	extra     []listItem               // the Lua sources' items, ahead of the sections
 	selected  int
 	view      viewport
@@ -180,14 +179,14 @@ func (a *App) onFilesScanned(msg filesScannedMsg) {
 	}
 }
 
-func (f *fileCompleter) setFiles(files []string) {
+func (f *wordCompleter) setFiles(files []string) {
 	f.files, f.bases = files, make([]string, len(files))
 	for i, p := range files {
 		f.bases[i] = p[strings.LastIndexByte(p, '/')+1:]
 	}
 }
 
-func (f *fileCompleter) close() {
+func (f *wordCompleter) close() {
 	f.open = false
 	f.token = ""
 	f.selected, f.view, f.size = 0, viewport{}, boxSize{}
@@ -196,25 +195,25 @@ func (f *fileCompleter) close() {
 	f.dirDir, f.dirList = "", nil
 }
 
-func (f *fileCompleter) count() int {
+func (f *wordCompleter) count() int {
 	return len(f.extra) + len(f.skillRows) + len(f.paths) + len(f.matches)
 }
 
 // shown reports whether the popup is drawn and takes its keys: a Lua
 // trigger with nothing to offer stays out of the way of prose.
-func (f *fileCompleter) shown() bool { return f.open && (f.trigger == '@' || f.count() > 0) }
+func (f *wordCompleter) shown() bool { return f.open && (f.trigger == '@' || f.count() > 0) }
 
 // title names what the popup lists for the triggers zemi knows the meaning
 // of; a Lua source's own trigger names nothing here.
-func (f *fileCompleter) title() string {
+func (f *wordCompleter) title() string {
 	if f.trigger == '@' {
-		return "Files and skills"
+		return "Attach"
 	}
 	return ""
 }
 
 // reskill narrows the fetched skills to the token.
-func (f *fileCompleter) reskill() {
+func (f *wordCompleter) reskill() {
 	f.skillRows = matchRows(candRows(f.skills, "Skills"), f.token, true)
 }
 
@@ -290,9 +289,10 @@ func (a *App) listDir(dir string) {
 }
 
 // readDir lists one directory for the path candidates: entry names with a
-// trailing slash on directories, directories first then lexical, capped at
-// listMaxFiles. A mount that answers slowly holds the worker at most
-// dirListWait; the abandoned read's answer drops.
+// trailing slash on directories, directories first then lexical, each kind
+// capped at listMaxFiles so either alone cannot hide the other. A mount
+// that answers slowly holds the worker at most dirListWait; the abandoned
+// read's answer drops.
 func readDir(dir string) []string {
 	ch := make(chan []string, 1)
 	go func() {
@@ -302,13 +302,17 @@ func readDir(dir string) []string {
 			return
 		}
 		out := make([]string, 0, len(des))
+		n := 0
 		for _, de := range des {
-			if de.IsDir() {
+			if de.IsDir() && n < listMaxFiles {
+				n++
 				out = append(out, de.Name()+"/")
 			}
 		}
+		n = 0
 		for _, de := range des {
-			if !de.IsDir() {
+			if !de.IsDir() && n < listMaxFiles {
+				n++
 				out = append(out, de.Name())
 			}
 		}
@@ -316,7 +320,7 @@ func readDir(dir string) []string {
 	}()
 	select {
 	case out := <-ch:
-		return out[:min(len(out), listMaxFiles)]
+		return out
 	case <-time.After(dirListWait):
 		return nil
 	}
@@ -324,8 +328,9 @@ func readDir(dir string) []string {
 
 // repaths rebuilds the directory candidates for a path-headed token from
 // the listing the cache holds; a directory it does not hold leaves none.
-// A candidate joins the token's directory as typed, quote included, so the
-// user's frame survives the walk.
+// The token's base narrows the entries fuzzily, like the corpus's files,
+// and a candidate joins the token's directory as typed, quote included,
+// so the user's frame survives the walk.
 func (a *App) repaths() {
 	f := &a.completion
 	f.paths = f.paths[:0]
@@ -337,11 +342,18 @@ func (a *App) repaths() {
 	if t := f.token; t != "" && (t[0] == '"' || t[0] == '\'') {
 		q = string(t[0])
 	}
-	for _, e := range f.dirList {
-		if base != "" && !strings.HasPrefix(strings.TrimSuffix(e, "/"), base) {
-			continue
+	hits := hostapi.Match(base, f.dirList, nil)
+	// a word typed ranks the candidates by score, like the Files section;
+	// a bare listing keeps the directory's own order
+	if base != "" {
+		hits = hostapi.Rank(hits, f.dirList, listMaxFiles)
+	}
+	for _, h := range hits {
+		word := q + dir + f.dirList[h.Index]
+		for k := range h.Pos {
+			h.Pos[k] += len(q) + len(dir)
 		}
-		f.paths = append(f.paths, q+dir+e)
+		f.paths = append(f.paths, listItem{label: word, match: h.Pos, section: "Files", row: hostapi.OverlayItem{Tail: true}})
 	}
 }
 
@@ -349,7 +361,7 @@ func (a *App) repaths() {
 // A name it matches scores by the name alone, which a path's other elements
 // would only blur; a file matched across directories scores by its path. A
 // path-headed token asks the directory listing, not the corpus.
-func (f *fileCompleter) rematch() {
+func (f *wordCompleter) rematch() {
 	f.matches = f.matches[:0]
 	if _, _, ok := pathToken(f.token); ok {
 		f.selected = max(0, min(f.selected, f.count()-1))
@@ -377,7 +389,7 @@ func (f *fileCompleter) rematch() {
 
 // matchFiles matches the token against files[lo:hi]: the best listMaxFiles
 // hits, indexed into files.
-func (f *fileCompleter) matchFiles(lo, hi int) []hostapi.Hit {
+func (f *wordCompleter) matchFiles(lo, hi int) []hostapi.Hit {
 	files, bases := f.files[lo:hi], f.bases[lo:hi]
 	names := hostapi.Match(f.token, bases, nil)
 	rest := slices.Clone(files) // blanked where the name matched: "" matches nothing
@@ -449,7 +461,7 @@ func (a *App) acceptCompletion() {
 		a.composer.replace(f.start, a.host.AttachWord(filepath.Join(a.host.Session().CWD, rel))+" ")
 		f.close()
 	case sel < n+mt+p:
-		word := f.paths[sel-n-mt]
+		word := f.paths[sel-n-mt].label
 		if strings.HasSuffix(word, "/") { // a directory walks in
 			if q := word[0]; q != '"' && q != '\'' && !hostapi.CanRef(word) {
 				word = `"` + word + `"` // a word a bare token cannot carry rides quoted
@@ -476,7 +488,7 @@ func (a *App) acceptCompletion() {
 // header, the blank separator before the Skills one, the Skills header and
 // the skill row under it price in, and a Lua source's rows price in with
 // their blank. No skill matches, no cap: narrowing does the work.
-func (f *fileCompleter) fileCap() int {
+func (f *wordCompleter) fileCap() int {
 	if len(f.skillRows) == 0 {
 		return listMaxFiles
 	}
@@ -511,9 +523,7 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	for _, m := range matches {
 		items = append(items, listItem{label: f.files[m.Index], match: m.Pos, section: "Files", row: hostapi.OverlayItem{Tail: true}})
 	}
-	for _, p := range paths {
-		items = append(items, listItem{label: p, section: "Files", row: hostapi.OverlayItem{Tail: true}})
-	}
+	items = append(items, paths...)
 	items = append(items, f.skillRows...)
 	return listRowsW(items, items, f.selected, &f.view, min(completionMaxRows, room), minW, maxW)
 }
@@ -574,12 +584,7 @@ func walkFiles(ctx context.Context, root string) []string {
 		}
 		return nil
 	})
-	slices.SortFunc(files, func(x, y string) int {
-		if c := strings.Count(x, "/") - strings.Count(y, "/"); c != 0 {
-			return c
-		}
-		return strings.Compare(x, y)
-	})
+	tools.SortShallow(files)
 	return files
 }
 
