@@ -86,7 +86,7 @@ func (a *App) updateCompletion() tea.Cmd {
 	if lua {
 		// until the sources answer, the rows they gave for a shorter word
 		// narrow, so a fast tab never takes a row the word left
-		f.extra = matchRows(f.extra, f.token, true)
+		f.extra = matchRows(f.extra, unquoteToken(f.token), true)
 		trigger, token, line := string(r[i]), f.token, string(r[:cur])
 		a.background(func() {
 			items := a.host.Complete(context.Background(), trigger, "", token, line)
@@ -94,7 +94,7 @@ func (a *App) updateCompletion() tea.Cmd {
 				if !f.open || a.composer.cursor > len(a.composer.runes()) || string(a.composer.runes()[:a.composer.cursor]) != line {
 					return // the draft moved on
 				}
-				f.extra = matchRows(candRows(items, ""), token, false) // shown as the sources matched them
+				f.extra = matchRows(candRows(items, ""), unquoteToken(token), false) // shown as the sources matched them
 				f.trim()
 			})
 		})
@@ -213,7 +213,7 @@ func (f *wordCompleter) title() string {
 
 // reskill narrows the fetched skills to the token.
 func (f *wordCompleter) reskill() {
-	f.skillRows = matchRows(candRows(f.skills, "Skills"), f.token, true)
+	f.skillRows = matchRows(candRows(f.skills, "Skills"), unquoteToken(f.token), true)
 	f.trim()
 }
 
@@ -400,7 +400,10 @@ func (f *wordCompleter) rematch() {
 // hits, indexed into files.
 func (f *wordCompleter) matchFiles(lo, hi int) []hostapi.Hit {
 	files, bases := f.files[lo:hi], f.bases[lo:hi]
-	names := hostapi.Match(f.token, bases, nil)
+	// a quoted token narrows by its path: the quote is the word's frame,
+	// not part of the name it asks for
+	token := unquoteToken(f.token)
+	names := hostapi.Match(token, bases, nil)
 	rest := slices.Clone(files) // blanked where the name matched: "" matches nothing
 	for _, h := range names {
 		rest[h.Index] = ""
@@ -408,7 +411,7 @@ func (f *wordCompleter) matchFiles(lo, hi int) []hostapi.Hit {
 			h.Pos[k] += len(files[h.Index]) - len(bases[h.Index])
 		}
 	}
-	paths := hostapi.Match(f.token, rest, nil)
+	paths := hostapi.Match(token, rest, nil)
 	for i := range paths {
 		paths[i].Prefix = false // only a name's prefix leads
 	}

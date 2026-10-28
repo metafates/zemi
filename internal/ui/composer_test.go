@@ -553,7 +553,7 @@ func TestCompletionScan(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, f := range []string{"main.go", "internal/app.go", ".git/config", "node_modules/x.js", ".venv/lib/x.py", ".gitignore", "lib/.hidden.go"} {
+	for _, f := range []string{"main.go", "internal/app.go", ".git/config", "node_modules/x.js", ".venv/lib/x.py", ".gitignore", "lib/.hidden.go", "My Notes.md"} {
 		if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -596,6 +596,13 @@ func TestCompletionScan(t *testing.T) {
 	app.onFilesScanned(msg)
 	if !slices.Contains(app.completion.files, "new.go") {
 		t.Fatalf("rescan missed new.go: %v", app.completion.files)
+	}
+
+	// a quoted token narrows the corpus by the path inside the quotes
+	app.composer.text, app.composer.cursor = `@"My`, 4
+	app.updateCompletion()
+	if len(app.completion.matches) != 1 || app.completion.files[app.completion.matches[0].Index] != "My Notes.md" {
+		t.Fatalf("quoted token matches: %+v", app.completion.matches)
 	}
 }
 

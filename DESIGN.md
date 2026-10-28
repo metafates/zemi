@@ -1714,7 +1714,8 @@ UI extensibility contract:
   named at the tail; reading deeper is what the model's tools are for. A path
   that cannot ride a bare word (whitespace, trailing sentence punctuation)
   rides quoted, `@"~/My Docs/a.txt"`. While both sections have rows, the
-  Files section caps so both headers stay in the window; the Files ranking
+  Files section caps so both headers stay in the window, the Lua extras
+  pricing in first; the Files ranking
   keeps a file name the token begins first, then the score of the name, or
   of the path when only the path matches. `+` is free for a completion
   source again: no trigger is reserved but `/`.
