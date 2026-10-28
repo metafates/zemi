@@ -45,9 +45,6 @@ func launch(o options) int {
 		usageHint(os.Stderr, "zemi", msg)
 		return 2
 	}
-	if o.print {
-		return runPrint(o, os.Stdout, os.Stderr)
-	}
 	if err := o.readStdin(os.Stdin); err != nil {
 		return usage(err.Error())
 	}
