@@ -233,10 +233,10 @@ func TestPushEquivalence(t *testing.T) {
 func TestTemplateAndShortLeavesNeedNoModelCall(t *testing.T) {
 	t.Parallel()
 	h, cl, m := newTree(t, "never answered")
-	if err := cl.Tool("read", `{"path":"a.go"}`); err != nil {
+	if err := cl.Tool("read", `{"path":"a.go"}`, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := cl.Echo("read", true, "package a\nline two\n"); err != nil {
+	if err := cl.Echo("read", true, "package a\nline two\n", StreamTool{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := cl.User("short", ""); err != nil {
@@ -538,10 +538,10 @@ func TestChatLogKinds(t *testing.T) {
 	if err := cl.Note("before the chat"); err != nil {
 		t.Fatal(err)
 	}
-	if err := cl.Tool("shell", `{"cmd":"make check"}`); err != nil {
+	if err := cl.Tool("shell", `{"cmd":"make check"}`, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := cl.Echo("shell", false, "FAIL\nmore"); err != nil {
+	if err := cl.Echo("shell", false, "FAIL\nmore", StreamTool{}); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := h.DB.LogTail(6)

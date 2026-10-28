@@ -149,11 +149,13 @@ func (c *chatLog) Work(run, name, text string) error {
 	return err
 }
 
-// Tool logs one tool call: its name, and the input as sent.
-func (c *chatLog) Tool(name, input string) error {
+// Tool logs one tool call: its name, the input as sent, and the call id that
+// pairs it with its echo across parallel calls of one tool.
+func (c *chatLog) Tool(name, input, id string) error {
 	meta, err := json.Marshal(struct {
 		Tool string `json:"tool"`
-	}{name}, json.Deterministic(true))
+		ID   string `json:"id,omitempty"`
+	}{name, id}, json.Deterministic(true))
 	if err != nil {
 		return err
 	}
@@ -167,13 +169,31 @@ func (c *chatLog) Tool(name, input string) error {
 	return nil
 }
 
+// echoRow is the echo row's meta: what a window rebuilt from the log reads
+// back that the input alone does not say - the call this result answers, how
+// it ended, the change it made and the run or job it handed off to.
+type echoRow struct {
+	Tool   string `json:"tool"`
+	OK     bool   `json:"ok"`
+	ID     string `json:"id,omitempty"`
+	Status string `json:"status,omitempty"`
+	Diff   string `json:"diff,omitempty"`
+	Run    string `json:"run,omitempty"`
+	Job    string `json:"job,omitempty"`
+}
+
 // Echo logs one tool result, clipped to head and tail: the one kind of long
-// text that is cut, never split.
-func (c *chatLog) Echo(name string, ok bool, output string) error {
-	meta, err := json.Marshal(struct {
-		Tool string `json:"tool"`
-		Ok   bool   `json:"ok"`
-	}{name, ok}, json.Deterministic(true))
+// text that is cut, never split. The call's settled row rides the meta, so
+// the rebuilt row draws the diff and the run a live turn drew.
+func (c *chatLog) Echo(name string, ok bool, output string, call StreamTool) error {
+	status := call.Status
+	if status == "" {
+		status = statusOf(ok)
+	}
+	meta, err := json.Marshal(echoRow{
+		Tool: name, OK: ok, ID: call.ID, Status: string(status),
+		Diff: call.Diff, Run: call.Run, Job: call.Job,
+	}, json.Deterministic(true))
 	if err != nil {
 		return err
 	}
@@ -183,6 +203,15 @@ func (c *chatLog) Echo(name string, ok bool, output string) error {
 	}
 	c.tree.Wake()
 	return nil
+}
+
+// statusOf is the status an echo without a settled call's row reads: the
+// result's own ok.
+func statusOf(ok bool) CallStatus {
+	if ok {
+		return CallOK
+	}
+	return CallErr
 }
 
 // replyStat is the readout a finished turn rides its last reply row's meta:

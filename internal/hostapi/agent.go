@@ -1678,7 +1678,7 @@ func (h *Host) logAssistant(msg fantasy.Message) error {
 			if err := flush(); err != nil {
 				return err
 			}
-			if err := h.chat.Tool(p.ToolName, p.Input); err != nil {
+			if err := h.chat.Tool(p.ToolName, p.Input, p.ToolCallID); err != nil {
 				return err
 			}
 		}
@@ -1704,14 +1704,26 @@ func (h *Host) logThought(text string) error {
 }
 
 // logResults logs a step's tool results as echo rows, each named by the call
-// it answers.
+// it answers and carrying the row the call settled at, so a window rebuilt
+// from the log draws what the live turn drew.
 func (h *Host) logResults(msg fantasy.Message) error {
 	for _, p := range msg.Content {
 		res, ok := p.(fantasy.ToolResultPart)
 		if !ok {
 			continue
 		}
-		if err := h.chat.Echo(h.callName(res.ToolCallID), !agent.ErrResult(res.Output), agent.ToolOutput(res.Output)); err != nil {
+		ag := h.agents
+		ag.mu.Lock()
+		row, found := StreamTool{}, false
+		if i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == res.ToolCallID }); i >= 0 {
+			row, found = ag.tools[i], true
+		}
+		ag.mu.Unlock()
+		if !found {
+			// a flush pruned the call already: the result's own ok is all there is
+			row = StreamTool{ID: res.ToolCallID}
+		}
+		if err := h.chat.Echo(h.callName(res.ToolCallID), !agent.ErrResult(res.Output), agent.ToolOutput(res.Output), row); err != nil {
 			return err
 		}
 	}

@@ -415,6 +415,26 @@ func stampable(m ChatMessage) bool {
 // a notice naming the run, a thought, an error or a !command its own row.
 // Notes draw nothing: zoom reaches them.
 func logRows(rows []store.LogEntry) []ChatMessage {
+	// the echo each tool row answers: by the call id both metas carry, else
+	// the oldest unconsumed echo of the same name, the order parallel calls
+	// of one tool answer in
+	echo := make(map[string]int, len(rows))
+	fifo := make(map[string][]int, len(rows))
+	for i, row := range rows {
+		if row.Kind != store.KindEcho {
+			continue
+		}
+		var meta struct {
+			Tool string `json:"tool"`
+			ID   string `json:"id"`
+		}
+		_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
+		if meta.ID != "" {
+			echo[meta.ID] = i
+		} else {
+			fifo[meta.Tool] = append(fifo[meta.Tool], i)
+		}
+	}
 	tr := make([]ChatMessage, 0, len(rows))
 	for i, row := range rows {
 		switch row.Kind {
@@ -455,18 +475,30 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Kind: RowShell, Text: row.Text, Detail: meta.Out, Status: status, Seq: row.Seq})
 		case store.KindTool:
 			name := rowTool(row)
+			var call struct {
+				ID string `json:"id"`
+			}
+			_ = json.Unmarshal([]byte(row.MetaJSON), &call)
+			j := -1
+			if call.ID != "" {
+				if e, ok := echo[call.ID]; ok {
+					j = e
+					delete(echo, call.ID)
+				}
+			} else if q := fifo[name]; len(q) > 0 {
+				j, fifo[name] = q[0], q[1:]
+			}
 			var out string
 			var status CallStatus
-			if j := i + 1; j < len(rows) && rows[j].Kind == store.KindEcho && rowTool(rows[j]) == name {
-				out = shortOutput(rows[j].Text)
-				status = CallOK
-				var meta struct {
-					Ok bool `json:"ok"`
-				}
-				if json.Unmarshal([]byte(rows[j].MetaJSON), &meta) == nil && !meta.Ok {
-					status = CallErr
-				}
-			} else if j < len(rows) && rows[j].Kind == store.KindUser {
+			var diff, run, job string
+			if j > i {
+				e := rows[j]
+				var em echoRow
+				_ = json.Unmarshal([]byte(e.MetaJSON), &em)
+				out = rowOutput(name, e.Text)
+				status = cmp.Or(CallStatus(em.Status), statusOf(em.OK))
+				diff, run, job = em.Diff, em.Run, em.Job
+			} else if j2 := i + 1; j2 < len(rows) && rows[j2].Kind == store.KindUser {
 				// a turn killed between the call and its echo (a window
 				// quitting mid-turn): the call never answered
 				status = CallErr
@@ -474,7 +506,7 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 			tr = append(tr, ChatMessage{
 				Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: tools.ToolName(name),
 				Text: toolSummary(name, row.Text), Label: toolLabel(row.Text), Status: cmp.Or(status, CallOK),
-				Output: out, Seq: row.Seq,
+				Diff: diff, Run: run, Job: job, Output: out, Seq: row.Seq,
 			})
 		case store.KindWork:
 			var meta struct {

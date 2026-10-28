@@ -330,7 +330,7 @@ func TestZoomAndDateRoundTrip(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	replyStub(t, h, "ok") // the children's model merge reads it
-	if err := h.chat.Echo("shell", true, strings.Repeat("e", 20_000)); err != nil {
+	if err := h.chat.Echo("shell", true, strings.Repeat("e", 20_000), StreamTool{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := h.chat.User("short one", ""); err != nil {
@@ -575,11 +575,11 @@ func TestResumedWindowKeepsTheTurn(t *testing.T) {
 	if err := h.chat.Thought("thinking it over.", 3000); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.chat.Tool("read", `{"path":"a.go"}`); err != nil {
+	if err := h.chat.Tool("read", `{"path":"a.go"}`, ""); err != nil {
 		t.Fatal(err)
 	}
 	hk.ToolCallPending("t1", "read")
-	if err := h.chat.Echo("read", true, "data"); err != nil {
+	if err := h.chat.Echo("read", true, "data", StreamTool{}); err != nil {
 		t.Fatal(err)
 	}
 	hk.ToolCallEnd("t1", "read", out("data"), "")

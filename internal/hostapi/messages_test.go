@@ -481,6 +481,143 @@ func TestMessagesPageUp(t *testing.T) {
 	}
 }
 
+// TestMessagesEarlierFoldsRails: the loaded pages of log rows list the way
+// the window's turns do - a run folded into the rail its row opens, a call
+// opening the view its chat row opens, read from the log by seq.
+func TestMessagesEarlierFoldsRails(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	turn := func(i int) {
+		for _, row := range []struct {
+			kind       store.LogKind
+			text, meta string
+		}{
+			{store.KindUser, fmt.Sprintf("older turn %d: fix the widget", i), ""},
+			{store.KindTool, `{"command":"echo hi","about":"say hi"}`, `{"tool":"shell","id":"c` + strconv.Itoa(i) + `"}`},
+			{store.KindEcho, "hi", `{"tool":"shell","ok":true,"id":"c` + strconv.Itoa(i) + `","status":"ok"}`},
+			{store.KindThought, "thinking it over", `{"ms":250}`},
+			{store.KindAgent, "done.", ""},
+		} {
+			if _, err := h.DB.AppendLog(row.kind, row.text, row.meta, "", ""); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for i := range 50 {
+		turn(i)
+	}
+	for i := range 1000 { // the window: 1000 filler rows the pages stop before
+		if _, err := h.DB.AppendLog(store.KindUser, fmt.Sprintf("window row %d", i), "", "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := h.DB.LogTail(chatWindowRows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.SetTranscript(logRows(rows))
+	o, ok := h.messagesOlder()
+	if !ok {
+		t.Fatal("nothing loaded")
+	}
+	var rail, call OverlayItem
+	for _, it := range o.Items {
+		switch {
+		case it.Text == "2 steps" && rail.Run == "":
+			rail = it
+		case it.Mark == tools.MarkSpin || strings.Contains(it.Text, "say hi"):
+		}
+		if it.Text == "older turn 0: fix the widget" {
+			call = it // the prompt of the oldest turn, the page's first element
+		}
+	}
+	if rail.Run != "messages rail #1" || rail.Verb != VerbOpen || rail.Anchor != 0 {
+		t.Fatalf("the folded run = %+v, want the seq rail opened", rail)
+	}
+	if call.Run != "messages view #0" || call.Verb != VerbOpen {
+		t.Fatalf("the loaded prompt = %+v, want its log row's view", call)
+	}
+	// the rail reads the logged run call by call, each row its own view
+	if _, ok := h.messagesRailOverlaySeq(1); !ok {
+		t.Fatal("the logged run opened no rail")
+	}
+	// the rail's rows walk the logged calls, each opening its own view
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.openMessagesRailSeq(1); err != nil {
+		t.Fatal(err)
+	}
+	ro := ui.opened[len(ui.opened)-1]
+	if ro.ID != "messages rail #1" || ro.Title != "Messages / earlier activity" || len(ro.Items) != 2 {
+		t.Fatalf("rail: %s %q, %d rows", ro.ID, ro.Title, len(ro.Items))
+	}
+	if call := ro.Items[0]; call.Run != "call #1" || call.Text != "say hi" {
+		t.Fatalf("the rail's call = %+v", call)
+	}
+	if thought := ro.Items[1]; thought.Run != "call #3" {
+		t.Fatalf("the rail's thought = %+v", thought)
+	}
+	if err := h.openLogCall(1); err != nil {
+		t.Fatal(err)
+	}
+	cv := ui.opened[len(ui.opened)-1]
+	if cv.ID != "call:#1" || cv.Title != "Command" || len(cv.Fields) != 2 ||
+		cv.Fields[0].Value != "ok" || cv.Fields[1].Value != "say hi" {
+		t.Fatalf("call view: %s %q fields %+v", cv.ID, cv.Title, cv.Fields)
+	}
+	if cv.Prev != "" || cv.Next != "call #3" {
+		t.Fatalf("the logged call steps %q -> %q", cv.Prev, cv.Next)
+	}
+	if !strings.Contains(cv.Body, "echo hi") || !strings.Contains(cv.Body, "hi") {
+		t.Fatalf("the view body reads %q", cv.Body)
+	}
+	// a thought's view carries the time its row logged
+	if err := h.openLogCall(3); err != nil {
+		t.Fatal(err)
+	}
+	tv := ui.opened[len(ui.opened)-1]
+	if tv.Title != "Thought" || tv.Fields[1].Name != "time" || tv.Fields[1].Value != "0.2s" {
+		t.Fatalf("the logged thought = %q %+v", tv.Title, tv.Fields)
+	}
+	// the view a logged call opens is the one the chat's own rows open: an
+	// echo of a live turn's shell call reads the same shape
+	if err := h.openCall(1); err == nil {
+		t.Error("row 1 of the window is no call")
+	}
+}
+
+// TestLogRowsPairsParallelCalls: two calls of one tool log their rows apart
+// and their echoes after them; each call reads its own echo, by the call id
+// both metas carry, not its neighbour's.
+func TestLogRowsPairsParallelCalls(t *testing.T) {
+	t.Parallel()
+	tool := func(seq int64, id string) store.LogEntry {
+		return store.LogEntry{Seq: seq, Kind: store.KindTool, Text: `{"command":"ls"}`, MetaJSON: `{"tool":"shell","id":"` + id + `"}`}
+	}
+	echo := func(seq int64, id, out string) store.LogEntry {
+		return store.LogEntry{Seq: seq, Kind: store.KindEcho, Text: out, MetaJSON: `{"tool":"shell","ok":true,"id":"` + id + `"}`}
+	}
+	user := func(seq int64) store.LogEntry { return store.LogEntry{Seq: seq, Kind: store.KindUser, Text: "next"} }
+	tr := logRows([]store.LogEntry{
+		tool(0, "a"), tool(1, "b"), echo(2, "b", "second"), echo(3, "a", "first"), user(4),
+	})
+	if len(tr) != 3 || tr[0].Output != "first" || tr[1].Output != "second" {
+		t.Fatalf("logRows drew %+v, want each call its own echo", tr)
+	}
+	// rows the ids never reached (an older store) pair by adjacency, the
+	// order results land in
+	legacy := func(seq int64) store.LogEntry {
+		return store.LogEntry{Seq: seq, Kind: store.KindTool, Text: `{"command":"ls"}`, MetaJSON: `{"tool":"shell"}`}
+	}
+	legacyEcho := func(seq int64, out string) store.LogEntry {
+		return store.LogEntry{Seq: seq, Kind: store.KindEcho, Text: out, MetaJSON: `{"tool":"shell","ok":true}`}
+	}
+	tr = logRows([]store.LogEntry{legacy(0), legacy(1), legacyEcho(2, "one"), legacyEcho(3, "two"), user(4)})
+	if len(tr) != 3 || tr[0].Output != "one" || tr[1].Output != "two" {
+		t.Fatalf("legacy rows drew %+v", tr)
+	}
+}
+
 // TestMessagesPagesFromBoot: a boot over a log longer than the window fills
 // the chat straight from the log, past SetTranscript, so the pager's "no
 // pages loaded" has to be the host's starting value and not the field's

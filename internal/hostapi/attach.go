@@ -51,7 +51,7 @@ func (h *Host) composeUserMessage(text string, images bool) fantasy.Message {
 	if h.chat != nil {
 		if _, attached, ok := strings.Cut(expanded, agent.AttachMarker); ok && strings.TrimSpace(attached) != "" &&
 			!strings.Contains(attached, "<agent-report ") && !strings.Contains(attached, "<agent-update ") {
-			if err := h.chat.Echo("attach", true, attached); err != nil {
+			if err := h.chat.Echo("attach", true, attached, StreamTool{}); err != nil {
 				h.logAppendFailed(err)
 			}
 		}

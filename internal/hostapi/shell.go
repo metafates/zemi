@@ -60,7 +60,7 @@ func (h *Host) RunShell(cmd string) {
 			if err := h.chat.Shell(row.Text, row.Detail, status != CallErr); err != nil {
 				h.logAppendFailed(err)
 			}
-			if err := h.chat.Echo("!command", status != CallErr, text); err != nil {
+			if err := h.chat.Echo("!command", status != CallErr, text, StreamTool{}); err != nil {
 				h.logAppendFailed(err)
 			}
 		}

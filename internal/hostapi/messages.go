@@ -38,11 +38,14 @@ func (h *Host) MessagesCommand(args string) error {
 	case "":
 		return h.OpenMessages()
 	case "rail":
-		n, err := strconv.Atoi(strings.TrimSpace(rest))
-		if err != nil {
-			return Usagef("/messages rail <row> (a row the list shows)")
+		rest = strings.TrimSpace(rest)
+		if n, err := strconv.Atoi(rest); err == nil {
+			return h.openMessagesRail(n)
 		}
-		return h.openMessagesRail(n)
+		if seq, err := strconv.ParseInt(strings.TrimPrefix(rest, "#"), 10, 64); err == nil {
+			return h.openMessagesRailSeq(seq)
+		}
+		return Usagef("/messages rail <row> (a row the list shows)")
 	case "view":
 		rest = strings.TrimSpace(rest)
 		if n, err := strconv.Atoi(rest); err == nil {
@@ -58,18 +61,22 @@ func (h *Host) MessagesCommand(args string) error {
 }
 
 // pickTr is the conversation the picker reads: the session's transcript plus,
-// while a turn runs, the calls it has not settled yet. The chat draws those
-// on its live rail and marks them call = -i for the i-th of them, so a live
-// call's anchor is negative and bands its own live rows. They extend the run
-// the transcript's activity tail is in; a tail that is a message (a flushed
+// while a turn runs, the calls it has not settled yet, and the loaded pages
+// of log rows the chat window shed. The chat draws those on its live rail
+// and marks them call = -i for the i-th of them, so a live call's anchor is
+// negative and bands its own live rows. They extend the run the
+// transcript's activity tail is in; a tail that is a message (a flushed
 // text row) leaves them a run of their own, which the chat anchors by the
-// first call's -1.
+// first call's -1. The loaded pages follow the live calls in the negative
+// rows: the chat holds none of them, so their items open views by log seq.
 type pickTr struct {
 	tr   []ChatMessage
 	live []ChatMessage
+	old  []ChatMessage
 }
 
-// at is the row idx names: 1.. for transcript rows, -1.. for the live calls.
+// at is the row idx names: 1.. for transcript rows, -1.. for the live calls
+// and then the loaded pages.
 func (p pickTr) at(idx int) ChatMessage {
 	if idx == 0 {
 		return ChatMessage{}
@@ -82,6 +89,9 @@ func (p pickTr) at(idx int) ChatMessage {
 	}
 	if n := -idx; n <= len(p.live) {
 		return p.live[n-1]
+	}
+	if i := -idx - len(p.live) - 1; i < len(p.old) {
+		return p.old[i]
 	}
 	return ChatMessage{}
 }
@@ -200,6 +210,9 @@ func (h *Host) messagesLevel(id string, p pickTr) (Overlay, bool) {
 		if n, err := strconv.Atoi(rail); err == nil {
 			return h.messagesRailOverlay(p, n, 0)
 		}
+		if seq, err := strconv.ParseInt(strings.TrimPrefix(rail, "#"), 10, 64); err == nil {
+			return h.messagesRailOverlaySeq(seq)
+		}
 		return Overlay{}, false
 	}
 	if id == "messages" {
@@ -295,11 +308,32 @@ func (h *Host) messagesList(p pickTr, at int) Overlay {
 	h.msgMu.Lock()
 	old := slices.Clone(h.msgOld)
 	h.msgMu.Unlock()
-	for _, m := range old {
-		if item := olderRow(m); item.Text != "" {
-			item.Section = "Earlier"
-			o.Items = append(o.Items, item)
+	p.old = old
+	// the loaded pages list the way the window's turns do: the same rows, a
+	// run folded into the rail its row opens, all under the one Earlier
+	// header, since none of them names a place in the chat window
+	rows := make([]int, len(p.old))
+	for i := range rows {
+		rows[i] = -len(p.live) - 1 - i
+	}
+	for _, e := range turnElements(p, rows) {
+		m := p.at(e.idx)
+		var item OverlayItem
+		if e.run != nil {
+			item = railRow(*e.run)
+			if first := p.at(e.run.first); first.Seq >= 0 {
+				item.Run = "messages rail #" + strconv.FormatInt(first.Seq, 10)
+				item.Verb = VerbOpen
+				item.Anchor = 0
+			}
+		} else {
+			item = olderItem(messageRow(e.idx, m), m)
 		}
+		if item.Text == "" {
+			continue
+		}
+		item.Section = "Earlier"
+		o.Items = append(o.Items, item)
 	}
 	for _, t := range messagesTurns(p) {
 		section := turnSection(p, t)
@@ -331,15 +365,23 @@ func (h *Host) messagesList(p pickTr, at int) Overlay {
 // chatPageRows is how many log rows one page-up of the picker loads.
 const chatPageRows = 250
 
-// olderRow is a loaded page row: what it reads as, its log seq for the
-// view that reads it whole. It names no
-// transcript row: the chat window does not hold it, so enter opens the
-// view like a rail row's l does instead of closing on a place it names.
-func olderRow(m ChatMessage) OverlayItem {
-	item := messageRow(0, m)
-	if m.Seq != NoSeq {
+// olderItem reshapes a windowed row's item for a loaded page row: the row
+// names no place in the chat window, so enter opens rather than goes, and
+// its views read the log row by seq. A call opens the view a live call's row
+// opens; a run view reads the same wherever the row stands.
+func olderItem(item OverlayItem, m ChatMessage) OverlayItem {
+	if m.Seq <= NoSeq {
+		return item
+	}
+	item.Anchor, item.Verb = 0, VerbOpen
+	if m.Kind == RowTool || m.Kind == RowReasoning {
+		if m.Run == "" {
+			item.Run = "call #" + strconv.FormatInt(m.Seq, 10)
+		}
+		return item
+	}
+	if strings.HasPrefix(item.Run, "messages view ") {
 		item.Run = "messages view #" + strconv.FormatInt(m.Seq, 10)
-		item.Verb = VerbOpen
 	}
 	return item
 }
@@ -441,6 +483,22 @@ func (h *Host) openMessagesRail(first int) error {
 	return nil
 }
 
+// openMessagesRailSeq lists one logged run call by call: the rail an Earlier
+// row folds into, read from the log at the seq its row names.
+func (h *Host) openMessagesRailSeq(seq int64) error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	o, ok := h.messagesRailOverlaySeq(seq)
+	if !ok {
+		return Usagef("no run at message %d", seq)
+	}
+	ui.OpenOverlay(o)
+	h.trackMessages(o.ID)
+	return nil
+}
+
 // messagesRailOverlay is one activity run call by call: the rail the list
 // folds into a row, whose run the chat draws whole while this is up.
 // The row the reader was at, when given, selects the call holding it.
@@ -467,6 +525,38 @@ func (h *Host) messagesRailOverlay(p pickTr, first, at int) (Overlay, bool) {
 		}
 	}
 	return Overlay{}, false
+}
+
+// railLogScan is how many log rows one logged run's rail reads before it
+// gives up on finding the row that ends it: a batch of parallel calls.
+const railLogScan = 200
+
+// messagesRailOverlaySeq is one logged run call by call: the rail an Earlier
+// row folds into, read from the log at the seq its row names. The rows name
+// no place in the chat window, so every one opens its view by seq.
+func (h *Host) messagesRailOverlaySeq(seq int64) (Overlay, bool) {
+	if h.DB == nil {
+		return Overlay{}, false
+	}
+	rows, err := h.DB.LogFrom(seq, railLogScan)
+	if err != nil || len(rows) == 0 || rows[0].Seq != seq {
+		return Overlay{}, false
+	}
+	o := Overlay{
+		ID:     "messages rail #" + strconv.FormatInt(seq, 10),
+		Title:  "Messages / earlier activity",
+		Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Follow: true,
+	}
+	for _, m := range logRows(rows) {
+		if m.Kind != RowTool && m.Kind != RowReasoning {
+			break // the run ended: what follows is a message of its own
+		}
+		o.Items = append(o.Items, olderItem(messageCallRow(0, m), m))
+	}
+	if len(o.Items) == 0 {
+		return Overlay{}, false
+	}
+	return o, true
 }
 
 // msgElement is one row the list lists: a message, or the activity run
@@ -649,6 +739,9 @@ func (h *Host) openMessageView(n int) error {
 	case m.Kind == "":
 		title = "Reply"
 		md = true
+	case m.Kind == RowNotice && m.Run != "":
+		// a work report reads by its name, the way the log's row reads it back
+		title = "Report"
 	}
 	ui.OpenOverlay(Overlay{
 		ID: "messages view " + strconv.Itoa(n), Title: title, Origin: lua.OriginBuiltin,

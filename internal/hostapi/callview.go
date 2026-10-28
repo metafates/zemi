@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -21,9 +22,13 @@ func (h *Host) callCommands() []*Command {
 	return []*Command{{
 		Name: "call", NArgs: NArgsSome, Hidden: true, Desc: "open a chat row's own view (the chat's rows do this when clicked)",
 		GoFn: func(h *Host, args string, confirm bool) error {
-			n, err := strconv.Atoi(strings.TrimSpace(args))
+			args = strings.TrimSpace(args)
+			if seq, err := strconv.ParseInt(strings.TrimPrefix(args, "#"), 10, 64); err == nil && strings.HasPrefix(args, "#") {
+				return h.openLogCall(seq)
+			}
+			n, err := strconv.Atoi(args)
 			if err != nil {
-				return Usagef("/call <row> (a chat row's index, negative for the live turn's calls)")
+				return Usagef("/call <row> (a chat row's index, negative for the live turn's calls, #seq for a logged one)")
 			}
 			return h.openCall(n)
 		},
@@ -249,8 +254,26 @@ func callInput(m ChatMessage) string {
 // callView is one row's view: the mark and the facts of the call, then its
 // content in parts, each drawn the way its text is written.
 func (h *Host) callView(n int, m ChatMessage, took time.Duration) Overlay {
+	o := h.callBody(m, took)
+	o.ID = "call:" + strconv.Itoa(n)
+	o.Prev, o.Next = h.callStep(n)
+	return o
+}
+
+// logCallView is one logged call's view: the chat's own call view over a row
+// the log holds, its steps walking the log's rail around the row.
+func (h *Host) logCallView(seq int64, m ChatMessage) Overlay {
+	o := h.callBody(m, 0)
+	o.ID = "call:#" + strconv.FormatInt(seq, 10)
+	o.Prev, o.Next = h.logCallStep(seq)
+	return o
+}
+
+// callBody builds what a call's view says: its title, mark and live flag,
+// the facts of the call and its content in parts.
+func (h *Host) callBody(m ChatMessage, took time.Duration) Overlay {
 	o := Overlay{
-		ID: "call:" + strconv.Itoa(n), Title: callTitle(m), Origin: lua.OriginBuiltin,
+		Title: callTitle(m), Origin: lua.OriginBuiltin,
 		Mark: callMarks[m.Status], Live: m.Status == CallRun || m.Status == CallWait,
 	}
 	var parts []BodyPart
@@ -293,7 +316,6 @@ func (h *Host) callView(n int, m ChatMessage, took time.Duration) Overlay {
 			parts = append(parts, BodyPart{Text: m.Detail, Fill: FillWell})
 		}
 	}
-	o.Prev, o.Next = h.callStep(n)
 	if m.Job != "" {
 		fields = append(fields, Field{Name: "job", Value: m.Job})
 		o.Keys = append(o.Keys, OverlayKey{Key: "o", Desc: "open job", Run: "jobs view " + m.Job})
@@ -308,6 +330,90 @@ func (h *Host) callView(n int, m ChatMessage, took time.Duration) Overlay {
 		}
 	}
 	return o
+}
+
+// openLogCall opens the view of one logged call: the row a loaded page of
+// the messages picker names by its seq, drawn like the chat's own call view.
+func (h *Host) openLogCall(seq int64) error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	m, ok := h.logCallRow(seq)
+	if !ok {
+		return Usagef("no call at message %d", seq)
+	}
+	ui.OpenOverlay(h.logCallView(seq, m))
+	return nil
+}
+
+// logCallRow is the logged call at seq: the row the log names, its echo
+// merged in the way the chat's window reads them.
+func (h *Host) logCallRow(seq int64) (ChatMessage, bool) {
+	if h.DB == nil {
+		return ChatMessage{}, false
+	}
+	rows, err := h.DB.LogFrom(seq, 16)
+	if err != nil || len(rows) == 0 || rows[0].Seq != seq {
+		return ChatMessage{}, false
+	}
+	for _, m := range logRows(rows) {
+		if m.Seq == seq {
+			if m.Kind != RowTool && m.Kind != RowReasoning {
+				return ChatMessage{}, false
+			}
+			return m, true
+		}
+	}
+	return ChatMessage{}, false
+}
+
+// logCallStep names the logged calls around seq: the run of call, echo and
+// thought rows the log holds the rail in, walked the way a windowed call's
+// view walks its transcript rail.
+func (h *Host) logCallStep(seq int64) (prev, next string) {
+	if h.DB == nil {
+		return "", ""
+	}
+	step := func(row store.LogEntry) string {
+		switch row.Kind {
+		case store.KindTool, store.KindThought:
+			return "call #" + strconv.FormatInt(row.Seq, 10)
+		case store.KindEcho:
+			// the result rides the call it answers: the rail walks past it
+		default:
+			return "" // a message of its own ends the rail
+		}
+		return ""
+	}
+	// an echo pairs with the call before it; anything else ends the rail
+	for s := seq - 1; s >= 0; s-- {
+		row, err := h.DB.LogAt(s)
+		if err != nil {
+			break
+		}
+		if cmd := step(row); cmd != "" {
+			prev = cmd
+			break
+		}
+		if row.Kind != store.KindEcho {
+			break
+		}
+	}
+	for s := seq + 1; ; s++ {
+		row, err := h.DB.LogAt(s)
+		if err != nil {
+			break
+		}
+		if cmd := step(row); cmd != "" {
+			next = cmd
+			break
+		}
+		if row.Kind != store.KindEcho {
+			break
+		}
+	}
+	return prev, next
 }
 
 // skillBody is what a skill call answers in its view: the skill's own file
