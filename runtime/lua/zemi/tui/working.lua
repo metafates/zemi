@@ -58,7 +58,13 @@ zemi.ui.widget.add({
 				-- keeps the key that stops it and the clock that shows it alive
 				parts[#parts + 1] = { plain(fmt.lower(busy.label), nil, "shimmer"), 4 }
 				if busy.cancellable and not ctx.view then parts[#parts + 1] = { fmt.hint(key, verb), 6, 13 } end
-				parts[#parts + 1] = { plain(fmt.duration(busy.elapsed, true)), 5, 7 }
+				-- the armed number counts the window it still waits, as the
+				-- turn's does: the job's clock reads as if it ran on
+				local tick = { plain(fmt.duration(busy.elapsed, true)), 5, 7 }
+				if ctx.interrupt_armed then
+					tick = { plain(fmt.duration(math.ceil(ctx.interrupt_in or 0), true)), 5, 7 }
+				end
+				parts[#parts + 1] = tick
 			elseif ctx.ended == "ok" then
 				state = "done"
 			elseif ctx.ended == "error" then
