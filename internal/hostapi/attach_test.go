@@ -3,6 +3,7 @@ package hostapi
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"image"
 	"image/png"
 	"io/fs"
@@ -334,6 +335,80 @@ func TestOutsideAttachment(t *testing.T) {
 	// a missing path stays prose
 	if got, _ = h.expandAttachments("see @"+filepath.Join(out, "gone"), true); got != "see @"+filepath.Join(out, "gone") {
 		t.Fatalf("a missing path changed: %q", got)
+	}
+}
+
+// TestDirListingCaps: a listing never understates its directory. The count
+// names every file the walk saw, the tail names what the listing does not
+// show, and so does an unreadable subdirectory.
+func TestDirListingCaps(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	mk := func(name string) string {
+		dir := filepath.Join(root, name)
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	write := func(dir, name string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	many := mk("many")
+	for i := range dirListMax + 30 {
+		write(many, fmt.Sprintf("f%03d.txt", i))
+	}
+	// names 131 bytes long: attachMax fits 496 of them, so the byte cap,
+	// not the count cap, breaks this listing
+	long := mk("long")
+	for i := range 520 {
+		write(long, strings.Repeat("n", 124)+fmt.Sprintf("%03d.txt", i))
+	}
+	mixed := mk("mixed")
+	write(mixed, "visible.txt")
+	locked := filepath.Join(mixed, "locked")
+	if err := os.Mkdir(locked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(locked, "inside.txt")
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(locked, 0o755) // TempDir cleanup needs the mode back
+
+	cases := []struct {
+		name      string
+		dir       string
+		wantLines int    // file lines the listing shows
+		total     int    // the count the element names
+		want      string // the tail
+	}{
+		{"count cap", many, dirListMax, dirListMax + 30, "... 30 more"},
+		{"byte cap", long, 496, 520, "... 24 more"},
+		{"unreadable subdir", mixed, 1, 1, "locked/ unreadable"},
+	}
+	if _, err := os.ReadDir(locked); err == nil {
+		cases = cases[:2] // root reads through the mode bits
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var b strings.Builder
+			var refused []string
+			attachDir(&b, c.dir, c.name, &refused)
+			got := b.String()
+			if lines := strings.Count(got, ".txt\n"); lines != c.wantLines {
+				t.Errorf("%d file lines, want %d", lines, c.wantLines)
+			}
+			if !strings.Contains(got, c.want) {
+				t.Errorf("missing %q in:\n%s", c.want, got)
+			}
+			if !strings.Contains(got, fmt.Sprintf(`files=%d`, c.total)) {
+				t.Errorf("the count names every file: %q", got)
+			}
+		})
 	}
 }
 

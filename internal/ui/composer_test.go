@@ -737,6 +737,41 @@ func TestCompletionWalksIn(t *testing.T) {
 	}
 }
 
+// TestCompletionListingCaps: a bare listing keeps half its rows for each
+// kind, so a directory dense in subdirectories cannot push its files off
+// the list, and the selection's far end is a row the popup drew.
+func TestCompletionListingCaps(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	out := t.TempDir()
+	for i := range 150 {
+		if err := os.MkdirAll(filepath.Join(out, fmt.Sprintf("d%03d", i)), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(out, fmt.Sprintf("f%03d.txt", i)), []byte("f"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	app.composer.text, app.composer.cursor = "@"+out+"/", len("@"+out+"/")
+	app.updateCompletion()
+	if got := len(app.completion.paths); got != listMaxFiles {
+		t.Fatalf("candidates: %d, want %d", got, listMaxFiles)
+	}
+	var dirs int
+	for _, r := range app.completion.paths {
+		if strings.HasSuffix(r.label, "/") {
+			dirs++
+		}
+	}
+	if dirs != listMaxFiles/2 {
+		t.Fatalf("dirs: %d, want %d", dirs, listMaxFiles/2)
+	}
+	app.completion.selected = app.completion.count() - 1
+	app.acceptCompletion()
+	if got := app.composer.text; got != "@"+out+fmt.Sprintf("/f%03d.txt ", listMaxFiles/2-1) {
+		t.Fatalf("the last row accepted as %q", got)
+	}
+}
+
 // TestCompletionListWidth: the popup keeps its width while the selection
 // scrolls away from its widest path, which a narrow one cuts at the head,
 // and lists at most listMaxFiles.

@@ -95,7 +95,7 @@ func (a *App) updateCompletion() tea.Cmd {
 					return // the draft moved on
 				}
 				f.extra = matchRows(candRows(items, ""), token, false) // shown as the sources matched them
-				f.selected = max(0, min(f.selected, f.count()-1))
+				f.trim()
 			})
 		})
 	}
@@ -114,7 +114,6 @@ func (a *App) updateCompletion() tea.Cmd {
 				}
 				f.skills = items
 				f.reskill()
-				f.selected = max(0, min(f.selected, f.count()-1))
 			})
 		})
 	}
@@ -215,6 +214,7 @@ func (f *wordCompleter) title() string {
 // reskill narrows the fetched skills to the token.
 func (f *wordCompleter) reskill() {
 	f.skillRows = matchRows(candRows(f.skills, "Skills"), f.token, true)
+	f.trim()
 }
 
 // pathToken splits a path-headed token into the directory the listing
@@ -283,7 +283,6 @@ func (a *App) listDir(dir string) {
 			}
 			f.dirDir, f.dirList = dir, entries
 			a.repaths()
-			f.selected = max(0, min(f.selected, f.count()-1))
 		})
 	})
 }
@@ -348,13 +347,25 @@ func (a *App) repaths() {
 	if base != "" {
 		hits = hostapi.Rank(hits, f.dirList, listMaxFiles)
 	}
+	// each kind keeps half the list, so a directory dense in one kind
+	// cannot hide the other from the bare listing
+	var kept [2]int
 	for _, h := range hits {
+		k := 0
+		if strings.HasSuffix(f.dirList[h.Index], "/") {
+			k = 1
+		}
+		if kept[k] >= listMaxFiles/2 {
+			continue
+		}
+		kept[k]++
 		word := q + dir + f.dirList[h.Index]
-		for k := range h.Pos {
-			h.Pos[k] += len(q) + len(dir)
+		for kk := range h.Pos {
+			h.Pos[kk] += len(q) + len(dir)
 		}
 		f.paths = append(f.paths, listItem{label: word, match: h.Pos, section: "Files", row: hostapi.OverlayItem{Tail: true}})
 	}
+	f.trim()
 }
 
 // rematch ranks the files the token matches, a file name it begins first.
@@ -363,28 +374,26 @@ func (a *App) repaths() {
 // path-headed token asks the directory listing, not the corpus.
 func (f *wordCompleter) rematch() {
 	f.matches = f.matches[:0]
-	if _, _, ok := pathToken(f.token); ok {
-		f.selected = max(0, min(f.selected, f.count()-1))
-		return
+	if _, _, ok := pathToken(f.token); !ok {
+		if f.token == "" {
+			f.matches = hostapi.Match("", f.files[:min(len(f.files), listMaxFiles)], nil)
+		} else {
+			// chunks of the tree match at once: scoring the thousands of hits
+			// a short token has in a big tree takes longer than a keystroke
+			// may on one core
+			const chunk = 8192
+			best := make([][]hostapi.Hit, (len(f.files)+chunk-1)/chunk)
+			var wg sync.WaitGroup
+			for c := range best {
+				wg.Go(func() {
+					best[c] = f.matchFiles(c*chunk, min(c*chunk+chunk, len(f.files)))
+				})
+			}
+			wg.Wait()
+			f.matches = hostapi.Rank(slices.Concat(best...), f.files, listMaxFiles)
+		}
 	}
-	if f.token == "" {
-		f.matches = hostapi.Match("", f.files[:min(len(f.files), listMaxFiles)], nil)
-		f.selected = max(0, min(f.selected, f.count()-1))
-		return
-	}
-	// chunks of the tree match at once: scoring the thousands of hits a short
-	// token has in a big tree takes longer than a keystroke may on one core
-	const chunk = 8192
-	best := make([][]hostapi.Hit, (len(f.files)+chunk-1)/chunk)
-	var wg sync.WaitGroup
-	for c := range best {
-		wg.Go(func() {
-			best[c] = f.matchFiles(c*chunk, min(c*chunk+chunk, len(f.files)))
-		})
-	}
-	wg.Wait()
-	f.matches = hostapi.Rank(slices.Concat(best...), f.files, listMaxFiles)
-	f.selected = max(0, min(f.selected, f.count()-1))
+	f.trim()
 }
 
 // matchFiles matches the token against files[lo:hi]: the best listMaxFiles
@@ -499,6 +508,15 @@ func (f *wordCompleter) fileCap() int {
 	return max(n, 0)
 }
 
+// trim clips the file matches and the path rows to the rows fileCap lets
+// show, so the selection can only land on a row the popup drew.
+func (f *wordCompleter) trim() {
+	n := f.fileCap()
+	f.matches = f.matches[:min(len(f.matches), n)]
+	f.paths = f.paths[:min(len(f.paths), n)]
+	f.selected = max(0, min(f.selected, f.count()-1))
+}
+
 // completionRows renders the popup's list, at most room rows of at most
 // maxW cells, padded to minW.
 func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
@@ -513,17 +531,10 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 		return emptyRows(noMatches, maxW)
 	}
 	items := slices.Grow(slices.Clone(f.extra), f.count())
-	matches, paths := f.matches, f.paths
-	if n := f.fileCap(); len(matches) > n {
-		matches = matches[:n]
-	}
-	if n := f.fileCap(); len(paths) > n {
-		paths = paths[:n]
-	}
-	for _, m := range matches {
+	for _, m := range f.matches {
 		items = append(items, listItem{label: f.files[m.Index], match: m.Pos, section: "Files", row: hostapi.OverlayItem{Tail: true}})
 	}
-	items = append(items, paths...)
+	items = append(items, f.paths...)
 	items = append(items, f.skillRows...)
 	return listRowsW(items, items, f.selected, &f.view, min(completionMaxRows, room), minW, maxW)
 }

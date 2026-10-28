@@ -254,7 +254,7 @@ zemi.ui.widget.add({
 				{ text = "/", hl = "SplashKey", click = "help" },
 				{ text = " commands  ", hl = "Dim", click = "help" },
 				{ text = "@", hl = "SplashKey" },
-				{ text = " files and skills", hl = "Dim" },
+				{ text = " files, dirs and skills", hl = "Dim" },
 			},
 		}
 	end,

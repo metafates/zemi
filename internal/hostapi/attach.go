@@ -16,6 +16,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -203,47 +204,90 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 
 // attachDir is what a directory attaches: its files listed, one path
 // relative to it per line, shallowest first, so the model sees the tree
-// and reads what it needs with its tools. The listing caps at dirListMax
-// files and attachMax bytes, the remainder named at the tail.
+// and reads what it needs with its tools. The listing shows at most
+// dirListMax files and attachMax bytes; the tail names what it does not
+// show, and so does an unreadable subdirectory.
 func attachDir(b *strings.Builder, abs, name string, refused *[]string) {
-	paths, err := listDir(abs)
+	l, err := listDir(abs)
 	if err != nil {
 		b.WriteString(agent.AttachElement(fmt.Sprintf("dir path=%q", name), "not attached: it could not be read"))
 		*refused = append(*refused, perm.TildePath(name)+": it could not be read")
 		return
 	}
 	var body strings.Builder
-	for i, p := range paths {
-		if i == dirListMax || body.Len()+len(p)+1 > attachMax {
-			fmt.Fprintf(&body, "... %d more", len(paths)-i)
+	shown := 0
+	for _, p := range l.files {
+		if body.Len()+len(p)+1 > attachMax {
 			break
 		}
 		body.WriteString(p + "\n")
+		shown++
+	}
+	for _, rel := range l.unreadable {
+		body.WriteString(rel + "/ unreadable\n")
+	}
+	if shown < l.total {
+		fmt.Fprintf(&body, "... %d more", l.total-shown)
 	}
 	if body.Len() == 0 {
 		body.WriteString("(no files)")
 	}
-	b.WriteString(agent.AttachElement(fmt.Sprintf("dir path=%q files=%d", name, len(paths)), body.String()))
+	b.WriteString(agent.AttachElement(fmt.Sprintf("dir path=%q files=%d", name, l.total), body.String()))
 }
 
-// listDir lists the regular files under dir, by path relative to it,
-// shallow-first. It skips .git and the directories tools.SkipDir names -
+// dirList is what a directory holds: the files the listing names (capped at
+// dirListMax), the count of every file the walk saw, and the subdirectories
+// it could not read.
+type dirList struct {
+	files      []string
+	total      int
+	unreadable []string
+}
+
+// listWait bounds a directory's walk, the bound git's file listing and the
+// popup's listing take too (tools.listWait, ui.dirListWait).
+const listWait = 2 * time.Second
+
+// listDir walks the regular files under dir under the listWait bound, so a
+// mount that answers slowly cannot hold a turn.
+func listDir(root string) (dirList, error) {
+	type res struct {
+		l   dirList
+		err error
+	}
+	ch := make(chan res, 1)
+	go func() {
+		l, err := walkDir(root)
+		ch <- res{l, err}
+	}()
+	select {
+	case r := <-ch:
+		return r.l, r.err
+	case <-time.After(listWait):
+		// NOTE: a mount hung past the bound leaves the walk goroutine parked on its read
+		return dirList{}, errors.New("listing timed out")
+	}
+}
+
+// walkDir walks the regular files under dir, by path relative to it,
+// shallow-first, counting past the cap so the tail can name the true
+// remainder. It skips .git and the directories tools.SkipDir names -
 // matched against the name as-is and dot-stripped, so .venv dies with
-// venv - and keeps every other hidden entry. An unreadable subdirectory
-// is skipped; the root's own read error returns.
-func listDir(root string) ([]string, error) {
-	var files []string
-	var walk func(dir string, top bool)
-	var rootErr error
-	walk = func(dir string, top bool) {
+// venv - and keeps every other hidden entry. The root's own read error
+// returns; a subdirectory's is named in unreadable. listDir bounds it.
+func walkDir(root string) (l dirList, rootErr error) {
+	var walk func(dir, rel string, top bool)
+	walk = func(dir, rel string, top bool) {
 		des, err := os.ReadDir(dir)
 		if err != nil {
 			if top {
 				rootErr = err
+			} else {
+				l.unreadable = append(l.unreadable, rel)
 			}
 			return
 		}
-		var subs []string
+		var subs, subrels []string
 		for _, de := range des {
 			name := de.Name()
 			if de.IsDir() {
@@ -251,28 +295,30 @@ func listDir(root string) ([]string, error) {
 					continue
 				}
 				subs = append(subs, filepath.Join(dir, name))
+				subrels = append(subrels, path.Join(rel, name))
 				continue
 			}
-			if !de.Type().IsRegular() || len(files) >= dirListMax {
+			if !de.Type().IsRegular() {
 				continue
 			}
-			if rel, err := filepath.Rel(root, filepath.Join(dir, name)); err == nil {
-				files = append(files, filepath.ToSlash(rel))
+			l.total++
+			if len(l.files) >= dirListMax {
+				continue
+			}
+			if r, err := filepath.Rel(root, filepath.Join(dir, name)); err == nil {
+				l.files = append(l.files, filepath.ToSlash(r))
 			}
 		}
-		for _, sub := range subs {
-			if len(files) >= dirListMax {
-				return
-			}
-			walk(sub, false)
+		for i, sub := range subs {
+			walk(sub, subrels[i], false)
 		}
 	}
-	walk(root, true)
+	walk(root, ".", true)
 	if rootErr != nil {
-		return nil, rootErr
+		return
 	}
-	tools.SortShallow(files)
-	return files, nil
+	tools.SortShallow(l.files)
+	return l, nil
 }
 
 // pathAbs spells an @ word out to a path: ~ under home, the rest against the
