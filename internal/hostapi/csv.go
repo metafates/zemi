@@ -86,7 +86,7 @@ func luaNumberString(n glua.LNumber) string {
 func csvEncode(rows [][]string) string {
 	var b strings.Builder
 	w := csv.NewWriter(&b)
-	w.WriteAll(rows) // an in-memory writer cannot fail the write
+	_ = w.WriteAll(rows) // an in-memory writer cannot fail the write
 	return b.String()
 }
 
