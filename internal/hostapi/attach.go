@@ -285,13 +285,9 @@ func (h *Host) AttachWord(path string) string {
 		word += "/"
 	}
 	if !CanRef(word) {
-		// the word cannot ride a bare token: quoted and absolute, where the
-		// read tool opens it whatever the frame it was typed in
-		w := perm.TildePath(path)
-		if dir && !strings.HasSuffix(w, "/") {
-			w += "/"
-		}
-		return `@"` + w + `"`
+		// the word cannot ride a bare token: quoted, so the expander reads
+		// it whole whatever whitespace or punctuation it carries
+		return `@"` + word + `"`
 	}
 	return "@" + word
 }

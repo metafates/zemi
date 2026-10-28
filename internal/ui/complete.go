@@ -137,6 +137,41 @@ func (a *App) updateCompletion() tea.Cmd {
 	return nil
 }
 
+// closeQuotedWord ends the word a space is about to: an @ word holding an
+// open quote whose path already resolves gets its closing quote, so prose
+// after the space rides outside the word instead of inside the path the
+// grammar reads to the line's end. A word still mid-typing - `@"My Doc`
+// gaining the space that is part of its name - resolves to nothing and
+// keeps its quote open.
+func (a *App) closeQuotedWord() {
+	c := &a.composer
+	r := c.runes()
+	i := wordStart(r, c.cursor)
+	if i+1 >= c.cursor || r[i] != '@' {
+		return
+	}
+	q := r[i+1]
+	if q != '"' && q != '\'' {
+		return
+	}
+	token := string(r[i+1 : c.cursor])
+	if strings.ContainsRune(token[1:], q) {
+		return // the pair is closed already
+	}
+	_, base, ok := pathToken(token)
+	if !ok {
+		return
+	}
+	full := a.resolveDir(token)
+	if base != "" {
+		full = filepath.Join(full, base)
+	}
+	if _, err := os.Stat(full); err != nil {
+		return
+	}
+	c.insert(string(q))
+}
+
 // wordStart is the rune index a completion word starts at: after the last
 // whitespace outside a quoted run, a run between matched quotes being one
 // word, so a quoted token holds its spaces. A quote opened and never
@@ -182,7 +217,7 @@ func (a *App) onFilesScanned(msg filesScannedMsg) {
 func (f *wordCompleter) setFiles(files []string) {
 	f.files, f.bases = files, make([]string, len(files))
 	for i, p := range files {
-		f.bases[i] = p[strings.LastIndexByte(p, '/')+1:]
+		f.bases[i] = p[strings.LastIndexByte(strings.TrimSuffix(p, "/"), '/')+1:]
 	}
 }
 
@@ -262,11 +297,13 @@ func unquoteToken(t string) string {
 
 // pathHeaded reports whether a word names a directory for the listing,
 // where a bare name is one of the corpus's files. A head spelled without
-// its separator - `~x`, `..x` - names one too; `.` alone does not, so a
-// hidden name still answers from the corpus.
+// its separator - `~x`, `..x` - names one too; so does a word ending in
+// the separator - `internal/` - whatever frame it rides. `.` alone does
+// not, so a hidden name still answers from the corpus.
 func pathHeaded(w string) bool {
 	return strings.HasPrefix(w, "~") || strings.HasPrefix(w, "..") ||
-		strings.HasPrefix(w, "/") || strings.HasPrefix(w, "./")
+		strings.HasPrefix(w, "/") || strings.HasPrefix(w, "./") ||
+		strings.HasSuffix(w, "/")
 }
 
 // resolveDir spells a token's directory out, where the listing keys its
@@ -490,7 +527,10 @@ func (a *App) acceptCompletion() {
 		word := f.paths[sel-n-mt].label
 		if strings.HasSuffix(word, "/") { // a directory walks in
 			if q := word[0]; q != '"' && q != '\'' && !hostapi.CanRef(word) {
-				word = `"` + word + `"` // a word a bare token cannot carry rides quoted
+				// a word a bare token cannot carry rides quoted, the quote
+				// left open: the letters after it keep narrowing, and a
+				// file accept closes the pair
+				word = `"` + word
 			}
 			a.composer.replace(f.start+1, word)
 			a.updateCompletion()
@@ -569,7 +609,8 @@ func (a *App) scanFilesCmd(dir string, gen int) tea.Cmd {
 // matched against the name as-is and dot-stripped, so .venv dies with
 // venv - keeps every other hidden entry, caps a directory at dirMaxFiles
 // entries and the scan at scanMaxFiles, and sorts shallow-first, so the
-// empty token's head is the top-level files.
+// empty token's head is the top-level files. Directories ride the list
+// too, separator-suffixed: they are attachable, and a dir accept walks in.
 // NOTE: the caps and the name list stand in for a real ignore engine;
 // internal/glob's .gitignore reader is the upgrade path.
 func walkFiles(ctx context.Context, root string) []string {
@@ -582,7 +623,8 @@ func walkFiles(ctx context.Context, root string) []string {
 		if err != nil {
 			return nil // an unreadable subdirectory is skipped
 		}
-		if d.IsDir() {
+		isDir := d.IsDir()
+		if isDir {
 			if path == root {
 				return nil
 			}
@@ -590,21 +632,24 @@ func walkFiles(ctx context.Context, root string) []string {
 			if name == ".git" || tools.SkipDir(name) || tools.SkipDir(strings.TrimPrefix(name, ".")) {
 				return filepath.SkipDir
 			}
-			return nil
-		}
-		if !d.Type().IsRegular() {
-			return nil
-		}
-		if dir := path[:strings.LastIndexByte(path, filepath.Separator)+1]; dir != cur {
-			cur, n = dir, 0
-		}
-		n++
-		if n > dirMaxFiles {
-			return filepath.SkipDir
+		} else {
+			if !d.Type().IsRegular() {
+				return nil
+			}
+			if dir := path[:strings.LastIndexByte(path, filepath.Separator)+1]; dir != cur {
+				cur, n = dir, 0
+			}
+			n++
+			if n > dirMaxFiles {
+				return filepath.SkipDir
+			}
 		}
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return nil
+		}
+		if isDir {
+			rel += "/"
 		}
 		files = append(files, filepath.ToSlash(rel))
 		if len(files) >= scanMaxFiles {

@@ -566,6 +566,8 @@ func TestPathToken(t *testing.T) {
 		{"./x", "./", "x", true},
 		{"~/Sub/a", "~/Sub/", "a", true},
 		{`"~/`, `~/`, "", true},
+		{"internal/", "internal/", "", true},
+		{"internal/u", "", "", false},
 		{"name", "", "", false},
 	} {
 		dir, base, ok := pathToken(c.token)
@@ -678,6 +680,22 @@ func TestCompletionScan(t *testing.T) {
 	app.onFilesScanned(msg)
 	if !slices.Contains(app.completion.files, "new.go") {
 		t.Fatalf("rescan missed new.go: %v", app.completion.files)
+	}
+
+	// a directory rides the corpus, separator-suffixed, reachable by name
+	app.composer.text, app.composer.cursor = "@inte", 5
+	app.updateCompletion()
+	if !slices.ContainsFunc(app.completion.matches, func(h hostapi.Hit) bool {
+		return app.completion.files[h.Index] == "internal/"
+	}) {
+		t.Fatalf("dir rides the corpus: %v", app.completion.files)
+	}
+
+	// a bare relative dir prefix lists its entries, as `./` does
+	app.composer.text, app.composer.cursor = "@internal/", 10
+	app.updateCompletion()
+	if !slices.ContainsFunc(app.completion.paths, func(p listItem) bool { return p.label == "internal/app.go" }) {
+		t.Fatalf("bare dir prefix lists: %+v", app.completion.paths)
 	}
 
 	// a quoted token narrows the corpus by the path inside the quotes
@@ -827,8 +845,38 @@ func TestCompletionWalksIn(t *testing.T) {
 	}
 	app.completion.selected = idx
 	app.acceptCompletion()
-	if got := app.composer.text; got != `@"`+spacey+"/\"" || !app.completion.open {
+	if got := app.composer.text; got != `@"`+spacey+"/" || !app.completion.open {
 		t.Fatalf("a spacey directory walked in as %q", got)
+	}
+	// the wrap leaves the quote open, so the letters after it keep
+	// narrowing the listing; a file accept closes the pair
+	app.composer.text += "De"
+	app.composer.cursor += 2
+	app.updateCompletion()
+	if len(app.completion.paths) != 1 || app.completion.paths[0].label != `"`+spacey+"/Deep/" {
+		t.Fatalf("letters after the open quote narrow: %+v", app.completion.paths)
+	}
+	// accepting the narrowed row walks in; a space then ends the word -
+	// the quote closes, so prose after it rides outside the path
+	app.composerKey("enter", tea.KeyPressMsg{})
+	app.composerKey(" ", tea.KeyPressMsg{Text: " "})
+	for _, r := range "attach this" {
+		app.composerKey(string(r), tea.KeyPressMsg{Text: string(r)})
+	}
+	if got := app.composer.text; got != `@"`+spacey+`/Deep/" attach this` {
+		t.Fatalf("space closed the quoted word as %q", got)
+	}
+	// a space inside a word still being typed is part of its name: the
+	// quote stays open and the letters after it keep narrowing
+	app.composerKey("esc", tea.KeyPressMsg{})
+	app.composerKey("esc", tea.KeyPressMsg{})
+	app.composer.text, app.composer.cursor = `@"My`, 4
+	app.composerKey(" ", tea.KeyPressMsg{Text: " "})
+	for _, r := range "Docs/Deep" {
+		app.composerKey(string(r), tea.KeyPressMsg{Text: string(r)})
+	}
+	if got := app.composer.text; got != `@"My Docs/Deep` {
+		t.Fatalf("mid-word space kept the quote open as %q", got)
 	}
 }
 

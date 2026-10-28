@@ -155,10 +155,13 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   file: an `@<path>` reference the user can go on editing, which the completion picks up again.
   Every attachment rides the `@` word: a project file project-relative (`./` when its bare name
   would answer as a skill), a file from outside the project `~`-spelled or absolute, a directory
-  with the trailing slash a completion walks into. A word a bare token cannot carry - one holding
-  whitespace, or ending in the punctuation a sentence ends on - rides quoted and absolute,
-  `@"~/My Docs/a.txt"`, which `attachRef`'s grammar reads back (the closing quote optional, so a
-  word still being typed resolves too). A clipboard image has no source path: it lands a copy as
+  with the trailing slash a completion walks into (a project directory answers by name from the
+  corpus, and its name plus the slash lists it). A word a bare token cannot carry - one holding
+  whitespace, or ending in the punctuation a sentence ends on - rides quoted, the project frame
+  kept: `@"docs/My Notes.md"` inside the project, `@"~/My Docs/a.txt"` outside, which
+  `attachRef`'s grammar reads back (the closing quote optional, so a
+  word still being typed resolves too; a space closes an open-quoted word
+  whose path resolves, so prose after it rides outside). A clipboard image has no source path: it lands a copy as
   `pasted-<ts>.png` in `<data>/drops` and inserts the copy's `@` word. `expandAttachments` looks
   the whole word up as a skill first, then resolves the path - `~` under home, the rest against
   the project, `/` as itself - wherever it lives, a symlink out of the project attaching its

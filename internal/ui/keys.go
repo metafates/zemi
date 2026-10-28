@@ -364,6 +364,9 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 			if t == "" {
 				return nil
 			}
+			if strings.HasPrefix(t, " ") {
+				a.closeQuotedWord()
+			}
 			if !c.insertFits(t) {
 				a.draftCapToast()
 				return nil // nothing changed: no completion walk, no repaint

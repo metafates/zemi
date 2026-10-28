@@ -1703,17 +1703,23 @@ UI extensibility contract:
   two sections under headers - `Files`, then `Skills`, each
   dropped, header included, when nothing matches it. Skills complete by
   name and attach as `@name` on submit, disabled ones included; files
-  complete from a walk of the project (every file, ignored ones included,
-  build directories and `.git` skipped, hidden files listed, shallow-first
+  complete from a walk of the project (every file and directory, ignored
+  ones included, build directories and `.git` skipped, hidden files listed,
+  directories separator-suffixed, shallow-first
   so the empty token's head is the top level) and, when the word is
-  path-headed (`~`, `/`, `../`, `./`, quoted forms too), from the listing of
-  the directory it names - `@~/Downloads/`, `@../sibling/`, `@/etc/` walk
+  path-headed (`~`, `/`, `../`, `./`, a word ending in the separator
+  (`internal/`), quoted forms too), from the listing of
+  the directory it names - `@~/Downloads/`, `@../sibling/`, `@/etc/`,
+  `@internal/` walk
   in shell-tab style, a directory accept keeping the popup open. On submit
   a directory attaches its own entries, as `ls` lists them - one name per
   line, a subdirectory's trailing its slash - capped with the remainder
   named at the tail; reading deeper is what the model's tools are for. A path
   that cannot ride a bare word (whitespace, trailing sentence punctuation)
-  rides quoted, `@"~/My Docs/a.txt"`. While both sections have rows, the
+  rides quoted, `@"~/My Docs/a.txt"`; a space ends the word - an open-quoted
+  one whose path resolves takes its closing quote before the space, so prose
+  after it rides outside, while a word still being typed keeps its quote open
+  and swallows the line, as a shell's does. While both sections have rows, the
   Files section caps so both headers stay in the window, the Lua extras
   pricing in first; the Files ranking
   keeps a file name the token begins first, then the score of the name, or
