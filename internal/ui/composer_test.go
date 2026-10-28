@@ -698,6 +698,29 @@ func TestCompletionScan(t *testing.T) {
 		t.Fatalf("bare dir prefix lists: %+v", app.completion.paths)
 	}
 
+	// Enter on a corpus directory row walks in: the word keeps its
+	// separator and the popup stays open on the listing
+	app.composer.text, app.composer.cursor = "@inte", 5
+	app.updateCompletion()
+	sel := -1
+	for i, m := range app.completion.matches {
+		if app.completion.files[m.Index] == "internal/" {
+			sel = len(app.completion.extra) + i
+			break
+		}
+	}
+	if sel < 0 {
+		t.Fatalf("dir row missing from the corpus: %+v", app.completion.matches)
+	}
+	app.completion.selected = sel
+	app.acceptCompletion()
+	if got := app.composer.text; got != "@internal/" || !app.completion.open {
+		t.Fatalf("corpus dir accept: %q open=%v", got, app.completion.open)
+	}
+	if !slices.ContainsFunc(app.completion.paths, func(p listItem) bool { return p.label == "internal/app.go" }) {
+		t.Fatalf("corpus dir walk-in lists: %+v", app.completion.paths)
+	}
+
 	// a quoted token narrows the corpus by the path inside the quotes
 	app.composer.text, app.composer.cursor = `@"My`, 4
 	app.updateCompletion()
@@ -768,7 +791,8 @@ func TestCompletionSections(t *testing.T) {
 // open on the directory, in the frame the token typed, and a file accept
 // closes it with its space.
 func TestCompletionWalksIn(t *testing.T) {
-	app := newTestApp(t, t.TempDir())
+	proj := t.TempDir()
+	app := newTestApp(t, proj)
 	out := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(out, "Sub"), 0o700); err != nil {
 		t.Fatal(err)
@@ -877,6 +901,22 @@ func TestCompletionWalksIn(t *testing.T) {
 	}
 	if got := app.composer.text; got != `@"My Docs/Deep` {
 		t.Fatalf("mid-word space kept the quote open as %q", got)
+	}
+	// a hand-typed bare-relative word the popup never listed closes too -
+	// the rule is the word's own, not the listing's
+	if err := os.WriteFile(filepath.Join(proj, "notes a.txt"), []byte("n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app.composer.text, app.composer.cursor = `@"notes a.txt`, 13
+	app.composerKey(" ", tea.KeyPressMsg{Text: " "})
+	if got := app.composer.text; got != `@"notes a.txt" ` {
+		t.Fatalf("bare-relative word closed as %q", got)
+	}
+	// a cursor inside the word must not split it
+	app.composer.text, app.composer.cursor = `@"notes a.txt`, 8
+	app.composerKey(" ", tea.KeyPressMsg{Text: " "})
+	if got := app.composer.text; got != `@"notes  a.txt` {
+		t.Fatalf("mid-word cursor split the word as %q", got)
 	}
 }
 

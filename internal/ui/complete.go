@@ -158,18 +158,23 @@ func (a *App) closeQuotedWord() {
 	if strings.ContainsRune(token[1:], q) {
 		return // the pair is closed already
 	}
-	_, base, ok := pathToken(token)
-	if !ok {
+	if c.cursor < len(r) && r[c.cursor] != '\n' {
+		return // a mid-word cursor would split the word
+	}
+	w := unquoteToken(token)
+	if w == "" {
 		return
 	}
-	full := a.resolveDir(token)
-	if base != "" {
-		full = filepath.Join(full, base)
+	full := w
+	if strings.HasPrefix(full, "~") {
+		full = perm.ExpandHome(full)
+	} else if !filepath.IsAbs(full) {
+		full = filepath.Join(a.host.Dirs.ProjectDir, full)
 	}
 	if _, err := os.Stat(full); err != nil {
 		return
 	}
-	c.insert(string(q))
+	c.insertFits(string(q))
 }
 
 // wordStart is the rune index a completion word starts at: after the last
@@ -521,6 +526,17 @@ func (a *App) acceptCompletion() {
 		f.close()
 	case sel < n+mt:
 		rel := f.files[f.matches[sel-n].Index]
+		if strings.HasSuffix(rel, "/") { // a directory walks in
+			word := rel
+			if len(f.token) > 0 && (f.token[0] == '"' || f.token[0] == '\'') {
+				word = f.token[:1] + word // the frame the word rode in on stays
+			} else if !hostapi.CanRef(word) {
+				word = `"` + word
+			}
+			a.composer.replace(f.start+1, word)
+			a.updateCompletion()
+			return
+		}
 		a.composer.replace(f.start, a.host.AttachWord(filepath.Join(a.host.Session().CWD, rel))+" ")
 		f.close()
 	case sel < n+mt+p:
@@ -608,7 +624,7 @@ func (a *App) scanFilesCmd(dir string, gen int) tea.Cmd {
 // too. It skips .git and the build directories tools.SkipDir names -
 // matched against the name as-is and dot-stripped, so .venv dies with
 // venv - keeps every other hidden entry, caps a directory at dirMaxFiles
-// entries and the scan at scanMaxFiles, and sorts shallow-first, so the
+// files and the scan at scanMaxFiles, and sorts shallow-first, so the
 // empty token's head is the top-level files. Directories ride the list
 // too, separator-suffixed: they are attachable, and a dir accept walks in.
 // NOTE: the caps and the name list stand in for a real ignore engine;
