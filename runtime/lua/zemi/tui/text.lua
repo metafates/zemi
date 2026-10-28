@@ -92,8 +92,8 @@ function M.pending(ctx)
 	local parts = {}
 	-- the live rail already names the run the turn waits on: counts are other work
 	if not ctx.agent_active then
-		local running = running(ctx)
-		if running then parts[#parts + 1] = running end
+		local runs = running(ctx)
+		if runs then parts[#parts + 1] = runs end
 	end
 	local busy = ctx.busy or {}
 	if #busy > 0 then
