@@ -320,7 +320,7 @@ Directories (XDG; Windows keeps the same roots under the user's home,
                           servers may keep state
   plugins/disabled        names turned off, one per line
   builtin-skills/<name>/  zemi's own skills, rewritten from runtime/ on sync
-  drops/                  copies of the files attached from outside the project
+  drops/                  copies of the images pasted from the clipboard
   plans/<session id>.md   plans approved from the plan tool's popup
   types/                  the LuaLS annotations and a copy of runtime/lua, rewritten every start
 ~/.local/state/zemi/      state
@@ -1688,17 +1688,33 @@ UI extensibility contract:
   composer submit before any Lua-visible command lookup (§4).
 - Completion sources: `zemi.composer.add({ id, trigger | command,
   items })` adds rows to the popup after a punctuation character that
-  starts a word (a `#` issue list; `@` rows go ahead of the files) or to a
-  command's argument candidates. `items(lead, line)` runs on the UI worker
-  after each edit, like a Lua command completer, and its answer is dropped
-  when the draft moved on, so the key loop never waits on it; Go sanitizes
-  the rows and caps them at 50, and shows them as the source matched them
-  (by meaning, maybe), narrowing only the rows it keeps while an answer is
-  pending. A trigger popup with nothing to offer is
-  not drawn and takes no keys, so prose with a `#` in it still submits. A
-  popup's top border names what it lists where zemi knows the name: `Files`
-  for `@`, `Skills` for `+`, `Commands` for the palette; a source's own trigger titles nothing,
+  starts a word (a `#` issue list; a source's rows go ahead of the files,
+  headerless) or to a command's argument candidates. `items(lead, line)`
+  runs on the UI worker after each edit, like a Lua command completer, and
+  its answer is dropped when the draft moved on, so the key loop never
+  waits on it; Go sanitizes the rows and caps them at 50, and shows them as
+  the source matched them (by meaning, maybe), narrowing only the rows it
+  keeps while an answer is pending. A trigger popup with nothing to offer
+  is not drawn and takes no keys, so prose with a `#` in it still submits. A
+  popup's top border names what it lists where zemi knows the name: `Files and
+  skills` for `@`, `Commands` for the palette; a source's own trigger titles nothing,
   since zemi cannot know what it means.
+- The composer has one word trigger, `@`: one popup titled "Files and
+  skills", two sections under headers - `Files`, then `Skills`, each
+  dropped, header included, when nothing matches it. Skills complete by
+  name and attach as `@name` on submit, disabled ones included; files
+  complete from a walk of the project (every file, ignored ones included,
+  build directories and `.git` skipped, hidden files listed, shallow-first
+  so the empty token's head is the top level) and, when the word is
+  path-headed (`~`, `/`, `../`, `./`, quoted forms too), from the listing of
+  the directory it names - `@~/Downloads/`, `@../sibling/`, `@/etc/` walk
+  in shell-tab style, a directory accept keeping the popup open. A path
+  that cannot ride a bare word (whitespace, trailing sentence punctuation)
+  rides quoted, `@"~/My Docs/a.txt"`. While both sections have rows, the
+  Files section caps so both headers stay in the window; the Files ranking
+  keeps a file name the token begins first, then the score of the name, or
+  of the path when only the path matches. `+` is free for a completion
+  source again: no trigger is reserved but `/`.
 - One matcher (`hostapi.Match`, over `sahilm/fuzzy`) filters every list a
   human narrows by typing: the palette, argument candidates, `@` files
   and overlays. Every word of the query must match a row: its
@@ -1886,7 +1902,7 @@ view; a reset's wipe drops the row with the chat.
   session cost when the model spec carries prices (`cost_per_1m_in` /
   `cost_per_1m_out`),
   the reasoning effort, and, innermost
-  until the first message, the `/`, `@` and `+` keys).
+  until the first message, the `/` and `@` keys).
   Overlays float, centered or anchored (`anchor = "bottom-left"` or
   `"bottom-right"`: above the statusline row, the border in line with the
   composer frame on the side of the pill that opened it: a Lua picker

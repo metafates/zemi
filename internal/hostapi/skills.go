@@ -234,8 +234,8 @@ func (h *Host) skillIndex() []tools.SkillInfo {
 	return out
 }
 
-// SkillMentions lists every skill for the + popup: name and description,
-// disabled ones included, since naming one is the request.
+// SkillMentions lists every skill for the @ popup's Skills section: name and
+// description, disabled ones included, since naming one is the request.
 func (h *Host) SkillMentions() []CompletionItem {
 	out := make([]CompletionItem, 0, 8)
 	for _, s := range append(h.skillsReg.list(), h.projectOnlySkills()...) {
@@ -540,21 +540,16 @@ func (h *Host) skillBase(s skill.Skill) (base, plugin string) {
 	return base, h.PluginOf(s.Dir)
 }
 
-// attachSkill puts a +name skill behind the marker: the body as written, the
-// note pointing at the typed message for the request. A name nothing offers
-// stays prose, like an @ word naming no file.
-func (h *Host) attachSkill(b *strings.Builder, name string) {
-	s, ok := h.skillByName(name)
-	if !ok {
-		return
-	}
+// attachSkill puts the skill behind the marker: the body as written, the
+// note pointing at the typed message for the request.
+func (h *Host) attachSkill(b *strings.Builder, s skill.Skill) {
 	text, err := tools.SkillText(tools.SkillInfo{Name: s.Name, Path: s.Dir, File: s.File, Root: s.Root, Data: s.Data})
 	if err != nil {
 		return // the body is gone since it was typed: the token stays prose
 	}
-	note := fmt.Sprintf("The user attached this skill with +%s in the message above; follow it for their request.\n\n", s.Name)
+	note := fmt.Sprintf("The user attached this skill with @%s in the message above; follow it for their request.\n\n", s.Name)
 	if base, by := h.skillBase(s); base != s.Name {
-		note = fmt.Sprintf("The user attached this skill with +%s (%s from the %s plugin) in the message above; follow it for their request.\n\n", s.Name, base, by)
+		note = fmt.Sprintf("The user attached this skill with @%s (%s from the %s plugin) in the message above; follow it for their request.\n\n", s.Name, base, by)
 	}
 	b.WriteString(agent.AttachElement(fmt.Sprintf("skill name=%q", s.Name), note+text+skillNote(s)))
 }
@@ -686,12 +681,12 @@ func (h *Host) skillItems() []OverlayItem {
 }
 
 // usedBy says who runs a skill: the model while it is on, the user's
-// +name token when it is off.
+// @name token when it is off.
 func (h *Host) usedBy(s skill.Skill, on bool) string {
 	if on {
 		return "the model"
 	}
-	return "+" + s.Name + " only"
+	return "@" + s.Name + " only"
 }
 
 // skillsCommands is /skills.

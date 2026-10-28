@@ -99,7 +99,7 @@ The palette: `/goal <condition>` (keeps sending turns until a check of the conve
 
 Typed only: `/export [full] [path]` (the chat log as markdown; full expands every tool call with its result), `/effort`, `/lsp`, `/reload`.
 
-`@path` attaches a project file as a reference, which the `@` completion popup inserts for one, as does a drop of a project file; a path the reference cannot carry keeps a chip or its quoted path. A file from outside the project dropped on the terminal, or an image pasted with ctrl+v, becomes `[Image <name>]` or `[File <name>]`, `<name>` the copy's own name; a directory, or a binary or oversized file, keeps its quoted path instead. Images are png, jpg, gif or webp up to 20 MB, shrunk past 2000 px or 3.75 MB, and reach only a model that takes images.
+`@path` attaches a file as a reference, which the `@` completion popup - files and skills, under their headers - inserts for one, as does a drop of a file. A file from outside the project rides `@~/...` or `@/abs/path`, a directory its path with a trailing slash, and a path holding whitespace or ending in sentence punctuation rides quoted, `@"~/My Docs/a.txt"`. A pasted image with ctrl+v becomes a copy under the drops directory and its `@` word. Images are png, jpg, gif or webp up to 20 MB, shrunk past 2000 px or 3.75 MB, and reach only a model that takes images.
 
 ## Project config and trust
 

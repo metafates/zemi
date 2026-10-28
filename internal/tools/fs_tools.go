@@ -1376,7 +1376,7 @@ func walk(ctx context.Context, root string, fn func(rel string) error) error {
 			return nil
 		}
 		if d.IsDir() {
-			if path != root && (strings.HasPrefix(d.Name(), ".") || skipDir(d.Name())) {
+			if path != root && (strings.HasPrefix(d.Name(), ".") || SkipDir(d.Name())) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -1396,7 +1396,7 @@ func truncLine(s string) string {
 	return s
 }
 
-func skipDir(name string) bool {
+func SkipDir(name string) bool {
 	switch name {
 	case "node_modules", "vendor", "target", "dist", "build",
 		"__pycache__", "coverage", "venv":

@@ -2565,7 +2565,7 @@ zemi.skills = {}
 ---@return zemi.Skill[]
 function zemi.skills.list() end
 
---- Turn a skill on or off. (`+name` in a message attaches a skill whether it
+--- Turn a skill on or off. (`@name` in a message attaches a skill whether it
 --- is on or off.)
 ---@param name string
 ---@param on boolean

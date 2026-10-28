@@ -79,7 +79,7 @@ func (a *App) updatePalette() {
 	}
 	lua := a.host.HasCompletions("", name)
 	if c := a.host.Commands.Lookup(name); !lua && (c == nil || c.Complete == nil || c.GoComplete != nil) {
-		show(candRows(a.host.CompleteCommand(context.Background(), name, typed, line)), false)
+		show(candRows(a.host.CompleteCommand(context.Background(), name, typed, line), ""), false)
 		return
 	}
 	// A Lua completer or source runs on the worker, since the key loop never
@@ -93,7 +93,7 @@ func (a *App) updatePalette() {
 		}
 		a.do(func() {
 			if string(a.composer.runes()[:a.composer.cursor]) == line {
-				show(candRows(cands), false)
+				show(candRows(cands, ""), false)
 			}
 		})
 	})

@@ -146,7 +146,7 @@ func TestMouseHover(t *testing.T) {
 }
 
 // TestDropPaste: pasted paths in the forms terminals use for drag and drop
-// become attachments; ordinary text stays text.
+// become @ words; ordinary text stays text.
 func TestDropPaste(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
@@ -155,10 +155,11 @@ func TestDropPaste(t *testing.T) {
 	notes := filepath.Join(dir, "notes.txt")
 	os.WriteFile(shot, []byte("\x89PNGfake"), 0o600)
 	os.WriteFile(notes, []byte("hello"), 0o600)
+	shotWord, notesWord := app.host.AttachWord(shot), app.host.AttachWord(notes)
 	for _, c := range []struct{ paste, want string }{
-		{strings.ReplaceAll(shot, " ", `\ `) + " " + notes, "[Image My Shot.png] [File notes.txt] "},
-		{"'" + shot + "'", "[Image My Shot.png] "},
-		{"file://" + strings.ReplaceAll(shot, " ", "%20") + "\n", "[Image My Shot.png] "},
+		{strings.ReplaceAll(shot, " ", `\ `) + " " + notes, shotWord + " " + notesWord + " "},
+		{"'" + shot + "'", shotWord + " "},
+		{"file://" + strings.ReplaceAll(shot, " ", "%20") + "\n", shotWord + " "},
 		{"see " + notes, "see " + notes},
 		{"/no/such/file.png", "/no/such/file.png"},
 	} {

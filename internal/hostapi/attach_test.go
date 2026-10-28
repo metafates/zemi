@@ -17,14 +17,16 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// TestPlusSkillAttachment: a +name token in the message attaches the skill
+// TestSkillAttachment: an @name token in the message attaches the skill
 // behind the marker, body as written - the model binds the request from the
-// typed message; a repeated mention attaches once and a name nothing offers
-// stays as typed, byte for byte.
-func TestPlusSkillAttachment(t *testing.T) {
+// typed message; a repeated mention attaches once, a disabled skill attaches,
+// and a word nothing offers stays as typed, byte for byte.
+func TestSkillAttachment(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostSkills(t)
 	dir := h.userSkillsDir()
@@ -49,9 +51,9 @@ func TestPlusSkillAttachment(t *testing.T) {
 	}
 
 	for _, c := range []struct{ name, skill, text, want string }{
-		{"body as written", "humanize", "+humanize tighten the prose", "Rewrite $ARGUMENTS in a human voice."},
-		{"a disabled skill attaches", "lint", "+lint go", "Body."},
-		{"a big skill is cut", "big", "+big", "Read the cut lines with the read tool"},
+		{"body as written", "humanize", "@humanize tighten the prose", "Rewrite $ARGUMENTS in a human voice."},
+		{"a disabled skill attaches", "lint", "@lint go", "Body."},
+		{"a big skill is cut", "big", "@big", "Read the cut lines with the read tool"},
 	} {
 		got, _ := h.expandAttachments(c.text, true)
 		typed, tail := agent.CutAttached(got)
@@ -59,25 +61,33 @@ func TestPlusSkillAttachment(t *testing.T) {
 			t.Errorf("%s: typed %q, tail:\n%s", c.name, typed, tail)
 		}
 	}
-	if n := strings.Count(mustAttached(t, h, "+humanize a then +lint the tree"), "<skill name="); n != 2 {
+	if n := strings.Count(mustAttached(t, h, "@humanize a then @lint the tree"), "<skill name="); n != 2 {
 		t.Errorf("two skills attached %d elements", n)
 	}
 	// a repeated mention attaches once, like a repeated @file, and both
 	// tokens survive in the typed text
-	if n := strings.Count(mustAttached(t, h, "+humanize a +humanize b"), "<skill name="); n != 1 {
+	if n := strings.Count(mustAttached(t, h, "@humanize a @humanize b"), "<skill name="); n != 1 {
 		t.Errorf("a repeated skill attached %d elements", n)
 	}
-	if typed, _, _ := strings.Cut(mustExpand(t, h, "+humanize a +humanize b"), agent.AttachMarker); typed != "+humanize a +humanize b" {
+	if typed, _, _ := strings.Cut(mustExpand(t, h, "@humanize a @humanize b"), agent.AttachMarker); typed != "@humanize a @humanize b" {
 		t.Errorf("the repeated token was rewritten: %q", typed)
 	}
 	// the typed message carries the request: the body's $ARGUMENTS stays
 	// literal and the file beside the mention attaches once
-	got := mustAttached(t, h, "+humanize this @notes.md")
+	got := mustAttached(t, h, "@humanize this @notes.md")
 	if n := strings.Count(got, "<file path="); n != 1 || !strings.Contains(got, "Rewrite $ARGUMENTS") || !strings.Contains(got, "project notes") {
 		t.Errorf("mention with a file attached %d files: %q", n, got)
 	}
-	// a token the regex takes but no skill answers is prose, whole
-	for _, text := range []string{"diff:\n+fmt.Println(x)", "+5 tasks", "C++", "a+b", "unknown +nosuch here"} {
+	// a quoted word unquotes before the lookup, a bare one trims its
+	// sentence punctuation
+	for _, text := range []string{`@"humanize" the prose`, "@humanize. the prose"} {
+		if n := strings.Count(mustAttached(t, h, text), "<skill name="); n != 1 {
+			t.Errorf("%q attached %d skills", text, n)
+		}
+	}
+	// a token the regex takes but no skill answers is prose, whole - with +
+	// dead, a +word is never even looked up
+	for _, text := range []string{"diff:\n+fmt.Println(x)", "+5 tasks", "C++", "a+b", "unknown +nosuch here", "@nosuch here", "@missing.md, right"} {
 		if got, _ := h.expandAttachments(text, true); got != text {
 			t.Errorf("%q changed to %q", text, got)
 		}
@@ -98,8 +108,19 @@ func mustExpand(t *testing.T, h *Host, text string) string {
 	return got
 }
 
-// TestExpandAttachments: project files referenced with @ attach; files
-// outside the project, missing ones and symlinks leading out of it do not.
+// mustSkill is skillByName's answer, failing the test on a miss.
+func mustSkill(t *testing.T, h *Host, name string) skill.Skill {
+	t.Helper()
+	s, ok := h.skillByName(name)
+	if !ok {
+		t.Fatalf("no such skill %q", name)
+	}
+	return s
+}
+
+// TestExpandAttachments: project files referenced with @ attach; a file
+// outside the project attaches through its symlink or its ../ path, and a
+// missing one, a FIFO and a directory say why or stay prose.
 func TestExpandAttachments(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -124,10 +145,11 @@ func TestExpandAttachments(t *testing.T) {
 	if !strings.Contains(got, "<file path=\"main.go\">\npackage main // attached\n</file>") {
 		t.Fatalf("main.go not attached: %q", got)
 	}
-	for _, leak := range []string{"outside-secret", "missing.go\">"} {
-		if strings.Contains(got, leak) {
-			t.Fatalf("%q must not attach: %q", leak, got)
-		}
+	if !strings.Contains(got, "outside-secret") {
+		t.Fatalf("a symlink out of the project attaches its target: %q", got)
+	}
+	if strings.Contains(got, "missing.go\">") {
+		t.Fatalf("a missing file must stay prose: %q", got)
 	}
 	pipe := filepath.Join(proj, "pipe")
 	if exec.Command("mkfifo", pipe).Run() == nil {
@@ -154,23 +176,23 @@ func TestExpandAttachments(t *testing.T) {
 		}
 	}
 
-	// the composer hands out @dir/ tokens (a drop, a completion): a directory
+	// the composer hands out @dir/ tokens (a completion, a drop): a directory
 	// is refused with a why, like every other unattachable path
 	if err := os.MkdirAll(filepath.Join(proj, "src"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ = h.expandAttachments("look at @src/", true); !strings.Contains(got, "not attached: it is a directory") || !strings.Contains(got, `<file path="src/">`) {
+	if got, _ = h.expandAttachments("look at @src/", true); !strings.Contains(got, "not attached: it is a directory") || !strings.Contains(got, `<file path="src">`) {
 		t.Fatalf("the directory must say why: %q", got)
 	}
 
-	// the same file named twice attaches once: a repeated @word, a chip
-	// beside its @, and a symlink alias resolving to the same abs
+	// the same file named twice attaches once: a repeated @word, the same
+	// file through its ./ escape and a symlink alias resolving to one abs
 	if err := os.Symlink(filepath.Join(proj, "main.go"), filepath.Join(proj, "alias.md")); err != nil {
 		t.Fatal(err)
 	}
 	for _, text := range []string{
 		"see @main.go and @main.go again",
-		"see @main.go and [File main.go]",
+		"see @main.go and @./main.go",
 		"see @main.go and @alias.md",
 	} {
 		if n := strings.Count(mustAttached(t, h, text), "<file path="); n != 1 {
@@ -246,82 +268,166 @@ func TestTypedMarkerSurvives(t *testing.T) {
 	t.Fatal("the words after the pasted marker are not the user's row")
 }
 
-// TestChipAttachment: a chip attaches the copy its bare name names, the drops
-// copy winning over a project file of the same name, while a name with a
-// separator is the project's and one climbing out attaches nothing.
-func TestChipAttachment(t *testing.T) {
+// TestOutsideAttachment: a file outside the project attaches through the
+// @ word the composer writes for it - home-spelled, parent-climbing or
+// absolute - and a quoted word carries one a bare token cannot, its content
+// and its punctuation whole.
+func TestOutsideAttachment(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	h.Dirs.DataHome = t.TempDir()
-	name, err := h.saveDrop("notes.txt", []byte("dropped copy"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, name), []byte("the project's"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	got, _ := h.expandAttachments("see [File "+name+"]", true)
-	if !strings.Contains(got, "dropped copy") || strings.Contains(got, "the project's") {
-		t.Fatalf("the copy must win over the project file: %q", got)
-	}
-	if got, _ := h.expandAttachments("see [File ../attach_test.go]", true); got != "see [File ../attach_test.go]" {
-		t.Fatalf("a chip must not climb out of the project: %q", got)
-	}
-	long, err := h.saveDrop(strings.Repeat("n", 200)+".txt", []byte("long"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n := len([]rune(long)); n > dropNameMax || filepath.Ext(long) != ".txt" {
-		t.Fatalf("a name travels in a token: %d runes, %q", n, long)
-	}
-}
-
-// TestAttachLabel: the popup inserts an @reference, which no drops copy can
-// answer, so another project's file of the same name cannot take the project
-// file's place nor skip its read check. A path an @ word would not read back
-// whole, or that no token carries, keeps the form that does.
-func TestAttachLabel(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.Dirs.DataHome = t.TempDir()
-	for _, c := range []struct{ rel, want string }{
-		{"internal/ui/app.go", "@internal/ui/app.go"},
-		{"shot.png", "@shot.png"},
-		{"notes.txt", "@notes.txt"},
-		{"a]b.go", "@a]b.go"},
-		{"todo!", "[File ./todo!]"},
-		{"docs/My Notes.md", "[File docs/My Notes.md]"},
-	} {
-		if got := h.AttachLabel(c.rel); got != c.want {
-			t.Errorf("AttachLabel(%q) = %q, want %q", c.rel, got, c.want)
-		}
-	}
-	tricky := filepath.Join(h.Dirs.ProjectDir, "My ]Notes.md")
-	if got, want := h.AttachLabel("My ]Notes.md"), tools.ShellQuote(tricky); got != want {
-		t.Errorf("AttachLabel of a path no token carries = %q, want %q", got, want)
-	}
-	// a name ending in punctuation the @ word trims must not resolve to the
-	// sibling without it
-	for name, text := range map[string]string{"x": "PLAIN", "x!": "BANG"} {
-		if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, name), []byte(text), 0o600); err != nil {
+	out := t.TempDir()
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	got, _ := h.expandAttachments(h.AttachLabel("x!"), true)
-	if !strings.Contains(got, "BANG") || strings.Contains(got, "PLAIN") {
-		t.Fatalf("a trimmed name attached another file: %q", got)
+	write(filepath.Join(out, "creds"), "outside-secret")
+	if err := os.MkdirAll(filepath.Join(out, "My Docs"), 0o700); err != nil {
+		t.Fatal(err)
 	}
-	// a copy another project left under a name this project also has
-	name, err := h.saveDrop("notes.txt", []byte("another project's"))
+	write(filepath.Join(out, "My Docs", "a.txt"), "spaced out (1)")
+	if err := os.Mkdir(filepath.Join(out, "adir"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	// a missing path stays prose
+	if got, _ := h.expandAttachments("see @../gone", true); got != "see @../gone" {
+		t.Errorf("a missing path changed: %q", got)
+	}
+	got, _ := h.expandAttachments("see @"+filepath.Join(out, "creds"), true)
+	if !strings.Contains(got, "outside-secret") {
+		t.Fatalf("an absolute path attaches: %q", got)
+	}
+	abs, _ := perm.Resolve(filepath.Join(out, "creds"))
+	if !strings.Contains(got, `path="`+abs.String()+`"`) {
+		t.Fatalf("an outside path carries its absolute path: %q", got)
+	}
+	// a quoted word keeps its spaces and its punctuation
+	got, _ = h.expandAttachments(`see @"`+filepath.Join(out, "My Docs", "a.txt")+`"`, true)
+	if !strings.Contains(got, "spaced out (1)") {
+		t.Fatalf("a quoted word attaches whole: %q", got)
+	}
+	// a word still being typed resolves too: the closing quote is optional
+	got, _ = h.expandAttachments(`see @"`+filepath.Join(out, "My Docs", "a.txt"), true)
+	if !strings.Contains(got, "spaced out (1)") {
+		t.Fatalf("an open quoted word resolves: %q", got)
+	}
+	// a directory token refuses with a why
+	got, _ = h.expandAttachments("see @"+filepath.Join(out, "adir")+"/", true)
+	if !strings.Contains(got, "not attached: it is a directory") {
+		t.Fatalf("a directory must say why: %q", got)
+	}
+	// a missing path stays prose
+	if got, _ = h.expandAttachments("see @"+filepath.Join(out, "gone"), true); got != "see @"+filepath.Join(out, "gone") {
+		t.Fatalf("a missing path changed: %q", got)
+	}
+}
+
+// TestAttachHome: ~ spells home out, wherever the word sits.
+func TestAttachHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	h, _ := newTestHostDB(t)
+	docs := filepath.Join(home, "Docs")
+	if err := os.MkdirAll(docs, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	a := filepath.Join(docs, "a.txt")
+	if err := os.WriteFile(a, []byte("home notes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.AttachWord(filepath.Join(home, "n.txt")); got != "@~/n.txt" {
+		t.Fatalf("a home path rides ~: %q", got)
+	}
+	got, _ := h.expandAttachments("see @~/Docs/a.txt", true)
+	if !strings.Contains(got, "home notes") {
+		t.Fatalf("a home path attaches: %q", got)
+	}
+}
+
+// TestAttachWord: the word the composer inserts reads back by the grammar:
+// project-relative, ./ where the bare name would answer as a skill,
+// ~-spelled under home, quoted when it cannot ride a bare word, a directory
+// trailing its slash.
+func TestAttachWord(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.Dirs.DataHome = t.TempDir()
+	proj := h.Dirs.ProjectDir
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(proj, "main.go"), "package main")
+	write(filepath.Join(proj, "a]b.go"), "package a")
+	shot := filepath.Join(t.TempDir(), "Screen Shot 1.png")
+	write(shot, string(tinyPNG()))
+	out := t.TempDir()
+	for path, want := range map[string]string{
+		filepath.Join(proj, "main.go"): "@main.go",
+		filepath.Join(proj, "a]b.go"):  "@a]b.go",
+		filepath.Join(proj, "todo!"):   `@"` + perm.TildePath(filepath.Join(proj, "todo!")) + `"`,
+		shot:                           `@"` + perm.TildePath(shot) + `"`,
+		out:                            "@" + perm.TildePath(out) + "/",
+		proj:                           "@./",
+	} {
+		if got := h.AttachWord(path); got != want {
+			t.Errorf("AttachWord(%s) = %q, want %q", path, got, want)
+		}
+	}
+	// the word reads back: the expansion attaches what it names
+	got, _ := h.expandAttachments("see "+h.AttachWord(shot), true)
+	if !strings.Contains(got, "Screen Shot 1.png") || !strings.Contains(got, "attached below") {
+		t.Fatalf("the quoted word reads back: %q", got)
+	}
+}
+
+// TestAttachWordSkillEscape: a project file whose bare name a skill also
+// answers rides the ./ that keeps it a file.
+func TestAttachWordSkillEscape(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostSkills(t)
+	writeSkill(t, h.userSkillsDir(), "lint", "lint the tree", "")
+	h.syncSkills()
+	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "lint"), []byte("the file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.AttachWord(filepath.Join(h.Dirs.ProjectDir, "lint")); got != "@./lint" {
+		t.Fatalf("the file escapes as %q", got)
+	}
+	// and the words read back to what they name: @lint the skill, @./lint
+	// the file
+	if n := strings.Count(mustAttached(t, h, "use @lint"), "<skill name="); n != 1 {
+		t.Fatalf("@lint attached %d skills", n)
+	}
+	if got := mustAttached(t, h, "use @./lint"); !strings.Contains(got, "the file") || strings.Contains(got, "<skill name=") {
+		t.Fatalf("@./lint attached: %q", got)
+	}
+}
+
+// TestPastedImageWord: a clipboard paste lands a copy under the drops
+// directory and its @ word names it, the same content keeping its name.
+func TestPastedImageWord(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.Dirs.DataHome = t.TempDir()
+	tok, err := h.AttachImage(tinyPNG(), ".png")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, name), []byte("the project's"), 0o600); err != nil {
-		t.Fatal(err)
+	if !strings.HasPrefix(tok, "@") || !strings.Contains(tok, "/drops/pasted-") || !strings.HasSuffix(tok, ".png") {
+		t.Fatalf("a paste inserts the copy's @ word: %q", tok)
 	}
-	got, _ = h.expandAttachments(h.AttachLabel(name), true)
-	if !strings.Contains(got, "the project's") || strings.Contains(got, "another project's") {
-		t.Fatalf("the project's own file must attach: %q", got)
+	again, err := h.AttachImage(tinyPNG(), ".png")
+	if err != nil || again != tok {
+		t.Fatalf("same content must keep its name: %q, %v", again, err)
+	}
+	msg := h.composeUserMessage("what is this "+tok, true)
+	if len(msg.Content) != 2 {
+		t.Fatalf("parts = %d: %#v", len(msg.Content), msg.Content)
 	}
 }
 
@@ -379,49 +485,6 @@ func TestImageAttachment(t *testing.T) {
 	img, ok := msg.Content[1].(fantasy.FilePart)
 	if !ok || img.MediaType != "image/png" || string(img.Data) != string(png) {
 		t.Fatalf("file part = %#v", msg.Content[1])
-	}
-}
-
-// TestAttachPath: a dropped project file becomes its @reference where an @
-// word reads it back whole, an image from elsewhere a copy that attaches under
-// its own name, a directory its path, and a bare chip name cannot
-// climb out of the drops directory.
-func TestAttachPath(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.Dirs.DataHome = t.TempDir()
-	out := t.TempDir()
-	shot := filepath.Join(out, "Screen Shot 1.png")
-	os.WriteFile(shot, tinyPNG(), 0o600)
-	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "main.go"), []byte("package main"), 0o600)
-	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "My Notes.md"), []byte("notes"), 0o600)
-	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "todo!"), []byte("notes"), 0o600)
-	os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "a]b.go"), []byte("package a"), 0o600)
-	os.WriteFile(filepath.Join(out, ".env"), []byte("TOKEN=x"), 0o600)
-	// an outside file the project root has too: the copy cannot take its name
-	elsewhere := filepath.Join(t.TempDir(), "main.go")
-	os.WriteFile(elsewhere, []byte("package other"), 0o600)
-
-	for path, want := range map[string]string{
-		filepath.Join(h.Dirs.ProjectDir, "main.go"):     "@main.go",
-		filepath.Join(h.Dirs.ProjectDir, "a]b.go"):      "@a]b.go",
-		filepath.Join(h.Dirs.ProjectDir, "My Notes.md"): "[File ./My Notes.md]",
-		filepath.Join(h.Dirs.ProjectDir, "todo!"):       "[File ./todo!]",
-		shot:                       "[Image Screen Shot 1.png]",
-		out:                        out,
-		filepath.Join(out, ".env"): "[File env]",
-		elsewhere:                  "[File main-2.go]",
-	} {
-		if got := h.AttachPath(path); got != want {
-			t.Errorf("AttachPath(%s) = %q, want %q", path, got, want)
-		}
-	}
-	if again := h.AttachPath(shot); again != "[Image Screen Shot 1.png]" {
-		t.Errorf("same content must keep its name: %q", again)
-	}
-	msg := h.composeUserMessage("what is this [Image Screen Shot 1.png] [Image ../attach_test.go]", true)
-	if len(msg.Content) != 2 {
-		t.Fatalf("parts = %d", len(msg.Content))
 	}
 }
 

@@ -459,13 +459,13 @@ func TestClaudeSkillNameCollisions(t *testing.T) {
 		t.Errorf("agents: %v", agents)
 	}
 	var b strings.Builder
-	h.attachSkill(&b, "fix-x")
-	if !strings.Contains(b.String(), "with +fix-x (x from the fix plugin) in the message above") {
+	h.attachSkill(&b, mustSkill(t, h, "fix-x"))
+	if !strings.Contains(b.String(), "with @fix-x (x from the fix plugin) in the message above") {
 		t.Errorf("renamed attach note: %s", b.String())
 	}
 	b.Reset()
-	h.attachSkill(&b, "solo")
-	if !strings.Contains(b.String(), "with +solo in the message above") || strings.Contains(b.String(), "from the") {
+	h.attachSkill(&b, mustSkill(t, h, "solo"))
+	if !strings.Contains(b.String(), "with @solo in the message above") || strings.Contains(b.String(), "from the") {
 		t.Errorf("bare attach note: %s", b.String())
 	}
 }

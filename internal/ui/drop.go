@@ -102,7 +102,7 @@ func parseDrop(s string) ([]string, bool) {
 func (a *App) insertAttachments(paths []string) tea.Cmd {
 	tokens := make([]string, 0, len(paths))
 	for _, p := range paths {
-		tokens = append(tokens, a.host.AttachPath(p))
+		tokens = append(tokens, a.host.AttachWord(p))
 	}
 	return a.insertToken(strings.Join(tokens, " "))
 }

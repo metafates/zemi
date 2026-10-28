@@ -151,18 +151,16 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   what it sits on: `hostBox` and the composer frame put theirs on the panel, where a
   style that paints the canvas takes the panel instead (`segStyle`).
 - **Drag and drop is a paste.** `ui/drop.go` turns a paste made only of existing paths into
-  composer tokens via `hostapi.AttachPath`, and the `@` popup inserts the same form for a
-  project file via `hostapi.AttachLabel`: an `@<path>` reference the user can go on editing,
-  which the completion picks up again. A file from outside the project zemi copies in becomes
-  `[Image <name>]` or `[File <name>]`, the kind read from the extension, the name the copy's
-  own basename, capped at 60 runes; a name the project root already holds is refused, a
-  directory or a binary or oversized file keeps its quoted path,
-  and a
-  clipboard image becomes `pasted-<ts>.png` in `<data>/drops`. A project path an `@` word
-  would not read back whole - one holding whitespace, or ending in the punctuation a sentence
-  ends on - keeps the chip, named project-relative with the `./` a bare root name needs; one
-  no chip carries either (`]` beside one of those, a tab, a newline) is the file's path,
-  quoted, or the drops copy a drop makes of it. `expandAttachments` resolves a bracketed name
-  in the drops directory first, then project-relative, so a forged reference cannot attach
-  other files; a `@name` resolves in the project alone, whatever the user or the popup put
-  there.
+  composer tokens via `hostapi.AttachWord`, the same form the `@` popup inserts for a project
+  file: an `@<path>` reference the user can go on editing, which the completion picks up again.
+  Every attachment rides the `@` word: a project file project-relative (`./` when its bare name
+  would answer as a skill), a file from outside the project `~`-spelled or absolute, a directory
+  with the trailing slash a completion walks into. A word a bare token cannot carry - one holding
+  whitespace, or ending in the punctuation a sentence ends on - rides quoted and absolute,
+  `@"~/My Docs/a.txt"`, which `attachRef`'s grammar reads back (the closing quote optional, so a
+  word still being typed resolves too). A clipboard image has no source path: it lands a copy as
+  `pasted-<ts>.png` in `<data>/drops` and inserts the copy's `@` word. `expandAttachments` looks
+  the whole word up as a skill first, then resolves the path - `~` under home, the rest against
+  the project, `/` as itself - wherever it lives, a symlink out of the project attaching its
+  target; what attached shows in the attach echo, and a refusal names why with the absolute
+  path (the read tool refuses `~`).

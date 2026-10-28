@@ -70,7 +70,7 @@ func writeSkill(t *testing.T, base, name, description, hook string) {
 	}
 }
 
-// TestSkillMentions: the + popup's rows come from every skill, disabled ones
+// TestSkillMentions: the @ popup's Skills rows come from every skill, disabled ones
 // included and described by the description alone, plus the project's.
 func TestSkillMentions(t *testing.T) {
 	t.Parallel()
@@ -214,7 +214,7 @@ func TestSkillsUserHooksStep(t *testing.T) {
 }
 
 // TestSkillRows: what the model sees and what a /skills row says. No skill
-// is a command of its own: the user invokes one with +name in a message.
+// is a command of its own: the user invokes one with @name in a message.
 func TestSkillRows(t *testing.T) {
 	const asks = "d\nuser-invocable: true\nargument-hint: <n>"
 	user := func(desc string) func(h *Host) {
@@ -238,7 +238,7 @@ func TestSkillRows(t *testing.T) {
 		{name: "a recipe takes neither field", write: func(h *Host) {
 			writeSkill(t, h.recipesDir(), "x", "d\nuser-invocable: true", "")
 		}, indexed: true, used: "the model"},
-		{name: "off leaves the +name token", write: user("d"), off: true, used: "+x only"},
+		{name: "off leaves the @name token", write: user("d"), off: true, used: "@x only"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()

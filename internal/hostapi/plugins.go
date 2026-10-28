@@ -268,7 +268,7 @@ func (h *Host) layerPrefix(root, sub string) string {
 }
 
 // claudeCommandSkills turns a Claude plugin's commands/*.md into
-// model-invocable skill rows named by their stem (invoked with +name like
+// model-invocable skill rows named by their stem (invoked with @name like
 // every skill; the sync falls back to the plugin-prefixed name on a clash):
 // Claude loads commands and skills as one thing, zemi's /command stays
 // mdcommands'. A name that would break skill.ValidName is skipped, warned by

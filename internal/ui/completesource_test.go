@@ -51,8 +51,12 @@ assert(not ok and tostring(err):find("one punctuation"), tostring(err))`)
 	pressKeys(app, "@")
 	for app.Pump() {
 	}
-	if f := app.completion; f.count() != 2 || f.extra[0].label != "alice" {
+	// the source's rows lead the popup, ahead of the sections
+	if f := app.completion; len(f.extra) != 1 || f.extra[0].label != "alice" {
 		t.Fatalf("@ popup: extra %v, files %v", f.extra, f.matches)
+	}
+	if i, j := strings.Index(ansi.Strip(app.Frame()), "alice"), strings.Index(ansi.Strip(app.Frame()), "main.go"); i < 0 || j < 0 || i > j {
+		t.Fatalf("alice must go ahead of the files:\n%s", ansi.Strip(app.Frame()))
 	}
 
 	app.clearComposer()

@@ -1,14 +1,15 @@
-// attach.go expands @path references in a user message: each referenced
-// project file is appended to what the model receives, behind agent.AttachMarker,
-// while the transcript keeps the typed text. Images (png, jpeg, gif, webp)
-// travel as file parts for vision models. Only files inside the project
-// that the permission store allows reading attach; a file that is too big,
-// not text or not allowed gets a note saying so in place of its content, so
-// the model knows to reach for it with its tools.
+// attach.go expands @ references in a user message: each referenced skill or
+// file - a project file, or any path outside it - is appended to what the
+// model receives, behind agent.AttachMarker, while the transcript keeps the
+// typed text. Images (png, jpeg, gif, webp) travel as file parts for vision
+// models. A file that is too big, not text or not there gets a note saying
+// so in place of its content, so the model knows to reach for it with its
+// tools.
 
 package hostapi
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -34,7 +35,7 @@ const (
 	attachMax      = 64 << 10           // bytes per text file
 	attachImageMax = 20 << 20           // bytes per image read; tools.FitImage sizes what is sent
 	dropTTL        = 7 * 24 * time.Hour // idle copies age out, like scratchpads
-	// dropNameMax is how long a copied file's name may read in a token
+	// dropNameMax is how long a copied file's name may be
 	dropNameMax = 60
 )
 
@@ -63,10 +64,10 @@ func (h *Host) composeUserMessage(text string, images bool) fantasy.Message {
 	return fantasy.Message{Role: fantasy.MessageRoleUser, Content: parts}
 }
 
-// attachRef finds what attaches: a typed @name, a +skill mention, and the
-// [Image name] or [File name] chip zemi writes for a file it copied in, or
-// for a project path an @ word cannot carry whole.
-var attachRef = regexp.MustCompile(`(?:^|\s)(?:@(\S+)|\+([a-z][a-z0-9-]*))|\[(Image|File) ([^\]\n]+)\]`)
+// attachRef finds what attaches: an @ word at a word start, quoted when the
+// path cannot ride a bare word. A quoted word's closing quote is optional,
+// so a word still being typed resolves too.
+var attachRef = regexp.MustCompile(`(?:^|\s)(?:@"([^"\n]+)"?|@'([^'\n]+)'?|@(\S+))`)
 
 func overLimit(limit int64) string {
 	if limit >= 1<<20 {
@@ -88,53 +89,52 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 	// reports), and an @ there must not attach anything
 	typed, _, _ := strings.Cut(text, agent.AttachMarker)
 	for _, m := range attachRef.FindAllStringSubmatch(typed, -1) {
-		if m[2] != "" { // a +skill attaches once, like a repeated @file; a
-			// name and an abs path cannot collide (ValidName allows no /)
-			if !seen.Has(m[2]) {
-				seen.Add(m[2])
-				h.attachSkill(&b, m[2])
+		// the word normalizes first: a quoted word unquotes (the grammar
+		// holds no quote), a bare one trims trailing sentence punctuation.
+		// Then the whole word names a skill, and a miss names a path.
+		word := m[3]
+		if m[1] != "" || m[2] != "" {
+			word = cmp.Or(m[1], m[2])
+		} else {
+			word = strings.TrimRight(word, ".,;:!?)")
+		}
+		if s, ok := h.skillByName(word); ok {
+			// a skill attaches once, like a repeated @file
+			if !seen.Has(s.Name) {
+				seen.Add(s.Name)
+				h.attachSkill(&b, s)
 			}
 			continue
 		}
-		// a chip names a file zemi itself copied, or one of the project's: the
-		// copy wins, since a name saveDrop handed out is not the project's
-		chip, name := m[3] != "", ""
-		if chip {
-			name = m[4]
-		} else {
-			name = strings.TrimRight(m[1], ".,;:!?)")
-		}
-		var path perm.Path
-		drop := false
-		if chip && dropName(name) && h.dropsDir() != "" {
-			if p, err := perm.Resolve(filepath.Join(h.dropsDir(), name)); err == nil {
-				path, drop = p, true
-			}
-		}
-		if !drop {
-			// an @ names a project file: one outside the project, by ".." or
-			// a symlink, attaches nothing
-			p, err := perm.Resolve(h.projectAbs(name))
-			if err != nil || !h.inRoots(p.String(), h.Dirs.ProjectDir) {
-				continue
-			}
-			path = p
+		// a path, wherever it lives: the user named it, and what attaches
+		// shows in the attach echo
+		path, err := perm.Resolve(h.pathAbs(word))
+		if err != nil {
+			continue
 		}
 		abs := path.String()
 		if seen.Has(abs) {
 			continue
 		}
 		seen.Add(abs)
+		name := abs
+		if root, err := perm.Resolve(h.Dirs.ProjectDir); err == nil {
+			if rel, ok := perm.Under(root.String(), abs); ok {
+				name = rel
+			}
+		}
 		mt, image := imageTypes[strings.ToLower(filepath.Ext(abs))]
 		limit, tag := int64(attachMax), "file"
 		if image {
 			limit, tag = attachImageMax, "image"
 		}
 		// say why instead of dropping the reference: the model is told the
-		// file was meant to be there and can still read it itself
+		// file was meant to be there and can still read it itself, by the
+		// path the note carries (absolute for one outside the project, where
+		// the read tool refuses ~)
 		note := func(why string) {
 			b.WriteString(agent.AttachElement(fmt.Sprintf("%s path=%q", tag, name), "not attached: "+why))
-			refused = append(refused, name+": "+why)
+			refused = append(refused, perm.TildePath(name)+": "+why)
 		}
 		// a FIFO blocks the read, and an @word naming no file is just prose;
 		// a path that is there but not a file says why, like every other refusal
@@ -198,105 +198,69 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 	return text + agent.AttachMarker + b.String() + "\n</attached-files>", imgs
 }
 
-// dropsDir holds copies of files the user dropped or pasted from outside the
-// project. A chip naming a bare file reaches only this directory, so a
-// reference typed in (or smuggled into) a message cannot attach anything else
-// from outside.
+// pathAbs spells an @ word out to a path: ~ under home, the rest against the
+// project directory.
+func (h *Host) pathAbs(word string) string {
+	if strings.HasPrefix(word, "~") {
+		return perm.ExpandHome(word)
+	}
+	return h.projectAbs(word)
+}
+
+// dropsDir holds copies of pasted images, the one attachment with no source
+// path. A reference typed in a message attaches what it names directly, so
+// no copy stands between it and the file.
 func (h *Host) dropsDir() string { return joinIf(h.Dirs.DataHome, "drops") }
 
-// dropName reports whether name is one zemi's copies can have: a bare name,
-// no separator and no leading dot. A chip with one resolves in the drops
-// directory; any other chip names a project file.
-func dropName(name string) bool {
-	return name != "" && !strings.ContainsAny(name, `/\`) && !strings.HasPrefix(name, ".")
+// CanRef reports whether a word rides in an @(\S+) token and reads back
+// unchanged: it ends at whitespace, and its trailing punctuation is trimmed
+// as a sentence's is.
+func CanRef(word string) bool {
+	return word != "" && !strings.ContainsAny(word, " \t\n\f\r") && strings.TrimRight(word, ".,;:!?)") == word
 }
 
-// canCarry reports whether a name travels in a token unchanged.
-func canCarry(name string) bool { return !strings.ContainsAny(name, "]\n\t") }
-
-// canRef reports whether rel reads back unchanged as an @ word: it ends at
-// whitespace, and its trailing punctuation is trimmed as a sentence's is.
-func canRef(rel string) bool {
-	return rel != "" && !strings.ContainsAny(rel, " \t\n\f\r") && strings.TrimRight(rel, ".,;:!?)") == rel
-}
-
-// projectRef is a project file's name in a token. A bare root file would read
-// as one of the drops directory's copies, which another project's file of the
-// same name could answer, so it carries the ./ that tells them apart.
-func projectRef(rel string) string {
-	if dropName(rel) {
-		return "./" + rel
+// AttachWord is the @ word the composer inserts for path: relative for a
+// project file, ./ when its bare name would answer as a skill, ~-spelled for
+// a path under home, absolute for the rest, and quoted when the word cannot
+// ride a bare token, because it holds whitespace or ends in sentence
+// punctuation the expander would trim. A directory carries the trailing
+// slash, which keeps a completion walking into it.
+func (h *Host) AttachWord(path string) string {
+	fi, _ := os.Stat(path)
+	dir := fi != nil && fi.IsDir()
+	rel, inside := "", false
+	if r, err := filepath.Rel(h.Dirs.ProjectDir, path); err == nil && h.inRoots(path, h.Dirs.ProjectDir) {
+		rel, inside = r, true
 	}
-	return rel
-}
-
-// attachToken is the composer's chip for an attachment: the name the user
-// knows, whole, for a file from outside the project or one no @ word carries.
-func attachToken(name string, image bool) string {
-	if image {
-		return "[Image " + name + "]"
-	}
-	return "[File " + name + "]"
-}
-
-// attachRefToken is a project file as the composer writes it: an @reference
-// the user can go on editing, and the completion picks up again, where what
-// zemi reads back is the same path. Else the chip, which carries the name
-// whole.
-func attachRefToken(rel string, image bool) string {
-	if canRef(rel) {
-		return "@" + rel
-	}
-	return attachToken(projectRef(rel), image)
-}
-
-// AttachLabel is what the completion popup inserts for a project file the
-// user picked. A path no token carries, where the @ word and the chip both
-// refuse it, is its quoted absolute path instead, for the model to reach with
-// its tools.
-func (h *Host) AttachLabel(rel string) string {
-	if !canRef(rel) && !canCarry(rel) {
-		return tools.ShellQuote(h.projectAbs(rel))
-	}
-	_, image := imageTypes[strings.ToLower(filepath.Ext(rel))]
-	return attachRefToken(rel, image)
-}
-
-// AttachPath turns a path the user dropped or pasted into a composer token:
-// the form AttachLabel gives a project file, where a token names it, [Image
-// name] or [File name] for a file zemi copies into the drops directory under
-// its own name, and otherwise the quoted path (a directory, a large or
-// binary file) for the model to reach with its tools.
-func (h *Host) AttachPath(path string) string {
-	fi, err := os.Stat(path)
-	if err != nil {
-		return tools.ShellQuote(path)
-	}
-	_, image := imageTypes[strings.ToLower(filepath.Ext(path))]
-	// either token names the project's own file, so only a name neither
-	// carries is copied in
-	if rel, err := filepath.Rel(h.Dirs.ProjectDir, path); err == nil && h.inRoots(path, h.Dirs.ProjectDir) &&
-		(canRef(rel) || canCarry(rel)) {
-		if fi.IsDir() {
-			return rel + string(filepath.Separator)
+	word := perm.TildePath(path)
+	if inside {
+		word = rel
+		// a bare name a skill also answers would attach the skill; the file
+		// escapes through the ./ a path carries. A directory's word ends in
+		// the slash, which no skill name holds.
+		if !dir && !strings.ContainsAny(rel, `/\`) {
+			if _, ok := h.skillByName(rel); ok {
+				word = "./" + rel
+			}
 		}
-		return attachRefToken(rel, image)
 	}
-	if fi.IsDir() || (image && fi.Size() > attachImageMax) || (!image && fi.Size() > attachMax) {
-		return tools.ShellQuote(path)
+	if dir && !strings.HasSuffix(word, "/") {
+		word += "/"
 	}
-	data, err := os.ReadFile(path)
-	if err != nil || (!image && !utf8.Valid(data)) {
-		return tools.ShellQuote(path)
+	if !CanRef(word) {
+		// the word cannot ride a bare token: quoted and absolute, where the
+		// read tool opens it whatever the frame it was typed in
+		w := perm.TildePath(path)
+		if dir && !strings.HasSuffix(w, "/") {
+			w += "/"
+		}
+		return `@"` + w + `"`
 	}
-	name, err := h.saveDrop(filepath.Base(path), data)
-	if err != nil {
-		return tools.ShellQuote(path)
-	}
-	return attachToken(name, image)
+	return "@" + word
 }
 
-// AttachImage stores image data (a clipboard paste) and returns its token.
+// AttachImage stores image data (a clipboard paste) and returns its @ word:
+// a copy under the drops directory, the only attachment with no source path.
 func (h *Host) AttachImage(data []byte, ext string) (string, error) {
 	if len(data) > attachImageMax {
 		return "", fmt.Errorf("the image is %d MB; the limit is %d MB", len(data)>>20, attachImageMax>>20)
@@ -305,16 +269,16 @@ func (h *Host) AttachImage(data []byte, ext string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return attachToken(name, true), nil
+	return h.AttachWord(filepath.Join(h.dropsDir(), name)), nil
 }
 
 // dropUnsafe is what a name cannot carry: a cell that would end the token, and
 // the separators that would make it a path.
-var dropUnsafe = regexp.MustCompile("[\x00-\x1f\x7f/\\\\\\]]+")
+var dropUnsafe = regexp.MustCompile("[\x00-\x1f\x7f/\\\\]+")
 
 // saveDrop writes data under an unused name of its own (the same content
 // keeps its name) and returns that name. The name is the source's, cut to
-// what a token carries and shortened only where it breaks one.
+// what a word carries and shortened only where it breaks one.
 func (h *Host) saveDrop(base string, data []byte) (string, error) {
 	dir := h.dropsDir()
 	if dir == "" {
@@ -334,10 +298,6 @@ func (h *Host) saveDrop(base string, data []byte) (string, error) {
 		name := stem + ext
 		if i > 1 {
 			name = fmt.Sprintf("%s-%d%s", stem, i, ext)
-		}
-		// a name the project root has too would resolve to that file instead
-		if _, err := os.Stat(filepath.Join(h.Dirs.ProjectDir, name)); err == nil {
-			continue
 		}
 		target := filepath.Join(dir, name)
 		old, err := os.ReadFile(target)

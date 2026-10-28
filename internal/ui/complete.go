@@ -2,44 +2,62 @@ package ui
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
 
 // fileCompleter is the composer popup after a trigger that starts a word:
-// "@" lists project files, scanned off the UI goroutine and ranked here,
-// "+" lists the skills, fetched the same way, and any trigger lists what
-// its Lua sources offer (extra, first).
+// "@" lists the project's files and the skills, as two sections under
+// headers, and every file by listing the directory a path-headed token
+// names, shell-tab style; any trigger lists what its Lua sources offer
+// (extra, first).
 type fileCompleter struct {
-	open     bool
-	trigger  rune
-	start    int      // rune index of the trigger char in the composer
-	token    string   // query between the trigger and the cursor
-	files    []string // paths relative to the session cwd
-	bases    []string // each file's last element
-	matches  []hostapi.Hit
-	skills   []hostapi.CompletionItem // the + rows, fetched once per open
-	extra    []listItem               // the skill and Lua sources' items, ahead of matches
-	selected int
-	view     viewport
-	size     boxSize // the last drawn size, kept for a frame with no matches to show
+	open      bool
+	trigger   rune
+	start     int      // rune index of the trigger char in the composer
+	token     string   // query between the trigger and the cursor
+	files     []string // paths relative to the session cwd
+	bases     []string // each file's last element
+	matches   []hostapi.Hit
+	skills    []hostapi.CompletionItem // fetched once per open
+	skillRows []listItem               // the skills narrowed to the token
+	paths     []string                 // directory candidates: the words they insert
+	extra     []listItem               // the Lua sources' items, ahead of the sections
+	selected  int
+	view      viewport
+	size      boxSize // the last drawn size, kept for a frame with no matches to show
 
 	scanning bool
-	walkGen  int // bumps so stale scan results are dropped
+	walkGen  int      // bumps so stale scan results are dropped
+	dirDir   string   // the directory the listing holds, spelled out
+	dirList  []string // its entries, "/"-suffixed for directories
 }
 
 // scanMaxFiles caps the scan so a walk that never ends cannot eat memory.
 const scanMaxFiles = 50000
 
-// listMaxFiles caps the matches the popup lists: every frame builds the
-// whole list, and nobody scrolls past a few hundred paths to find one.
+// dirMaxFiles caps one directory's share of the scan, so a directory of
+// small files cannot eat the whole corpus on its own.
+const dirMaxFiles = 2000
+
+// listMaxFiles caps the matches and the directory candidates the popup
+// lists: every frame builds the whole list, and nobody scrolls past a few
+// hundred paths to find one.
 const listMaxFiles = 200
+
+// dirListWait bounds a directory listing, the bound git's file listing
+// takes too (tools.listWait, fs_tools.go:1045).
+const dirListWait = 2 * time.Second
 
 const completionMaxRows = 10
 
@@ -52,14 +70,10 @@ func (a *App) updateCompletion() tea.Cmd {
 	a.updatePalette()
 	r := a.composer.runes()
 	cur := a.composer.cursor
-	i := cur
-	for i > 0 && !strings.ContainsRune(" \t\n", r[i-1]) {
-		i--
-	}
+	i := wordStart(r, cur)
 	files := i < cur && r[i] == '@'
-	plus := i < cur && r[i] == '+'
-	lua := i < cur && !plus && a.host.HasCompletions(string(r[i]), "")
-	if !files && !plus && !lua {
+	lua := i < cur && a.host.HasCompletions(string(r[i]), "")
+	if !files && !lua {
 		a.completion.close()
 		return nil
 	}
@@ -70,25 +84,6 @@ func (a *App) updateCompletion() tea.Cmd {
 	}
 	f.start, f.trigger, f.open, f.selected = i, r[i], true, 0
 	f.token = string(r[i+1 : cur])
-	if plus {
-		// the rows are fetched once per open, like the file scan; typing
-		// narrows what the last fetch gave
-		if opening {
-			f.skills = nil
-			a.background(func() {
-				items := a.host.SkillMentions()
-				a.do(func() {
-					if !f.open || f.trigger != '+' {
-						return // the popup closed, or another trigger took it
-					}
-					f.skills = items
-					f.extra = matchRows(candRows(items), f.token, true)
-					f.selected = max(0, min(f.selected, f.count()-1))
-				})
-			})
-		}
-		f.extra = matchRows(candRows(f.skills), f.token, true)
-	}
 	if lua {
 		// until the sources answer, the rows they gave for a shorter word
 		// narrow, so a fast tab never takes a row the word left
@@ -100,7 +95,7 @@ func (a *App) updateCompletion() tea.Cmd {
 				if !f.open || a.composer.cursor > len(a.composer.runes()) || string(a.composer.runes()[:a.composer.cursor]) != line {
 					return // the draft moved on
 				}
-				f.extra = matchRows(candRows(items), token, false) // shown as the sources matched them
+				f.extra = matchRows(candRows(items, ""), token, false) // shown as the sources matched them
 				f.selected = max(0, min(f.selected, f.count()-1))
 			})
 		})
@@ -108,15 +103,69 @@ func (a *App) updateCompletion() tea.Cmd {
 	if !files {
 		return nil
 	}
-	f.rematch()
-	// Rescan on every open so files created since show up; the old list
-	// stays until the new one lands.
 	if opening {
+		// the rows are fetched once per open, like the file scan; typing
+		// narrows what the last fetch gave
+		f.skills, f.skillRows = nil, nil
+		a.background(func() {
+			items := a.host.SkillMentions()
+			a.do(func() {
+				if !f.open || f.trigger != '@' {
+					return // the popup closed, or another trigger took it
+				}
+				f.skills = items
+				f.reskill()
+				f.selected = max(0, min(f.selected, f.count()-1))
+			})
+		})
+	}
+	f.reskill()
+	f.rematch()
+	if _, _, ok := pathToken(f.token); ok {
+		if want := a.resolveDir(f.token); want != f.dirDir {
+			a.listDir(want)
+		}
+		a.repaths()
+	}
+	// Rescan on every open so files created since show up; the old list
+	// stays until the new one lands. A path-headed token asks the listing,
+	// not the corpus, so the scan waits for a word that is a name.
+	if opening && !pathHeaded(f.token) {
 		a.completion.scanning = true
 		a.completion.walkGen++
 		return a.scanFilesCmd(a.host.Session().CWD, a.completion.walkGen)
 	}
 	return nil
+}
+
+// wordStart is the rune index a completion word starts at: after the last
+// whitespace outside a quoted run, a run between matched quotes being one
+// word, so a quoted token holds its spaces. A quote opened and never
+// closed swallows the rest of the line, as a shell's does.
+func wordStart(r []rune, cur int) int {
+	line := 0
+	for i := cur - 1; i >= 0; i-- {
+		if r[i] == '\n' {
+			line = i + 1
+			break
+		}
+	}
+	var quote rune
+	start := line
+	for i := line; i < cur; i++ {
+		c := r[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote = c
+		case strings.ContainsRune(" \t\n\f\r", c):
+			start = i + 1
+		}
+	}
+	return start
 }
 
 // onFilesScanned stores scan results unless a newer scan superseded them.
@@ -143,9 +192,13 @@ func (f *fileCompleter) close() {
 	f.token = ""
 	f.selected, f.view, f.size = 0, viewport{}, boxSize{}
 	f.matches, f.extra = f.matches[:0], nil
+	f.skillRows, f.paths = nil, nil
+	f.dirDir, f.dirList = "", nil
 }
 
-func (f *fileCompleter) count() int { return len(f.extra) + len(f.matches) }
+func (f *fileCompleter) count() int {
+	return len(f.extra) + len(f.skillRows) + len(f.paths) + len(f.matches)
+}
 
 // shown reports whether the popup is drawn and takes its keys: a Lua
 // trigger with nothing to offer stays out of the way of prose.
@@ -154,19 +207,154 @@ func (f *fileCompleter) shown() bool { return f.open && (f.trigger == '@' || f.c
 // title names what the popup lists for the triggers zemi knows the meaning
 // of; a Lua source's own trigger names nothing here.
 func (f *fileCompleter) title() string {
-	switch f.trigger {
-	case '@':
-		return "Files"
-	case '+':
-		return "Skills"
+	if f.trigger == '@' {
+		return "Files and skills"
 	}
 	return ""
 }
 
+// reskill narrows the fetched skills to the token.
+func (f *fileCompleter) reskill() {
+	f.skillRows = matchRows(candRows(f.skills, "Skills"), f.token, true)
+}
+
+// pathToken splits a path-headed token into the directory the listing
+// answers, as typed without its quotes, and the entry base the cursor
+// narrows.
+func pathToken(token string) (dir, base string, ok bool) {
+	w := unquoteToken(token)
+	if !pathHeaded(w) {
+		return "", "", false
+	}
+	if i := strings.LastIndexByte(w, '/'); i >= 0 {
+		return w[:i+1], w[i+1:], true
+	}
+	return w, "", true
+}
+
+// unquoteToken strips one wrapping quote pair: the opening quote, and the
+// closing one when the word already carries it, so a word still being
+// typed answers too.
+func unquoteToken(t string) string {
+	if t == "" {
+		return t
+	}
+	q := t[0]
+	if q != '"' && q != '\'' {
+		return t
+	}
+	t = t[1:]
+	if i := strings.LastIndexByte(t, q); i >= 0 {
+		t = t[:i]
+	}
+	return t
+}
+
+// pathHeaded reports whether a word names a directory for the listing,
+// where a bare name is one of the corpus's files.
+func pathHeaded(w string) bool {
+	return w == "~" || w == ".." || strings.HasPrefix(w, "~/") ||
+		strings.HasPrefix(w, "/") || strings.HasPrefix(w, "../") || strings.HasPrefix(w, "./")
+}
+
+// resolveDir spells a token's directory out, where the listing keys its
+// cache: ~ under home, / absolute, the rest against the project directory.
+func (a *App) resolveDir(token string) string {
+	dir, _, ok := pathToken(token)
+	if !ok {
+		return ""
+	}
+	if strings.HasPrefix(dir, "~") {
+		return perm.ExpandHome(dir)
+	}
+	if filepath.IsAbs(dir) {
+		return filepath.Clean(dir)
+	}
+	return filepath.Clean(filepath.Join(a.host.Dirs.ProjectDir, dir))
+}
+
+// listDir lists dir off the UI goroutine, into the completer's cache.
+func (a *App) listDir(dir string) {
+	a.background(func() {
+		entries := readDir(dir)
+		a.do(func() {
+			f := &a.completion
+			if !f.open || f.trigger != '@' || a.resolveDir(f.token) != dir {
+				return // the popup closed, or the token walked somewhere else
+			}
+			f.dirDir, f.dirList = dir, entries
+			a.repaths()
+			f.selected = max(0, min(f.selected, f.count()-1))
+		})
+	})
+}
+
+// readDir lists one directory for the path candidates: entry names with a
+// trailing slash on directories, directories first then lexical, capped at
+// listMaxFiles. A mount that answers slowly holds the worker at most
+// dirListWait; the abandoned read's answer drops.
+func readDir(dir string) []string {
+	ch := make(chan []string, 1)
+	go func() {
+		des, err := os.ReadDir(dir)
+		if err != nil {
+			ch <- nil
+			return
+		}
+		out := make([]string, 0, len(des))
+		for _, de := range des {
+			if de.IsDir() {
+				out = append(out, de.Name()+"/")
+			}
+		}
+		for _, de := range des {
+			if !de.IsDir() {
+				out = append(out, de.Name())
+			}
+		}
+		ch <- out
+	}()
+	select {
+	case out := <-ch:
+		return out[:min(len(out), listMaxFiles)]
+	case <-time.After(dirListWait):
+		return nil
+	}
+}
+
+// repaths rebuilds the directory candidates for a path-headed token from
+// the listing the cache holds; a directory it does not hold leaves none.
+// A candidate joins the token's directory as typed, quote included, so the
+// user's frame survives the walk.
+func (a *App) repaths() {
+	f := &a.completion
+	f.paths = f.paths[:0]
+	dir, base, ok := pathToken(f.token)
+	if !ok || a.resolveDir(f.token) != f.dirDir {
+		return
+	}
+	q := ""
+	if t := f.token; t != "" && (t[0] == '"' || t[0] == '\'') {
+		q = string(t[0])
+	}
+	for _, e := range f.dirList {
+		if base != "" && !strings.HasPrefix(strings.TrimSuffix(e, "/"), base) {
+			continue
+		}
+		f.paths = append(f.paths, q+dir+e)
+	}
+}
+
 // rematch ranks the files the token matches, a file name it begins first.
 // A name it matches scores by the name alone, which a path's other elements
-// would only blur; a file matched across directories scores by its path.
+// would only blur; a file matched across directories scores by its path. A
+// path-headed token asks the directory listing, not the corpus.
 func (f *fileCompleter) rematch() {
+	f.matches = f.matches[:0]
+	if _, _, ok := pathToken(f.token); ok {
+		f.selected = max(0, min(f.selected, f.count()-1))
+		return
+	}
 	if f.token == "" {
 		f.matches = hostapi.Match("", f.files[:min(len(f.files), listMaxFiles)], nil)
 		f.selected = max(0, min(f.selected, f.count()-1))
@@ -210,12 +398,12 @@ func (f *fileCompleter) matchFiles(lo, hi int) []hostapi.Hit {
 	return hostapi.Rank(hits, f.files, listMaxFiles)
 }
 
-// candRows are completion candidates as list rows; a path keeps its tail
-// when cut, where its name is.
-func candRows(cands []hostapi.CompletionItem) []listItem {
+// candRows are completion candidates as list rows under section; a path
+// keeps its tail when cut, where its name is.
+func candRows(cands []hostapi.CompletionItem, section string) []listItem {
 	rows := make([]listItem, 0, len(cands))
 	for _, c := range cands {
-		rows = append(rows, listItem{label: c.Text, desc: c.Desc, row: hostapi.OverlayItem{Tail: strings.Contains(c.Text, "/")}})
+		rows = append(rows, listItem{label: c.Text, desc: c.Desc, section: section, row: hostapi.OverlayItem{Tail: strings.Contains(c.Text, "/")}})
 	}
 	return rows
 }
@@ -241,22 +429,62 @@ func matchRows(rows []listItem, query string, narrow bool) []listItem {
 	return out
 }
 
-// acceptCompletion replaces what follows the trigger with the selected match
-// (plus a trailing space) and closes the popup. A skill or Lua-source row
-// keeps the trigger, which is its own; a project file becomes the host's
-// token for it, an @reference where one carries the path whole, which the
-// user can go on editing.
+// acceptCompletion replaces what follows the trigger with the selected
+// match and closes the popup - unless the row is a directory candidate:
+// its word ends in /, so the popup stays open and the listing follows the
+// word in, shell-tab style. A skill or Lua-source row keeps the trigger,
+// which is its own; a project file becomes the host's @ word for it.
 func (a *App) acceptCompletion() {
 	f := &a.completion
 	if !f.open || f.selected >= f.count() {
 		return
 	}
-	if n := len(f.extra); f.selected < n {
-		a.composer.replace(f.start+1, f.extra[f.selected].label+" ")
-	} else {
-		a.composer.replace(f.start, a.host.AttachLabel(f.files[f.matches[f.selected-n].Index])+" ")
+	n, mt, p := len(f.extra), len(f.matches), len(f.paths)
+	switch sel := f.selected; {
+	case sel < n: // a Lua source's row: its trigger is its own
+		a.composer.replace(f.start+1, f.extra[sel].label+" ")
+		f.close()
+	case sel < n+mt:
+		rel := f.files[f.matches[sel-n].Index]
+		a.composer.replace(f.start, a.host.AttachWord(filepath.Join(a.host.Session().CWD, rel))+" ")
+		f.close()
+	case sel < n+mt+p:
+		word := f.paths[sel-n-mt]
+		if strings.HasSuffix(word, "/") { // a directory walks in
+			if q := word[0]; q != '"' && q != '\'' && !hostapi.CanRef(word) {
+				word = `"` + word + `"` // a word a bare token cannot carry rides quoted
+			}
+			a.composer.replace(f.start+1, word)
+			a.updateCompletion()
+			return
+		}
+		if q := word[0]; q == '"' || q == '\'' {
+			word += string(q) // a file closes the quotes a directory leaves open
+		} else if !hostapi.CanRef(word) {
+			word = `"` + word + `"`
+		}
+		a.composer.replace(f.start+1, word+" ")
+		f.close()
+	default:
+		a.composer.replace(f.start+1, f.skillRows[sel-n-mt-p].label+" ")
+		f.close()
 	}
-	f.close()
+}
+
+// fileCap is the rows the Files section may take while the Skills section
+// has rows too, so both headers stay in the popup's window: the Files
+// header, the blank separator before the Skills one, the Skills header and
+// the skill row under it price in, and a Lua source's rows price in with
+// their blank. No skill matches, no cap: narrowing does the work.
+func (f *fileCompleter) fileCap() int {
+	if len(f.skillRows) == 0 {
+		return listMaxFiles
+	}
+	n := completionMaxRows - 4
+	if len(f.extra) > 0 {
+		n -= len(f.extra) + 1
+	}
+	return max(n, 0)
 }
 
 // completionRows renders the popup's list, at most room rows of at most
@@ -266,25 +494,93 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	note := func(text string) []hostapi.Segment {
 		return []hostapi.Segment{{Text: text, HL: hostapi.ChromeHint}}
 	}
-	if f.count() == 0 && f.scanning && len(f.files) == 0 {
-		return [][]hostapi.Segment{note("scanning files…")}
-	}
 	if f.count() == 0 {
+		if f.scanning && len(f.files) == 0 && !pathHeaded(f.token) {
+			return [][]hostapi.Segment{note("scanning files…")}
+		}
 		return emptyRows(noMatches, maxW)
 	}
-	items := slices.Clone(f.extra)
-	for _, m := range f.matches {
-		items = append(items, listItem{label: f.files[m.Index], match: m.Pos, row: hostapi.OverlayItem{Tail: true}})
+	items := slices.Grow(slices.Clone(f.extra), f.count())
+	matches, paths := f.matches, f.paths
+	if n := f.fileCap(); len(matches) > n {
+		matches = matches[:n]
 	}
+	if n := f.fileCap(); len(paths) > n {
+		paths = paths[:n]
+	}
+	for _, m := range matches {
+		items = append(items, listItem{label: f.files[m.Index], match: m.Pos, section: "Files", row: hostapi.OverlayItem{Tail: true}})
+	}
+	for _, p := range paths {
+		items = append(items, listItem{label: p, section: "Files", row: hostapi.OverlayItem{Tail: true}})
+	}
+	items = append(items, f.skillRows...)
 	return listRowsW(items, items, f.selected, &f.view, min(completionMaxRows, room), minW, maxW)
 }
 
 // scanFilesCmd lists the project's files off the UI goroutine.
 func (a *App) scanFilesCmd(dir string, gen int) tea.Cmd {
 	return func() tea.Msg {
-		files, _, _ := tools.ListFiles(context.Background(), dir, scanMaxFiles)
-		return filesScannedMsg{gen: gen, files: files}
+		return filesScannedMsg{gen: gen, files: walkFiles(context.Background(), dir)}
 	}
+}
+
+// walkFiles lists the project's files for the popup: a real walk, since
+// tools.ListFiles is git's list and the popup answers for ignored files
+// too. It skips .git and the build directories tools.SkipDir names -
+// matched against the name as-is and dot-stripped, so .venv dies with
+// venv - keeps every other hidden entry, caps a directory at dirMaxFiles
+// entries and the scan at scanMaxFiles, and sorts shallow-first, so the
+// empty token's head is the top-level files.
+// NOTE: the caps and the name list stand in for a real ignore engine;
+// internal/glob's .gitignore reader is the upgrade path.
+func walkFiles(ctx context.Context, root string) []string {
+	var files []string
+	cur, n := "", 0
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if err != nil {
+			return nil // an unreadable subdirectory is skipped
+		}
+		if d.IsDir() {
+			if path == root {
+				return nil
+			}
+			name := d.Name()
+			if name == ".git" || tools.SkipDir(name) || tools.SkipDir(strings.TrimPrefix(name, ".")) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		if dir := path[:strings.LastIndexByte(path, filepath.Separator)+1]; dir != cur {
+			cur, n = dir, 0
+		}
+		n++
+		if n > dirMaxFiles {
+			return filepath.SkipDir
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return nil
+		}
+		files = append(files, filepath.ToSlash(rel))
+		if len(files) >= scanMaxFiles {
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	slices.SortFunc(files, func(x, y string) int {
+		if c := strings.Count(x, "/") - strings.Count(y, "/"); c != 0 {
+			return c
+		}
+		return strings.Compare(x, y)
+	})
+	return files
 }
 
 type filesScannedMsg struct {

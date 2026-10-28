@@ -525,13 +525,17 @@ func TestSkillCompletion(t *testing.T) {
 			app.composerKey(k, tea.KeyPressMsg{Text: k})
 		}
 	}
-	send("+", "l", "i")
+	send("@", "l", "i")
 	waitPrompt(t, app, func() bool { return app.completion.shown() })
-	if app.completion.trigger != '+' || app.completion.title() != "Skills" || app.completion.count() != 1 {
-		t.Fatalf("popup after +li: trigger=%q title=%q rows=%d", app.completion.trigger, app.completion.title(), app.completion.count())
+	if app.completion.trigger != '@' || app.completion.title() != "Files and skills" || app.completion.count() != 1 {
+		t.Fatalf("popup after @li: trigger=%q title=%q rows=%d", app.completion.trigger, app.completion.title(), app.completion.count())
+	}
+	// the one row sits under the Skills header
+	if rows := app.completionRows(60, 10, 0); len(rows) < 2 || strings.TrimSpace(hostapi.SegsText(rows[0])) != "Skills" {
+		t.Fatalf("rows: %q", hostapi.SegsText(rows[0]))
 	}
 	app.composerKey("enter", tea.KeyPressMsg{})
-	if got := app.composer.text; got != "+lint " {
+	if got := app.composer.text; got != "@lint " {
 		t.Fatalf("accepted text: %q", got)
 	}
 	if app.completion.open {
@@ -539,15 +543,18 @@ func TestSkillCompletion(t *testing.T) {
 	}
 }
 
+// TestCompletionScan: the popup's own walk lists the project's files,
+// ignored ones included, and skips .git and the build directories - a
+// hidden venv with the visible one, dotfiles listed.
 func TestCompletionScan(t *testing.T) {
 	dir := t.TempDir()
-	for _, d := range []string{".git", "node_modules", "internal"} {
+	for _, d := range []string{".git", "node_modules", "internal", filepath.Join(".venv", "lib"), "lib"} {
 		if err := os.MkdirAll(filepath.Join(dir, d), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, f := range []string{"main.go", "internal/app.go", ".git/config", "node_modules/x.js", ".gitignore"} {
-		if err := os.WriteFile(filepath.Join(dir, f), []byte("node_modules/\n"), 0o600); err != nil {
+	for _, f := range []string{"main.go", "internal/app.go", ".git/config", "node_modules/x.js", ".venv/lib/x.py", ".gitignore", "lib/.hidden.go"} {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -561,15 +568,19 @@ func TestCompletionScan(t *testing.T) {
 		t.Fatal("cmd did not return filesScannedMsg")
 	}
 	app.onFilesScanned(msg)
-	for _, want := range []string{"main.go", "internal/app.go"} {
+	for _, want := range []string{"main.go", "internal/app.go", ".gitignore", "lib/.hidden.go"} {
 		if !slices.Contains(app.completion.files, want) {
 			t.Fatalf("missing %s in %v", want, app.completion.files)
 		}
 	}
-	for _, gone := range []string{".git/config", "node_modules/x.js"} {
+	for _, gone := range []string{".git/config", "node_modules/x.js", ".venv/lib/x.py"} {
 		if slices.Contains(app.completion.files, gone) {
 			t.Fatalf("skipped dir leaked: %s", gone)
 		}
+	}
+	// the empty token's head is the top level, shallowest first
+	if app.completion.files[0] != ".gitignore" {
+		t.Fatalf("head of the list: %v", app.completion.files[:3])
 	}
 
 	// Reopening rescans, and a result from an older scan is dropped.
@@ -588,6 +599,136 @@ func TestCompletionScan(t *testing.T) {
 	}
 }
 
+// TestCompletionSections: both sections show under their headers while
+// both have rows, the Files one capped so the Skills header stays in the
+// window, and a skill query alone shows Skills at the top.
+func TestCompletionSections(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 20)
+	dir := filepath.Join(host.Dirs.ConfigHome, "skills", "lint")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: lint\ndescription: lint the tree\n---\n\nBody.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reloadUI(t, host, host.SkillsUserHooksStep())
+
+	var files []string
+	for i := range 9 {
+		files = append(files, fmt.Sprintf("f%02d.go", i))
+	}
+	app.composerKey("@", tea.KeyPressMsg{Text: "@"})
+	app.completion.skills = app.host.SkillMentions()
+	app.completion.reskill()
+	app.onFilesScanned(filesScannedMsg{gen: app.completion.walkGen, files: files})
+	texts := func() (out []string) {
+		for _, r := range app.completionRows(76, 10, 0) {
+			out = append(out, strings.TrimSpace(hostapi.SegsText(r)))
+		}
+		return out
+	}
+	rows := texts()
+	// 1 Files header + 6 files + 1 blank separator + 1 Skills header + 1 skill row
+	if len(rows) != 10 || !strings.HasPrefix(rows[0], "Files") || !strings.HasPrefix(rows[8], "Skills") || rows[9] == "" {
+		t.Fatalf("rows = %q", rows)
+	}
+	if !slices.ContainsFunc(app.completion.skillRows, func(r listItem) bool { return r.label == "lint" }) {
+		t.Fatalf("lint is not a skill row: %v", app.completion.skillRows)
+	}
+	// a skill query alone: the Files section drops, header included
+	send := func(ks ...string) {
+		for _, k := range ks {
+			app.composerKey(k, tea.KeyPressMsg{Text: k})
+		}
+	}
+	send("l")
+	rows = texts()
+	if len(rows) != 2 || rows[0] != "Skills" || !strings.Contains(rows[1], "lint") {
+		t.Fatalf("skill query rows: %q", rows)
+	}
+	// the windows walk the frame's order: past the files, a row accepts as
+	// the skill it shows
+	base := len(app.completion.extra) + len(app.completion.matches) + len(app.completion.paths)
+	idx := slices.IndexFunc(app.completion.skillRows, func(r listItem) bool { return r.label == "lint" })
+	app.completion.selected = base + idx
+	app.acceptCompletion()
+	if got := app.composer.text; got != "@lint " {
+		t.Fatalf("the lint row accepted %q", got)
+	}
+}
+
+// TestCompletionWalksIn: accepting a directory candidate keeps the popup
+// open on the directory, in the frame the token typed, and a file accept
+// closes it with its space.
+func TestCompletionWalksIn(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	out := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(out, "Sub"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(out, "Sub", "a.txt"), []byte("a"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	open := func(token string) {
+		app.composer.text, app.composer.cursor = token, len([]rune(token))
+		app.updateCompletion()
+	}
+	open("@" + out + "/")
+	// a candidate word replaces what follows the @, the @ stays
+	if got := app.completion.paths; len(got) != 1 || got[0] != out+"/Sub/" {
+		t.Fatalf("candidates: %q", got)
+	}
+	// a directory accept walks in: no trailing space, the popup open
+	app.composerKey("enter", tea.KeyPressMsg{})
+	if got := app.composer.text; got != "@"+out+"/Sub/" {
+		t.Fatalf("walked to %q", got)
+	}
+	if !app.completion.open || len(app.completion.paths) != 1 || app.completion.paths[0] != out+"/Sub/a.txt" {
+		t.Fatalf("candidates after the walk: %q open=%v", app.completion.paths, app.completion.open)
+	}
+	// a file accept closes the popup
+	app.composerKey("enter", tea.KeyPressMsg{})
+	if got := app.composer.text; got != "@"+out+"/Sub/a.txt " || app.completion.open {
+		t.Fatalf("accepted %q, open=%v", got, app.completion.open)
+	}
+	// a quoted token keeps its opening quote through the walk and closes
+	// it on a file accept
+	spacey := filepath.Join(t.TempDir(), "My Docs")
+	if err := os.MkdirAll(filepath.Join(spacey, "Deep"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(spacey, "Deep", "n.txt"), []byte("n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	open(`@"` + spacey + `/`)
+	if got := app.completion.paths; len(got) != 1 || got[0] != `"`+spacey+"/Deep/" {
+		t.Fatalf("quoted candidates: %q", got)
+	}
+	app.composerKey("enter", tea.KeyPressMsg{})
+	if got := app.composer.text; got != `@"`+spacey+"/Deep/" {
+		t.Fatalf("quoted walk landed on %q", got)
+	}
+	if !app.completion.open {
+		t.Fatal("popup closed on a quoted walk-in")
+	}
+	app.composerKey("enter", tea.KeyPressMsg{})
+	if got := app.composer.text; got != `@"`+spacey+"/Deep/n.txt\" " {
+		t.Fatalf("quoted file accept: %q", got)
+	}
+	// a candidate a bare token cannot carry - a space in the name - rides
+	// quoted from an unquoted walk too
+	open("@" + filepath.Dir(spacey) + "/")
+	cand := filepath.Dir(spacey) + "/My Docs/"
+	if !slices.Contains(app.completion.paths, cand) {
+		t.Fatalf("candidates: %q", app.completion.paths)
+	}
+	app.completion.selected = slices.Index(app.completion.paths, cand)
+	app.acceptCompletion()
+	if got := app.composer.text; got != `@"`+spacey+"/\"" || !app.completion.open {
+		t.Fatalf("a spacey directory walked in as %q", got)
+	}
+}
+
 // TestCompletionListWidth: the popup keeps its width while the selection
 // scrolls away from its widest path, which a narrow one cuts at the head,
 // and lists at most listMaxFiles.
@@ -599,13 +740,14 @@ func TestCompletionListWidth(t *testing.T) {
 		files = append(files, fmt.Sprintf("f%03d.go", i))
 	}
 	app.onFilesScanned(filesScannedMsg{gen: app.completion.walkGen, files: files})
-	first := hostapi.SegsWidth(app.completionRows(76, 10, 0)[0])
-	if row := strings.TrimSpace(hostapi.SegsText(app.completionRows(30, 10, 0)[0])); !strings.Contains(row, "_here.txt") {
+	// row 0 is the section header, row 1 the first file
+	first := hostapi.SegsWidth(app.completionRows(76, 10, 0)[1])
+	if row := strings.TrimSpace(hostapi.SegsText(app.completionRows(30, 10, 0)[1])); !strings.Contains(row, "_here.txt") {
 		t.Fatalf("a cut path lost its name: %q", row)
 	}
 	app.completion.selected = app.completion.count() - 1
 	rows := app.completionRows(76, 10, 0)
-	if w := hostapi.SegsWidth(rows[0]); w != first || app.completion.count() != listMaxFiles {
+	if w := hostapi.SegsWidth(rows[1]); w != first || app.completion.count() != listMaxFiles {
 		t.Fatalf("width %d then %d, %d items", first, w, app.completion.count())
 	}
 }
@@ -632,7 +774,7 @@ func TestCompletionPopupRefits(t *testing.T) {
 	width := func() int {
 		f := ansi.Strip(app.Frame())
 		for line := range strings.SplitSeq(f, "\n") {
-			i := strings.Index(line, "┌ Files")
+			i := strings.Index(line, "┌ Files and skills")
 			if i < 0 {
 				continue
 			}
