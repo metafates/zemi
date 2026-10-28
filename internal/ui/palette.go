@@ -168,15 +168,11 @@ func (a *App) paletteRows(maxW, room, minW int) [][]hostapi.Segment {
 	return listRowsW(items, items, p.selected, &p.view, min(8, room), minW, maxW)
 }
 
-// dismissPalette closes the palette without running its line. The lone "/"
-// that opened it is not a draft: it goes too, so the next typed command does
-// not glue onto it; a line the user typed ("/mo") stays for fixing.
+// dismissPalette closes the palette and its line with it: the line was the
+// palette's query, and esc on it means abandon - the doc's "esc clears it".
+// ctrl+z still walks the cleared draft back.
 func (a *App) dismissPalette() {
-	if a.composer.text == "/" {
-		a.clearComposer()
-		return
-	}
-	a.palette.close()
+	a.clearComposer()
 }
 
 // clearComposer empties the draft and closes both popups. The paste map

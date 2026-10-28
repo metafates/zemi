@@ -1149,11 +1149,17 @@ func TestPaletteComplete(t *testing.T) {
 	if app.palette.open {
 		t.Fatalf("palette open for a command without completions: args=%v", app.palette.args)
 	}
-	// Esc closes the palette and keeps the typed line.
+	// Esc abandons the palette and its line: the line was the query, and
+	// the doc's "esc clears it" holds. ctrl+z walks the draft back.
 	send(k{"backspace", ""}, k{"backspace", ""})
 	app.composerKey("esc", tea.KeyPressMsg{})
-	if app.palette.open || app.composer.text != "/q" {
+	if app.palette.open || app.composer.text != "" {
 		t.Fatalf("esc: open=%v text=%q", app.palette.open, app.composer.text)
+	}
+	// ctrl+z restores the line the esc cleared
+	app.composerKey("ctrl+z", tea.KeyPressMsg{})
+	if app.composer.text != "/q" {
+		t.Fatalf("undo after esc: %q", app.composer.text)
 	}
 	// ctrl+space opens it again, with no edit
 	app.Update(tea.KeyPressMsg{Code: tea.KeySpace, Mod: tea.ModCtrl})
@@ -1286,20 +1292,17 @@ func TestRestoreQueue(t *testing.T) {
 	if !app.palette.open {
 		t.Fatal("the palette did not open")
 	}
-	app.composerKey("esc", tea.KeyPressMsg{}) // closes the palette, then arms
+	app.composerKey("esc", tea.KeyPressMsg{}) // the esc abandons the palette and its line
 	app.composerKey("esc", tea.KeyPressMsg{})
 	app.composerKey("esc", tea.KeyPressMsg{}) // and interrupts
-	if app.composer.text != "queued\n\n/he" || app.palette.open || app.completion.shown() {
+	if app.composer.text != "queued" || app.palette.open || app.completion.shown() {
 		t.Fatalf("restore left text %q, palette %v, completion %v", app.composer.text, app.palette.open, app.completion.shown())
 	}
-	app.composerKey("ctrl+z", tea.KeyPressMsg{})
-	if app.composer.text != "/he" {
-		t.Fatalf("undo after the restore: %q", app.composer.text)
-	}
-	// the queue text is not lost with the draft: it recalls from history
+	// the esc'd slash line is gone; the queue text is not lost with the
+	// draft: the restored draft recalls from history
 	app.clearComposer()
 	app.composerKey("ctrl+p", tea.KeyPressMsg{})
-	if app.composer.text != "queued\n\n/he" {
+	if app.composer.text != "queued" {
 		t.Fatalf("history does not hold the restored text: %q", app.composer.text)
 	}
 }

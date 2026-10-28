@@ -335,8 +335,19 @@ function M.digest(rows, first, last, cwd, home)
 			end
 		end
 		-- counts names a family of one itself: a count over it would hide
-		-- the thing it touched, as a rail row over a lone call does
-		parts[#parts + 1] = M.counts(calls, #commands > 0 and commands or nil)
+		-- the thing it touched, and the name reads relative, as a command's does
+		local named = {}
+		for _, m in ipairs(calls) do
+			if (m.label or "") == "" and (m.text or "") ~= "" and M.tool(m) ~= "shell" then
+				local t = {}
+				for k, v in pairs(m) do t[k] = v end
+				t.text = M.relpath(m.text, cwd or "", home or "")
+				named[#named + 1] = t
+			else
+				named[#named + 1] = m
+			end
+		end
+		parts[#parts + 1] = M.counts(named, #commands > 0 and commands or nil)
 	end
 	if #failed > 0 then
 		if #failed == 1 and #calls == 0 then
