@@ -891,6 +891,9 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		mcp:       &mcpReg{},
 		tasks:     newTaskReg(settings),
 		lsp:       &lspReg{},
+		// the boot window fills straight from the log, past SetTranscript:
+		// "no pages loaded" is the value here, not the field's zero
+		msgFrom: -1,
 	}
 	if dirs.StateHome != "" {
 		// the rate limiters share their buckets with every other zemi

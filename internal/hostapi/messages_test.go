@@ -2,6 +2,9 @@ package hostapi
 
 import (
 	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -10,6 +13,9 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -471,5 +477,59 @@ func TestMessagesPageUp(t *testing.T) {
 	h.msgMu.Unlock()
 	if n != 0 {
 		t.Errorf("%d loaded rows survived the swap", n)
+	}
+}
+
+// TestMessagesPagesFromBoot: a boot over a log longer than the window fills
+// the chat straight from the log, past SetTranscript, so the pager's "no
+// pages loaded" has to be the host's starting value and not the field's
+// zero; a page-up on the first keypress loads what the window shed.
+func TestMessagesPagesFromBoot(t *testing.T) {
+	t.Parallel()
+	log := slog.New(slog.DiscardHandler)
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+	dirs := config.Dirs{StateHome: t.TempDir(), DataHome: t.TempDir(), ProjectDir: t.TempDir()}
+	// the store keys on the project's repo root: a bare temp dir is no repo,
+	// and the boot opens it under the evaluated path (macOS /var -> /private/var)
+	if err := os.MkdirAll(filepath.Join(dirs.ProjectDir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root, err := filepath.EvalSymlinks(dirs.ProjectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, seed, err := store.OpenForDirs(dirs.StateHome, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 1100 {
+		if _, err := seed.AppendLog(kindUser, fmt.Sprintf("message %d", i), "", "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := seed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHost(r, log, config.NewStore(), dirs)
+	h.ReleaseBuilder()
+	t.Cleanup(h.Close)
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
+		t.Fatalf("Boot: %v", err)
+	}
+	if n := len(h.Session().Transcript); n != chatWindowRows {
+		t.Fatalf("the boot window holds %d rows", n)
+	}
+	o, ok := h.messagesOlder()
+	if !ok {
+		t.Fatal("nothing loaded for a window that booted mid-log")
+	}
+	if o.Items[0].Section != "Earlier" {
+		t.Fatalf("the first loaded row reads %q, want Earlier", o.Items[0].Section)
+	}
+	if len(o.Items) != chatWindowRows+100 {
+		t.Fatalf("the extended list holds %d rows", len(o.Items))
+	}
+	if o.Items[0].Anchor != 0 {
+		t.Errorf("the first logged prompt anchors %d, want 0", o.Items[0].Anchor)
 	}
 }
