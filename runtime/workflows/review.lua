@@ -1,4 +1,4 @@
--- Review uncommitted changes, the branch since its merge base with args (a
+-- Uncommitted changes, the branch since its merge base with args (a
 -- git ref), or one commit (args a sha) from three angles; keeps findings
 -- that hold up.
 local wf = zemi.workflow

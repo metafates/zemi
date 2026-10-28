@@ -1,5 +1,5 @@
--- Research a question from several angles at once and answer it with
--- sources; args is the question.
+-- A question from several angles at once, answered with sources; args
+-- is the question.
 local wf = zemi.workflow
 local question = type(wf.args) == "string" and wf.args ~= "" and wf.args or nil
 if not question then return "research needs a question: /workflows run research <the question>" end

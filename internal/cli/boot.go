@@ -500,7 +500,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			_, err := h.ExportSession(strings.TrimSpace(path), full)
 			return err
 		}, GoComplete: hostapi.SubcommandCompleter([]string{"full"}, nil)},
-		{Name: "compact", Desc: "merge the chat's view down toward its floor now", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
+		{Name: "compact", Desc: "compact the chat's context now", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			h.CompactNow()
 			return nil
 		}},

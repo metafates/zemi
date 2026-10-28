@@ -226,7 +226,9 @@ func argAt(lead, line string) ([]string, int) {
 // (ErrUsage) is a warn, anything else did not happen and is recorded.
 func (h *Host) CommandFailed(name string, err error) {
 	if errors.Is(err, ErrUsage) {
-		h.Notify(slog.LevelWarn, "Could not run /"+name, err.Error())
+		// a usage warn is the driver's input, not a failure: the command
+		// names itself and the body says what it needed
+		h.Notify(slog.LevelWarn, "/"+name, err.Error())
 		return
 	}
 	h.RecordError("command", name, err.Error())

@@ -1095,17 +1095,24 @@ func (h *Host) mcpItems() []OverlayItem {
 	var items []OverlayItem
 	for _, g := range slices.Sorted(maps.Keys(groups)) {
 		members := groups[g]
-		on := 0
+		on, waiting := 0, 0
 		for _, m := range members {
 			if m.enabledFlag() {
 				on++
 			}
+			if m.status == StatusSignIn {
+				waiting++
+			}
+		}
+		desc := fmt.Sprintf("%d of %d on", on, len(members))
+		if waiting > 0 {
+			desc += fmt.Sprintf(" · %d %s sign-in", waiting, Plural(waiting, "needs", "need"))
 		}
 		items = append(items, OverlayItem{
 			ID:   "mcp group " + g,
 			Text: g,
 			Row:  []Segment{{Text: g, HL: GroupTitle}},
-			Desc: fmt.Sprintf("%d of %d on", on, len(members)),
+			Desc: desc,
 			On:   new(on == len(members)),
 			Run:  "mcp toggle " + g,
 			Keys: []ItemKey{

@@ -340,7 +340,9 @@ function M.digest(rows, first, last, cwd, home)
 		for _, m in ipairs(calls) do
 			if (m.label or "") == "" and (m.text or "") ~= "" and M.tool(m) ~= "shell" then
 				local t = {}
-				for k, v in pairs(m) do t[k] = v end
+				for k, v in pairs(m) do
+					t[k] = v
+				end
 				t.text = M.relpath(m.text, cwd or "", home or "")
 				named[#named + 1] = t
 			else

@@ -1,5 +1,5 @@
--- Brainstorm ways to improve what the goal names: several lenses invent
--- candidates, a critic kills the weak ones, the survivors with a cheap
+-- What the goal names, attacked from several lenses at once: candidates
+-- invented, a critic kills the weak ones, the survivors with a cheap
 -- check are smoke-tested, and the answer is the worth-try list with the
 -- smoke evidence. Args is the goal.
 local wf = zemi.workflow

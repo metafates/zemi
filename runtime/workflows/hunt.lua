@@ -1,4 +1,4 @@
--- Find why something misbehaves: reproduce it, test the plausible causes at
+-- Why something misbehaves: reproduce it, test the plausible causes at
 -- once, and report the one the evidence supports; args is the symptom.
 local wf = zemi.workflow
 local symptom = type(wf.args) == "string" and wf.args ~= "" and wf.args or nil
