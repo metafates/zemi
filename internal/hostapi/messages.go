@@ -15,6 +15,7 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -526,7 +527,7 @@ func messageCallRow(idx int, m ChatMessage) OverlayItem {
 	item := OverlayItem{Anchor: idx}
 	// a call with no label of its own names what it ran: "grep internal/ui"
 	head := cmp.Or(m.Label, strings.TrimSpace(string(m.Tool)+" "+messageHead(text)), string(m.Tool))
-	glyph, hl := "│", "Dim"
+	glyph, hl := "│", GroupDim
 	if m.Kind == RowReasoning {
 		head, glyph = cmp.Or(m.Label, messageHead(text), "thought"), "✻"
 	}
@@ -572,7 +573,7 @@ func messageRow(idx int, m ChatMessage) OverlayItem {
 		head, glyph, hl = cmp.Or(messageHead(text), "(empty prompt)"), "▌", "UserMsg"
 	case m.Kind == "" && text != "":
 		blocks := codeBlocks(text)
-		head, glyph, hl = messageHead(text), "◆", "Dim"
+		head, glyph, hl = messageHead(text), "◆", GroupDim
 		if n := lineCount(text); n > 1 {
 			desc = pluralCount(n, "line", "lines")
 		}
@@ -673,20 +674,21 @@ func (h *Host) openLogView(seq int64) error {
 	}
 	title, md := "Message", false
 	switch row.Kind {
-	case kindUser:
+	case store.KindUser:
 		title, md = "Prompt", true
-	case kindAgent:
+	case store.KindAgent:
 		title, md = "Reply", true
-	case kindThought:
+	case store.KindThought:
 		title, md = "Thought", true
-	case kindNote:
+	case store.KindNote:
 		title = "Note"
-	case kindEcho:
+	case store.KindEcho:
 		title = "Result"
-	case kindWork:
+	case store.KindWork:
 		title = "Report"
-	case kindTool:
+	case store.KindTool:
 		title = upperFirst(cmp.Or(rowTool(row), "Tool"))
+	default: // an error or shell row reads by its text alone
 	}
 	ui.OpenOverlay(Overlay{
 		ID: "messages view #" + strconv.FormatInt(seq, 10), Title: title, Origin: lua.OriginBuiltin,

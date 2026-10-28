@@ -369,13 +369,17 @@ func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 // the conversation and every role left unset run on it.
 var roles = []modelRole{
 	{defaultRole, "the conversation, and every role left unset"},
-	{"agents", "subagents"},
-	{"compact", "summaries"},
+	{agentsRole, "subagents"},
+	{compactRole, "summaries"},
 }
 
-// defaultRole is the conversation's own slot, the root every role left unset
-// follows.
-const defaultRole = "default"
+const (
+	// defaultRole is the conversation's own slot, the root every role left
+	// unset follows.
+	defaultRole = "default"
+	agentsRole  = "agents"  // subagents with no model of their own
+	compactRole = "compact" // the summary builder
+)
 
 type modelRole struct{ Name, Desc string }
 

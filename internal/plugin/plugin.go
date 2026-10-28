@@ -44,6 +44,13 @@ type Skipped struct {
 	Local bool // which list said it: local/ or installed/
 }
 
+// The two plugin layout directories under PluginsRoot. PluginOf and the
+// loaders parse paths back with the same names, so one spelling serves both.
+const (
+	DirLocal     = "local"
+	DirInstalled = "installed"
+)
+
 // String is how a skipped entry reads in every list: the CLI's line and the
 // /plugin row's text.
 func (s Skipped) String() string { return "ignored: " + s.Name + " (" + s.Why + ")" }
@@ -274,8 +281,8 @@ func Scan(d config.Dirs) ([]Plugin, []Skipped, error) {
 	}
 	var ps []Plugin
 	var skipped []Skipped
-	for _, kind := range []string{"local", "installed"} {
-		local := kind == "local"
+	for _, kind := range []string{DirLocal, DirInstalled} {
+		local := kind == DirLocal
 		dir := filepath.Join(d.PluginsRoot(), kind)
 		entries, err := os.ReadDir(dir)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -548,9 +555,9 @@ func CheckMarketplaces(ctx context.Context, d config.Dirs) ([]string, error) {
 // the cache clone it pointed into; else the local plugin. A symlink in
 // local/ loses the link only.
 func remove(d config.Dirs, name string) error {
-	dir := filepath.Join(d.PluginsRoot(), "local", name)
+	dir := filepath.Join(d.PluginsRoot(), DirLocal, name)
 	if !exists(dir) {
-		dir = filepath.Join(d.PluginsRoot(), "installed", name)
+		dir = filepath.Join(d.PluginsRoot(), DirInstalled, name)
 		fi, err := os.Lstat(dir)
 		if err != nil {
 			return fmt.Errorf("no plugin is named %s", name)
@@ -1013,7 +1020,7 @@ func updateMarketplaces(ctx context.Context, d config.Dirs, names []string, out 
 					continue
 				}
 				kind := reg.Kind
-				if fi, err := os.Lstat(filepath.Join(d.PluginsRoot(), "installed", pname)); err == nil && fi.Mode()&fs.ModeSymlink == 0 {
+				if fi, err := os.Lstat(filepath.Join(d.PluginsRoot(), DirInstalled, pname)); err == nil && fi.Mode()&fs.ModeSymlink == 0 {
 					// a legacy copy the boot could not re-link, for it needed
 					// a clone: this update makes one
 					kind, err = relinkInstall(ctx, d, name, pname, e, cmp.Or(reg.ID, rand.Text()))
@@ -1228,7 +1235,7 @@ func InstallFromMarketplace(ctx context.Context, d config.Dirs, mkt, entry strin
 		return Plugin{}, err
 	}
 	p := load(ctx, target, false, true)
-	p.Name, p.Dir = name, filepath.Join(d.PluginsRoot(), "installed", name)
+	p.Name, p.Dir = name, filepath.Join(d.PluginsRoot(), DirInstalled, name)
 	// the entry's scalars are the fallback for a source with no manifest of
 	// its own; the row carries them, load read the tree
 	p.Version = cmp.Or(p.Version, e.Version)
@@ -1435,7 +1442,7 @@ func EnsureLinks(d config.Dirs) error {
 	}
 	for _, name := range slices.Sorted(maps.Keys(f.Installs)) {
 		reg := f.Installs[name]
-		dest := filepath.Join(d.PluginsRoot(), "installed", name)
+		dest := filepath.Join(d.PluginsRoot(), DirInstalled, name)
 		fi, err := os.Lstat(dest)
 		if err != nil || fi.Mode()&fs.ModeSymlink != 0 {
 			continue // gone, or already a link
@@ -1494,7 +1501,7 @@ func EnsureLinks(d config.Dirs) error {
 // placed by a rename so a reload never reads a half-placed install, and
 // turns a name disabled before back on when on says the act was deliberate.
 func linkPlugin(d config.Dirs, name, target string, on bool) error {
-	dest := filepath.Join(d.PluginsRoot(), "installed", name)
+	dest := filepath.Join(d.PluginsRoot(), DirInstalled, name)
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
@@ -1502,7 +1509,7 @@ func linkPlugin(d config.Dirs, name, target string, on bool) error {
 	if err != nil {
 		return err
 	}
-	staging := filepath.Join(d.PluginsRoot(), "installed", "."+name+".link.tmp")
+	staging := filepath.Join(d.PluginsRoot(), DirInstalled, "."+name+".link.tmp")
 	os.RemoveAll(staging)
 	if err := proc.SymlinkDir(rel, staging); err != nil {
 		return err
@@ -1647,7 +1654,7 @@ func free(d config.Dirs, name string) error {
 	if !nameRe.MatchString(name) {
 		return fmt.Errorf("%q is not a plugin name: %s", name, nameWhy)
 	}
-	for _, kind := range []string{"local", "installed"} {
+	for _, kind := range []string{DirLocal, DirInstalled} {
 		if dir := filepath.Join(d.PluginsRoot(), kind, name); exists(dir) {
 			return fmt.Errorf("a plugin is already named %s: %s", name, dir)
 		}

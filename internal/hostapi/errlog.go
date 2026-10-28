@@ -48,6 +48,14 @@ type errLog struct {
 	unseen  bool
 }
 
+// The error kinds an entry's restart key comes from: the kind is the first
+// word of the command the /errors restart row runs ("<kind> restart <name>"),
+// so a record site spelling it off would silently lose the key.
+const (
+	errMCP = "mcp"
+	errLSP = "lsp"
+)
+
 // RecordError keeps one error (sanitized) and raises the badge. kind names
 // what failed and name what it acted on ("mcp" and a server's name); the
 // same message twice in a row is kept once, at the later time.
@@ -182,7 +190,7 @@ func (h *Host) OpenErrors(args string) error {
 		if noModel == nil {
 			keys = append(keys, ItemKey{Key: "a", Desc: "ask zemi to fix it", Run: fmt.Sprintf("errors ask %d", i)})
 		}
-		if (e.kind == "mcp" || e.kind == "lsp") && e.name != "" {
+		if (e.kind == errMCP || e.kind == errLSP) && e.name != "" {
 			keys = append(keys, ItemKey{Key: "r", Desc: "restart", Run: e.kind + " restart " + e.name})
 		}
 		items = append(items, OverlayItem{

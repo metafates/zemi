@@ -346,7 +346,7 @@ func TestClaudePluginLayers(t *testing.T) {
 			reviewer = d
 		}
 	}
-	if reviewer.Name == "" || !slices.Equal(reviewer.Tools, []string{"shell", "read"}) || reviewer.Model != "" {
+	if reviewer.Name == "" || !slices.Equal(reviewer.Tools, []toolRef{{name: "shell"}, {name: "read"}}) || reviewer.Model != "" {
 		t.Fatalf("reviewer: %+v", reviewer)
 	}
 	if !strings.Contains(reviewer.System, root) {

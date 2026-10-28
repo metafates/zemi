@@ -1284,7 +1284,7 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 			// and never widens or shifts the frame
 			body = append(body, hostapi.WrapSegs([]hostapi.Segment{{Text: st.inputErr, HL: hostapi.ChromeDanger}}, min(inner, max(st.size.w, 20)))...)
 		} else if st.o.Note != "" {
-			body = append(body, []hostapi.Segment{{Text: st.o.Note, HL: "Dim"}})
+			body = append(body, []hostapi.Segment{{Text: st.o.Note, HL: hostapi.GroupDim}})
 		} else {
 			body = append(body, nil)
 		}

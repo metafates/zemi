@@ -25,6 +25,15 @@ var (
 	scoreLabels  = strings.Split("0123456789", "")
 )
 
+// KeyTrue and KeyFalse are the criteria keys a bool question is judged by,
+// in the order its labels answer.
+const (
+	KeyTrue  = "true"
+	KeyFalse = "false"
+)
+
+var boolKeys = []string{KeyTrue, KeyFalse}
+
 // readoutDepth is how many token probabilities the first call asks for, and
 // the depths a label missing from that readout escalates through: only the
 // response grows, the prompt stays cached.
@@ -69,7 +78,7 @@ func (q Question) labelTokens() (labels, keys []string, err error) {
 	}
 	switch q.Type {
 	case TypeBool:
-		labels, keys = boolLabels, []string{"true", "false"}
+		labels, keys = boolLabels, boolKeys
 	case TypeChoice:
 		keys = q.labels()
 		if len(keys) > len(choiceLabels) {
@@ -123,7 +132,7 @@ func logprobsAnswer(ctx context.Context, chat Chat, req Request, state, name str
 func (q Question) answerFromProbabilities(keys []string, probs []float64) (Answer, error) {
 	switch q.Type {
 	case TypeBool:
-		p := probs[slices.Index(keys, "true")]
+		p := probs[slices.Index(keys, KeyTrue)]
 		return Answer{Type: TypeBool, Value: p > 0.5, Probability: &p}, nil
 	case TypeChoice:
 		byLabel := make(map[string]float64, len(keys))
@@ -202,7 +211,7 @@ func renderQuestion(name string, q Question, labels []string) string {
 	switch q.Type {
 	case TypeBool:
 		var lines []string
-		for _, key := range []string{"true", "false"} {
+		for _, key := range boolKeys {
 			if m := q.Criteria[key]; m != "" {
 				lines = append(lines, strings.ToUpper(key)+" means: "+m)
 			}

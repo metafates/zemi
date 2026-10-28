@@ -859,7 +859,7 @@ func TestPluginUses(t *testing.T) {
 				waitFor(t, func() error {
 					// a plugin send is attached text only: its echo row is the
 					// log's record of what the model read
-					rows, err := h.DB.LogKindBack(kindEcho, 50)
+					rows, err := h.DB.LogKindBack(store.KindEcho, 50)
 					if err != nil || !slices.ContainsFunc(rows, func(r store.LogEntry) bool { return rowTool(r) == "attach" }) {
 						return errors.New("no message yet")
 					}

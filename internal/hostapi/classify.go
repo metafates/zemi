@@ -214,7 +214,7 @@ func classifyQuestion(L *glua.LState, name string, tb *glua.LTable) classify.Que
 		q.Criteria = map[string]string{}
 		criteria.ForEach(func(k, v glua.LValue) {
 			key, _ := k.(glua.LString)
-			if key != "true" && key != "false" {
+			if key != classify.KeyTrue && key != classify.KeyFalse {
 				L.RaiseError(`zemi.classify.ask: question %s is answered "true" or "false", not %q`, name, string(key))
 			}
 			q.Criteria[string(key)] = criteriaText(L, name, v)

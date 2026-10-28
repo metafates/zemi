@@ -232,7 +232,7 @@ func TestSplashProjects(t *testing.T) {
 			h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{ProjectDir: dir, StateHome: state})
 			t.Cleanup(h.Close)
 			if c.session {
-				h.DB.AppendLog(kindUser, "a prompt", "", "", "")
+				h.DB.AppendLog(store.KindUser, "a prompt", "", "", "")
 			}
 			var got []string
 			for _, p := range h.splashProjects() {

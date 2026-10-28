@@ -28,19 +28,6 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// Tool and echo leaves are template-built in the append transaction.
-const (
-	kindUser    = "user"
-	kindAgent   = "agent"
-	kindTool    = "tool"
-	kindEcho    = "echo"
-	kindWork    = "work"
-	kindNote    = "note"
-	kindThought = "thought"
-	kindError   = "error"
-	kindShell   = "shell"
-)
-
 const (
 	// chatSplitChars: a longer text becomes several sibling rows of about
 	// this many characters rather than being cut.
@@ -88,20 +75,23 @@ func (c *chatLog) Close() { c.tree.Close() }
 // User logs the user's words; parts carries the message's images, which
 // zoom replays. It returns the first seq it wrote.
 func (c *chatLog) User(text, parts string) (int64, error) {
-	first, _, err := c.append(kindUser, text, "", parts)
+	first, _, err := c.append(store.KindUser, text, "", parts)
 	return first, err
 }
 
 // Agent logs one of zemi's replies, remembering the last row it wrote: the
 // row the turn's stat lands on when the turn ends.
 func (c *chatLog) Agent(text string) error {
-	_, last, err := c.append(kindAgent, text, "", "")
+	_, last, err := c.append(store.KindAgent, text, "", "")
 	c.reply = last
 	return err
 }
 
 // Note logs a memory from before the chat: a chapter mark.
-func (c *chatLog) Note(text string) error { _, _, err := c.append(kindNote, text, "", ""); return err }
+func (c *chatLog) Note(text string) error {
+	_, _, err := c.append(store.KindNote, text, "", "")
+	return err
+}
 
 // Thought logs one settled reasoning stretch: its text and the wall time its
 // flush measured, which the rebuilt row and the run digest read back.
@@ -112,7 +102,7 @@ func (c *chatLog) Thought(text string, ms int64) error {
 	if err != nil {
 		return err
 	}
-	if _, err := c.h.DB.AppendLog(kindThought, text, string(meta), "", thoughtLeaf(text)); err != nil {
+	if _, err := c.h.DB.AppendLog(store.KindThought, text, string(meta), "", thoughtLeaf(text)); err != nil {
 		return err
 	}
 	c.tree.Wake()
@@ -128,7 +118,7 @@ func (c *chatLog) Error(text string, cancelled bool) error {
 	if err != nil {
 		return err
 	}
-	_, _, err = c.append(kindError, text, string(meta), "")
+	_, _, err = c.append(store.KindError, text, string(meta), "")
 	return err
 }
 
@@ -141,7 +131,7 @@ func (c *chatLog) Shell(cmd, out string, ok bool) error {
 	if err != nil {
 		return err
 	}
-	_, _, err = c.append(kindShell, cmd, string(meta), "")
+	_, _, err = c.append(store.KindShell, cmd, string(meta), "")
 	return err
 }
 
@@ -155,7 +145,7 @@ func (c *chatLog) Work(run, name, text string) error {
 	if err != nil {
 		return err
 	}
-	_, _, err = c.append(kindWork, text, string(meta), "")
+	_, _, err = c.append(store.KindWork, text, string(meta), "")
 	return err
 }
 
@@ -169,7 +159,7 @@ func (c *chatLog) Tool(name, input string) error {
 	}
 	for _, row := range splitText(input, chatSplitChars) {
 		leaf := toolLeaf(name, row)
-		if _, err := c.h.DB.AppendLog(kindTool, row, string(meta), "", leaf); err != nil {
+		if _, err := c.h.DB.AppendLog(store.KindTool, row, string(meta), "", leaf); err != nil {
 			return err
 		}
 	}
@@ -188,7 +178,7 @@ func (c *chatLog) Echo(name string, ok bool, output string) error {
 		return err
 	}
 	clipped := clipMiddle(output, echoClipChars)
-	if _, err := c.h.DB.AppendLog(kindEcho, clipped, string(meta), "", echoLeaf(name, ok, clipped)); err != nil {
+	if _, err := c.h.DB.AppendLog(store.KindEcho, clipped, string(meta), "", echoLeaf(name, ok, clipped)); err != nil {
 		return err
 	}
 	c.tree.Wake()
@@ -225,7 +215,7 @@ func (c *chatLog) setReplyStat(stat TurnStat, thought time.Duration) error {
 
 // append logs the rows a text splits into, each with its view line, and
 // returns the first and the last seq it wrote.
-func (c *chatLog) append(kind, text, meta, parts string) (int64, int64, error) {
+func (c *chatLog) append(kind store.LogKind, text, meta, parts string) (int64, int64, error) {
 	first, last := int64(-1), int64(-1)
 	for _, row := range splitText(text, chatSplitChars) {
 		seq, err := c.h.DB.AppendLog(kind, row, meta, parts, "")
@@ -483,11 +473,11 @@ func (h *Host) zoom(in zoomArgs) (fantasy.ToolResponse, error) {
 	if row.PartsJSON != "" {
 		return zoomImages(row), nil
 	}
-	head := row.Kind
+	head := string(row.Kind)
 	if name := rowTool(row); name != "" {
 		head += " " + name
 	}
-	if row.Kind == kindWork {
+	if row.Kind == store.KindWork {
 		if run := workRun(row); run != "" {
 			return h.zoomRun(run, in.Page)
 		}
@@ -519,7 +509,7 @@ func pageText(head, text string, id int64, page int) string {
 
 // workRun is the run a work row reports for, from its meta; "" for none.
 func workRun(row store.LogEntry) string {
-	if row.Kind != kindWork {
+	if row.Kind != store.KindWork {
 		return ""
 	}
 	var meta struct {
@@ -562,7 +552,7 @@ const workGone = "the run's transcript is gone from this store"
 // rowTool is the tool a tool or echo row names, from its meta; "" for the
 // other kinds.
 func rowTool(row store.LogEntry) string {
-	if row.Kind != kindTool && row.Kind != kindEcho {
+	if row.Kind != store.KindTool && row.Kind != store.KindEcho {
 		return ""
 	}
 	var meta struct {
@@ -596,7 +586,7 @@ func zoomImages(row store.LogEntry) fantasy.ToolResponse {
 			return fantasy.NewImageResponse(f.Data, f.MediaType)
 		}
 	}
-	return fantasy.NewTextResponse(row.Kind + ": " + row.Text)
+	return fantasy.NewTextResponse(string(row.Kind) + ": " + row.Text)
 }
 
 // dateArgs is the date tool's input and its schema source.

@@ -78,7 +78,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 	h := newTestHostUI(t)
 	pad := h.ScratchDir()
 	h.SetUIHooks(&fakeUI{})
-	defs := append(slices.Clone(builtinAgents), AgentDef{Name: "reviewer", ReadOnly: true}, AgentDef{Name: "no-read", Tools: []string{"shell"}})
+	defs := append(slices.Clone(builtinAgents), AgentDef{Name: "reviewer", ReadOnly: true}, AgentDef{Name: "no-read", Tools: []toolRef{{name: "shell"}}})
 	for _, c := range []struct {
 		name string
 		def  string // a subagent's name in defs, "" for the main conversation
@@ -101,7 +101,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		text := h.buildSystem()
 		if i := slices.IndexFunc(defs, func(d AgentDef) bool { return d.Name == c.name }); i >= 0 {
 			def := defs[i]
-			toolset, _ = filterTools(tools.All(h.PipelineFor()), def.Tools, subagentExcluded)
+			toolset, _ = filterRefs(tools.All(h.PipelineFor()), def.Tools, subagentExcluded)
 			text = h.systemText(h.subagentSystem(def, toolset, def.ReadOnly), toolset, h.ScratchDir(), def.ReadOnly)
 		}
 		for _, tool := range toolset {

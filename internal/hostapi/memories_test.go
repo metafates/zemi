@@ -22,7 +22,7 @@ import (
 func seedView(t *testing.T, h *Host) {
 	t.Helper()
 	for range 6 {
-		if _, err := h.DB.AppendLog(kindUser, strings.Repeat("row ", 200), "", "", ""); err != nil {
+		if _, err := h.DB.AppendLog(store.KindUser, strings.Repeat("row ", 200), "", "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -69,7 +69,7 @@ func seedMemoriesDeep(t *testing.T) (*Host, *fakeUI) {
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	for range 16 {
-		if _, err := h.DB.AppendLog(kindUser, strings.Repeat("row ", 200), "", "", ""); err != nil {
+		if _, err := h.DB.AppendLog(store.KindUser, strings.Repeat("row ", 200), "", "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -341,7 +341,7 @@ func TestSeqZeroIsARealMessage(t *testing.T) {
 	h.SetUIHooks(ui)
 	// the first turn: the live row lands before its log write
 	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: "first words"})
-	if _, err := h.DB.AppendLog(kindUser, "first words", "", "", ""); err != nil {
+	if _, err := h.DB.AppendLog(store.KindUser, "first words", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	h.stampLogSeqs()
@@ -439,10 +439,10 @@ func TestStampLogSeqs(t *testing.T) {
 func TestStampLogSeqsMismatch(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	if _, err := h.DB.AppendLog(kindUser, "first", "", "", ""); err != nil {
+	if _, err := h.DB.AppendLog(store.KindUser, "first", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.DB.AppendLog(kindUser, "later", "", "", ""); err != nil {
+	if _, err := h.DB.AppendLog(store.KindUser, "later", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	// the log holds two rows; the window's first row's write failed. Both

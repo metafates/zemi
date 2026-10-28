@@ -598,7 +598,7 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 		}
 		h.lsp.mu.Unlock()
 		err := fmt.Errorf("%s exited", def.Name)
-		h.RecordError("lsp", def.Name, err.Error())
+		h.RecordError(errLSP, def.Name, err.Error())
 		return nil, err
 	default:
 	}

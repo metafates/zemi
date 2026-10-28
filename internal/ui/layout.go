@@ -385,7 +385,7 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 				// this column, and the blank before the bar is what it leaves behind
 				for j := range joined {
 					row := joined[j]
-					cell := hostapi.Segment{Text: "│", HL: "Rule", NoCopy: true, Line: true}
+					cell := hostapi.Segment{Text: "│", HL: hostapi.GroupRule, NoCopy: true, Line: true}
 					if n := len(row); lastBar(row) && n > 1 {
 						cell = row[n-1]
 						row = append(row[:n-1:n-1], hostapi.Segment{Text: " ", HL: row[n-2].HL, Fill: row[n-2].Fill})
@@ -419,7 +419,7 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 	case n.Kind == hostapi.LayoutBox:
 		for i, k := range l.kids {
 			if i > 0 && n.Sep {
-				rows = append(rows, []hostapi.Segment{{Text: strings.Repeat("─", w), HL: "Rule", NoCopy: true, Line: true}})
+				rows = append(rows, []hostapi.Segment{{Text: strings.Repeat("─", w), HL: hostapi.GroupRule, NoCopy: true, Line: true}})
 			}
 			rows = append(rows, a.paint(k)...)
 		}

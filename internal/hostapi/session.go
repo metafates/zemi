@@ -33,7 +33,7 @@ func (h *Host) InputHistory(limit int) []string {
 	if h.DB == nil || limit <= 0 {
 		return nil
 	}
-	rows, err := h.DB.LogKindBack(kindUser, limit)
+	rows, err := h.DB.LogKindBack(store.KindUser, limit)
 	if err != nil {
 		return nil
 	}
@@ -147,7 +147,7 @@ func (h *Host) stampLogSeqsLocked() {
 			consumed++
 			continue
 		}
-		if row.Kind != kindUser && row.Kind != kindAgent && row.Kind != kindTool {
+		if row.Kind != store.KindUser && row.Kind != store.KindAgent && row.Kind != store.KindTool {
 			// a result, report, note, thought, error or shell row pairs with
 			// nothing: the cursor passes it
 			consumed++
@@ -160,11 +160,11 @@ func (h *Host) stampLogSeqsLocked() {
 			break
 		}
 		m := tr[w]
-		if (row.Kind == kindTool) != (m.Kind == RowTool) ||
-			row.Kind != kindTool && (row.Kind == kindUser) != (m.Role == fantasy.MessageRoleUser) {
+		if (row.Kind == store.KindTool) != (m.Kind == RowTool) ||
+			row.Kind != store.KindTool && (row.Kind == store.KindUser) != (m.Role == fantasy.MessageRoleUser) {
 			break // the log is ahead of the flush that draws its row: wait for it
 		}
-		if row.Kind != kindTool && row.Text != m.Text {
+		if row.Kind != store.KindTool && row.Text != m.Text {
 			// the log write for this row failed: the row draws unstamped and
 			// the log row pairs with the next one
 			stamps = append(stamps, stamp{at: w, gone: true})
@@ -342,19 +342,19 @@ func (h *Host) logWipedLocked() bool {
 func logRowMatches(row store.LogEntry, m ChatMessage) bool {
 	text := strings.TrimSpace(row.Text)
 	switch row.Kind {
-	case kindUser:
+	case store.KindUser:
 		return m.Role == fantasy.MessageRoleUser && m.Kind == RowMessage && text == strings.TrimSpace(m.Text)
-	case kindAgent:
+	case store.KindAgent:
 		return m.Role == fantasy.MessageRoleAssistant && m.Kind == RowMessage && text == strings.TrimSpace(m.Text)
-	case kindTool:
+	case store.KindTool:
 		return m.Kind == RowTool && toolSummary(rowTool(row), row.Text) == m.Text
-	case kindThought:
+	case store.KindThought:
 		return m.Kind == RowReasoning && row.Text == m.Text
-	case kindError:
+	case store.KindError:
 		return m.Kind == RowError && row.Text == m.Text
-	case kindShell:
+	case store.KindShell:
 		return m.Kind == RowShell && row.Text == m.Text
-	case kindWork:
+	case store.KindWork:
 		return m.Kind == RowNotice // its text needs the row's meta; the kind is identity enough
 	default: // an echo or note: no transcript row carries their seq
 		return false
@@ -398,21 +398,21 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 	tr := make([]ChatMessage, 0, len(rows))
 	for i, row := range rows {
 		switch row.Kind {
-		case kindUser:
+		case store.KindUser:
 			if s := strings.TrimSpace(row.Text); s != "" {
 				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: s, Seq: row.Seq, SentAt: stampMS(row.CreatedAt)})
 			}
-		case kindAgent:
+		case store.KindAgent:
 			if s := strings.TrimSpace(row.Text); s != "" {
 				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: s, Seq: row.Seq, Stat: replyMeta(row.MetaJSON)})
 			}
-		case kindThought:
+		case store.KindThought:
 			var meta struct {
 				MS int64 `json:"ms"`
 			}
 			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
 			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: row.Text, Stat: &TurnStat{ThoughtMS: meta.MS}, Seq: row.Seq})
-		case kindError:
+		case store.KindError:
 			var meta struct {
 				Cancelled bool `json:"cancelled"`
 			}
@@ -422,7 +422,7 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 				m.Status = CallCancelled
 			}
 			tr = append(tr, m)
-		case kindShell:
+		case store.KindShell:
 			var meta struct {
 				OK  bool   `json:"ok"`
 				Out string `json:"out"`
@@ -433,11 +433,11 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 				status = CallErr
 			}
 			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Kind: RowShell, Text: row.Text, Detail: meta.Out, Status: status, Seq: row.Seq})
-		case kindTool:
+		case store.KindTool:
 			name := rowTool(row)
 			var out string
 			var status CallStatus
-			if j := i + 1; j < len(rows) && rows[j].Kind == kindEcho && rowTool(rows[j]) == name {
+			if j := i + 1; j < len(rows) && rows[j].Kind == store.KindEcho && rowTool(rows[j]) == name {
 				out = shortOutput(rows[j].Text)
 				status = CallOK
 				var meta struct {
@@ -446,7 +446,7 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 				if json.Unmarshal([]byte(rows[j].MetaJSON), &meta) == nil && !meta.Ok {
 					status = CallErr
 				}
-			} else if j < len(rows) && rows[j].Kind == kindUser {
+			} else if j < len(rows) && rows[j].Kind == store.KindUser {
 				// a turn killed between the call and its echo (a window
 				// quitting mid-turn): the call never answered
 				status = CallErr
@@ -456,14 +456,14 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 				Text: toolSummary(name, row.Text), Label: toolLabel(row.Text), Status: cmp.Or(status, CallOK),
 				Output: out, Seq: row.Seq,
 			})
-		case kindWork:
+		case store.KindWork:
 			var meta struct {
 				Run  string `json:"run"`
 				Name string `json:"name"`
 			}
 			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
 			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "[" + meta.Name + "] " + firstLine(row.Text), Run: meta.Run, Seq: row.Seq})
-		case kindEcho, kindNote:
+		case store.KindEcho, store.KindNote:
 		}
 	}
 	return tr

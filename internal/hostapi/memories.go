@@ -279,7 +279,7 @@ func (h *Host) openMemoriesRange(l, i int64) error {
 		if b.Len() > 0 {
 			b.WriteString("\n\n")
 		}
-		head := row.Kind
+		head := string(row.Kind)
 		if name := rowTool(row); name != "" {
 			head += " " + name
 		}

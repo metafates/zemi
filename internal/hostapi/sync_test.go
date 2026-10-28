@@ -425,12 +425,12 @@ func TestSyncChatSplicesFreshMeta(t *testing.T) {
 // still be beyond the read stays quiet.
 func TestLogRowsToolWithoutEcho(t *testing.T) {
 	tool := func(seq int64) store.LogEntry {
-		return store.LogEntry{Seq: seq, Kind: kindTool, Text: `{"command":"ls"}`, MetaJSON: `{"tool":"shell"}`}
+		return store.LogEntry{Seq: seq, Kind: store.KindTool, Text: `{"command":"ls"}`, MetaJSON: `{"tool":"shell"}`}
 	}
 	echo := func(seq int64, ok bool) store.LogEntry {
-		return store.LogEntry{Seq: seq, Kind: kindEcho, Text: "out", MetaJSON: `{"tool":"shell","ok":` + strconv.FormatBool(ok) + `}`}
+		return store.LogEntry{Seq: seq, Kind: store.KindEcho, Text: "out", MetaJSON: `{"tool":"shell","ok":` + strconv.FormatBool(ok) + `}`}
 	}
-	user := func(seq int64) store.LogEntry { return store.LogEntry{Seq: seq, Kind: kindUser, Text: "next"} }
+	user := func(seq int64) store.LogEntry { return store.LogEntry{Seq: seq, Kind: store.KindUser, Text: "next"} }
 	for _, c := range []struct {
 		name string
 		rows []store.LogEntry
@@ -463,7 +463,7 @@ func TestSyncChatLoadsAForeignGoal(t *testing.T) {
 	b, _ := newWindow(t, state, proj)
 	peerHeartbeat(t, a)
 	peerHeartbeat(t, b)
-	if _, err := a.DB.AppendLog(kindUser, "the goal's message", "", "", ""); err != nil {
+	if _, err := a.DB.AppendLog(store.KindUser, "the goal's message", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := json.Marshal(Goal{Condition: "check is clean", SetAt: 0, Writer: a.origin})

@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+
+	"github.com/metafates/zemi/internal/store"
 )
 
 // sendTurns runs the turns a test names and returns every non-side prompt
@@ -162,8 +164,8 @@ func TestSteeringLogsAtInjection(t *testing.T) {
 	var kinds []string
 	steeredAt := -1
 	for i, r := range rows {
-		kinds = append(kinds, r.Kind)
-		if r.Kind == kindUser && r.Text == "steered in" {
+		kinds = append(kinds, string(r.Kind))
+		if r.Kind == store.KindUser && r.Text == "steered in" {
 			steeredAt = i
 		}
 	}
@@ -172,10 +174,10 @@ func TestSteeringLogsAtInjection(t *testing.T) {
 	}
 	// it landed after the echo of the call it interrupted, before the reply
 	// that read it
-	if rows[steeredAt-1].Kind != kindEcho {
+	if rows[steeredAt-1].Kind != store.KindEcho {
 		t.Fatalf("the steered row follows %q, want the interrupted call's echo", rows[steeredAt-1].Kind)
 	}
-	if !slices.Contains(kinds[steeredAt:], kindAgent) {
+	if !slices.Contains(kinds[steeredAt:], string(store.KindAgent)) {
 		t.Fatalf("no reply after the steered row: %v", kinds)
 	}
 }
@@ -191,7 +193,7 @@ func TestNoteCommandAppends(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows, err := h.DB.LogTail(1)
-	if err != nil || len(rows) != 1 || rows[0].Kind != kindNote || rows[0].Text != "chapter one" {
+	if err != nil || len(rows) != 1 || rows[0].Kind != store.KindNote || rows[0].Text != "chapter one" {
 		t.Fatalf("note rows = %+v, %v", rows, err)
 	}
 	waitFor(t, func() error { // a short note is its own node verbatim
@@ -431,7 +433,7 @@ func TestUserImagesZoomBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows, err := h.DB.LogTail(1)
-	if err != nil || len(rows) != 1 || rows[0].Kind != kindUser || rows[0].Text != "what is this" {
+	if err != nil || len(rows) != 1 || rows[0].Kind != store.KindUser || rows[0].Text != "what is this" {
 		t.Fatalf("user rows = %+v, %v", rows, err)
 	}
 	if rows[0].PartsJSON == "" {
@@ -452,7 +454,7 @@ func TestLogHoldsTheTurn(t *testing.T) {
 	h.SetUIHooks(&fakeUI{})
 	sendTurns(t, h, m, "hello")
 	logRows, err := h.DB.LogTail(2)
-	if err != nil || len(logRows) != 2 || logRows[0].Kind != kindUser || logRows[0].Text != "hello" || logRows[1].Kind != kindAgent || logRows[1].Text != "kept" {
+	if err != nil || len(logRows) != 2 || logRows[0].Kind != store.KindUser || logRows[0].Text != "hello" || logRows[1].Kind != store.KindAgent || logRows[1].Text != "kept" {
 		t.Fatalf("log rows = %+v, %v", logRows, err)
 	}
 }
@@ -479,9 +481,9 @@ func TestLogHoldsTheThought(t *testing.T) {
 	}
 	waitIdle(t, h)
 	rows, err := h.DB.LogTail(3)
-	if err != nil || len(rows) != 3 || rows[0].Kind != kindUser || rows[0].Text != "go" ||
-		rows[1].Kind != kindThought || rows[1].Text != "pondering the ask." ||
-		rows[2].Kind != kindAgent || rows[2].Text != "kept" {
+	if err != nil || len(rows) != 3 || rows[0].Kind != store.KindUser || rows[0].Text != "go" ||
+		rows[1].Kind != store.KindThought || rows[1].Text != "pondering the ask." ||
+		rows[2].Kind != store.KindAgent || rows[2].Text != "kept" {
 		t.Fatalf("log rows = %+v, %v", rows, err)
 	}
 	var meta struct {
@@ -630,7 +632,7 @@ func TestResumedWindowKeepsTheFailuresAndCommands(t *testing.T) {
 	// the user's own command, which logs beside the echo the model reads
 	h.RunShell("echo hi")
 	waitFor(t, func() error {
-		rows, err := h.DB.LogKindBack(kindShell, 1)
+		rows, err := h.DB.LogKindBack(store.KindShell, 1)
 		if err != nil || len(rows) == 0 {
 			return fmt.Errorf("the shell row has not landed: %w", err)
 		}

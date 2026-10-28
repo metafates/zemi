@@ -346,7 +346,7 @@ func (h *Host) startMCP(s *mcpServer) {
 			return
 		}
 		h.Log.Warn("server failed", "origin", "mcp", "server", s.name, "error", err)
-		h.RecordError("mcp", s.name, err.Error())
+		h.RecordError(errMCP, s.name, err.Error())
 	}
 	client, err := mcp.Start(ctx, cfg)
 	if err != nil {
@@ -432,7 +432,7 @@ func (h *Host) checkToolNames(s *mcpServer, list []mcp.Tool) {
 		}
 	}
 	if len(unknown) > 0 {
-		h.RecordErrorOnce("mcp", s.name, "enabled_tools or disabled_tools names no tool the server lists: "+strings.Join(unknown, ", "))
+		h.RecordErrorOnce(errMCP, s.name, "enabled_tools or disabled_tools names no tool the server lists: "+strings.Join(unknown, ", "))
 	}
 }
 
@@ -1104,7 +1104,7 @@ func (h *Host) mcpItems() []OverlayItem {
 		items = append(items, OverlayItem{
 			ID:   "mcp group " + g,
 			Text: g,
-			Row:  []Segment{{Text: g, HL: "Title"}},
+			Row:  []Segment{{Text: g, HL: GroupTitle}},
 			Desc: fmt.Sprintf("%d of %d on", on, len(members)),
 			On:   new(on == len(members)),
 			Run:  "mcp toggle " + g,
@@ -1322,7 +1322,7 @@ func (h *Host) authorizeMCP(ctx context.Context, s *mcpServer) error {
 	s.mu.Unlock()
 	h.mcpChanged()
 	if err != nil && !errors.Is(err, context.Canceled) {
-		h.RecordError("mcp", s.name, err.Error())
+		h.RecordError(errMCP, s.name, err.Error())
 		h.Notify(slog.LevelError, "Could not sign in to "+s.name, err.Error())
 	}
 	return err

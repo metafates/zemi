@@ -517,7 +517,7 @@ func TestAgentDefs(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(filepath.Join(cfg, "agents"), "reviewer.md", "---\ndescription: reviews diffs\ntools: read, grep\nmodel: inherit\nread_only: true\n---\nBe harsh.\n")
-	write(filepath.Join(cfg, "agents"), "explore.md", "---\ndescription: my explorer\ntools: [read]\n---\nmine\n")
+	write(filepath.Join(cfg, "agents"), "explore.md", "---\ndescription: my explorer\ntools: [read, -shell]\n---\nmine\n")
 	write(filepath.Join(cfg, "agents"), "broken.md", "---\ntools: read\n---\nno description\n")
 	write(filepath.Join(proj, ".agents", "agents"), "general.md", "---\ndescription: project override\n---\nx\n")
 	write(filepath.Join(proj, ".agents", "agents"), "tester.md", "---\ndescription: runs tests\n---\nx\n")
@@ -554,7 +554,7 @@ func TestAgentDefs(t *testing.T) {
 		readOnly                          bool
 	}{
 		{"reviewer", "user", "reviews diffs", "read,grep", "Be harsh.", true},
-		{"explore", "user", "my explorer", "read", "mine", false},
+		{"explore", "user", "my explorer", "read,-shell", "mine", false},
 		{"general", "builtin", builtinAgents[general].Description, "", builtinAgents[general].System, false},
 		{"tester", "project", "runs tests", "", "x", false},
 	} {
@@ -562,7 +562,15 @@ func TestAgentDefs(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s missing", c.name)
 		}
-		if string(d.Source) != c.source || d.Description != c.desc || strings.Join(d.Tools, ",") != c.tools || d.System != c.system || d.Model != "" || d.ReadOnly != c.readOnly {
+		named := make([]string, len(d.Tools))
+		for i, r := range d.Tools {
+			if r.deny {
+				named[i] = "-" + r.name
+			} else {
+				named[i] = r.name
+			}
+		}
+		if string(d.Source) != c.source || d.Description != c.desc || strings.Join(named, ",") != c.tools || d.System != c.system || d.Model != "" || d.ReadOnly != c.readOnly {
 			t.Fatalf("%s = %+v", c.name, d)
 		}
 	}
@@ -737,17 +745,17 @@ func TestFilterToolsNamesTheUnknown(t *testing.T) {
 	all := tools.All(h.PipelineFor())
 	for _, c := range []struct {
 		name    string
-		want    []string
+		want    []toolRef
 		kept    []string // the whole set, when the case pins it
 		gone    []string
 		unknown []string
 	}{
-		{name: "allowlist", want: []string{"read", "Grep", "agent", "lua"}, kept: []string{"read"}, unknown: []string{"Grep"}},
-		{name: "removal keeps the rest", want: []string{"-read", "-Grep"}, gone: []string{"read"}, unknown: []string{"Grep"}},
-		{name: "removal wins over the allowlist", want: []string{"read", "grep", "-grep"}, kept: []string{"read"}},
+		{name: "allowlist", want: []toolRef{{name: "read"}, {name: "Grep"}, {name: "agent"}, {name: "lua"}}, kept: []string{"read"}, unknown: []string{"Grep"}},
+		{name: "removal keeps the rest", want: []toolRef{{name: "read", deny: true}, {name: "Grep", deny: true}}, gone: []string{"read"}, unknown: []string{"Grep"}},
+		{name: "removal wins over the allowlist", want: []toolRef{{name: "read"}, {name: "grep"}, {name: "grep", deny: true}}, kept: []string{"read"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			kept, unknown := filterTools(all, c.want, subagentExcluded)
+			kept, unknown := filterRefs(all, c.want, subagentExcluded)
 			var names []string
 			for _, k := range kept {
 				names = append(names, k.Info().Name)
@@ -799,7 +807,7 @@ func TestHaltKeepsTheStep(t *testing.T) {
 	}
 	stored := ""
 	for _, m := range rows {
-		stored += m.Kind + ":" + m.Text + ";"
+		stored += string(m.Kind) + ":" + m.Text + ";"
 	}
 	for name, got := range map[string]string{"history": history, "store": stored} {
 		if !strings.Contains(got, "halted by hook: stop") || strings.Contains(got, "went on") {
@@ -935,12 +943,12 @@ func TestSubagentUpdatePrompt(t *testing.T) {
 	def := AgentDef{Name: "general"}
 	for _, c := range []struct {
 		name  string
-		tools []string
+		tools []toolRef
 	}{
 		{name: "the full set"},
-		{name: "an allowlist without it", tools: []string{"read"}},
-		{name: "an allowlist naming it", tools: []string{"read", "update"}},
-		{name: "an allowlist removing it", tools: []string{"-update"}},
+		{name: "an allowlist without it", tools: []toolRef{{name: "read"}}},
+		{name: "an allowlist naming it", tools: []toolRef{{name: "read"}, {name: "update"}}},
+		{name: "an allowlist removing it", tools: []toolRef{{name: "update", deny: true}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			kept, unknown := childTools(h, h.PipelineFor(), c.tools)

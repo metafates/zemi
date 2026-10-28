@@ -132,10 +132,10 @@ func TestCopyRunReply(t *testing.T) {
 // one speaker, tool calls as list rows or expanded in full.
 func TestExportLogMarkdown(t *testing.T) {
 	rows := []store.LogEntry{
-		{Kind: kindUser, Text: "hi"},
-		{Kind: kindTool, Text: `{"command":"go test ./..."}`, MetaJSON: `{"tool":"shell"}`},
-		{Kind: kindAgent, Text: "done"},
-		{Kind: kindNote, Text: "chapter"},
+		{Kind: store.KindUser, Text: "hi"},
+		{Kind: store.KindTool, Text: `{"command":"go test ./..."}`, MetaJSON: `{"tool":"shell"}`},
+		{Kind: store.KindAgent, Text: "done"},
+		{Kind: store.KindNote, Text: "chapter"},
 	}
 	var b strings.Builder
 	exportLog(&b, rows, 2, false)

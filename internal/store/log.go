@@ -15,13 +15,30 @@ import (
 // agent, tool, echo, work, note, thought, error or shell.
 type LogEntry struct {
 	Seq       int64
-	Kind      string
+	Kind      LogKind
 	Text      string
 	MetaJSON  string // "" when none
 	PartsJSON string // "" when none
 	CreatedAt string
 	Origin    string // the window that wrote it; '' predates the column
 }
+
+// LogKind is a log row's kind: the word stored in the log table's kind
+// column and compared against in its queries.
+type LogKind string
+
+// The row kinds.
+const (
+	KindUser    LogKind = "user"
+	KindAgent   LogKind = "agent"
+	KindTool    LogKind = "tool"
+	KindEcho    LogKind = "echo"
+	KindWork    LogKind = "work"
+	KindNote    LogKind = "note"
+	KindThought LogKind = "thought"
+	KindError   LogKind = "error"
+	KindShell   LogKind = "shell"
+)
 
 // Node is one built summary: node(L,I) covers the 2^L messages from I*2^L on
 // in one line of Size UTF-8 bytes.
@@ -59,7 +76,7 @@ func nowStamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 // the index dense. When nodeText is not "", the message's own node lands
 // built in the same transaction (template-built leaves), so everything a
 // reader needs commits at once.
-func (s *DB) AppendLog(kind, text, metaJSON, partsJSON, nodeText string) (int64, error) {
+func (s *DB) AppendLog(kind LogKind, text, metaJSON, partsJSON, nodeText string) (int64, error) {
 	var seq int64
 	err := s.inTx(func(tx *sql.Tx) error {
 		err := tx.QueryRow(`INSERT INTO log (seq, kind, text, meta_json, parts_json, created_at, origin)
@@ -105,7 +122,7 @@ func (s *DB) LogTail(n int) ([]LogEntry, error) {
 
 // LogKindBack reads the last n rows of one kind, oldest first: the composer
 // history's user rows.
-func (s *DB) LogKindBack(kind string, limit int) ([]LogEntry, error) {
+func (s *DB) LogKindBack(kind LogKind, limit int) ([]LogEntry, error) {
 	rows, err := s.db.Query(`SELECT `+logCols+` FROM (SELECT seq, kind, text, meta_json, parts_json, created_at, COALESCE(origin, '') AS origin
 		FROM log WHERE kind = ? ORDER BY seq DESC LIMIT ?) ORDER BY seq`, kind, limit)
 	return collect(rows, err, scanLog)

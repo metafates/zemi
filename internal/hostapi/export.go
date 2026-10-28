@@ -116,7 +116,7 @@ func (h *Host) lastReply() (string, error) {
 	if h.DB == nil {
 		return "", nil
 	}
-	rows, err := h.DB.LogKindBack(kindAgent, 1)
+	rows, err := h.DB.LogKindBack(store.KindAgent, 1)
 	if err != nil || len(rows) == 0 {
 		return "", err
 	}
@@ -235,7 +235,7 @@ func exportLog(b *strings.Builder, rows []store.LogEntry, level int, full bool) 
 	speaker := ""
 	for _, row := range rows {
 		who := "zemi"
-		if row.Kind == kindUser || row.Kind == kindShell {
+		if row.Kind == store.KindUser || row.Kind == store.KindShell {
 			who = "You"
 		}
 		if who != speaker || who == "You" {
@@ -245,7 +245,7 @@ func exportLog(b *strings.Builder, rows []store.LogEntry, level int, full bool) 
 		text := strings.TrimSpace(sanitize.String(row.Text))
 		name := rowTool(row)
 		switch row.Kind {
-		case kindTool:
+		case store.KindTool:
 			if full {
 				fmt.Fprintf(b, "\n**%s**\n", sanitize.String(name))
 				b.WriteString(codeFence("", text))
@@ -253,15 +253,15 @@ func exportLog(b *strings.Builder, rows []store.LogEntry, level int, full bool) 
 				head := sanitize.Line(toolSummary(name, row.Text))
 				fmt.Fprintf(b, "- `%s` %s\n", sanitize.String(name), clipLine(head, 120))
 			}
-		case kindEcho:
+		case store.KindEcho:
 			if full {
 				b.WriteString(codeFence("", text))
 			}
-		case kindWork:
+		case store.KindWork:
 			fmt.Fprintf(b, "\n_%s_\n", text)
-		case kindNote:
+		case store.KindNote:
 			fmt.Fprintf(b, "\n> _note: %s_\n", text)
-		case kindThought:
+		case store.KindThought:
 			// reasoning joins the export in full only, as the command says
 			if full {
 				fmt.Fprintf(b, "\n> _thought:_\n")
@@ -269,9 +269,9 @@ func exportLog(b *strings.Builder, rows []store.LogEntry, level int, full bool) 
 					fmt.Fprintf(b, "> %s", line)
 				}
 			}
-		case kindError:
+		case store.KindError:
 			fmt.Fprintf(b, "\n> _error: %s_\n", strings.ReplaceAll(text, "\n", " "))
-		case kindShell:
+		case store.KindShell:
 			var meta struct {
 				OK  bool   `json:"ok"`
 				Out string `json:"out"`

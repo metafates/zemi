@@ -805,7 +805,7 @@ func TestReportStoredWhenSessionMoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, func() error {
-		rows, _ := h.DB.LogKindBack(kindWork, 5)
+		rows, _ := h.DB.LogKindBack(store.KindWork, 5)
 		if len(rows) == 0 || !strings.Contains(rows[len(rows)-1].Text, "ok: look") {
 			return errors.New("report never logged")
 		}
@@ -844,7 +844,7 @@ func TestUpdateStoredInItsShape(t *testing.T) {
 	if err := h.deliverUpdate(run, "kept going"); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := h.DB.LogKindBack(kindWork, 5)
+	rows, err := h.DB.LogKindBack(store.KindWork, 5)
 	if err != nil || !slices.ContainsFunc(rows, func(r store.LogEntry) bool { return strings.Contains(r.Text, "kept going") }) {
 		t.Fatalf("update never logged: %v", err)
 	}

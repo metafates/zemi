@@ -539,7 +539,7 @@ func (b *memTree) syncNew() error {
 			b.msgs = e.Seq + 1
 			line := viewLine{id: nodeID{0, e.Seq}, size: len(placeholder)}
 			switch e.Kind {
-			case kindTool, kindEcho:
+			case store.KindTool, store.KindEcho:
 				// template-built in the append transaction: take its line
 				n, err := b.h.DB.NodeAt(0, e.Seq)
 				if errors.Is(err, store.ErrNotFound) {
@@ -661,7 +661,7 @@ func (b *memTree) dispatchLeaf() bool {
 	b.takeLeaf() // synchronous: the 8-line gate counts it from now
 	// the prompt reads the compaction view, worker-owned state: build it
 	// here, before the call goroutine exists
-	prompt := b.leafPrompt(seq, e.Kind, e.Text)
+	prompt := b.leafPrompt(seq, string(e.Kind), e.Text)
 	first, wait, ok := b.takeSlot()
 	if !ok { // quiesced: the resume's rebuild requeues the leaf
 		b.endLeaf()
@@ -1017,7 +1017,7 @@ func assistantMessage(text string) fantasy.Message {
 // dispatch already made synchronously.
 func (b *memTree) build(convo []fantasy.Message, first bool, wait chan struct{}) (string, error) {
 	defer b.endCall(first)
-	id := b.h.modelRef("compact")
+	id := b.h.modelRef(compactRole)
 	model, err := b.h.resolveTurnModel(id)
 	if err != nil {
 		return "", err

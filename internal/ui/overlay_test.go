@@ -2452,7 +2452,7 @@ func TestMemoriesDrillBack(t *testing.T) {
 	}
 	db := testStore(t, host)
 	for i := range 6 {
-		kind := map[bool]string{true: "user", false: "agent"}[i%2 == 0]
+		kind := map[bool]store.LogKind{true: store.KindUser, false: store.KindAgent}[i%2 == 0]
 		if _, err := db.AppendLog(kind, fmt.Sprintf("msg %d", i), "", "", ""); err != nil {
 			t.Fatal(err)
 		}

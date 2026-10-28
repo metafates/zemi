@@ -146,12 +146,13 @@ func TestStampingPairsResultRows(t *testing.T) {
 		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: tools.ToolName("read"), Text: "a.go", Label: "read a", Status: CallOK})
 		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: "all done " + text})
 		for _, row := range []struct {
-			kind, text, meta string
+			kind       store.LogKind
+			text, meta string
 		}{
-			{kindUser, text, ""},
-			{kindTool, `{"path":"a.go"}`, `{"tool":"read"}`},
-			{kindEcho, "the file body", `{"tool":"read","ok":true}`},
-			{kindAgent, "all done " + text, ""},
+			{store.KindUser, text, ""},
+			{store.KindTool, `{"path":"a.go"}`, `{"tool":"read"}`},
+			{store.KindEcho, "the file body", `{"tool":"read","ok":true}`},
+			{store.KindAgent, "all done " + text, ""},
 		} {
 			if _, err := h.DB.AppendLog(row.kind, row.text, row.meta, "", ""); err != nil {
 				t.Fatal(err)
@@ -417,7 +418,7 @@ func TestMessagesPageUp(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	for i := range 1100 {
-		if _, err := h.DB.AppendLog(kindUser, fmt.Sprintf("message %d", i), "", "", ""); err != nil {
+		if _, err := h.DB.AppendLog(store.KindUser, fmt.Sprintf("message %d", i), "", "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -503,7 +504,7 @@ func TestMessagesPagesFromBoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range 1100 {
-		if _, err := seed.AppendLog(kindUser, fmt.Sprintf("message %d", i), "", "", ""); err != nil {
+		if _, err := seed.AppendLog(store.KindUser, fmt.Sprintf("message %d", i), "", "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}

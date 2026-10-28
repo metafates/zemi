@@ -73,9 +73,9 @@ func (h *Host) PluginsStep() lua.BootStep {
 			grant := pluginGrant{roots: make([]string, len(run)), names: make([]string, len(run)), uses: map[string][]string{}, claude: set.Set[string]{}}
 			hooks := map[string][]hookEntry{}
 			for i, p := range run {
-				kind := "installed"
+				kind := plugin.DirInstalled
 				if p.Local {
-					kind = "local"
+					kind = plugin.DirLocal
 				}
 				// resolved, as the chunk paths are: an installed plugin is a
 				// symlink into its marketplace material
@@ -416,7 +416,7 @@ func installID(d config.Dirs, name, dir string) string {
 // localPlugins holds the plugins the user develops in place: the prompt
 // names it.
 func (h *Host) localPlugins() string {
-	return filepath.Join(h.Dirs.PluginsRoot(), "local")
+	return filepath.Join(h.Dirs.PluginsRoot(), plugin.DirLocal)
 }
 
 // PluginOf names the plugin a file belongs to, its directory under
@@ -434,7 +434,7 @@ func (h *Host) PluginOf(path string) string {
 	if rel, ok := strings.CutPrefix(path, h.pluginsRoot()+sep); ok {
 		kind, rest, _ := strings.Cut(rel, sep)
 		name, _, _ := strings.Cut(rest, sep)
-		if kind == "local" || kind == "installed" {
+		if kind == plugin.DirLocal || kind == plugin.DirInstalled {
 			return name
 		}
 	}
@@ -476,7 +476,7 @@ func (h *Host) OriginBadge(o lua.Origin, path string) string {
 // localPluginDir is the local/<name> directory holding path, or "".
 func (h *Host) localPluginDir(path string) string {
 	name := h.PluginOf(path)
-	if dir := filepath.Join(h.pluginsRoot(), "local", name); name != "" && strings.HasPrefix(path, dir) {
+	if dir := filepath.Join(h.pluginsRoot(), plugin.DirLocal, name); name != "" && strings.HasPrefix(path, dir) {
 		return dir
 	}
 	return ""

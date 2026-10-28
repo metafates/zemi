@@ -1645,7 +1645,7 @@ func (a *App) pills() []statusItem {
 	}
 	var out []statusItem
 	pill := func(noun, cmd string) {
-		out = append(out, statusItem{segs: []hostapi.Segment{{Text: noun, HL: "Danger", Click: cmd}, {Text: " /" + cmd, HL: "Dim", Click: cmd}}})
+		out = append(out, statusItem{segs: []hostapi.Segment{{Text: noun, HL: hostapi.GroupDanger, Click: cmd}, {Text: " /" + cmd, HL: hostapi.GroupDim, Click: cmd}}})
 	}
 	if a.host.RT.IsHot() {
 		pill("stuck", "reload")
@@ -1723,7 +1723,7 @@ func joinItems(items []statusItem, reverse bool) []hostapi.Segment {
 	return out
 }
 
-var statusDot = hostapi.Segment{Text: " · ", HL: "Dim", NoCopy: true}
+var statusDot = hostapi.Segment{Text: " · ", HL: hostapi.GroupDim, NoCopy: true}
 
 // statusItems are the widgets of region that draw, by priority.
 func (a *App) statusItems(region string) []statusItem {

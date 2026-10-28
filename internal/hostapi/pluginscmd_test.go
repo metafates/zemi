@@ -17,6 +17,7 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // pluginsUI hands the lists /plugin opens and the toasts it shows to the
@@ -313,11 +314,11 @@ func TestPluginsSend(t *testing.T) {
 			waitIdle(t, h)
 			// the log holds the user's words and, as an echo beside them,
 			// the attached text the model read
-			typed, err := h.DB.LogKindBack(kindUser, 1)
+			typed, err := h.DB.LogKindBack(store.KindUser, 1)
 			if err != nil || len(typed) == 0 {
 				t.Fatalf("messages %v, %v", typed, err)
 			}
-			attached, _ := h.DB.LogKindBack(kindEcho, 20)
+			attached, _ := h.DB.LogKindBack(store.KindEcho, 20)
 			var logged []string
 			for _, row := range attached {
 				if rowTool(row) == "attach" {

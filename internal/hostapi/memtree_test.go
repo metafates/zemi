@@ -550,7 +550,7 @@ func TestChatLogKinds(t *testing.T) {
 	}
 	var got []string
 	for _, r := range rows {
-		got = append(got, r.Kind)
+		got = append(got, string(r.Kind))
 	}
 	if !slices.Equal(got, []string{"user", "agent", "work", "note", "tool", "echo"}) {
 		t.Fatalf("kinds %v", got)

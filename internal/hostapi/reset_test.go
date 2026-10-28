@@ -35,7 +35,7 @@ func TestResetChat(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	if _, err := h.DB.AppendLog(kindUser, "earlier", "", "", ""); err != nil {
+	if _, err := h.DB.AppendLog(store.KindUser, "earlier", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := h.DB.InsertNode(0, 0, "earlier"); err != nil {
@@ -91,7 +91,7 @@ func TestResetChat(t *testing.T) {
 		t.Fatalf("%d log rows survived the reset, want the reset note", n)
 	}
 	note, _ := h.DB.LogTail(1)
-	if len(note) != 1 || note[0].Kind != kindNote || note[0].Text != "the chat was reset" {
+	if len(note) != 1 || note[0].Kind != store.KindNote || note[0].Text != "the chat was reset" {
 		t.Fatalf("the reset's row = %+v, want the reset note", note)
 	}
 	if raw, err := h.DB.GetKV(store.CVKey); err != nil && !errors.Is(err, store.ErrNotFound) {
@@ -114,8 +114,8 @@ func TestResetChat(t *testing.T) {
 	}
 	waitIdle(t, h)
 	rows, err := h.DB.LogFrom(0, 10)
-	if err != nil || len(rows) != 3 || rows[0].Seq != 0 || rows[0].Kind != kindNote ||
-		rows[1].Kind != kindUser || rows[2].Kind != kindAgent {
+	if err != nil || len(rows) != 3 || rows[0].Seq != 0 || rows[0].Kind != store.KindNote ||
+		rows[1].Kind != store.KindUser || rows[2].Kind != store.KindAgent {
 		t.Fatalf("the next turn logged %+v, %v", rows, err)
 	}
 	waitFor(t, func() error {

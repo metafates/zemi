@@ -195,7 +195,7 @@ func addText(t *testing.T, h *Host, sid, role, text string) {
 // between the two newest user rows are this send's.
 func lastUserText(t *testing.T, h *Host) string {
 	t.Helper()
-	rows, err := h.DB.LogKindBack(kindUser, 2)
+	rows, err := h.DB.LogKindBack(store.KindUser, 2)
 	if err != nil || len(rows) == 0 {
 		t.Fatalf("no user row logged: %v", err)
 	}
@@ -204,7 +204,7 @@ func lastUserText(t *testing.T, h *Host) string {
 		prev = rows[0].Seq
 	}
 	text := last.Text
-	attached, _ := h.DB.LogKindBack(kindEcho, 50)
+	attached, _ := h.DB.LogKindBack(store.KindEcho, 50)
 	for _, row := range attached {
 		if rowTool(row) == "attach" && row.Seq > prev && row.Seq < last.Seq {
 			text += agent.AttachMarker + row.Text

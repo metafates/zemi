@@ -43,12 +43,21 @@ type AgentDef struct {
 	Name        string
 	Description string
 	// Model is a target name or a provider/model id; "" takes models.agents.
-	Model    string
-	Tools    []string // nil = every tool a subagent may use
-	System   string
-	Source   lua.Origin
-	Path     string // the file, "" for a builtin
-	ReadOnly bool   // file writes denied even when a tool could make one
+	Model  string
+	Tools  []toolRef // nil = every tool a subagent may use
+	System string
+	Source lua.Origin
+	Path   string // the file, "" for a builtin
+	// ReadOnly is file writes denied even when a tool could make one.
+	ReadOnly bool
+}
+
+// toolRef is one entry of a definition's tools list, the "-name" prefix of
+// the agent file parsed at the read: name is the tool, deny that the entry
+// removes it.
+type toolRef struct {
+	name string
+	deny bool
 }
 
 // subagentExcluded never reaches a subagent: nesting, the parent session's
@@ -64,7 +73,12 @@ const forkAgent = "fork"
 
 // readOnlyTools is the set every read-only builtin agent gets: it reads,
 // searches and loads skills, and changes nothing.
-var readOnlyTools = []string{string(tools.ToolRead), string(tools.ToolGlob), string(tools.ToolGrep), string(tools.ToolSkill)}
+var readOnlyTools = []toolRef{
+	{name: string(tools.ToolRead)},
+	{name: string(tools.ToolGlob)},
+	{name: string(tools.ToolGrep)},
+	{name: string(tools.ToolSkill)},
+}
 
 var builtinAgents = []AgentDef{
 	{
@@ -252,10 +266,7 @@ func (h *Host) parseAgentFile(name, path string, source lua.Origin, claude bool)
 				continue
 			}
 		}
-		if deny {
-			tool = "-" + tool
-		}
-		d.Tools = append(d.Tools, tool)
+		d.Tools = append(d.Tools, toolRef{name: tool, deny: deny})
 	}
 	if len(dropped) > 0 {
 		h.Log.Warn(path+": tools zemi does not have, dropped", "origin", "agents", "tools", strings.Join(dropped, ", "))
@@ -954,20 +965,41 @@ func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 }
 
 // filterTools keeps the tools named in want (nil keeps all) minus skip, and
-// reports the wanted names nothing answers to: an agent file carrying
-// another harness's spelling ("Read, Grep") would otherwise run with no
-// tools at all and invent its report. A "-name" entry removes that tool
-// instead, so a list that only removes still gets the tools a later
-// release adds.
+// reports the wanted names nothing answers to: a caller carrying another
+// harness's spelling ("Read, Grep") would otherwise run with no tools at all
+// and invent its report.
 func filterTools(all []fantasy.AgentTool, want []string, skip set.Set[tools.ToolName]) (kept []fantasy.AgentTool, unknown []string) {
-	keep, drop, have := set.Set[string]{}, set.Set[string]{}, set.Set[string]{}
-	for _, n := range want {
-		if name, cut := strings.CutPrefix(n, "-"); cut {
-			drop.Add(name)
-		} else {
+	var keep set.Set[string]
+	if want != nil {
+		keep = make(set.Set[string], len(want))
+		for _, n := range want {
 			keep.Add(n)
 		}
 	}
+	return filterNamed(all, keep, nil, skip, want)
+}
+
+// filterRefs filters by a definition's tools list: a deny entry removes its
+// tool, so a list that only removes still gets the tools a later release
+// adds.
+func filterRefs(all []fantasy.AgentTool, want []toolRef, skip set.Set[tools.ToolName]) (kept []fantasy.AgentTool, unknown []string) {
+	keep, drop := make(set.Set[string], len(want)), make(set.Set[string], len(want))
+	names := make([]string, len(want))
+	for i, r := range want {
+		names[i] = r.name
+		if r.deny {
+			drop.Add(r.name)
+		} else {
+			keep.Add(r.name)
+		}
+	}
+	return filterNamed(all, keep, drop, skip, names)
+}
+
+// filterNamed keeps the tools named in keep (empty keeps all) minus drop and
+// skip; a name in names nothing answers to lands in unknown.
+func filterNamed(all []fantasy.AgentTool, keep, drop set.Set[string], skip set.Set[tools.ToolName], names []string) (kept []fantasy.AgentTool, unknown []string) {
+	have := set.Set[string]{}
 	for _, t := range all {
 		name := t.Info().Name
 		have.Add(name)
@@ -976,10 +1008,9 @@ func filterTools(all []fantasy.AgentTool, want []string, skip set.Set[tools.Tool
 		}
 		kept = append(kept, t)
 	}
-	for _, n := range want {
-		name := strings.TrimPrefix(n, "-")
-		if !have.Has(name) && !skip.Has(tools.ToolName(name)) {
-			unknown = append(unknown, name)
+	for _, n := range names {
+		if !have.Has(n) && !skip.Has(tools.ToolName(n)) {
+			unknown = append(unknown, n)
 		}
 	}
 	return kept, unknown
@@ -988,10 +1019,10 @@ func filterTools(all []fantasy.AgentTool, want []string, skip set.Set[tools.Tool
 // childTools is a subagent run's tool set: the full set minus what a subagent
 // never gets, filtered by the definition's allowlist, then the update tool,
 // which lands after the filter so no allowlist takes the way back to its caller.
-// Naming update there, or -update, is accepted and ignored: every run holds it.
-func childTools(h *Host, pipe *tools.Pipeline, want []string) (kept []fantasy.AgentTool, unknown []string) {
-	want = slices.DeleteFunc(want, func(n string) bool { return strings.TrimPrefix(n, "-") == string(tools.ToolUpdate) })
-	kept, unknown = filterTools(h.allTools(pipe), want, subagentExcluded)
+// Naming update there, or denying it, is accepted and ignored: every run holds it.
+func childTools(h *Host, pipe *tools.Pipeline, want []toolRef) (kept []fantasy.AgentTool, unknown []string) {
+	want = slices.DeleteFunc(want, func(r toolRef) bool { return r.name == string(tools.ToolUpdate) })
+	kept, unknown = filterRefs(h.allTools(pipe), want, subagentExcluded)
 	return append(kept, &updateTool{h: h, pipe: pipe}), unknown
 }
 
@@ -1085,7 +1116,7 @@ func (h *Host) setTool(callID string, set func(*StreamTool)) {
 // target name or a provider/model id, which a workflow may set per run), then
 // the agents role.
 func (h *Host) subagentModelID(def AgentDef) string {
-	return cmp.Or(h.modelRef(def.Model), h.roleModel("agents"))
+	return cmp.Or(h.modelRef(def.Model), h.roleModel(agentsRole))
 }
 
 // ModelIDs lists every provider/model the config registered.
@@ -1959,7 +1990,15 @@ func (h *Host) agentsOverlay() Overlay {
 	for _, d := range defs {
 		model, tools, access := cmp.Or(d.Model, "agents"), "every tool a subagent may use", "can change files"
 		if d.Tools != nil {
-			tools = strings.Join(d.Tools, ", ")
+			named := make([]string, len(d.Tools))
+			for i, r := range d.Tools {
+				if r.deny {
+					named[i] = "-" + r.name
+				} else {
+					named[i] = r.name
+				}
+			}
+			tools = strings.Join(named, ", ")
 		}
 		if d.ReadOnly {
 			access = "read only"
