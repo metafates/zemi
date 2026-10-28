@@ -591,7 +591,7 @@ func TestChatFoldOpensItsRun(t *testing.T) {
 		}
 		return out
 	}
-	const digest = "· 1 command · make · thought 6.4s"
+	const digest = "· 1 command: make · thought 6.4s"
 	closed := rows()
 	if !slices.Contains(closed, digest) || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
 		t.Fatalf("the settled turn does not fold into its digest:\n%s", strings.Join(closed, "\n"))
@@ -2488,15 +2488,25 @@ func TestDigestCountsEveryFamily(t *testing.T) {
 		name  string
 		tools []string
 		want  string
+		rows  []hostapi.ChatMessage // when set, these ride instead of the tools
 	}{
-		{"mcp", []string{"mcp_gitlab_get_commit", "mcp_gitlab_list_issues"}, "2 gitlab tools"},
-		{"agent", []string{"agent"}, "1 agent run · x"},
-		{"workflow", []string{"workflow"}, "1 workflow · x"},
-		{"lua", []string{"lua"}, "1 script · x"},
-		{"tool_search", []string{"tool_search"}, "1 tool · x"},
+		{name: "mcp", tools: []string{"mcp_gitlab_get_commit", "mcp_gitlab_list_issues"}, want: "2 gitlab tools"},
+		{name: "agent", tools: []string{"agent"}, want: "1 agent run · x"},
+		{name: "workflow", tools: []string{"workflow"}, want: "1 workflow · x"},
+		{name: "lua", tools: []string{"lua"}, want: "1 script · x"},
+		{name: "tool_search", tools: []string{"tool_search"}, want: "1 tool · x"},
+		{name: "mixed names the unlabelled command", want: "1 file, 1 command: make", rows: []hostapi.ChatMessage{
+			{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"},
+			{Role: "assistant", Kind: "tool", Tool: "shell", Text: "make", Status: "ok"},
+		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			host.AppendMessage("user", "go")
+			if c.rows != nil {
+				for _, row := range c.rows {
+					host.AppendChat(row)
+				}
+			}
 			for _, tool := range c.tools {
 				host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: tools.ToolName(tool), Text: "x", Status: "ok"})
 			}

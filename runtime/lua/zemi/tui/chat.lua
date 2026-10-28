@@ -527,7 +527,7 @@ local function builder(ctx, width)
 		-- the messages picker's rail view names this run: it draws whole, so
 		-- every call the list walks has a row to band
 		local full = (ctx.rail or 0) == first
-		local digest = fmt.digest(list, first, last)
+		local digest = fmt.digest(list, first, last, ctx.cwd, ctx.home)
 		if digest == "" then
 			B.rail(list, first, last, { full = full })
 			return

@@ -284,7 +284,7 @@ function M.thought(secs) return secs >= 0.05 and "thought " .. M.duration(secs) 
 ---@param first integer
 ---@param last integer
 ---@return string
-function M.digest(rows, first, last)
+function M.digest(rows, first, last, cwd, home)
 	---@type zemi.TranscriptRow[]
 	local calls, failed = {}, {}
 	local secs, reasoned = 0, false
@@ -314,9 +314,17 @@ function M.digest(rows, first, last)
 	---@type string[]
 	local parts = {}
 	if #calls > 0 then
-		parts[#parts + 1] = M.counts(calls)
+		-- an unlabelled command names itself, as the rail's step row does: a
+		-- mixed run's digest saying "1 command" would hide which one ran
+		local commands = {}
+		for _, m in ipairs(calls) do
+			if M.tool(m) == "shell" and (m.label or "") == "" then
+				commands[#commands + 1] = M.relpath(m.text or "", cwd or "", home or ""):gsub("%s+", " ")
+			end
+		end
+		parts[#parts + 1] = M.counts(calls, #commands > 0 and commands or nil)
 		local about = calls[1].label or ""
-		if about == "" and #calls == 1 then
+		if about == "" and #calls == 1 and #commands == 0 then
 			-- a lone call that names a thing (a file, a pattern) says which:
 			-- a count over it would hide it, as a rail row over a lone call does
 			local k = M.family(M.tool(calls[1]))
