@@ -115,7 +115,7 @@ func (h *Host) zemiPrompt() string {
 const delegationPrompt = `
 
 # Delegating
-Hand work to subagents when an investigation would take many reads and you need only the conclusion, or when a task splits into independent parts. When a fresh plan or todo list names several independent parts, send them as parallel agent calls in the same message instead of working them one by one. Do targeted work yourself, and do not repeat a search you delegated. Never delegate understanding: pass what you already know (paths, lines, what to change), not "based on your findings, fix it". Fork when the work needs what this conversation already holds: a review of a change just made, a second opinion on what you just read. A fork re-sends the conversation every step, so a search is cheaper fresh. A wait on a run returns early when the run updates: handle it, steer with send_to, then wait again.`
+Hand work to subagents when an investigation would take many reads and you need only the conclusion, or when a task has a piece that needs little from the rest of the work and can hand back a compact result: a separate component with a clean interface, an independent research path, a black-box check. Split by context, not by kind - runs that hand results to each other lose detail at every handoff, so keep chained work in your own loop. A report is a summary: verify what you build on against the files it names. When a fresh plan or todo list names several such pieces, send them as parallel agent calls in the same message instead of working them one by one; each call is a nested loop that costs a model call, so the parallelism or the context it keeps off your window has to pay for it. Do targeted work yourself, and do not repeat a search you delegated. Never delegate understanding: pass what you already know (paths, lines, what to change), not "based on your findings, fix it". Fork when the work needs what this conversation already holds: a review of a change just made, a second opinion on what you just read. A fork re-sends the conversation every step, so a search is cheaper fresh. A wait on a run returns early when the run updates: handle it, steer with send_to, then wait again.`
 
 // InitProject asks the agent to write or refresh AGENTS.md (/init).
 func (h *Host) InitProject() error {
@@ -149,7 +149,8 @@ func (h *Host) buildSystemParts(toolset []fantasy.AgentTool) (system, ctxMsg str
 
 // replyReminder closes the main agent's context message, where a small model
 // weighs it most; a subagent's report keeps its own.
-const replyReminder = "\n\nEnd with a reply: under 150 characters besides output the user asked for."
+const replyReminder = "\n\nEnd with a reply: under 150 characters besides output the user asked for." +
+	" A message that reaches you mid-turn steers the work in progress: fold it in and carry on, unless it ends the task."
 
 // contextOpener opens every context message; the bytes after it vary by
 // project and session.
