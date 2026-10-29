@@ -1955,7 +1955,7 @@ func TestWorkingRowRetry(t *testing.T) {
 	for _, c := range []struct {
 		in   time.Duration
 		want string
-	}{{0, ` esc interrupt · retrying now ┐`}, {4 * time.Second, ` esc interrupt · next try in \ds ┐`}} {
+	}{{0, ` esc interrupt · retrying now · 20s ┐`}, {4 * time.Second, ` esc interrupt · next try in \ds · 20s ┐`}} {
 		host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Retrying: true, RetryIn: c.in, Retries: 1})
 		app.renderSync(t)
 		if frame := ansi.Strip(app.Frame()); !regexp.MustCompile(c.want).MatchString(frame) {

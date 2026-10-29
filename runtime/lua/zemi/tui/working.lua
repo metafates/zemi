@@ -101,7 +101,10 @@ zemi.ui.widget.add({
 							ag.retry.next_in > 0
 								and "next try in " .. fmt.duration(math.ceil(ag.retry.next_in), true)
 							or "retrying now"
-						) .. why
+						)
+							.. why
+							.. " · "
+							.. fmt.duration(ag.elapsed, true)
 					),
 					5,
 					18,
