@@ -518,6 +518,31 @@ func TestSyncChatSplicesFreshMeta(t *testing.T) {
 	t.Fatalf("the foreign reply never spliced: %q", windowText(a))
 }
 
+// TestSyncChatSplicesAForeignFailedCall: a call another window failed draws
+// failed here too - the splice builds the round's rows together, so the tool
+// row pairs with its echo instead of defaulting to a success.
+func TestSyncChatSplicesAForeignFailedCall(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a, _ := newWindow(t, state, proj)
+	b, _ := newWindow(t, state, proj)
+	if _, err := b.DB.AppendLog("tool", `{"command":"false"}`, `{"id":"c1","tool":"shell"}`, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.DB.AppendLog("echo", "some output", `{"tool":"shell","ok":false}`, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	a.SyncChat()
+	var rail ChatMessage
+	for _, m := range a.Session().Transcript {
+		if m.Kind == RowTool {
+			rail = m
+		}
+	}
+	if rail.Kind != RowTool || rail.Status != CallErr {
+		t.Fatalf("the spliced call drew %+v, want a failed rail", rail)
+	}
+}
+
 // TestLogRowsToolWithoutEcho: a call whose echo never landed (a window
 // killed mid-turn) draws failed, not a quiet success; one whose echo may
 // still be beyond the read stays quiet.

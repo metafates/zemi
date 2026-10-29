@@ -297,21 +297,18 @@ func (h *Host) SyncChat() {
 		// whenever a foreign row's seq sorts before the stamped tail: build
 		// the spliced slice fresh, the way a whole replacement does
 		tr := slices.Clone(h.session.Transcript)
-		for _, row := range foreign {
+		for _, m := range logRows(foreign) {
+			m.Foreign = true
 			// splice at the row's place in the log, so the window draws the
 			// order a restart reads
 			at := len(tr)
-			for i, m := range tr {
-				if m.Seq != NoSeq && m.Seq > row.Seq {
+			for i, o := range tr {
+				if o.Seq != NoSeq && o.Seq > m.Seq {
 					at = i
 					break
 				}
 			}
-			rows := logRows([]store.LogEntry{row})
-			for i := range rows {
-				rows[i].Foreign = true
-			}
-			tr = slices.Insert(tr, at, rows...)
+			tr = slices.Insert(tr, at, m)
 			if at <= h.stampRow {
 				h.stampRow++ // the pairing's row moved down with the insert
 			}
