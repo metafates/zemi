@@ -99,6 +99,15 @@ func TestQuestionAndPlanTools(t *testing.T) {
 	verdict := func(v PlanVerdict, ok bool) func(string) (PlanVerdict, bool) {
 		return func(string) (PlanVerdict, bool) { return v, ok }
 	}
+	filed := func(got *string, v PlanVerdict, ok bool) func(string) (PlanVerdict, bool) {
+		return func(plan string) (PlanVerdict, bool) { *got = plan; return v, ok }
+	}
+	planPath := filepath.Join(t.TempDir(), "brief.md")
+	planBody := "# The brief\n1. do it\n"
+	if err := os.WriteFile(planPath, []byte(planBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var gotPlan string
 	for _, c := range []struct {
 		name, tool, input string
 		question          func([]Question) ([]Answer, bool)
@@ -129,6 +138,10 @@ func TestQuestionAndPlanTools(t *testing.T) {
 		{"changes requested", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{Feedback: "use sqlite"}, true), "asked for changes: use sqlite", false, false},
 		{"plan dismissed", "plan", `{"plan":"1. do it"}`, nil, verdict(PlanVerdict{}, false), "dismissed the plan", true, true},
 		{"plan with no user", "plan", `{"plan":"1. do it"}`, nil, nil, "Put the plan in your reply", false, false},
+		{"plan and file together", "plan", `{"plan":"1. do it","file":"` + planPath + `"}`, nil, verdict(PlanVerdict{Approved: true}, true), "not both", true, false},
+		{"a plan read from a file", "plan", `{"file":"` + planPath + `"}`, nil, filed(&gotPlan, PlanVerdict{Approved: true}, true), "The user approved the plan", false, false},
+		{"a missing plan file", "plan", `{"file":"` + filepath.Join(filepath.Dir(planPath), "nope.md") + `"}`, nil, verdict(PlanVerdict{Approved: true}, true), "no such file", true, false},
+		{"an unexpanded plan path", "plan", `{"file":"~/brief.md"}`, nil, verdict(PlanVerdict{Approved: true}, true), "not expanded", true, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			p, _ := testPipeline(t, false)
@@ -141,6 +154,9 @@ func TestQuestionAndPlanTools(t *testing.T) {
 	}
 	if o := asked[0].Options; len(asked) != 2 || asked[1].Type != TypeMulti || o[0] != (QuestionOption{"A", "first", true}) || o[1].Recommended {
 		t.Fatalf("question plumbing: %+v", asked)
+	}
+	if gotPlan != planBody {
+		t.Fatalf("the file's plan did not reach approval: %q", gotPlan)
 	}
 	p, _ := testPipeline(t, false)
 	var defaulted []Question

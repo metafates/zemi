@@ -10,7 +10,9 @@ import (
 	"cmp"
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -18,6 +20,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
@@ -175,13 +178,45 @@ func PlanOutcome(output string) (verdict, path string) {
 
 // planArgs is the plan tool's input and its schema source.
 type planArgs struct {
-	Plan string `json:"plan" desc:"the plan in markdown"`
+	Plan string `json:"plan,omitempty" desc:"the plan in markdown"`
+	File string `json:"file,omitempty" desc:"path of a file holding the plan, relative to the working directory or absolute; instead of retyping a plan you already wrote"`
+}
+
+// planFile reads a plan held in a file, under the file tools' path rules:
+// no shell expansion, project-relative or absolute.
+func (p *Pipeline) planFile(raw string) (string, error) {
+	if unexpanded.MatchString(raw) {
+		return "", errors.New(p.unexpandedText(raw))
+	}
+	path, err := perm.Resolve(raw)
+	if err != nil {
+		return "", err
+	}
+	f, fi, err := OpenRegular(path)
+	if err != nil {
+		return "", errors.New(p.notFound(path.String(), err))
+	}
+	defer f.Close()
+	if fi.Size() > readMaxBytes {
+		return "", fmt.Errorf("%s is %d bytes, over plan's %d byte limit: a plan is short; point at a shorter file", workRel(path.String()), fi.Size(), readMaxBytes)
+	}
+	data, err := io.ReadAll(f)
+	return string(data), err
 }
 
 func runPlan(ctx context.Context, p *Pipeline, in planArgs) (fantasy.ToolResponse, error) {
 	plan := strings.TrimSpace(in.Plan)
+	if in.File != "" {
+		if plan != "" {
+			return fantasy.NewTextErrorResponse("pass the plan in plan, or its path in file, not both"), nil
+		}
+		var err error
+		if plan, err = p.planFile(in.File); err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+	}
 	if plan == "" {
-		return fantasy.NewTextErrorResponse("plan is required"), nil
+		return fantasy.NewTextErrorResponse("the plan is required: in plan, or a path to it in file"), nil
 	}
 	if p.ApprovePlan == nil {
 		return fantasy.NewTextResponse("No user is available to approve the plan. Put the plan in your reply and stop."), nil

@@ -831,7 +831,7 @@ Chain dependent steps with &&.`,
 
 		mk(ToolPlan, `Present an implementation plan and wait for the user's verdict before changing anything. Call it only before a large or ambiguous change (a clear task is done, not planned, and a question is answered), or as a read-only agent once nothing is left to decide.
 
-The plan is short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most.`,
+The plan is short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most. Wrote the plan to a file? Pass its path in file instead of retyping it; exactly one of plan/file.`,
 			false,
 			planArgs{},
 			nil,

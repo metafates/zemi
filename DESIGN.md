@@ -1377,7 +1377,8 @@ nearest instruction file not already in the prompt, once per session),
 goes back to `pending`, so nothing reads as running while the agent is idle), `question` (1-4 questions in one overlay, options or a typed
 answer, and a note the user may add to a pick; the result is one JSON
 document, each answer a string, a multi-select's array, or null when left
-open, which its `open` field tells the model to decide), `plan` (shows the plan in its own scrollable popup for approval; the
+open, which its `open` field tells the model to decide), `plan` (shows the plan in its own scrollable popup for approval, taken from the call's
+markdown or a file's path in `file`; the
 model keeps its own capabilities and stays the same agent: an approval lets it
 implement in the same turn, Save, don't start approves with no
 handoff, saving the plan and leaving the turn ended until the user says when;
