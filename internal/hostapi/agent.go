@@ -942,17 +942,13 @@ func (h *Host) startTurn(text string, held *heldPrompt) {
 	}
 }
 
-// appendUserRows shows one message as the model reads it: what was typed,
-// then the notice row of each background report behind agent.AttachMarker,
-// the same cut the transcript's log rebuild makes. A held prompt's row went
-// up at boot (heldRow) and is kept while the transcript still holds it there.
+// appendUserRows shows one message as the model reads it: what was typed.
+// The reports and updates behind agent.AttachMarker drew their rows where
+// they were delivered (Host.work), never here again.
 func (h *Host) appendUserRows(text string, held *heldPrompt) {
-	shown, heads, _ := userRowsFor(text)
+	shown, _, _ := userRowsFor(text)
 	if shown != "" && !(held != nil && h.heldRow(held)) {
 		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: shown, SentAt: h.now().UnixMilli()})
-	}
-	for _, n := range heads {
-		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: n.Text, Status: n.Status})
 	}
 }
 
@@ -1962,20 +1958,21 @@ func (h *Host) recap(ctx context.Context) {
 		return
 	}
 	// the first recap ever names its /config key
-	row := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "Recap: " + text}
+	detail := ""
 	if h.GlobalDB != nil {
 		if _, err := h.GlobalDB.GetKV("recap.hinted"); errors.Is(err, store.ErrNotFound) {
-			row.Detail = "off in /config"
+			detail = "off in /config"
 		}
 	}
 	// a send, a report or a reset since the call would leave it stale
 	h.tMu.RLock()
 	added := ctx.Err() == nil && len(h.session.Transcript) == len(tr)
 	h.tMu.RUnlock()
-	if added {
-		h.appendTranscript(row)
+	if !added {
+		return
 	}
-	if added && row.Detail != "" {
+	h.notice("Recap: "+text, detail)
+	if detail != "" {
 		_ = h.GlobalDB.SetKV("recap.hinted", "true")
 	}
 	h.refresh()
@@ -2585,6 +2582,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 	// the user's words (DESIGN §6.3).
 	tb.RawSetString("send", L.NewFunction(func(L *glua.LState) int {
 		text := L.CheckString(1)
+		principal, body := "", ""
 		if h.RT.CurrentOrigin(L) == lua.OriginPlugin {
 			if h.hooks() == nil { // zemi health boots plugins with no UI: a turn nobody sees has nothing to bound it
 				L.RaiseError("zemi.agent.send: no UI is running to send from")
@@ -2593,12 +2591,19 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 				L.Push(glua.LTrue) // a test zemi's stub keeps the text and starts no turn
 				return 1
 			}
-			text = agent.Attached(h.principal(L), text)
+			principal = h.principal(L)
+			body = text
+			text = agent.Attached(principal, text)
 		}
 		if _, err := h.resolveModel(h.roleModel(defaultRole)); err != nil {
 			return luaResult(L, err)
 		}
 		h.GoSafe("zemi.agent.send", func() {
+			// the plugin's message draws its row where it was sent, the same
+			// one a rebuilt window reads from the log
+			if principal != "" {
+				h.work("", principal, "", body)
+			}
 			if err := h.AgentSend(text); err != nil {
 				h.Log.Warn("zemi.agent.send failed", "origin", "agent", "error", err)
 				h.Notify(slog.LevelError, "Could not send", h.friendlyError(err))

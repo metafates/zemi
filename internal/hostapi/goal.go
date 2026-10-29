@@ -210,7 +210,7 @@ func (h *Host) stopGoal() error {
 		return Usagef("no goal to stop")
 	}
 	h.storeGoal(nil)
-	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "Goal stopped"})
+	h.notice("Goal stopped", "")
 	return nil
 }
 
@@ -282,7 +282,7 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 		ag.mu.Unlock()
 	}
 	if m, ok := goalNotice(ev, reason); ok {
-		h.AppendChat(m)
+		h.notice(m.Text, m.Detail)
 	}
 	if ev != goalNotYet {
 		return ""

@@ -925,8 +925,9 @@ func TestWorkflowToolInput(t *testing.T) {
 		return resp.Content, resp.IsError
 	}
 	out, failed := call(`{"script":"-- Count to two\nreturn 2"}`)
-	id, _, _ := strings.Cut(strings.TrimPrefix(out, "[workflow "), " ")
-	if failed || !strings.HasSuffix(out, "\n\n2") || h.tasks.flow(id).description != "Count to two" {
+	_, idPart, _ := strings.Cut(out, "\n\n[workflow ")
+	id, _, _ := strings.Cut(idPart, " ")
+	if failed || !strings.HasPrefix(out, "2") || h.tasks.flow(id).description != "Count to two" {
 		t.Fatalf("a run with no description: %q", out)
 	}
 	for _, c := range []struct {
@@ -939,8 +940,8 @@ func TestWorkflowToolInput(t *testing.T) {
 		{name: "a script that cannot parse never asks", input: `{"script":"return ("}`, want: "workflow script:", failed: true},
 		{name: "a run alone answers its status", input: `{"run":"` + id + `"}`, want: "workflow " + id + " Count to two: done"},
 		{name: "a control on an ended run says so", input: `{"run":"` + id + `","action":"pause"}`, want: "is not running", failed: true},
-		{name: "a rerun asks about the script file as it is", input: `{"run":"` + id + `","action":"rerun"}`, want: "\n\n3", preview: "-- Count to two\nreturn 3"},
-		{name: "a script with the rerun replaces it", input: `{"run":"` + id + `","action":"rerun","script":"return 4"}`, want: "\n\n4", preview: "return 4"},
+		{name: "a rerun asks about the script file as it is", input: `{"run":"` + id + `","action":"rerun"}`, want: "3\n\n[workflow", preview: "-- Count to two\nreturn 3"},
+		{name: "a script with the rerun replaces it", input: `{"run":"` + id + `","action":"rerun","script":"return 4"}`, want: "4\n\n[workflow", preview: "return 4"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(h.scratchFor(store.MainSessionID), flowFile(id, ".lua")), []byte("-- Count to two\nreturn 3"), 0o600); err != nil {
@@ -1453,7 +1454,7 @@ func TestEndedRunIsNotHandedOff(t *testing.T) {
 		t.Fatal("a run that ended was handed off after the fact")
 	}
 	report, ok := f.report()
-	if !ok || !strings.Contains(report, "\n\n1") {
+	if !ok || !strings.HasPrefix(report, "1\n\n[workflow") {
 		t.Fatalf("the ended run's report = %q, %v", report, ok)
 	}
 	if n := reportRows(h, f.id); n != 0 {
@@ -1555,7 +1556,7 @@ func waitCall(t *testing.T, calls <-chan fantasy.ToolResponse) fantasy.ToolRespo
 // reportRows counts the notice rows a run's report drew in the session.
 func reportRows(h *Host, id string) int {
 	return len(slices.DeleteFunc(slices.Clone(h.Session().Transcript), func(m ChatMessage) bool {
-		return m.Kind != RowNotice || !strings.Contains(m.Text, " "+id+" ")
+		return m.Kind != RowNotice || m.Run != id
 	}))
 }
 
@@ -1574,7 +1575,7 @@ func TestWorkflowBackgroundReports(t *testing.T) {
 	}
 	id := strings.Fields(strings.TrimPrefix(resp.Content, bgWorkflowStarted))[0]
 	waitFor(t, func() error {
-		if tr := h.Session().Transcript; !slices.ContainsFunc(tr, func(m ChatMessage) bool { return m.Text == "Workflow "+id+" (scan six parts) finished" }) {
+		if tr := h.Session().Transcript; !slices.ContainsFunc(tr, func(m ChatMessage) bool { return m.Kind == RowNotice && m.Run == id && m.Status == CallOK }) {
 			return fmt.Errorf("no report row in %+v", tr)
 		}
 		return nil
@@ -1652,8 +1653,8 @@ func TestWorkflowUserStart(t *testing.T) {
 		ui   bool
 		want []string // the transcript rows' texts, in order
 	}{
-		{"the TUI says the run started", true, []string{"Started workflow ", "Workflow ", "ok"}},
-		{"without UI hooks it still runs detached and reports", false, []string{"Workflow ", "ok"}},
+		{"the TUI says the run started", true, []string{"Started workflow ", "[workflow:", "ok"}},
+		{"without UI hooks it still runs detached and reports", false, []string{"[workflow:", "ok"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()

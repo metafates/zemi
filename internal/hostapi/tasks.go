@@ -898,7 +898,7 @@ func (h *Host) deliverReport(parent string, r report, attached string) {
 		return
 	}
 	pad := h.scratchFor(parent)
-	h.logWork(r.id, r.agent, h.truncOutput(pad, "agent", r.body))
+	h.work(r.id, r.agent, string(r.status), h.truncOutput(pad, "agent", r.body))
 	if err := h.AgentSend(h.reportMessage(pad, r) + attached); err != nil {
 		h.Notify(slog.LevelError, "Could not send the report of "+r.id, h.friendlyError(err))
 	}
@@ -918,7 +918,7 @@ func (h *Host) deliverUpdate(run *agentRun, text string) error {
 		h.notifyReport(report{id: run.id, agent: run.agent, status: updateStatus, description: run.description, body: text})
 		return nil
 	}
-	h.logWork(run.id, run.agent, text)
+	h.work(run.id, run.agent, string(updateStatus), text)
 	if err := h.AgentSend(h.updateMessage(h.scratchFor(run.parent), run.id, run.agent, text)); err != nil {
 		h.Notify(slog.LevelError, "Could not send the update of "+run.id, h.friendlyError(err))
 		return fmt.Errorf("the update did not reach the caller: %s", h.friendlyError(err))
@@ -927,15 +927,21 @@ func (h *Host) deliverUpdate(run *agentRun, text string) error {
 	return nil
 }
 
-// logWork writes one work row into the eternal log: a run's report or
-// update, "[Name]" headed, named by the run it came from.
-func (h *Host) logWork(run, name, text string) {
-	if h.chat == nil {
-		return
+// work writes one work row into the eternal log and appends the row the chat
+// draws for it, so a live window and a rebuilt one draw the same line: the
+// draw is firstLine of the logged text, never a second spelling of it.
+func (h *Host) work(run, name, status, body string) {
+	text := "[" + name + "] " + strings.TrimSpace(body)
+	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(text), Status: workStatus(status), Run: run}
+	if h.chat != nil {
+		first, err := h.chat.Work(run, name, status, text)
+		if err != nil {
+			h.logAppendFailed(err)
+		} else {
+			m.Seq = first
+		}
 	}
-	if err := h.chat.Work(run, name, "["+name+"] "+text); err != nil {
-		h.logAppendFailed(err)
-	}
+	h.AppendChat(m)
 }
 
 // updateMessage is the user message an update reaches the model as, live and
@@ -1020,7 +1026,6 @@ var (
 	// a zemi.agent.send from a plugin, with its first line that has something in
 	// it: an element whose text opens with blank lines has no line to name it by
 	pluginSent = regexp.MustCompile(attachedTag + `(plugin:[^>\s]+)>\n(?s:(.*?))\n</`)
-	loopSent   = regexp.MustCompile(attachedTag + `loop>\n` + strings.ReplaceAll(regexp.QuoteMeta(loopRunPrefix), "%d", `(\d+)`) + `(?s:(.*?))\n</`)
 	// a running agent's own line, with its first
 	updateSent = regexp.MustCompile(attachedTag + `agent-update run="([^"]*)" agent="([^"]*)">\n(?s:(.*?))\n</`)
 )
@@ -1039,15 +1044,18 @@ type notice struct {
 // reportMark is a report's status word as its row's mark: a failed run
 // failed, a run that finished with a failed agent inside warns, and
 // anything else finished.
-func reportMark(word string) CallStatus {
-	switch reportStatus(word) {
+// workStatus is the mark a work row draws: a final report's outcome, and
+// nothing for an update or a plugin send, which no outcome names.
+func workStatus(status string) CallStatus {
+	switch reportStatus(status) {
 	case reportFailure:
 		return CallErr
 	case reportWarn:
 		return CallWarn
-	default:
+	case reportFinished:
 		return CallOK
 	}
+	return ""
 }
 
 // reportHeads rebuilds the notice rows from the reports behind a message's
@@ -1063,16 +1071,11 @@ func reportHeads(tail string) []notice {
 			run = m[1]
 		}
 		r := report{id: m[1], agent: m[2], status: reportStatus(m[3]), description: desc}
-		heads = append(heads, notice{Text: reportHead(r), Status: reportMark(m[3]), Run: run})
+		heads = append(heads, notice{Text: reportHead(r), Status: workStatus(m[3]), Run: run})
 	}
 	for _, m := range pluginSent.FindAllStringSubmatch(tail, -1) {
 		if line := skill.FirstBodyLine(m[2]); line != "" {
 			heads = append(heads, notice{Text: m[1] + ": " + clipRunes(sanitize.String(line), 200)})
-		}
-	}
-	for _, m := range loopSent.FindAllStringSubmatch(tail, -1) {
-		if line := skill.FirstBodyLine(m[2]); line != "" {
-			heads = append(heads, notice{Text: "Loop run " + m[1] + ": " + clipRunes(sanitize.String(line), 200)})
 		}
 	}
 	for _, m := range updateSent.FindAllStringSubmatch(tail, -1) {

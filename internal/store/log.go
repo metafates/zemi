@@ -38,6 +38,7 @@ const (
 	KindThought LogKind = "thought"
 	KindError   LogKind = "error"
 	KindShell   LogKind = "shell"
+	KindNotice  LogKind = "notice"
 )
 
 // Node is one built summary: node(L,I) covers the 2^L messages from I*2^L on

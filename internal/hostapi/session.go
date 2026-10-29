@@ -379,6 +379,9 @@ func logRowMatches(row store.LogEntry, m ChatMessage) bool {
 	case store.KindNote:
 		// the chapter mark the transcript carries: first line, as it draws
 		return m.Kind == RowNotice && firstLine(text) == strings.TrimSpace(m.Text)
+	case store.KindNotice:
+		// a status notice: first line, as it draws
+		return m.Kind == RowNotice && firstLine(text) == strings.TrimSpace(m.Text)
 	default: // an echo: no transcript row carries its seq
 		return false
 	}
@@ -405,7 +408,8 @@ func (h *Host) reloadChatLocked() bool {
 // stampable reports whether a transcript row comes from a log row the
 // stamping can name: the user's words, a reply's stretch, a tool call.
 // Notices, thoughts, errors and !commands draw rows the stamping pairs past:
-// a notice has no log row, the others read theirs back by seq in logRows.
+// the others read theirs back by seq in logRows, and a notice arrives
+// stamped by its own append.
 func stampable(m ChatMessage) bool {
 	if m.Kind == RowTool {
 		return true
@@ -523,11 +527,14 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 			})
 		case store.KindWork:
 			var meta struct {
-				Run  string `json:"run"`
-				Name string `json:"name"`
+				Run    string `json:"run"`
+				Name   string `json:"name"`
+				Status string `json:"status"`
 			}
 			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
-			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "[" + meta.Name + "] " + firstLine(row.Text), Run: meta.Run, Seq: row.Seq})
+			// the head is in the logged text, where work wrote it: the row
+			// draws its first line, the same line the live window drew
+			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(row.Text), Status: workStatus(meta.Status), Run: meta.Run, Seq: row.Seq})
 		case store.KindEcho:
 		case store.KindNote:
 			// a chapter mark the model reads, so the chat shows where; the
@@ -540,6 +547,12 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 				continue
 			}
 			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(row.Text), Seq: row.Seq})
+		case store.KindNotice:
+			var meta struct {
+				Detail string `json:"detail"`
+			}
+			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
+			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(row.Text), Detail: meta.Detail, Seq: row.Seq})
 		}
 	}
 	return tr

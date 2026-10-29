@@ -37,7 +37,7 @@ func TestLoop(t *testing.T) {
 	}{
 		{name: "fixed runs now and on its interval", args: "5m check the deploy", reply: "rolling", steps: []step{
 			{runs: 1, next: 5 * time.Minute}, {after: 5 * time.Minute, runs: 2, next: 10 * time.Minute}, {after: 5 * time.Minute, runs: 3, next: 15 * time.Minute},
-		}, notices: []string{"Loop run 1: check the deploy", "Loop run 2: check the deploy", "Loop run 3: check the deploy"}},
+		}, notices: []string{"[loop] Run 1 of: check the deploy", "[loop] Run 2 of: check the deploy", "[loop] Run 3 of: check the deploy"}},
 		{name: "the model paces it", args: "check it", reply: "waiting\n`next: 7m`", steps: []step{
 			{runs: 1, next: 7 * time.Minute}, {after: 6 * time.Minute, runs: 1, next: 7 * time.Minute}, {after: time.Minute, runs: 2, next: 14 * time.Minute},
 		}},
@@ -45,15 +45,15 @@ func TestLoop(t *testing.T) {
 		{name: "a paced delay past an hour is an hour", args: "check it", reply: "next: 2h", steps: []step{{runs: 1, next: time.Hour}}},
 		{
 			name: "next: done ends it", args: "check it", reply: "all good\nnext: done", steps: []step{{runs: 1}},
-			notices: []string{"Loop run 1: check it", "Loop done after 1 run"},
+			notices: []string{"[loop] Run 1 of: check it", "Loop done after 1 run"},
 		},
 		{
 			name: "a failed run stops it", args: "5m check it", reply: "fail", steps: []step{{runs: 1}},
-			notices: []string{"Loop run 1: check it", "Loop stopped: boom (1 run)"},
+			notices: []string{"[loop] Run 1 of: check it", "Loop stopped: boom (1 run)"},
 		},
 		{name: "an interrupted run stops it", args: "5m check it", reply: "hang", steps: []step{{runs: 1, next: 5 * time.Minute, held: true}, {do: func(h *Host) {
 			h.AgentCancel()
-		}, runs: 1}}, notices: []string{"Loop run 1: check it", "Loop stopped: interrupted (1 run)"}},
+		}, runs: 1}}, notices: []string{"[loop] Run 1 of: check it", "Loop stopped: interrupted (1 run)"}},
 		{name: "an interrupt stops the loop that replaced the run's", args: "5m check a", reply: "hang", steps: []step{
 			{runs: 1, next: 5 * time.Minute, held: true},
 			{do: func(h *Host) {
@@ -69,7 +69,7 @@ func TestLoop(t *testing.T) {
 				h.AgentCancel()
 				waitIdle(t, h)
 			}, runs: 1},
-		}, notices: []string{"Loop run 1: check a", "Loop stopped: interrupted (0 runs)"}},
+		}, notices: []string{"[loop] Run 1 of: check a", "Loop stopped: interrupted (0 runs)"}},
 		{name: "an interrupted turn nobody typed stops it", args: "5m check it", reply: "ok", steps: []step{
 			{runs: 1, next: 5 * time.Minute},
 			{do: func(h *Host) {
@@ -78,7 +78,7 @@ func TestLoop(t *testing.T) {
 				}
 			}, runs: 1, next: 5 * time.Minute, held: true},
 			{do: func(h *Host) { h.AgentCancel() }, runs: 1},
-		}, notices: []string{"Loop run 1: check it", "Loop stopped: interrupted (1 run)"}},
+		}, notices: []string{"[loop] Run 1 of: check it", "Loop stopped: interrupted (1 run)"}},
 		{name: "a run leaves the goal's count of turns", args: "5m check it", reply: "ok", steps: []step{
 			{runs: 1, next: 5 * time.Minute},
 			{do: func(h *Host) {
@@ -105,7 +105,7 @@ func TestLoop(t *testing.T) {
 		}},
 		{name: "it expires", args: "1d check it", reply: "ok", steps: []step{
 			{runs: 1, next: 24 * time.Hour}, {after: 24 * time.Hour, runs: 2, next: 48 * time.Hour}, {after: 24 * time.Hour, runs: 3, next: 72 * time.Hour}, {after: 24 * time.Hour, runs: 3},
-		}, notices: []string{"Loop run 1: check it", "Loop run 2: check it", "Loop run 3: check it", "Loop stopped after 72h (3 runs)"}},
+		}, notices: []string{"[loop] Run 1 of: check it", "[loop] Run 2 of: check it", "[loop] Run 3 of: check it", "Loop stopped after 72h (3 runs)"}},
 		{name: "a command runs with the note attached", args: "5m /note it", reply: "ok", steps: []step{{runs: 1, next: 5 * time.Minute}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -183,7 +183,7 @@ func TestLoop(t *testing.T) {
 				waitFor(t, func() error {
 					var notices []string
 					for _, m := range h.Session().Transcript {
-						if m.Kind == RowNotice && strings.HasPrefix(m.Text, "Loop ") {
+						if m.Kind == RowNotice && (strings.HasPrefix(m.Text, "[loop] Run ") || strings.HasPrefix(m.Text, "Loop ")) {
 							notices = append(notices, m.Text)
 						}
 					}

@@ -209,6 +209,49 @@ func TestNoteCommandAppends(t *testing.T) {
 	}
 }
 
+// TestNoticesPersist: a recap, a goal verdict and every other status notice
+// the chat draws carries a log row, so a resumed window reads the same rows
+// back, and the pairing's wipe check still matches them.
+func TestNoticesPersist(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	if err := h.Note("chapter zero"); err != nil { // the log is not empty, as any chat a notice lands in
+		t.Fatal(err)
+	}
+	h.notice("Recap: working on the import", "off in /config")
+	h.notice("Goal met: the tests pass", "")
+	rows, err := h.DB.LogTail(3)
+	if err != nil || len(rows) != 3 ||
+		rows[1].Kind != store.KindNotice || rows[1].Text != "Recap: working on the import" ||
+		rows[2].Kind != store.KindNotice || rows[2].Text != "Goal met: the tests pass" {
+		t.Fatalf("notice rows = %+v, %v", rows, err)
+	}
+	// a rebuilt window draws the same rows, detail included
+	tr := logRows(rows[1:])
+	if len(tr) != 2 || tr[0].Kind != RowNotice || tr[0].Text != "Recap: working on the import" ||
+		tr[0].Detail != "off in /config" || tr[1].Text != "Goal met: the tests pass" {
+		t.Fatalf("rebuilt rows = %+v", tr)
+	}
+	// the live rows carry their seq from the append, and the wipe check
+	// against the newest one holds
+	h.tMu.RLock()
+	live := h.Session().Transcript
+	h.tMu.RUnlock()
+	if n := len(live); n < 3 || live[n-2].Seq != rows[1].Seq || live[n-1].Seq != rows[2].Seq {
+		t.Fatalf("live rows unstamped: %+v", live[max(n-2, 0):])
+	}
+	h.tMu.Lock()
+	wiped := h.logWipedLocked()
+	h.tMu.Unlock()
+	if wiped {
+		t.Fatal("the pairing reads a notice row as a wipe")
+	}
+	if !logRowMatches(rows[2], tr[1]) {
+		t.Fatal("the pairing does not match a notice row")
+	}
+}
+
 // TestBuilderWakesOnRealTurns: a turn's rows reach the builder through the
 // dual-write, and every one of them has a built line shortly after.
 func TestBuilderWakesOnRealTurns(t *testing.T) {

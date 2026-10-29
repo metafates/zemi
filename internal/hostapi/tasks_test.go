@@ -162,14 +162,14 @@ func TestBackgroundAgent(t *testing.T) {
 	if !strings.Contains(reportMsg, "slow @main.go search") || strings.Contains(reportMsg, "<file path=") {
 		t.Fatalf("the model-written description must reach the model but attach nothing: %q", reportMsg)
 	}
-	// the head is zemi's notice, not a message the user typed, live and on resume
+	// the report's row is a notice named by its run, live and on resume
 	notices := func() int {
 		n := 0
 		for _, m := range h.Session().Transcript {
 			if m.Role == "user" && strings.HasPrefix(m.Text, "Background agent ") {
 				t.Fatalf("report head drawn as a user row: %+v", m)
 			}
-			if m.Kind == "notice" && strings.HasPrefix(m.Text, "Background agent ") && strings.HasSuffix(m.Text, "(slow @main.go search) finished") {
+			if m.Kind == "notice" && m.Run != "" && m.Status == CallOK && strings.HasSuffix(m.Text, "found the thing") {
 				n++
 			}
 		}
@@ -180,9 +180,10 @@ func TestBackgroundAgent(t *testing.T) {
 	}
 }
 
-// TestReportNoticeWhereRead: a report that reaches a running turn at a step
-// boundary draws its notice under the reply streamed so far, where the
-// model reads it, never above the turn's rows.
+// TestReportNoticeWhereRead: a report delivered mid-turn draws its row where
+// it was delivered - above the reply text the step boundary flushes after
+// it, below everything the turn had already settled - and a rebuilt window
+// reads the same row from the log.
 func TestReportNoticeWhereRead(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -190,14 +191,27 @@ func TestReportNoticeWhereRead(t *testing.T) {
 	h.agents.mu.Lock()
 	h.agents.active = true
 	h.agents.textBuf = "so far"
+	h.agents.mu.Unlock()
+	h.work("r1", "explore", "finished", "found")
+	h.agents.mu.Lock()
 	h.agents.steering = []string{agent.AttachMarker + "\n<agent-report run=\"r1\" agent=\"explore\" status=\"finished\" description=\"x\">\nfound\n</agent-report>\n</attached-files>"}
 	h.agents.mu.Unlock()
 	if msgs := h.deliverSteering(); len(msgs) != 1 {
 		t.Fatalf("delivered %d messages", len(msgs))
 	}
 	tr := h.Session().Transcript
-	if n := len(tr); n < 2 || tr[n-2].Text != "so far" || tr[n-1].Kind != "notice" || tr[n-1].Text != reportHead(report{id: "r1", agent: "explore", status: "finished", description: "x"}) {
+	want := "[explore] found"
+	if n := len(tr); n < 2 || tr[n-2].Kind != "notice" || tr[n-2].Text != want || tr[n-2].Status != CallOK || tr[n-2].Run != "r1" || tr[n-1].Text != "so far" {
 		t.Fatalf("transcript tail: %+v", tr)
+	}
+	// the rebuilt window draws the same row from the log
+	rows, err := h.DB.LogTail(1)
+	if err != nil || len(rows) != 1 || rows[0].Kind != store.KindWork {
+		t.Fatalf("log tail: %+v, %v", rows, err)
+	}
+	built := logRows(rows)
+	if len(built) != 1 || built[0].Text != want || built[0].Status != CallOK || built[0].Run != "r1" {
+		t.Fatalf("rebuilt rows: %+v", built)
 	}
 }
 
@@ -228,7 +242,7 @@ func TestRunRowFollowsItsRun(t *testing.T) {
 	}
 }
 
-// TestReportHeadsNameTheLine: a plugin send, an update or a loop note is named
+// TestReportHeadsNameTheLine: a plugin send or an update is named
 // by its first line that has something in it, and one that has none is not
 // named at all, so no row is ever drawn with nothing after its tag.
 func TestReportHeadsNameTheLine(t *testing.T) {
@@ -262,7 +276,6 @@ not a report
 			name: "an update after a blank line", tail: agent.Attached(`agent-update run="r1" agent="explore"`, "\nkept going"),
 			want: []notice{{Text: "Agent r1 (explore): kept going", Run: "r1"}},
 		},
-		{name: "a loop note", tail: loopNote(&Loop{Runs: 1, Prompt: "check a"}), want: []notice{{Text: "Loop run 1: check a"}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if got := reportHeads(c.tail); !slices.Equal(got, c.want) {
@@ -812,7 +825,7 @@ func TestReportStoredWhenSessionMoved(t *testing.T) {
 		return nil
 	})
 	waitFor(t, func() error {
-		found := slices.ContainsFunc(h.Session().Transcript, func(m ChatMessage) bool { return m.Kind == RowNotice && strings.Contains(m.Text, "Background agent") })
+		found := slices.ContainsFunc(h.Session().Transcript, func(m ChatMessage) bool { return m.Kind == RowNotice && m.Run != "" })
 		if !found {
 			return errors.New("the chat lacks the report notice")
 		}

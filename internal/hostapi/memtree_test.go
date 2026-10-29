@@ -547,7 +547,7 @@ func TestChatLogKinds(t *testing.T) {
 	if err := cl.Agent("hi back"); err != nil {
 		t.Fatal(err)
 	}
-	if err := cl.Work("run1", "Scout", "[Scout] done"); err != nil {
+	if _, err := cl.Work("run1", "Scout", "finished", "[Scout] done"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := cl.Note("before the chat"); err != nil {

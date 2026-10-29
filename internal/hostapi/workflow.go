@@ -1734,7 +1734,9 @@ func (f *flowRun) report() (string, bool) {
 	if f.script != "" {
 		where += " · " + f.script
 	}
-	return "[" + where + "]\n\n" + cmp.Or(strings.TrimSpace(f.result), "(the workflow returned nothing)") + fails + log, true
+	// the result leads: a work row draws the body's first line, and the
+	// envelope the model reads the flow's id from rides below it
+	return cmp.Or(strings.TrimSpace(f.result), "(the workflow returned nothing)") + fails + log + "\n\n[" + where + "]", true
 }
 
 // failLines names the branches that failed on their own, the ones the script
@@ -1957,7 +1959,7 @@ func (h *Host) startUserFlow(spec flowSpec, attached string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: fmt.Sprintf("Started workflow %s (%s) · /workflows", f.id, clipLine(f.description, 60))})
+	h.notice(fmt.Sprintf("Started workflow %s (%s) · /workflows", f.id, clipLine(f.description, 60)), "")
 	return f.id, nil
 }
 

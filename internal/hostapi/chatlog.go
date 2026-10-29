@@ -100,6 +100,23 @@ func (c *chatLog) systemNote(text string) error {
 	return err
 }
 
+// Notice logs a status notice the chat drew: a recap, a goal verdict, a loop
+// or workflow event. Detail rides the meta, where the rebuilt row reads it.
+func (c *chatLog) Notice(text, detail string) (int64, error) {
+	meta := ""
+	if detail != "" {
+		raw, err := json.Marshal(struct {
+			Detail string `json:"detail"`
+		}{detail}, json.Deterministic(true))
+		if err != nil {
+			return -1, err
+		}
+		meta = string(raw)
+	}
+	first, _, err := c.append(store.KindNotice, text, meta, "")
+	return first, err
+}
+
 // Thought logs one settled reasoning stretch: its text and the wall time its
 // flush measured, which the rebuilt row and the run digest read back.
 func (c *chatLog) Thought(text string, ms int64) error {
@@ -142,18 +159,19 @@ func (c *chatLog) Shell(cmd, out string, ok bool) error {
 	return err
 }
 
-// Work logs a subagent's report: the run it reports for and the "[Name]" head
-// it opens with.
-func (c *chatLog) Work(run, name, text string) error {
+// Work logs a subagent's report or update: the run it reports for, its name,
+// the report's status word, and the "[Name]" head it opens with.
+func (c *chatLog) Work(run, name, status, text string) (int64, error) {
 	meta, err := json.Marshal(struct {
-		Run  string `json:"run"`
-		Name string `json:"name"`
-	}{run, name}, json.Deterministic(true))
+		Run    string `json:"run"`
+		Name   string `json:"name"`
+		Status string `json:"status,omitempty"`
+	}{run, name, status}, json.Deterministic(true))
 	if err != nil {
-		return err
+		return -1, err
 	}
-	_, _, err = c.append(store.KindWork, text, string(meta), "")
-	return err
+	first, _, err := c.append(store.KindWork, text, string(meta), "")
+	return first, err
 }
 
 // Tool logs one tool call: its name, the input as sent, and the call id that
@@ -723,4 +741,22 @@ func (h *Host) Note(text string) error {
 		h.appendTranscript(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(text), Seq: first})
 	}
 	return nil
+}
+
+// notice appends a status notice to the log and the live transcript, so a
+// resume reads back the row the chat drew: recaps, goal verdicts, loop and
+// workflow events. An append, like Note; the row draws the first line, as
+// the rebuilt window will.
+func (h *Host) notice(text, detail string) {
+	text = strings.TrimSpace(text)
+	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(text), Detail: detail}
+	if h.chat != nil {
+		first, err := h.chat.Notice(text, detail)
+		if err != nil {
+			h.logAppendFailed(err)
+		} else {
+			m.Seq = first
+		}
+	}
+	h.AppendChat(m)
 }

@@ -878,7 +878,7 @@ func TestAgentUpdateReachesTheCaller(t *testing.T) {
 	notices, typed := 0, 0
 	for _, m := range h.Session().Transcript {
 		switch {
-		case m.Kind == RowNotice && strings.HasPrefix(m.Text, "Agent ") && strings.Contains(m.Text, "the flaky test is in x_test.go"):
+		case m.Kind == RowNotice && m.Run != "" && strings.Contains(m.Text, "the flaky test is in x_test.go"):
 			notices++
 		case m.Role == fantasy.MessageRoleUser && strings.Contains(m.Text, "flaky test"):
 			typed++
@@ -1441,7 +1441,7 @@ func TestWaitValidation(t *testing.T) {
 func finishedRows(h *Host, id string) int {
 	n := 0
 	for _, m := range h.Session().Transcript {
-		if m.Kind == RowNotice && strings.Contains(m.Text, " "+id+" ") && strings.Contains(m.Text, "finished") {
+		if m.Kind == RowNotice && m.Run == id && m.Status == CallOK {
 			n++
 		}
 	}

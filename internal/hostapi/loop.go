@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"charm.land/fantasy"
-
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
 )
@@ -155,6 +153,10 @@ func (h *Host) fireLoop(l *Loop) {
 		scope = h.claim()
 	}
 	ag.mu.Unlock()
+	// the run's line is a work row: the prompt reaches the model attached,
+	// and the row is the one a rebuilt window reads from the log. Off the
+	// lock: the append refreshes, and the lock never waits on the UI.
+	h.work("", "loop", "", fmt.Sprintf(loopRunPrefix, l.Runs)+l.Prompt)
 	h.refresh()
 	var err error
 	if cmd {
@@ -244,7 +246,7 @@ func (h *Host) stopLoop(l *Loop, why string) error {
 	}
 	ag.loop, ag.loopStop = nil, nil
 	ag.mu.Unlock()
-	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: why})
+	h.notice(why, "")
 	return nil
 }
 

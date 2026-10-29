@@ -536,10 +536,10 @@ func TestSteeringQueue(t *testing.T) {
 	h.AgentCancel() // no runner: must not panic
 }
 
-// TestJoinedReportsDrawHeads: reports a turn ends with wait as one message of
-// markup alone, so the chat draws a notice row per head and the model's message
-// leaves no blank user row in the transcript.
-func TestJoinedReportsDrawHeads(t *testing.T) {
+// TestReportRowsDrawWhereDelivered: a report's row goes up where the report
+// was delivered, and a turn whose message is all markup draws no user row of
+// the reports, so the transcript never draws them twice.
+func TestReportRowsDrawWhereDelivered(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	headless := func(run string) string {
@@ -548,25 +548,19 @@ func TestJoinedReportsDrawHeads(t *testing.T) {
 	h.agents.mu.Lock()
 	scope := h.claim()
 	h.agents.mu.Unlock()
-	for _, m := range []string{headless("a2"), headless("a3")} {
-		if err := h.AgentSend(m); err != nil {
+	for _, run := range []string{"a2", "a3"} {
+		h.work(run, "explore", "finished", "found it")
+		if err := h.AgentSend(headless(run)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	before := len(h.Session().Transcript)
 	if _, text := h.nextTurn(scope, nil); text == "" {
 		t.Fatal("the queued reports started no turn")
 	}
-	var heads []string
-	for _, row := range h.Session().Transcript[before:] {
-		if row.Kind != RowNotice {
-			t.Fatalf("a report drew a row of the user's: %+v", row)
+	for _, row := range h.Session().Transcript {
+		if row.Role == fantasy.MessageRoleUser && row.Kind == RowMessage {
+			t.Fatalf("the reports drew a row of the user's: %+v", row)
 		}
-		heads = append(heads, row.Text)
-	}
-	want := []string{"Background agent a2 (look around) finished", "Background agent a3 (look around) finished"}
-	if !slices.Equal(heads, want) {
-		t.Fatalf("notice rows = %q, want %q", heads, want)
 	}
 }
 
