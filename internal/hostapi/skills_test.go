@@ -138,6 +138,36 @@ func TestSkillsEnabledDefaults(t *testing.T) {
 	}
 }
 
+// TestSkillItemsNameTheMarketplace: a plugin skill's source names the
+// marketplace its plugin was installed from; a local plugin's does not.
+func TestSkillItemsNameTheMarketplace(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostSkills(t)
+	root := filepath.Join(h.Dirs.PluginsRoot(), "installed", "from-mkt")
+	writeSkill(t, filepath.Join(root, "skills"), "marketed", "came from a marketplace", "")
+	writeSkill(t, filepath.Join(h.Dirs.PluginsRoot(), "local", "handmade", "skills"), "handmade", "came from nowhere", "")
+	reg := `{"installs":{"from-mkt":{"marketplace":"awesome-zemi","entry":"from-mkt","version":"v1.2","kind":"link","id":"i1"}}}`
+	if err := os.WriteFile(filepath.Join(h.Dirs.PluginsRoot(), "marketplaces.json"), []byte(reg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.pluginGrant.Store(&pluginGrant{roots: []string{root, filepath.Join(h.Dirs.PluginsRoot(), "local", "handmade")}, names: []string{"from-mkt", "handmade"}})
+	h.syncSkills()
+	fields := map[string]string{}
+	for _, it := range h.skillItems() {
+		var b strings.Builder
+		for _, f := range it.Fields {
+			b.WriteString(f.Name + ": " + f.Value + "\n")
+		}
+		fields[it.Text] = b.String()
+	}
+	if src, ok := fields["marketed"]; !ok || !strings.Contains(src, "plugin:from-mkt, from the awesome-zemi marketplace") {
+		t.Fatalf("marketed source: %q", src)
+	}
+	if src := fields["handmade"]; strings.Contains(src, "marketplace") {
+		t.Fatalf("a local plugin names no marketplace: %q", src)
+	}
+}
+
 // TestSkillItemsShowTheBody: a skill's view holds its text; only a skill
 // with a file of its own offers to open it, since zemi rewrites a builtin's
 // on every start.

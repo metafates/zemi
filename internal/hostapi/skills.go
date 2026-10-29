@@ -673,7 +673,13 @@ func (h *Host) skillItems() []OverlayItem {
 		if s.Source == skill.Recipe {
 			item.Keys = append(item.Keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "skills delete " + s.Name})
 		}
-		item.Fields = fieldList("source", h.sourceOf(s.Source, s.Dir), "status", state, "used by", h.usedBy(s, state == "on"), "path", perm.TildePath(skillFile(s)))
+		src := h.sourceOf(s.Source, s.Dir)
+		if n := h.PluginOf(s.Dir); n != "" {
+			if prov, ok := plugin.MarketplaceOf(h.Dirs, n); ok {
+				src += ", from the " + prov.Marketplace + " marketplace"
+			}
+		}
+		item.Fields = fieldList("source", src, "status", state, "used by", h.usedBy(s, state == "on"), "path", perm.TildePath(skillFile(s)))
 		item.Detail = body // enter reads the skill itself: its description is the row's desc
 		items = append(items, item)
 	}
