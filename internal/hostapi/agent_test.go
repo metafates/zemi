@@ -1142,9 +1142,11 @@ func TestTurnDoneLogsTheCutCall(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.agents.mu.Lock()
-	h.agents.tools = []StreamTool{{ID: "t1", Name: "shell", Label: "slow4",
+	h.agents.tools = []StreamTool{{
+		ID: "t1", Name: "shell", Label: "slow4",
 		Input: `{"command":"sleep 8","about":"slow4"}`, Status: CallRun,
-		Output: "stopped: the user interrupted the command"}}
+		Output: "stopped: the user interrupted the command",
+	}}
 	h.agents.mu.Unlock()
 	sa := h.streamHooks()
 	sa.TurnDone(context.Canceled, fantasy.Usage{})
