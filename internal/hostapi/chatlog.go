@@ -543,7 +543,7 @@ func (h *Host) zoom(in zoomArgs) (fantasy.ToolResponse, error) {
 	}
 	if row.Kind == store.KindWork {
 		if run := workRun(row); run != "" {
-			return h.zoomRun(run, in.Page)
+			return h.zoomRun(run, in.Page, row.Text)
 		}
 	}
 	text := row.Text
@@ -586,8 +586,10 @@ func workRun(row store.LogEntry) string {
 }
 
 // zoomRun is zoom(id, 1) on a work message: the run it names, its transcript
-// paged by the same 8k characters a long message gets.
-func (h *Host) zoomRun(run string, page int) (fantasy.ToolResponse, error) {
+// paged by the same 8k characters a long message gets. A run whose agents
+// were all replayed from an earlier journal has no transcript of its own;
+// the work row's report stands in for it.
+func (h *Host) zoomRun(run string, page int, own string) (fantasy.ToolResponse, error) {
 	rows, err := h.DB.Messages(run)
 	if errors.Is(err, store.ErrNotFound) {
 		return fantasy.NewTextResponse(workGone), nil
@@ -596,6 +598,9 @@ func (h *Host) zoomRun(run string, page int) (fantasy.ToolResponse, error) {
 		return fantasy.ToolResponse{}, err
 	}
 	_, tr := historyFrom(rows)
+	if len(tr) == 0 {
+		return fantasy.NewTextResponse(pageText("run "+run, own, -1, page)), nil
+	}
 	var b strings.Builder
 	for _, m := range tr {
 		if b.Len() > 0 {
