@@ -16,7 +16,7 @@ func TestJobsScreen(t *testing.T) {
 	h, _ := newLoopHost(t)
 	dir := t.TempDir()
 
-	ended, err := h.jobs.Start(dir, "echo bye", nil)
+	ended, err := h.jobs.Start(dir, "", "echo bye", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestJobsScreen(t *testing.T) {
 		}
 		return nil
 	})
-	running, err := h.jobs.Start(dir, "sleep 30", nil)
+	running, err := h.jobs.Start(dir, "", "sleep 30", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,6 +7,7 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -71,7 +72,8 @@ func waitJob(ctx context.Context, j *Job, quiet, cap time.Duration) {
 // Job is one managed background process.
 type Job struct {
 	ID       string
-	Name     string
+	Name     string // the model's about for it, else the command line
+	Cmd      string // the command line, which the job's view shows as bash
 	Started  time.Time
 	stdout   *proc.Buffer
 	stderr   *proc.Buffer
@@ -219,8 +221,9 @@ type Jobs struct {
 
 // Start runs a shell line with proc.Shell in dir with env and returns the
 // job id. Output is captured as it arrives, so job_read shows a server's
-// lines while it runs.
-func (m *Jobs) Start(dir, line string, env []string) (string, error) {
+// lines while it runs. name is what the user sees it as, the model's about
+// for it, falling back to the line.
+func (m *Jobs) Start(dir, name, line string, env []string) (string, error) {
 	if strings.TrimSpace(line) == "" {
 		return "", errors.New("command is required")
 	}
@@ -228,7 +231,7 @@ func (m *Jobs) Start(dir, line string, env []string) (string, error) {
 	cmd.Dir = dir
 	cmd.Env = env
 	j := &Job{
-		Name: line, Started: time.Now(), cmd: cmd, done: make(chan struct{}),
+		Name: cmp.Or(name, line), Cmd: line, Started: time.Now(), cmd: cmd, done: make(chan struct{}),
 		stdout: &proc.Buffer{Max: 1 << 20}, stderr: &proc.Buffer{Max: 1 << 20},
 	}
 	cmd.Stdout, cmd.Stderr = j.stdout, j.stderr
@@ -243,9 +246,10 @@ func (m *Jobs) Start(dir, line string, env []string) (string, error) {
 // Adopt registers a command that is already running, with the buffer it
 // writes to, the byte count the caller already delivered from it, when it
 // started and a channel carrying its Wait: a shell call past its timeout
-// keeps going as a job instead of losing the work done so far.
-func (m *Jobs) Adopt(name string, cmd *exec.Cmd, out *proc.Buffer, sent int64, started time.Time, wait <-chan error) string {
-	j := &Job{Name: name, Started: started, cmd: cmd, done: make(chan struct{}), stdout: out, stderr: &proc.Buffer{Max: 1 << 20}}
+// keeps going as a job instead of losing the work done so far. name is what
+// the user sees it as (the shell call's about), line the command itself.
+func (m *Jobs) Adopt(name, line string, cmd *exec.Cmd, out *proc.Buffer, sent int64, started time.Time, wait <-chan error) string {
+	j := &Job{Name: cmp.Or(name, line), Cmd: line, Started: started, cmd: cmd, done: make(chan struct{}), stdout: out, stderr: &proc.Buffer{Max: 1 << 20}}
 	j.sent[0] = sent
 	return m.add(j, wait)
 }
@@ -409,7 +413,7 @@ func runJobStart(ctx context.Context, p *Pipeline, in jobStartArgs) (fantasy.Too
 		return fantasy.NewTextErrorResponse("jobs unavailable"), nil
 	}
 	line := in.Command
-	id, err := p.Jobs.Start(workdir(), line, p.cmdEnv())
+	id, err := p.Jobs.Start(workdir(), in.About, line, p.cmdEnv())
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}

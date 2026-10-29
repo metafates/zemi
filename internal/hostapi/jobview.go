@@ -137,7 +137,7 @@ func (h *Host) jobOverlay(j *tools.Job) Overlay {
 		ID: "job:" + j.ID, Title: "Jobs / " + clipLine(j.Name, 50), Origin: lua.OriginBuiltin,
 		Live: true, Body: out, Mark: j.Mark(),
 		Fields: []Field{{Name: "status", Value: status}, {Name: "time", Value: elapsed}},
-		Parts:  []BodyPart{{Text: j.Name, Lang: "bash", Fill: FillCanvas}, {Text: out, Fill: FillWell}},
+		Parts:  []BodyPart{{Text: j.Cmd, Lang: "bash", Fill: FillCanvas}, {Text: out, Fill: FillWell}},
 	}
 	if out == "" {
 		o.Empty = "(no output yet)"
