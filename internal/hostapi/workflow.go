@@ -1592,7 +1592,12 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	select {
 	case <-f.done:
 	case <-ctx.Done():
-		f.cancel()
+		// an interrupt stops the turn, not the run: it hands off the way one a
+		// message took does, and its report arrives as a message
+		if f.detach() {
+			h.setToolOutcome(call.ID, tools.Outcome{Run: f.id})
+			return fantasy.NewTextResponse("The turn was interrupted while workflow " + f.id + " (" + f.description + ") ran; the run goes on, and its report arrives as a message. Wait for it with run=" + f.id + " and action wait, or read the report when it lands."), nil
+		}
 		<-f.done
 	case <-h.userSpoke():
 		if f.detach() {

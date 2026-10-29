@@ -66,8 +66,8 @@ func echoAgents(h *Host) *atomic.Int32 {
 	return &peak
 }
 
-// runFlow runs src in the foreground, as a call does: it waits for the run, or
-// cancels it when ctx ends first.
+// runFlow runs src in the foreground, waiting for its end; a ctx that ends
+// first cancels the run, which is the stop path's shape - a call hands off.
 func runFlow(ctx context.Context, h *Host, src string, args any) (string, error) {
 	f, err := h.startFlow(ctx, flowSpec{src: src, args: args})
 	if err != nil {
@@ -1315,24 +1315,23 @@ func TestWaitAllHandsOffFlowToUser(t *testing.T) {
 }
 
 // TestWorkflowCallHandsOff: a foreground workflow call hands its run off when
-// the user's own message arrives, so the turn reads that message instead of
-// waiting: the call answers with the background text, the run stays live, and
-// its report arrives as exactly one message. esc still cancels an attached
-// run.
+// the user's own message arrives or the turn is interrupted, so the turn reads
+// that message instead of waiting: the call answers with the handoff text, the
+// run stays live, and its report arrives as exactly one message. A run stops
+// by cancel, which flowControl's stop holds, not through the call's ctx.
 func TestWorkflowCallHandsOff(t *testing.T) {
 	for _, c := range []struct {
-		name        string
-		act         func(*Host, context.CancelFunc)
-		wantBG      bool
-		wantStopped bool
+		name          string
+		act           func(*Host, context.CancelFunc)
+		wantInterrupt bool
 	}{
 		{
 			name: "the user's message hands the run off",
-			act:  func(h *Host, _ context.CancelFunc) { h.UserSpoke() }, wantBG: true,
+			act:  func(h *Host, _ context.CancelFunc) { h.UserSpoke() },
 		},
 		{
-			name: "esc cancels an attached run",
-			act:  func(_ *Host, cancel context.CancelFunc) { cancel() }, wantStopped: true,
+			name:          "esc hands the run off",
+			act:           func(_ *Host, cancel context.CancelFunc) { cancel() }, wantInterrupt: true,
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -1362,40 +1361,28 @@ func TestWorkflowCallHandsOff(t *testing.T) {
 			}()
 			f := waitLiveFlow(t, h)
 			c.act(h, cancel)
-			if c.wantBG {
-				resp := waitCall(t, calls)
-				if !strings.HasPrefix(resp.Content, bgWorkflowStarted) || toolStatus(out(resp.Content), false, tools.Outcome{Run: "f"}) != CallBG {
-					t.Fatalf("handoff = %q (error %v), want the background text", resp.Content, resp.IsError)
-				}
-				if !f.isRunning() {
-					t.Fatal("the run ended with the call that was handed off")
-				}
-				close(gate)
-				waitFor(t, func() error {
-					if f.isRunning() {
-						return errors.New("the run never ended")
-					}
-					if n := reportRows(h, f.id); n != 1 {
-						return fmt.Errorf("%d report rows for %s, want exactly 1", n, f.id)
-					}
-					return nil
-				})
-				waitIdle(t, h)
-				return
+			resp := waitCall(t, calls)
+			want := bgWorkflowStarted
+			if c.wantInterrupt {
+				want = "The turn was interrupted while workflow "
+			}
+			if !strings.HasPrefix(resp.Content, want) || toolStatus(out(resp.Content), false, tools.Outcome{Run: "f"}) != CallBG {
+				t.Fatalf("handoff = %q (error %v), want the handoff text", resp.Content, resp.IsError)
+			}
+			if !f.isRunning() {
+				t.Fatal("the run ended with the call that was handed off")
 			}
 			close(gate)
-			resp := waitCall(t, calls)
-			switch {
-			case c.wantStopped:
-				if !resp.IsError || !strings.Contains(resp.Content, "the user stopped it") {
-					t.Fatalf("an interrupted call = %q (error %v), want the stopped result", resp.Content, resp.IsError)
+			waitFor(t, func() error {
+				if f.isRunning() {
+					return errors.New("the run never ended")
 				}
-			case resp.IsError || !strings.Contains(resp.Content, "[workflow "+f.id):
-				t.Fatalf("an attached call = %q (error %v), want its report inline", resp.Content, resp.IsError)
-			}
-			if n := reportRows(h, f.id); n != 0 {
-				t.Fatalf("%d report rows for a call that read its result, want none", n)
-			}
+				if n := reportRows(h, f.id); n != 1 {
+					return fmt.Errorf("%d report rows for %s, want exactly 1", n, f.id)
+				}
+				return nil
+			})
+			waitIdle(t, h)
 		})
 	}
 }
