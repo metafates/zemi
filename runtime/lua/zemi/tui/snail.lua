@@ -11,13 +11,14 @@ local HEADS = {
 	idle = { "··", ticks = 1 },
 	thinking = { ".?", "?.", "..", "?.", ".?", "..", ticks = 8 },
 	working = { "··", ".·", "..", "·.", ticks = 6 },
+	stopping = { "·.", ".·", "..", "··", ticks = 6 },
 	reading = { "··", "..", "..", "..", ticks = 8 },
 	asking = { "??", ticks = 1 },
 	error = { "><", ticks = 1 },
 	done = { "^^", ticks = 1 },
 }
 
----@alias zemi.tui.SnailState "idle" | "thinking" | "working" | "reading" | "asking" | "error" | "done"
+---@alias zemi.tui.SnailState "idle" | "thinking" | "working" | "stopping" | "reading" | "asking" | "error" | "done"
 
 --- The eyes of `state` at `frame`.
 ---@param state zemi.tui.SnailState
