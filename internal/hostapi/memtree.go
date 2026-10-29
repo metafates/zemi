@@ -1043,7 +1043,7 @@ var ruler = strings.Repeat("-", nodeBytes)
 
 // tooLongNote is the same-conversation correction an over-long line earns.
 func tooLongNote(reply string) string {
-	return fmt.Sprintf("Too long: your line is %d bytes, over the %d-byte limit. Write\nthe whole line again for the same <input>, cutting just enough of the\nleast valuable items to fit before this cut:\n%s| <- LIMIT",
+	return fmt.Sprintf("Too long: your line is %d bytes, over the %d-byte limit. Write\nthe whole line again for the same <input>, cutting just enough of the\nleast valuable items to fit before this cut - the line alone, nothing else,\nno commentary about the cut:\n%s| <- LIMIT",
 		len(reply), nodeBytes, clipBytes(reply, nodeBytes))
 }
 
