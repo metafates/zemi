@@ -1415,8 +1415,8 @@ func TestForegroundRunPanicAnswersTheCall(t *testing.T) {
 	}
 }
 
-// TestWaitValidation: wait stands alone - it refuses stop, send_to, a prompt,
-// and a run of another session.
+// TestWaitValidation: wait refuses stop and a prompt with no receiver, and a
+// foreign run; it composes with send_to, which acts and then holds.
 func TestWaitValidation(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -1432,10 +1432,12 @@ func TestWaitValidation(t *testing.T) {
 		want  string
 	}{
 		{"wait beside stop", `{"wait":"rOther","stop":true}`, "set one of wait or stop, not both"},
-		{"wait beside send_to", `{"wait":"rOther","send_to":"rOther"}`, "set one of wait or send_to, not both"},
 		{"wait with a prompt", `{"wait":"all","prompt":"hello"}`, "wait takes no prompt"},
 		{"another session's run", `{"wait":"rOther"}`, "belongs to another session"},
 		{"no such run", `{"wait":"nope"}`, "no agent run"},
+		// send_to and wait compose: the send_to acts first, so this reaches the
+		// run lookup and fails there, not at the arg check
+		{"wait beside send_to", `{"wait":"rOther","send_to":"rOther"}`, "belongs to another session"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			resp, err := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "w", Input: c.input})

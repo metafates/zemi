@@ -436,12 +436,18 @@ func TestZoomAndDateRoundTrip(t *testing.T) {
 			t.Fatalf("date = %q, want %q", got, row.CreatedAt)
 		}
 	})
+	t.Run("n rounds up to a power of two", func(t *testing.T) {
+		res := zoomCall(t, h, `{"id":0,"n":3}`)
+		if res.IsError || !strings.Contains(res.Content, "0+2") {
+			t.Fatalf("zoom(n 3) = %.60q, want the next power of two's merge", res.Content)
+		}
+	})
 	t.Run("errors", func(t *testing.T) {
 		for _, c := range []struct {
 			name, input string
 		}{
 			{"unknown id", `{"id":99}`},
-			{"n not a power of two", `{"id":0,"n":3}`},
+			{"negative n", `{"id":0,"n":-2}`},
 			{"line past the end", `{"id":3,"n":4}`},
 			{"negative id", `{"id":-1}`},
 		} {

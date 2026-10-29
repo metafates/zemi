@@ -1174,7 +1174,7 @@ type agentArgs struct {
 	Agent       string `json:"agent,omitempty" desc:"one of the Agents above"`
 	Background  bool   `json:"background,omitempty" desc:"run detached; the report arrives later as a message"`
 	SendTo      string `json:"send_to,omitempty" desc:"id of a run to continue, a workflow's agent too: a running one reads prompt at its next step, a finished one answers it with its history kept; agent and description are then ignored"`
-	Wait        string `json:"wait,omitempty" desc:"a run id, or \"all\" for every agent run and workflow of this session: block until it, or the last of them, ends instead of working on; a wait returns early when a run sends an update - read it, answer with send_to if needed, then wait again"`
+	Wait        string `json:"wait,omitempty" desc:"a run id, or \"all\" for every agent run and workflow of this session: block until it, or the last of them, ends instead of working on; composes with send_to, which acts and then the wait holds; a wait returns early when a run sends an update - read it, answer with send_to if needed, then wait again"`
 	Stop        bool   `json:"stop,omitempty" desc:"with send_to: kill the run; its report never arrives"`
 }
 
@@ -1187,7 +1187,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 		" Subagents of one session share the caller's working directory and project: split file edits between parallel runs, or hand each run its own git worktree." +
 		" Set background for long work you need not wait on. A call without it waits for its run, and hands the run off when the user sends a message while it runs or when the turn is interrupted: the report or result then arrives as a message." +
 		" send_to continues a run, running or finished, by its run id; stop kills the run." +
-		" wait blocks until a run, or every run and workflow of this session with \"all\", ends instead of working on; a run sending an update, or a sibling finishing or sending one, ends the wait early with a line naming it and the waited run, which keeps running: read it, answer with send_to if needed, then wait again.")
+		" wait blocks until a run, or every run and workflow of this session with \"all\", ends instead of working on, and composes with send_to, which acts and then the wait holds; a run sending an update, or a sibling finishing or sending one, ends the wait early with a line naming it and the waited run, which keeps running: read it, answer with send_to if needed, then wait again.")
 	b.WriteString("\n\nAgents:")
 	for _, d := range t.defs {
 		fmt.Fprintf(&b, "\n- %s: %s", d.Name, truncRunes(d.Description, 200))
@@ -1240,13 +1240,10 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 	if in.Wait != "" && in.Stop {
 		return fantasy.NewTextErrorResponse("set one of wait or stop, not both"), nil
 	}
-	if in.Wait != "" && in.SendTo != "" {
-		return fantasy.NewTextErrorResponse("set one of wait or send_to, not both"), nil
-	}
 	if in.Stop && in.SendTo == "" {
 		return fantasy.NewTextErrorResponse("pass the run's id as send_to"), nil
 	}
-	if strings.TrimSpace(in.Prompt) != "" && in.Wait != "" {
+	if strings.TrimSpace(in.Prompt) != "" && in.Wait != "" && in.SendTo == "" {
 		return fantasy.NewTextErrorResponse("wait takes no prompt: send one with send_to, or wait without one"), nil
 	}
 	if strings.TrimSpace(in.Prompt) == "" && !in.Stop && in.Wait == "" {
@@ -1270,26 +1267,33 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 			return fantasy.NewTextResponse("Stopped agent " + run.id + " (" + run.description + "); its report will not arrive."), nil
 		}
 		if run.isRunning() {
-			if err := t.h.MessageAgent(run.id, in.Prompt); err != nil {
-				return fantasy.NewTextErrorResponse(err.Error()), nil
+			if strings.TrimSpace(in.Prompt) != "" {
+				if err := t.h.MessageAgent(run.id, in.Prompt); err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
+				t.h.setToolDetail(call.ID, "message to "+run.id)
 			}
-			t.h.setToolDetail(call.ID, "message to "+run.id)
+			// the send_to acted; the wait it came with holds after it
+			if in.Wait != "" {
+				return t.waitHeld(ctx, call.ID, in.Wait), nil
+			}
+			if strings.TrimSpace(in.Prompt) == "" {
+				return t.wait(ctx, call.ID, run), nil
+			}
 			return fantasy.NewTextResponse("Queued for agent " + run.id + ": it reads the message at its next step. Its report still arrives when it finishes."), nil
 		}
 		t.h.setTool(call.ID, func(st *StreamTool) { st.Run = run.id })
-		return t.foreground(ctx, call.ID, run, func(progress func(string)) (string, error) {
+		resp, err := t.foreground(ctx, call.ID, run, func(progress func(string)) (string, error) {
 			return t.h.continueRun(ctx, run, in.Prompt, progress)
 		})
+		// the continue held until the run ended; a wait for the others holds on
+		if err != nil || in.Wait == "" {
+			return resp, err
+		}
+		return t.waitHeld(ctx, call.ID, in.Wait), nil
 	}
 	if in.Wait != "" {
-		if in.Wait == "all" {
-			return t.waitAll(ctx, call.ID), nil
-		}
-		run, err := t.h.sessionRun(in.Wait)
-		if err != nil {
-			return fantasy.NewTextErrorResponse(err.Error()), nil
-		}
-		return t.wait(ctx, call.ID, run), nil
+		return t.waitHeld(ctx, call.ID, in.Wait), nil
 	}
 	if strings.TrimSpace(in.Agent) == "" {
 		// only send_to may leave it out; an omission must not silently run
@@ -1328,6 +1332,19 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 	return t.foreground(ctx, call.ID, run, func(progress func(string)) (string, error) {
 		return t.h.runAgent(rctx, run, def, in.Prompt, progress)
 	})
+}
+
+// waitHeld is a wait arg's hold: "all" waits for every run of the session,
+// an id for that run.
+func (t *agentTool) waitHeld(ctx context.Context, callID, wait string) fantasy.ToolResponse {
+	if wait == "all" {
+		return t.waitAll(ctx, callID)
+	}
+	run, err := t.h.sessionRun(wait)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error())
+	}
+	return t.wait(ctx, callID, run)
 }
 
 // wait blocks until a run of this session ends, the user types, or the call
