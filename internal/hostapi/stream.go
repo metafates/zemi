@@ -6,6 +6,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"slices"
+	"strings"
 	"time"
 
 	"charm.land/fantasy"
@@ -267,11 +268,33 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	}
 	// the last step's calls reach the log only when its OnStepFinish runs; a
 	// step that never finished (esc mid-command: the tool returned its stopped
-	// result before the step died) leaves its whole rail unlogged. Log the
-	// rows here, so a resumed window draws what the live one drew; the rows
-	// land before the flush, so the pairing pairs them at once. A retry
-	// re-streams the step and logs its own.
+	// result before the step died) leaves its whole rail unlogged. The same
+	// holds for the reasoning it drew. Log the rows here, so a resumed window
+	// draws what the live one drew; the rows land before the flush, so the
+	// pairing pairs them at once. A retry re-streams the step and logs its own.
 	if !hold && h.chat != nil {
+		if !ag.stepSettled {
+			// the stretches the step already flushed draw unnamed in the
+			// transcript; the open one is still in the buffer. A late
+			// stretch a provider interleaved after a call logs below that
+			// call here, the way a rebuild draws it (see the NOTE on
+			// ReasoningDelta)
+			h.tMu.Lock()
+			for _, m := range h.session.Transcript {
+				if m.Kind == RowReasoning && m.Seq == NoSeq {
+					if e := h.chat.Thought(m.Text, m.Stat.ThoughtMS); e != nil {
+						h.Log.Warn("thought not logged", "origin", "agent", "error", e)
+					}
+				}
+			}
+			h.tMu.Unlock()
+			ag.endThinking()
+			if ms := ag.thought.Milliseconds(); strings.TrimSpace(ag.reasonBuf) != "" {
+				if e := h.chat.Thought(ag.reasonBuf, ms); e != nil {
+					h.Log.Warn("thought not logged", "origin", "agent", "error", e)
+				}
+			}
+		}
 		for _, t := range cut {
 			if e := h.chat.Tool(string(tools.ToolName(t.Name)), cmp.Or(t.Raw, t.Input), t.ID); e != nil {
 				h.Log.Warn("call not logged", "origin", "agent", "error", e)

@@ -1252,6 +1252,45 @@ func TestTurnDoneLogsTheRawArgs(t *testing.T) {
 	}
 }
 
+// TestTurnDoneLogsTheCutThought: a step's reasoning reaches the log only at
+// its finish, so esc mid-thought left every thought row live-only - the
+// stretches it flushed and the open buffer log here, in draw order.
+func TestTurnDoneLogsTheCutThought(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "thinking it over.", Stat: &TurnStat{ThoughtMS: 1100}})
+	h.agents.mu.Lock()
+	h.agents.reasonBuf = "still thinking."
+	h.agents.thought = 400 * time.Millisecond
+	h.agents.mu.Unlock()
+	sa := h.streamHooks()
+	sa.TurnDone(context.Canceled, fantasy.Usage{})
+
+	rows, err := h.DB.LogTail(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var texts []string
+	for _, r := range rows {
+		if r.Kind == store.KindThought {
+			texts = append(texts, r.Text)
+		}
+	}
+	if len(texts) != 2 || texts[0] != "thinking it over." || texts[1] != "still thinking." {
+		t.Fatalf("the log holds thoughts %q, want both stretches in draw order", texts)
+	}
+	tr := logRows(rows)
+	var ms []int64
+	for _, m := range tr {
+		if m.Kind == RowReasoning {
+			ms = append(ms, m.Stat.ThoughtMS)
+		}
+	}
+	if len(ms) != 2 || ms[0] != 1100 || ms[1] != 400 {
+		t.Fatalf("the rebuilt thoughts carry ms %v, want [1100 400]", ms)
+	}
+}
+
 // TestStreamDoneStoresLastIn: a step's context is stored where a resume's
 // meter reads it, and a dropped chat clears it with the chat it belonged to.
 func TestStreamDoneStoresLastIn(t *testing.T) {
