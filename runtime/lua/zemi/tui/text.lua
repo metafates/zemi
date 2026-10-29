@@ -363,8 +363,12 @@ function M.digest(rows, first, last, cwd, home)
 	if #failed > 0 then
 		if #failed == 1 and #calls == 0 then
 			local name = M.lower(M.VERB[M.tool(failed[1])] or M.title(M.tool(failed[1])))
-			if (failed[1].text or "") ~= "" then
-				parts[#parts + 1] = name .. " failed: " .. failed[1].text
+			-- the row's output is the refusal; the input summary only says
+			-- what was attempted
+			local why = (failed[1].output or ""):match("^[^\n]*") or ""
+			if why == "" then why = failed[1].text or "" end
+			if why ~= "" then
+				parts[#parts + 1] = name .. " failed: " .. why
 			else
 				parts[#parts + 1] = name .. " failed"
 			end

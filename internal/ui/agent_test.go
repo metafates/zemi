@@ -2507,6 +2507,9 @@ func TestDigestCountsEveryFamily(t *testing.T) {
 		{name: "a lone failed call names its target", want: "read failed: gone.txt", rows: []hostapi.ChatMessage{
 			{Role: "assistant", Kind: "tool", Tool: "read", Text: "gone.txt", Status: "err"},
 		}},
+		{name: "a failed call reads its refusal", want: "update failed: todo 1: status must be pending, in_progress or done", rows: []hostapi.ChatMessage{
+			{Role: "assistant", Kind: "tool", Tool: "todos", Text: "1 todos, 0 done", Output: "todo 1: status must be pending, in_progress or done", Status: "err"},
+		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			host.AppendMessage("user", "go")
