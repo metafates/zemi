@@ -1409,7 +1409,13 @@ wf.pipeline(items, stage, ...) -> results, errs: each item through the stages, s
 wf.phase(name) groups the agents after it; wf.log(...) tells the user; wf.args is the input's args
 The script's return value is the result.
 
+Args carry one of script, run or name, never two. A fan-out wraps every agent call in a function, since wf.parallel runs functions, not calls:
 local wf = zemi.workflow
+local checks = wf.parallel({
+	function() return wf.agent("Audit publishers in cmd/", { agent = "explore" }) end,
+	function() return wf.agent("Audit test helpers", { agent = "explore" }) end,
+})
+
 local notes = wf.pipeline(wf.args, function(dir) return wf.agent("Summarize " .. dir .. ", citing file:line.", { agent = "explore" }) end)
 return wf.agent("Write a design note from:\n" .. table.concat(notes, "\n"))`
 
