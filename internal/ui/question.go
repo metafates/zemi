@@ -175,6 +175,12 @@ func (a *App) questionKey(key, text string) {
 		}
 		return
 	}
+	if !(st.typing && lineKey(key)) && st.ask.overflows() && scrollKey(&st.ask, key, false) {
+		return
+	}
+	// the move keys keep j/k/g/G for navigation: the pins drive questions
+	// with them, and a prose word losing its first letter is the same
+	// accepted cost as the ask's choice keys
 	if moveSel(&st.sel, q.ListRows(), st.view.pageItems(q.ListRows()), key) {
 		return
 	}
@@ -214,6 +220,13 @@ func (a *App) questionKey(key, text string) {
 			st.picked.Add(st.sel)
 		}
 		st.typed = false
+	case text != "" && !tail && key != "space":
+		// prose on an option row is the user's answer: fill the field and
+		// move onto it, so enter records what they typed, not the row the
+		// list still highlighted
+		st.sel = len(q.Options)
+		st.typing = true
+		st.input.insert(text)
 	case key == "enter":
 		st.choose(q)
 		a.answerQuestion()

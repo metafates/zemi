@@ -1930,7 +1930,7 @@ func TestWorkingRowRetry(t *testing.T) {
 	for _, c := range []struct {
 		in   time.Duration
 		want string
-	}{{0, ` esc interrupt · retrying now · 0m 20s ┐`}, {4 * time.Second, ` esc interrupt · next try in \ds · 0m 20s ┐`}} {
+	}{{0, ` esc interrupt · retrying now · elapsed 0m 20s ┐`}, {4 * time.Second, ` esc interrupt · next try in \ds · elapsed 0m 20s ┐`}} {
 		host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Retrying: true, RetryIn: c.in, Retries: 1})
 		app.renderSync(t)
 		if frame := ansi.Strip(app.Frame()); !regexp.MustCompile(c.want).MatchString(frame) {
@@ -2614,6 +2614,32 @@ func TestTodosMeterSpansTheList(t *testing.T) {
 		}
 		return strings.Join(b, "\n")
 	}())
+}
+
+// TestTodosMeterWithinTheWindow: a list at or under the shown window draws
+// one cell per item with each cell its own state — the scaled path above
+// never draws the all-done lie a wrong divisor gives.
+func TestTodosMeterWithinTheWindow(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 100, 24)
+	seedTodos(t, host, []store.Todo{
+		{Content: "one", Status: "done"}, {Content: "two", Status: "in_progress"}, {Content: "three", Status: "pending"},
+	})
+	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 80, 24, app.uiState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range lines {
+		r := strings.TrimRight(hostapi.SegsText(l), " ")
+		if !strings.HasPrefix(r, "Todos ") {
+			continue
+		}
+		if !strings.Contains(r, "1/3  █░░") {
+			t.Fatalf("three items must draw three cells, one per item: %q", r)
+		}
+		return
+	}
+	t.Fatal("no todos header")
 }
 
 // TestLiveRailOpensWhole: a rail the picker walks while its turn still adds

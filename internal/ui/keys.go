@@ -193,30 +193,32 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if a.askGuard(pa.opened, pa.answer == nil) {
 			return nil
 		}
+		// the ask's keys answer only while the draft is empty: past the
+		// grace a stray "y" from prose the user is typing must not approve,
+		// and a stray move key must not walk the selection onto the risky
+		// answer. A draft takes every key it edits and enter sends it, the
+		// box keeps waiting; esc still denies.
+		if key == "esc" {
+			a.answerPerm(false, tools.ByUser)
+			return nil
+		}
+		if !a.composer.empty() {
+			return a.composerKey(key, msg)
+		}
 		choices := pa.choices()
 		if pa.view.overflows() && scrollKey(&pa.view, key, false) || moveSel(&pa.sel, len(choices), len(choices), key) {
 			a.bump()
 			return nil
 		}
-		// a choice's key answers only while the draft is empty: past the
-		// grace a stray "y" from prose the user is typing must not approve.
-		// A draft takes every printable key and enter sends it, the box
-		// keeps waiting; esc still denies.
-		if key == "esc" {
-			a.answerPerm(false, tools.ByUser)
+		switch key {
+		case "enter":
+			a.choosePerm(choices[pa.sel])
 			return nil
-		}
-		if a.composer.empty() {
-			switch key {
-			case "enter":
-				a.choosePerm(choices[pa.sel])
-				return nil
-			default:
-				for _, c := range choices {
-					if c.key == key {
-						a.choosePerm(c)
-						return nil
-					}
+		default:
+			for _, c := range choices {
+				if c.key == key {
+					a.choosePerm(c)
+					return nil
 				}
 			}
 		}
