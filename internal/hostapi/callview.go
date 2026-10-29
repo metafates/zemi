@@ -28,7 +28,7 @@ func (h *Host) callCommands() []*Command {
 			}
 			n, err := strconv.Atoi(args)
 			if err != nil {
-				return Usagef("/call <row> (a chat row's index, negative for the live turn's calls, #seq for a logged one)")
+				return Usagef("/call <row> (a chat row's number from the top, 1-based; negative for the live turn's calls, #seq for a logged one)")
 			}
 			return h.openCall(n)
 		},
