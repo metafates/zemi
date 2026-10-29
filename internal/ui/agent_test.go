@@ -828,10 +828,10 @@ func TestPermissionTellNarrow(t *testing.T) {
 	waitPrompt(t, app, func() bool { return app.permAsk != nil && host.AsksWaiting() == 2 })
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	if !strings.Contains(frame, "┐") || !strings.Contains(frame, "│ › [y] Yes") || !strings.Contains(frame, "│   [t] No, and") || !strings.Contains(frame, "1 of 2") {
+	if !strings.Contains(frame, "┐") || !strings.Contains(frame, "│   [y] Yes") || !strings.Contains(frame, "│ › [n] No") || !strings.Contains(frame, "│   [t] No, and") || !strings.Contains(frame, "1 of 2") {
 		t.Fatalf("narrow box:\n%s", frame)
 	}
-	if app.Update(tea.KeyPressMsg{Code: tea.KeyDown}); app.permAsk.sel != 1 {
+	if app.Update(tea.KeyPressMsg{Code: tea.KeyDown}); app.permAsk.sel != 2 {
 		t.Fatalf("down: sel=%d", app.permAsk.sel)
 	}
 	app.Update(tea.KeyPressMsg{Code: 't', Text: "t"})
@@ -1616,10 +1616,6 @@ func TestAskGuardUnderDraft(t *testing.T) {
 		answer string // the key that answers the ask
 	}{
 		{
-			"perm", func(app *App) { app.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "make deploy"}) },
-			func(app *App) bool { return app.permAsk != nil }, "y",
-		},
-		{
 			"plan", func(app *App) { app.AskPlan("# Plan") },
 			func(app *App) bool { return app.planAsk != nil }, "a",
 		},
@@ -1671,6 +1667,56 @@ func TestAskGuardUnderDraft(t *testing.T) {
 				t.Fatalf("the draft did not submit: history %v", app.composer.history)
 			}
 		})
+	}
+}
+
+// TestPermissionProseTypesUnderTheAsk: past the grace an ask's choice keys
+// answer only while the draft is empty — prose types into the draft the box
+// keeps, a stray "y" in it does not approve, enter sends the draft and the
+// box keeps waiting, and esc still denies. With an empty draft a choice's
+// key answers as before, and enter picks the highlighted `No`.
+func TestPermissionProseTypesUnderTheAsk(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 80, 20)
+	done := make(chan struct{})
+	var allowed bool
+	go func() {
+		allowed, _ = app.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "make deploy"})
+		close(done)
+	}()
+	waitPrompt(t, app, func() bool { return app.permAsk != nil })
+	app.program = tea.NewProgram(nil)
+	opened := app.now()
+	now := opened
+	app.now = func() time.Time { return now }
+	typeKey := func(key string) {
+		now = now.Add(time.Millisecond)
+		app.Update(tea.KeyPressMsg{Code: rune(key[0]), Text: key})
+	}
+	now = opened.Add(permGrace + time.Millisecond)
+	typeKey("you bet, run it")
+	if app.permAsk == nil || app.composer.text != "you bet, run it" {
+		t.Fatalf("prose under the ask must draft: ask=%v text=%q", app.permAsk != nil, app.composer.text)
+	}
+	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	if app.permAsk == nil || app.composer.text != "you bet, run ity" {
+		t.Fatalf("a stray y in a draft must type, not approve: ask=%v text=%q", app.permAsk != nil, app.composer.text)
+	}
+	app.composerKey("enter", tea.KeyPressMsg{}) // no model: the send fails, the text is kept
+	if app.permAsk == nil || len(app.composer.history) != 1 {
+		t.Fatalf("enter with a draft must send it and keep the ask: ask=%v history=%v", app.permAsk != nil, app.composer.history)
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("esc must deny past the grace")
+	}
+	if allowed {
+		t.Fatal("esc denied the ask")
+	}
+	if app.composer.text != "you bet, run ity" {
+		t.Fatalf("the draft must survive the deny: %q", app.composer.text)
 	}
 }
 
@@ -2228,7 +2274,7 @@ func TestPermissionChoices(t *testing.T) {
 	}{
 		{"down enter takes no", shell(), []tea.KeyPressMsg{down, enter}, false, "user"},
 		{"up stays on yes", shell(), []tea.KeyPressMsg{up, enter}, true, "user:once"},
-		{"enter takes yes", shell(), []tea.KeyPressMsg{enter}, true, "user:once"},
+		{"enter takes no, the default", shell(), []tea.KeyPressMsg{enter}, false, "user"},
 		{"n denies", shell(), []tea.KeyPressMsg{letter('n')}, false, "user"},
 	} {
 		if ok, by := ask(c.req, c.keys...); ok != c.ok || by != c.by {

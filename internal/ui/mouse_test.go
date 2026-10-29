@@ -127,10 +127,10 @@ func TestMouseHover(t *testing.T) {
 	}()
 	waitPrompt(t, app, func() bool { return app.permAsk != nil })
 	app.renderSync(t)
-	x, y := findCell(t, app, "No ")
+	x, y := findCell(t, app, "Yes ") // an unselected choice: the selected one draws the band
 	app.Update(tea.MouseMotionMsg{X: x + 1, Y: y})
 	app.renderSync(t)
-	if !strings.Contains(app.Frame(), app.renderSegs([]hostapi.Segment{{Text: "No", HL: "Host:Hover", Fill: hostapi.FillPanel}}, 80)) {
+	if !strings.Contains(app.Frame(), app.renderSegs([]hostapi.Segment{{Text: "Yes", HL: "Host:Hover", Fill: hostapi.FillPanel}}, 80)) {
 		t.Fatal("hovered choice not lit")
 	}
 	app.Update(tea.MouseMotionMsg{X: 0, Y: 0})

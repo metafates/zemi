@@ -2463,10 +2463,13 @@ view; a reset's wipe drops the row with the chat.
   Then the command, diff or input, then the choices, a vertical list with their
   keys: `Yes` (`y`, or `o`), `No` (`n` or `esc`), and `No, and tell zemi`
   (`t`, which denies it and every waiting ask, stops the turn and hands the composer back); up and
-  down move, enter picks the highlighted one. While any blocking prompt waits
+  down move, enter picks the highlighted one, and the box opens on `No`, the
+  answer a stray enter picks. While any blocking prompt waits
   (permission, plan, question, trust) it owns every key: keys still in flight
-  as the box opened are swallowed by the grace, past it the ask's keys answer,
-  a draft under the box is kept untouched and the composer takes keys again
+  as the box opened are swallowed by the grace, past it the ask's keys answer
+  while the draft under the box is empty, printable keys type into that draft
+  (enter sends it and the box keeps waiting, esc still denies), a draft under
+  the box is kept untouched and the composer takes keys again
   the moment the box closes, and typing goes through the ask's own input paths
   (the plan's `e`, the permission's `t`, a question's typed answer). Every Go-owned prompt
   (permission, trust, plan, a question's options keyed `1`-`9` with the typed answer

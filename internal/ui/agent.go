@@ -117,6 +117,14 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 	ch := make(chan permAnswer, 1)
 	a.await(func() tea.Cmd {
 		p := &permAskPrompt{req: req, answer: ch, opened: a.now()}
+		// the box opens on No, the answer a stray enter picks: the trust box
+		// opens on Later for the same reason, and y is one key away
+		for i, c := range p.choices() {
+			if c.key == "n" {
+				p.sel = i
+				break
+			}
+		}
 		if a.permAsk != nil { // the answered box: keep its size so nothing jumps
 			p.size = a.permAsk.size
 		}
