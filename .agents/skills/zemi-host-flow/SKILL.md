@@ -295,7 +295,11 @@ applied one. A store made before goose only gains its version table: the baselin
   boundary through fantasy's `PrepareStep`, which rebuilds step input from scratch, so steered
   messages are re-inserted every step. Leftovers become one follow-up turn, and `active` stays
   held across that handoff (`nextTurn`) so a submit cannot jump the queue; reset claims
-  `active` and a `turnScope` together for the same reason. With nothing left, a
+  `active` and a `turnScope` together for the same reason. `joinQueue` carries the newest
+  messages whole within `queueRideBytes` (64 KB) and counts older ones into one line - they
+  are logged, and the view the turn reads already summarizes them. An interrupt keeps the
+  queue: `nextTurn` arms `drainQueue`, which resumes it after `idleResumeWait` (2m) once the
+  user is away, as a clean end would have. With nothing left, a
   set goal's continuation is the other follow-up `nextTurn` starts under the claim. `release`
   settles the todo list on the way out.
 - **Goals.** `/goal <condition>` (goal.go, `Host.SetGoal`, DESIGN §6.3) sends the typed line with
@@ -303,13 +307,14 @@ applied one. A store made before goose only gains its version table: the baselin
   carrying the brief `SetGoal` last sent, and stores it in the kv row `goal` (the condition
   and the log seq it was set at). After a turn that
   ended cleanly `nextTurn` keeps the claim and `continueGoal` has `Host.aside` judge it
-  (`checkGoal`, `parseVerdict`). A verdict is a live notice row; `goalDropped` drops the goal
+  (`checkGoal`, `parseVerdict`). A verdict draws its notice row through `Host.notice`,
+  which logs it, so a resume reads it back; `goalDropped` drops the goal
   a reset wipes the chat of.
 - **Loops.** `/loop [interval] <prompt>` (loop.go, `Host.SetLoop`; the TUI only, DESIGN §6.3)
   keeps one `Loop` per live session in this process, never stored. Its timer is
   `lua.Clock.AfterFunc`, so the fake clock drives it in tests. `fireLoop` sends like the user
   would, on a claim taken under the lock that saw the agent idle, and arms the next run before
-  sending. `loopTurnEnded` (in `runTurns`) knows a loop run by `loopTag` in the turn's text and
+  sending; each run logs its work row (`[loop] Run N of: <prompt>`), so a resume reads it. `loopTurnEnded` (in `runTurns`) knows a loop run by `loopTag` in the turn's text and
   acts only while `ag.loopRun`, the loop that sent the last run, is the live one, except
   that an interrupt of any turn nobody typed stops the live loop (`loopInterrupted`, which
   `continueGoal` calls for an interrupted check too). `ag.byLoop` marks a chain a run began:
@@ -321,7 +326,8 @@ applied one. A store made before goose only gains its version table: the baselin
   tool choice changes, with every tool refusing to run. Billed, never persisted.
   `Host.aside` is that call, the goal check another; the idle recap (`Host.Recap`, `session.recap`, a duration, 3m default) is one more: the UI
   arms it `session.recap` after a turn that ended well
-  with no input since, and its live-only `Recap: ...` notice row is dropped when the transcript
+  with no input since, and its `Recap: ...` notice row goes through `Host.notice` (logged,
+  a resume reads it back) and is dropped when the transcript
   moved during the call; while it runs it holds a `Host.Busy` entry with a cancel, so esc
   stops it and the chat's pending row names it.
 - **The chat window** (session.go): the live transcript is the log's last `chatWindowRows`

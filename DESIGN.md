@@ -1122,7 +1122,9 @@ past a message the user sent (§4). A handed-off run keeps its row, revised
 when the run ends - a run that finished with a failed agent or a failed
 branch inside it draws
 warn, a stopped one stop, a run that died err, and the notice row its report
-arrives as leads with the same mark - and the outcome is stored with
+arrives as leads with the same mark. The row is the work row the log holds,
+drawn where the report was delivered, so a resume draws it the same. The
+outcome is stored with
 the session, so a restart draws the mark it ended with, not done. A run
 already under way can be waited on instead: the `workflow` tool's `wait`
 action and the `agent` tool's `wait` beside `send_to` block until that run
@@ -1214,8 +1216,8 @@ command line, a log, a toast or a copy.
 billed to the live session.
 It costs money, and the manifest's `uses` naming `model` is what consents to it (§9);
 a reload cancels it. `zemi.agent.send` from a plugin settles the same way. A plugin's text reaches the model
-behind `agent.Attached("plugin:<name>", ...)`, drawn as a notice row
-named after the plugin, so it is never the user's words.
+behind `agent.Attached("plugin:<name>", ...)`, logged as the work row its
+chat draws, so it is never the user's words and never leaves the log.
 
 A `zemi.model.ask` with a `schema` asks for a value instead of text. The
 schema is a JSON schema in the fields a tool's input has (`type`,
@@ -1276,7 +1278,7 @@ submit queues behind the whole chain; a message queued
 during the check goes instead of the note, an interrupt or a failed turn
 ends the chain with the goal kept, and at 20 turns in a row the goal
 started itself it pauses; a loop run does not reset that count. Each verdict is a notice
-row while it happens; a reset drops it (the chat it was set in is
+row the log holds, so a resume reads it back. A reset drops it (the chat it was set in is
 gone), and a crash keeps it, since the row lives in the store. A window takes the chain over when the one that set the goal is gone (its presence heartbeat died) and never judges a live writer's goal. Lua reads it
 (`ctx.goal`, `ctx.agent.checking_goal`) and does not drive it: the check
 must hold the claim.
@@ -1286,7 +1288,9 @@ open in this zemi: every interval (1m to 24h), or, with none, when the model
 says in its reply's last line (`next: 10m`, 1m to 1h, 20m when it names none;
 `next: done` ends the loop). The first run goes at once. A run is a message
 with the prompt in a note, or a command with the note attached, sent only
-when the agent is idle (a busy one delays it 30s), and each is a notice row.
+when the agent is idle (a busy one delays it 30s). The run reaches the model
+with the prompt attached and draws its work row (`[loop] Run N of: <prompt>`),
+which a resume reads back from the log.
 One loop per session; it is never stored, so a restart starts
 nothing on its own, and it stops on `/loop stop`, a project switch, a
 failed run, an interrupt of any turn nobody typed (a run, a goal's turn or
@@ -2588,11 +2592,15 @@ never tokens.
 `log` (§7) holds one row per message, word for word, forever. Its kinds:
 `user` (the user's words, images in `parts_json`), `agent` (zemi's replies),
 `tool` (one call: its name and the input as sent), `echo` (a tool result),
-`work` (a subagent's report, `meta_json` naming the run and the "[Name]"
-head it opens with), `note` (a `/note` line, a chapter mark), `thought` (one
-reasoning stretch, `meta_json` the wall time its flush measured), `error` (a
-failed turn's row, `meta_json` whether the user cancelled it) and `shell` (a
-`!command`, `meta_json` its outcome and output head).
+`work` (a subagent's report or update, a loop run's line or a plugin's send,
+`meta_json` naming the run, the agent and the status; the text opens with the
+"[Name]" head it draws), `note` (a `/note` line, a chapter mark), `thought`
+(one reasoning stretch, `meta_json` the wall time its flush measured), `error`
+(a failed turn's row, `meta_json` whether the user cancelled it), `shell` (a
+`!command`, `meta_json` its outcome and output head) and `notice` (a status
+notice the chat drew - a recap, a goal verdict, a loop or workflow event,
+`meta_json` the detail after its text). Every row the transcript draws is a
+log row: a resume reads back the same lines.
 
 - Only append. Every append commits in one transaction (the row, its view
   line and, for `tool`, `echo` and `thought`, the message's own node) and
