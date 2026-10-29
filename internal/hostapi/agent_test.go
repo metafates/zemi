@@ -1130,10 +1130,15 @@ func TestTodoNag(t *testing.T) {
 	t.Run("a turn with open todos arms one turn-start remind", func(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
+		set(h, []store.Todo{{Content: "a", Status: "pending"}, {Content: "b", Status: "pending"}})
+		h.armTodoTurnNote()
+		if got := takeNag(h); !strings.Contains(got, "2 todos are open") {
+			t.Fatalf("turn-start remind = %q", got)
+		}
 		set(h, []store.Todo{{Content: "a", Status: "done"}, {Content: "b", Status: "pending"}})
 		h.armTodoTurnNote()
-		if got := takeNag(h); !strings.Contains(got, "todos are open") {
-			t.Fatalf("turn-start remind = %q", got)
+		if got := takeNag(h); !strings.Contains(got, "1 todo is open") {
+			t.Fatalf("one open todo reads singular: %q", got)
 		}
 		set(h, []store.Todo{{Content: "a", Status: "done"}, {Content: "b", Status: "done"}})
 		h.armTodoTurnNote()

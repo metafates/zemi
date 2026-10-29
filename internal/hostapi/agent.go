@@ -1879,8 +1879,8 @@ func (h *Host) armTodoTurnNote() {
 		return
 	}
 	ag.todoNag = agent.Note(fmt.Sprintf(
-		"%d todos are open from earlier: keep tracking this work with the todos tool, marking the one you take up in_progress.",
-		open,
+		"%d %s open from earlier: keep tracking this work with the todos tool, marking the one you take up in_progress.",
+		open, Plural(open, "todo is", "todos are"),
 	))
 }
 
@@ -1927,8 +1927,8 @@ func (h *Host) maybeNagTodos() {
 		return
 	}
 	ag.todoNag = agent.Note(fmt.Sprintf(
-		"%d todos are pending and none is in_progress: set the one you are working on in_progress with the todos tool.",
-		open,
+		"%d %s pending and none is in_progress: set the one you are working on in_progress with the todos tool.",
+		open, Plural(open, "todo is", "todos are"),
 	))
 }
 
