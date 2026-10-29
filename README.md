@@ -6,7 +6,7 @@
 
 Zemi is a (coding) agent harness that...
 
-- one chat that never ends: the chat itself is the memory, summarized in the background
+- never forgets anything because it uses a single endless chat per project.
 - fast and native like [crush](https://github.com/charmbracelet/crush)
 - extensible and cache-efficient like [pi](https://github.com/earendil-works/pi)
 - batteries included like [codex](https://github.com/openai/codex) & [claude-code](https://github.com/anthropics/claude-code)
