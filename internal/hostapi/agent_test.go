@@ -1254,20 +1254,21 @@ func TestTurnDoneLogsTheRawArgs(t *testing.T) {
 
 // TestTurnDoneLogsTheCutThought: a step's reasoning reaches the log only at
 // its finish, so esc mid-thought left every thought row live-only - the
-// stretches it flushed and the open buffer log here, in draw order. The
-// prior step is settled, the way a live host arrives (a no-call step never
-// re-arms stepSettled on its own).
+// stretches it flushed and the open buffer log here, in draw order. The scan
+// reads this step's rows alone: an earlier turn's unnamed thought never
+// re-logs.
 func TestTurnDoneLogsTheCutThought(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "an earlier turn.", Stat: &TurnStat{ThoughtMS: 900}})
+	sa := h.streamHooks()
+	sa.StepDone(agent.Step{}) // the previous step settled...
+	sa.StepStart()            // ...and this one began: its rows are unlogged
 	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "thinking it over.", Stat: &TurnStat{ThoughtMS: 1100}})
 	h.agents.mu.Lock()
 	h.agents.reasonBuf = "still thinking."
 	h.agents.thought = 400 * time.Millisecond
 	h.agents.mu.Unlock()
-	sa := h.streamHooks()
-	sa.StepDone(agent.Step{}) // the previous step settled...
-	sa.StepStart()            // ...and this one began: its rows are unlogged
 	sa.TurnDone(context.Canceled, fantasy.Usage{})
 
 	rows, err := h.DB.LogTail(10)
@@ -1281,7 +1282,7 @@ func TestTurnDoneLogsTheCutThought(t *testing.T) {
 		}
 	}
 	if len(texts) != 2 || texts[0] != "thinking it over." || texts[1] != "still thinking." {
-		t.Fatalf("the log holds thoughts %q, want both stretches in draw order", texts)
+		t.Fatalf("the log holds thoughts %q, want this step's two and not the earlier turn's", texts)
 	}
 	tr := logRows(rows)
 	var ms []int64
@@ -1298,19 +1299,22 @@ func TestTurnDoneLogsTheCutThought(t *testing.T) {
 // TestTurnDoneLogsTheCutReply: a reply cut mid-stream draws its partial text
 // live and dies with the turn otherwise - the log holds it, so a resumed
 // window draws the line the user read. The stretch a call's open flushed
-// above the rail logs with it, in draw order.
+// above the rail logs with it, in draw order; an earlier turn's reply never
+// re-logs.
 func TestTurnDoneLogsTheCutReply(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: "an earlier turn's reply"})
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: "a queued line"})
+	sa := h.streamHooks()
+	sa.StepDone(agent.Step{})
+	sa.StepStart()
 	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "a thought.", Stat: &TurnStat{}})
 	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: "words before the call"})
 	h.agents.mu.Lock()
 	h.agents.reasonBuf, h.agents.thought = "a thought.", 300*time.Millisecond
 	h.agents.textBuf = "done, here"
 	h.agents.mu.Unlock()
-	sa := h.streamHooks()
-	sa.StepDone(agent.Step{})
-	sa.StepStart()
 	sa.TurnDone(context.Canceled, fantasy.Usage{})
 
 	rows, err := h.DB.LogTail(10)
@@ -1324,7 +1328,7 @@ func TestTurnDoneLogsTheCutReply(t *testing.T) {
 		}
 	}
 	if len(texts) != 2 || texts[0] != "words before the call" || texts[1] != "done, here" {
-		t.Fatalf("the log holds replies %q, want the flushed stretch and the partial text", texts)
+		t.Fatalf("the log holds replies %q, want this step's two and neither earlier row", texts)
 	}
 }
 

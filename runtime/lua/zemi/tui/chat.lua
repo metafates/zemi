@@ -530,10 +530,11 @@ local function builder(ctx, width)
 		local digest = fmt.digest(list, first, last, ctx.cwd, ctx.home)
 		if digest == "" then
 			-- no digest row to pin: the rail's own head takes the section, so
-			-- the prompt's pin never draws over the rail's rows
+			-- the prompt's pin never draws over the rail's rows - the rail
+			-- draws alone opened or not, so the tear is the same
 			local at = #B.lines
-			B.rail(list, first, last, { full = full, head = opened and "section" or nil })
-			if opened and #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
+			B.rail(list, first, last, { full = full, head = "section" })
+			if #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
 			return
 		end
 		local head = opened and "section" or nil

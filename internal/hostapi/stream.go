@@ -284,8 +284,12 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 			// after a call logs below that call here, the way a rebuild
 			// draws it (see the NOTE on ReasoningDelta)
 			h.tMu.Lock()
-			for _, m := range h.session.Transcript {
-				if m.Seq != NoSeq {
+			tr := h.session.Transcript
+			for _, m := range tr[min(ag.stepRows, len(tr)):] {
+				// this step's rows only: reasoning rows never stamp, so an
+				// unbounded scan re-logs every earlier turn's thoughts; and a
+				// queued user row draws unnamed too, but is not ours to log
+				if m.Seq != NoSeq || m.Role != fantasy.MessageRoleAssistant {
 					continue
 				}
 				switch m.Kind {
