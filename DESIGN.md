@@ -1295,7 +1295,7 @@ says in its reply's last line (`next: 10m`, 1m to 1h, 20m when it names none;
 `next: done` ends the loop). The first run goes at once. A run is a message
 with the prompt in a note, or a command with the note attached, sent only
 when the agent is idle (a busy one delays it 30s). The run reaches the model
-with the prompt attached and draws its work row (`[loop] Run N of: <prompt>`),
+with the prompt attached and draws its work row (`loop · Run N of: <prompt>`),
 which a resume reads back from the log.
 One loop per session; it is never stored, so a restart starts
 nothing on its own, and it stops on `/loop stop`, a project switch, a
@@ -2603,8 +2603,9 @@ never tokens.
 `user` (the user's words, images in `parts_json`), `agent` (zemi's replies),
 `tool` (one call: its name and the input as sent), `echo` (a tool result),
 `work` (a subagent's report or update, a loop run's line or a plugin's send,
-`meta_json` naming the run, the agent and the status; the text opens with the
-"[Name]" head it draws), `note` (a `/note` line, a chapter mark), `thought`
+`meta_json` naming the run, the agent, who names the row and the status; the
+text opens with the who-and-body head it draws), `note` (a `/note` line, a
+chapter mark), `thought`
 (one reasoning stretch, `meta_json` the wall time its flush measured), `error`
 (a failed turn's row, `meta_json` whether the user cancelled it), `shell` (a
 `!command`, `meta_json` its outcome and output head) and `notice` (a status

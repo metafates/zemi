@@ -159,20 +159,22 @@ func (c *chatLog) Shell(cmd, out string, ok bool) error {
 	return err
 }
 
-// Work logs a subagent's report or update: the run it reports for, its name,
-// the report's status word, and the "[Name]" head it opens with. A report too
-// long for one row splits into siblings, each labeled, so a continuation
-// reads as the same run's where the split cut it.
-func (c *chatLog) Work(run, name, status, text string) (int64, error) {
+// Work logs a subagent's report or update: the run it reports for, who names
+// it ("Counting tests"), the run's agent attribute the rebuilt row's click
+// reads its screen from, the report's status word, and the head who and the
+// body make. A report too long for one row splits into siblings, each
+// labeled, so a continuation reads as the same run's where the split cut it.
+func (c *chatLog) Work(run, who, agent, status, text string) (int64, error) {
 	meta, err := json.Marshal(struct {
 		Run    string `json:"run"`
 		Name   string `json:"name"`
+		Agent  string `json:"agent,omitempty"`
 		Status string `json:"status,omitempty"`
-	}{run, name, status}, json.Deterministic(true))
+	}{run, who, agent, status}, json.Deterministic(true))
 	if err != nil {
 		return -1, err
 	}
-	label := "[" + name + "] "
+	label := who + " · "
 	rows := splitText(text, chatSplitChars-len([]rune(label)))
 	for i := 1; i < len(rows); i++ {
 		rows[i] = label + rows[i]

@@ -156,7 +156,7 @@ func (h *Host) fireLoop(l *Loop) {
 	// the run's line is a work row: the prompt reaches the model attached,
 	// and the row is the one a rebuilt window reads from the log. Off the
 	// lock: the append refreshes, and the lock never waits on the UI.
-	h.work("", "loop", "", fmt.Sprintf(loopRunPrefix, l.Runs)+l.Prompt)
+	h.work("", "loop", "", "", fmt.Sprintf(loopRunPrefix, l.Runs)+l.Prompt)
 	h.refresh()
 	var err error
 	if cmd {

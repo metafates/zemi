@@ -898,7 +898,7 @@ func (h *Host) deliverReport(parent string, r report, attached string) {
 		return
 	}
 	pad := h.scratchFor(parent)
-	h.work(r.id, r.agent, string(r.status), h.truncOutput(pad, "agent", r.body))
+	h.work(r.id, cmp.Or(r.description, r.agent), r.agent, string(r.status), h.truncOutput(pad, "agent", r.body))
 	if err := h.AgentSend(h.reportMessage(pad, r) + attached); err != nil {
 		h.Notify(slog.LevelError, "Could not send the report of "+r.id, h.friendlyError(err))
 	}
@@ -918,7 +918,7 @@ func (h *Host) deliverUpdate(run *agentRun, text string) error {
 		h.notifyReport(report{id: run.id, agent: run.agent, status: updateStatus, description: run.description, body: text})
 		return nil
 	}
-	h.work(run.id, run.agent, string(updateStatus), text)
+	h.work(run.id, cmp.Or(run.description, run.agent), run.agent, string(updateStatus), text)
 	if err := h.AgentSend(h.updateMessage(h.scratchFor(run.parent), run.id, run.agent, text)); err != nil {
 		h.Notify(slog.LevelError, "Could not send the update of "+run.id, h.friendlyError(err))
 		return fmt.Errorf("the update did not reach the caller: %s", h.friendlyError(err))
@@ -929,12 +929,15 @@ func (h *Host) deliverUpdate(run *agentRun, text string) error {
 
 // work writes one work row into the eternal log and appends the row the chat
 // draws for it, so a live window and a rebuilt one draw the same line: the
-// draw is firstLine of the logged text, never a second spelling of it.
-func (h *Host) work(run, name, status, body string) {
-	text := "[" + name + "] " + strings.TrimSpace(body)
-	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(text), Status: workStatus(status), Run: run}
+// draw is firstLine of the logged text, never a second spelling of it. who
+// names the row ("Counting tests", the agent when the run has no
+// description); agent is the run's agent attribute, which the rebuilt row's
+// click reads the run's screen from.
+func (h *Host) work(run, who, agent, status, body string) {
+	text := who + " · " + strings.TrimSpace(body)
+	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(text), Status: workStatus(status), Run: run, Tool: tools.ToolName(agent)}
 	if h.chat != nil {
-		first, err := h.chat.Work(run, name, status, text)
+		first, err := h.chat.Work(run, who, agent, status, text)
 		if err != nil {
 			h.logAppendFailed(err)
 		} else {

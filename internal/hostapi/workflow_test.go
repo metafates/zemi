@@ -1646,8 +1646,8 @@ func TestWorkflowUserStart(t *testing.T) {
 		ui   bool
 		want []string // the transcript rows' texts, in order
 	}{
-		{"the TUI says the run started", true, []string{"Started workflow ", "[workflow:", "ok"}},
-		{"without UI hooks it still runs detached and reports", false, []string{"[workflow:", "ok"}},
+		{"the TUI says the run started", true, []string{"Started workflow ", "count · ", "ok"}},
+		{"without UI hooks it still runs detached and reports", false, []string{"count · ", "ok"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()

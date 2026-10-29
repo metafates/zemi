@@ -549,7 +549,7 @@ func TestReportRowsDrawWhereDelivered(t *testing.T) {
 	scope := h.claim()
 	h.agents.mu.Unlock()
 	for _, run := range []string{"a2", "a3"} {
-		h.work(run, "explore", "finished", "found it")
+		h.work(run, "explore", "explore", "finished", "found it")
 		if err := h.AgentSend(headless(run)); err != nil {
 			t.Fatal(err)
 		}

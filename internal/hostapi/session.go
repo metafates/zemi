@@ -526,12 +526,13 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 			var meta struct {
 				Run    string `json:"run"`
 				Name   string `json:"name"`
+				Agent  string `json:"agent,omitempty"`
 				Status string `json:"status"`
 			}
 			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
 			// the head is in the logged text, where work wrote it: the row
 			// draws its first line, the same line the live window drew
-			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(row.Text), Status: workStatus(meta.Status), Run: meta.Run, Seq: row.Seq})
+			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(row.Text), Status: workStatus(meta.Status), Run: meta.Run, Tool: tools.ToolName(cmp.Or(meta.Agent, meta.Name)), Seq: row.Seq})
 		case store.KindEcho:
 		case store.KindNote:
 			// a chapter mark the model reads, so the chat shows where; the

@@ -547,7 +547,7 @@ func TestChatLogKinds(t *testing.T) {
 	if err := cl.Agent("hi back"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := cl.Work("run1", "Scout", "finished", "[Scout] done"); err != nil {
+	if _, err := cl.Work("run1", "Scout", "explore", "finished", "Scout · done"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := cl.Note("before the chat"); err != nil {
@@ -594,7 +594,7 @@ func TestWorkContinuations(t *testing.T) {
 	t.Parallel()
 	h, cl, _ := newTree(t, "x")
 	body := strings.Repeat("paragraph line\n", 1200)
-	if _, err := cl.Work("run1", "Scout", "finished", "[Scout] "+body); err != nil {
+	if _, err := cl.Work("run1", "Scout", "explore", "finished", "Scout · "+body); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := h.DB.LogTail(2)
@@ -604,7 +604,7 @@ func TestWorkContinuations(t *testing.T) {
 	if len(rows) < 2 || rows[0].Kind != store.KindWork || rows[1].Kind != store.KindWork {
 		t.Fatalf("want split work rows, got %d rows", len(rows))
 	}
-	label := "[Scout] "
+	label := "Scout · "
 	for i, r := range rows {
 		if !strings.HasPrefix(r.Text, label) {
 			t.Fatalf("row %d unlabeled: %q", i, r.Text[:min(20, len(r.Text))])

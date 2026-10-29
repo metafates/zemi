@@ -2657,7 +2657,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			// the plugin's message draws its row where it was sent, the same
 			// one a rebuilt window reads from the log
 			if principal != "" {
-				h.work("", principal, "", body)
+				h.work("", principal, "", "", body)
 			}
 			if err := h.AgentSend(text); err != nil {
 				h.Log.Warn("zemi.agent.send failed", "origin", "agent", "error", err)

@@ -192,7 +192,7 @@ func TestReportNoticeWhereRead(t *testing.T) {
 	h.agents.active = true
 	h.agents.textBuf = "so far"
 	h.agents.mu.Unlock()
-	h.work("r1", "explore", "finished", "found")
+	h.work("r1", "explore", "explore", "finished", "found")
 	h.agents.mu.Lock()
 	h.agents.steering = []string{agent.AttachMarker + "\n<agent-report run=\"r1\" agent=\"explore\" status=\"finished\" description=\"x\">\nfound\n</agent-report>\n</attached-files>"}
 	h.agents.mu.Unlock()
@@ -200,17 +200,30 @@ func TestReportNoticeWhereRead(t *testing.T) {
 		t.Fatalf("delivered %d messages", len(msgs))
 	}
 	tr := h.Session().Transcript
-	want := "[explore] found"
+	want := "explore · found"
 	if n := len(tr); n < 2 || tr[n-2].Kind != "notice" || tr[n-2].Text != want || tr[n-2].Status != CallOK || tr[n-2].Run != "r1" || tr[n-1].Text != "so far" {
 		t.Fatalf("transcript tail: %+v", tr)
 	}
+	// a run the model described reads by its description, and the row's tool
+	// says which screen its click opens
+	h.work("r2", "Counting tests", "explore", "finished", "done")
+	tr = h.Session().Transcript
+	var d ChatMessage
+	for _, m := range tr {
+		if m.Run == "r2" {
+			d = m
+		}
+	}
+	if d.Text != "Counting tests · done" || d.Tool != "explore" {
+		t.Fatalf("described row: %+v", d)
+	}
 	// the rebuilt window draws the same row from the log
-	rows, err := h.DB.LogTail(1)
-	if err != nil || len(rows) != 1 || rows[0].Kind != store.KindWork {
+	rows, err := h.DB.LogTail(2)
+	if err != nil || len(rows) != 2 || rows[0].Kind != store.KindWork {
 		t.Fatalf("log tail: %+v, %v", rows, err)
 	}
 	built := logRows(rows)
-	if len(built) != 1 || built[0].Text != want || built[0].Status != CallOK || built[0].Run != "r1" {
+	if len(built) != 2 || built[0].Text != want || built[0].Status != CallOK || built[0].Run != "r1" || built[0].Tool != "explore" || built[1].Text != "Counting tests · done" {
 		t.Fatalf("rebuilt rows: %+v", built)
 	}
 }
