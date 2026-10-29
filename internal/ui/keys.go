@@ -223,19 +223,13 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		a.questionKey(key, keyText(msg))
 	case modalOverlay:
-		// a reading box (an answer, a report: a body and no rows) is not a
-		// modal for typing: its scroll keys and esc work, everything else
-		// belongs to the composer draft underneath, submit included
-		// a reading box keeps its own keys - esc, the scroll keys, y copy -
-		// and hands everything else to the composer draft underneath. A view
-		// opened from a row (st.back) is not one: its rows' keys act on it.
-		if st := &a.overlays[len(a.overlays)-1]; st.o.ReadsOnly() && !st.back &&
-			key != "esc" && key != "ctrl+d" && key != "ctrl+u" && key != "pgup" && key != "pgdown" &&
-			key != "y" && key != "Y" {
-			if key == "enter" {
-				a.closeOverlayByID(st.o.ID) // the answer is read once the draft sends
-			}
-			return a.composerKey(key, msg)
+		// an open box holds every key: the composer under it never types
+		// while one is up. A reading box (an answer, a report: a body and no
+		// rows) keeps esc, the scroll keys and y copy, and enter closes it
+		// read; everything else dies here.
+		if st := &a.overlays[len(a.overlays)-1]; st.o.ReadsOnly() && !st.back && key == "enter" {
+			a.closeOverlayByID(st.o.ID) // the draft sends on the next enter
+			return nil
 		}
 		return a.overlayKey(key, keyText(msg))
 	case noModal:

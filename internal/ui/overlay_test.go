@@ -199,6 +199,51 @@ func TestOverlayFilter(t *testing.T) {
 	}
 }
 
+// TestOverlayHoldsTheKeys: an open box holds every key, so typing lands
+// nowhere and the draft under it keeps its text, while the box's own keys
+// still act: a reading box closes on esc and enter, and a short list's
+// letters die instead of drafting.
+func TestOverlayHoldsTheKeys(t *testing.T) {
+	t.Parallel()
+	typeKey := func(a *App, k string) {
+		a.handleKey(tea.KeyPressMsg{Code: rune(k[0]), Text: k})
+	}
+	a := newTestApp(t, t.TempDir())
+	a.composer.text, a.composer.cursor = "kept", 4
+
+	// a reading box (a /btw answer): typing dies, enter closes it read
+	a.openOverlay(hostapi.Overlay{ID: "r", Title: "Reply", Origin: lua.OriginBuiltin, Body: "the answer"})
+	typeKey(a, "x")
+	if a.composer.text != "kept" || len(a.overlays) != 1 {
+		t.Fatalf("a reading box let a key through: %q, %d boxes", a.composer.text, len(a.overlays))
+	}
+	a.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if len(a.overlays) != 0 || a.composer.text != "kept" {
+		t.Fatalf("enter on a reading box: %d boxes, draft %q", len(a.overlays), a.composer.text)
+	}
+
+	// a list too short to filter: letters drop, the draft is kept
+	a.openOverlay(hostapi.Overlay{
+		ID: "s", Title: "Short", Origin: lua.OriginBuiltin,
+		Items: []hostapi.OverlayItem{{Text: "a"}, {Text: "b"}},
+	})
+	typeKey(a, "z")
+	if a.composer.text != "kept" {
+		t.Fatalf("a short list handed a key to the draft: %q", a.composer.text)
+	}
+	if st := a.overlays[0]; st.active || st.query != "" {
+		t.Fatalf("a short list started a filter: %+v", st.listFilter)
+	}
+	a.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if len(a.overlays) != 0 {
+		t.Fatal("esc did not close the box")
+	}
+	typeKey(a, "!")
+	if a.composer.text != "kept!" {
+		t.Fatalf("the composer did not take the keys back: %q", a.composer.text)
+	}
+}
+
 // TestTopChromeTakesInput: keys, ctrl+c and the wheel reach the prompt
 // drawn on top, never one hidden under it.
 func TestTopChromeTakesInput(t *testing.T) {

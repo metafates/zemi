@@ -1044,16 +1044,15 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	// a printable key nothing acts on starts the filter with its letter, so
 	// a word typed to a picker narrows it instead of dying: the keys the
 	// footer and the rows list act, the rest filter, as the / popups type.
-	// A list too short to filter hands the key to the draft under the box -
-	// no surface eats input.
+	// A list too short to filter drops the key: an open box holds the keys,
+	// and the composer under it never types while one is up.
 	if text == "" || strings.TrimSpace(text) == "" {
 		return nil
 	}
 	if st.filterable && len(st.items) > 0 && st.edit("/", "/") {
 		st.edit(key, text)
-		return nil
 	}
-	return a.composerKey(key, tea.KeyPressMsg{Text: text})
+	return nil
 }
 
 // disarmIfMoved returns what drops the top overlay's arm when the act moved
