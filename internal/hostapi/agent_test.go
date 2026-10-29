@@ -476,7 +476,7 @@ func TestSteeringQueue(t *testing.T) {
 	// command as its typed line
 	scope = claim()
 	send("c", "/init"+agent.Attached("command", "x"))
-	if st := h.AgentStream(); len(st.Steering) != 2 || st.Steering[0].Text != "c" || st.Steering[1].Text != "/init" || st.Steering[0].Notice {
+	if st := h.AgentStream(); len(st.Steering) != 2 || st.Steering[0].Text != "c" || st.Steering[1].Text != "/init" {
 		t.Fatalf("a queued command shows as typed: %+v", st.Steering)
 	}
 	h.AgentCancel()
@@ -494,11 +494,7 @@ func TestSteeringQueue(t *testing.T) {
 	}
 	scope = claim()
 	send(report("x"), "d", report("y"))
-	want := []Queued{
-		{Text: "Background agent x (look around) finished", Notice: true, Run: "x"},
-		{Text: "d"},
-		{Text: "Background agent y (look around) finished", Notice: true, Run: "y"},
-	}
+	want := []Queued{{Text: "d"}}
 	if st := h.AgentStream(); !slices.Equal(st.Steering, want) {
 		t.Fatalf("queued rows = %+v, want %+v", st.Steering, want)
 	}
@@ -528,9 +524,10 @@ func TestSteeringQueue(t *testing.T) {
 	if !strings.Contains(notes(), "Queue resumes on its own: 1 queued message") {
 		t.Fatalf("no resume notice: %q", notes())
 	}
-	// the queued report reaches the next turn's reader whole
-	if _, heads, _ := userRowsFor(agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"find \\\"x\\\"\">\nx is in y.go\n</agent-report>\n</attached-files>"); len(heads) == 0 {
-		t.Fatal("the report drew no head")
+	// the queued report reaches the next turn's reader whole, still classed as
+	// the model's own, not the user's words
+	if _, attached, _ := userRowsFor(agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"find \\\"x\\\"\">\nx is in y.go\n</agent-report>\n</attached-files>"); !attached {
+		t.Fatal("the report read as the user's words")
 	}
 
 	h.AgentCancel() // no runner: must not panic

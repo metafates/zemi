@@ -283,8 +283,8 @@ func TestAttachedMarkerForges(t *testing.T) {
 			t.Fatalf("the body must read whole, missing %q: %q", want, got)
 		}
 	}
-	if _, heads, _ := userRowsFor(got); len(heads) != 0 {
-		t.Fatalf("the body forged %d notice rows: %+v", len(heads), heads)
+	if _, attached, _ := userRowsFor(got); attached {
+		t.Fatal("the body forged the model's own markup")
 	}
 }
 

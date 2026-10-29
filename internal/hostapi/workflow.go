@@ -1094,12 +1094,12 @@ func (h *Host) flowControl(id string, act flowAction, n int, agent string) (stri
 	switch act {
 	case actPause:
 		f.paused = true
-		return "Paused workflow " + id + ": running agents finish, no new ones start", nil
+		return "Paused " + flowWho(f) + ": running agents finish, no new ones start", nil
 	case actResume:
 		f.paused = false
 	case actStop:
 		f.cancel()
-		return "Stopped workflow " + id, nil
+		return "Stopped " + flowWho(f), nil
 	case actConcurrency:
 		if n < 1 || n > workflowMaxConcurrency {
 			return "", Usagef("concurrency must be 1-%d, not %d", workflowMaxConcurrency, n)
@@ -1112,7 +1112,7 @@ func (h *Host) flowControl(id string, act flowAction, n int, agent string) (stri
 		}
 		f.restart.Add(agent)
 		f.agents[i].run.cancel()
-		return "Restarting agent " + agent, nil
+		return "Restarting agent " + clipLine(f.agents[i].description, 60) + " (" + agent + ")", nil
 	default:
 		return "", Usagef("unknown workflow action %q", act)
 	}
@@ -1121,9 +1121,15 @@ func (h *Host) flowControl(id string, act flowAction, n int, agent string) (stri
 	default:
 	}
 	if act == actResume {
-		return "Resumed workflow " + id, nil
+		return "Resumed " + flowWho(f), nil
 	}
-	return fmt.Sprintf("Workflow %s runs %d agents at once", id, n), nil
+	return fmt.Sprintf("%s runs %d agents at once", flowWho(f), n), nil
+}
+
+// flowWho names a flow as its reader knows it: the description the run was
+// given, the id trailing for /workflows to act on.
+func flowWho(f *flowRun) string {
+	return clipLine(cmp.Or(f.description, f.name, "workflow"), 60) + " (" + f.id + ")"
 }
 
 // the run's files: its script and journal in the parent session's pad

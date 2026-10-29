@@ -153,13 +153,13 @@ M.VERB = {
 	job_read = "Check",
 	job_list = "List jobs",
 	job_kill = "Stop",
-	todos = "Update todos",
+	todos = "Update",
 	question = "Ask",
 	plan = "Plan",
 	skill = "Load skill",
 	tool_search = "Find tools",
 	lua = "Run",
-	update = "Tell",
+	update = "Report",
 }
 
 --- A call family the chat counts: its verb, then its noun, one and many; a
@@ -214,6 +214,15 @@ local NEWS = { shell = true }
 -- Whether a call counts: a family counts it and it went well.
 local function counted(t) return (t.kind or "tool") == "tool" and t.status == "ok" and M.family(M.tool(t)) ~= nil end
 
+-- A call the turn only waited on: its row names the waiting, which a digest
+-- would fold into a run that never started ("1 agent run: all").
+local function waitOnly(t)
+	if not M.WAIT[M.tool(t)] then return false end
+	local s = t.text or ""
+	if s == "all" then return true end
+	return M.tool(t) == "workflow" and s:match("^wait %S+$") ~= nil
+end
+
 -- Whether a call folds into its turn's digest: it counts, and its diff is
 -- its own work or there is none; a command's diff is news. A background
 -- hand-off counts too, or a turn that left its work running folds to nothing
@@ -223,7 +232,7 @@ local function digests(t)
 		local f = M.family(M.tool(t))
 		return f ~= nil and ((t.diff or "") == "" or not NEWS[M.tool(t)])
 	end
-	return counted(t) and ((t.diff or "") == "" or not NEWS[M.tool(t)])
+	return counted(t) and not waitOnly(t) and ((t.diff or "") == "" or not NEWS[M.tool(t)])
 end
 
 --- Whether a call only looked around and reads as its step's row: it counts
@@ -394,15 +403,17 @@ function M.head(name, label, input, status)
 	local rest = label ~= "" and " " .. M.lower(label) or input ~= "" and " " .. input or ""
 	-- a wait-only call blocks on other work instead of starting it: "all" is
 	-- the agent tool's sentinel for every run of the session, and a workflow's
-	-- wait control names its run alone, the verb saying the waiting
+	-- wait control names its run alone, the verb saying the waiting. "wait" is
+	-- the call created but not yet running: the same tense as "run".
+	local waiting = status == "run" or status == "wait"
 	if M.WAIT[name] and input == "all" then
-		return status == "run" and "waiting for" or "waited for", " all agents and workflows"
+		return waiting and "waiting for" or "waited for", " all agents and workflows"
 	end
-	if status == "run" and M.WAIT[name] then
-		local id = name == "workflow" and rest:match("^ wait (%S+)$") or nil
-		if id then return "waiting on " .. name, " " .. id end
-		return "waiting on " .. name, rest
+	if name == "workflow" then
+		local id = input:match("^wait (%S+)$")
+		if id then return waiting and "waiting on" or "waited on", " workflow " .. id end
 	end
+	if status == "run" and M.WAIT[name] then return "waiting on " .. name, rest end
 	if name == "shell" and label ~= "" then return label:match("^(%S+)(.*)$") end
 	return M.VERB[name] or M.title(name), rest
 end

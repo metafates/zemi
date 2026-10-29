@@ -457,34 +457,6 @@ func TestWaitRowGuard(t *testing.T) {
 	}
 }
 
-// TestWaitingNoticesAreOneBlock: reports waiting for a step boundary draw as
-// one block, as the same rows do once the model has read them.
-func TestWaitingNoticesAreOneBlock(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 100, 30)
-	host.AppendMessage("user", "go")
-	host.SeedStream(hostapi.StreamSnapshot{Active: true})
-	for _, id := range []string{"a1", "a2"} {
-		report := agent.AttachMarker + fmt.Sprintf("\n<agent-report run=%q agent=\"explore\" status=\"finished\" description=\"d\">\nfound it\n</agent-report>\n</attached-files>", id)
-		if err := host.AgentSend(report); err != nil {
-			t.Fatal(err)
-		}
-	}
-	app.AgentStream()
-	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
-	if err != nil {
-		t.Fatal(err)
-	}
-	at := func(id string) int {
-		return slices.IndexFunc(lines, func(l []hostapi.Segment) bool {
-			return strings.Contains(hostapi.SegsText(l), "queued Background agent "+id)
-		})
-	}
-	if one, two := at("a1"), at("a2"); one < 0 || two-one != 1 {
-		t.Fatalf("the waiting reports are %d rows apart, want one block", two-one)
-	}
-}
-
 // addRunMessage stores one model message in a run's child session, which
 // loadRun reads back into transcript rows.
 func addRunMessage(t *testing.T, db *store.DB, session string, m fantasy.Message) {
@@ -1058,9 +1030,9 @@ func TestGoldenAgentStream(t *testing.T) {
 	}
 }
 
-// TestQueuedFold: a burst of queued updates keeps its last rows and one fold
-// row for the older ones, however many arrive, a click on the fold row opens
-// the burst in place, and the user's own queued lines never fold.
+// TestQueuedFold: queued updates draw no rows - their work rows landed where
+// they were delivered - and the user's own queued line draws once, never
+// folding, however much model markup queues behind it.
 func TestQueuedFold(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
@@ -1092,59 +1064,14 @@ func TestQueuedFold(t *testing.T) {
 		}
 		return fold, notes, typed
 	}
-	if fold, notes, typed := rows(); fold != 1 || notes != 3 || typed != 1 {
+	if fold, notes, typed := rows(); fold != 0 || notes != 0 || typed != 1 {
 		t.Fatalf("fold=%d notes=%d typed=%d rows:\n%s", fold, notes, typed, strings.Join(chatRows(t, app, 78), "\n"))
 	}
-	// a seventh update rewrites the fold row's count and adds no row
+	// a seventh update rewrites nothing and adds no row
 	update(7)
 	app.AgentStream()
-	if fold, notes, typed := rows(); fold != 1 || notes != 3 || typed != 1 {
+	if fold, notes, typed := rows(); fold != 0 || notes != 0 || typed != 1 {
 		t.Fatalf("after a seventh update fold=%d notes=%d typed=%d rows:\n%s", fold, notes, typed, strings.Join(chatRows(t, app, 78), "\n"))
-	}
-	// the fold row opens the burst in place
-	app.renderSync(t)
-	x, y := findCell(t, app, "… 4 earlier")
-	clickAt(app, x+2, y)
-	if fold, notes, typed := rows(); fold != 1 || notes != 7 || typed != 1 {
-		t.Fatalf("opened fold=%d notes=%d typed=%d rows:\n%s", fold, notes, typed, strings.Join(chatRows(t, app, 78), "\n"))
-	}
-	// and closes it again
-	app.renderSync(t)
-	x, y = findCell(t, app, "… collapse")
-	clickAt(app, x+2, y)
-	if fold, notes, typed := rows(); fold != 1 || notes != 3 || typed != 1 {
-		t.Fatalf("closed fold=%d notes=%d typed=%d rows:\n%s", fold, notes, typed, strings.Join(chatRows(t, app, 78), "\n"))
-	}
-}
-
-// TestQueuedFoldOne: a burst with one notice hidden draws no fold row - the
-// settled bursts fold only what more than one row stands for - and shows the
-// notice instead.
-func TestQueuedFoldOne(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 80, 24)
-	host.SeedStream(hostapi.StreamSnapshot{Active: true})
-	if err := host.AgentSend("a typed line"); err != nil {
-		t.Fatal(err)
-	}
-	for i := 1; i <= 4; i++ {
-		src := fmt.Sprintf("\n<agent-update run=\"a%d\" agent=\"explore\">\nupdate %d\n</agent-update>\n</attached-files>", i, i)
-		if err := host.AgentSend(agent.AttachMarker + src); err != nil {
-			t.Fatal(err)
-		}
-	}
-	app.AgentStream()
-	var fold, notes int
-	for _, r := range chatRows(t, app, 78) {
-		switch {
-		case strings.Contains(r, "earlier") || strings.Contains(r, "collapse"):
-			fold++
-		case strings.Contains(r, " queued Agent a"):
-			notes++
-		}
-	}
-	if fold != 0 || notes != 4 {
-		t.Fatalf("fold=%d notes=%d rows:\n%s", fold, notes, strings.Join(chatRows(t, app, 78), "\n"))
 	}
 }
 

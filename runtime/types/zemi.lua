@@ -701,11 +701,11 @@ function zemi.event.stats() end
 ---@field next integer When the next run fires, in unix seconds.
 ---@field runs integer Runs so far.
 
---- One message waiting for the turn's next step boundary.
+--- One message waiting for the turn's next step boundary: what the user
+--- typed. The model's own markup draws no row here; its work row landed
+--- where it was delivered.
 ---@class zemi.QueuedMessage
----@field text string What the user typed, or the head line of a subagent's report, update or plugin send.
----@field notice boolean True for a subagent's or a plugin's message, which the model reads whole and the chat shows as a notice row instead of the user's own.
----@field run string The id of the run the row names, "" for the user's own words, a plugin's or a loop's line and a workflow's report.
+---@field text string What the user typed.
 
 --- The live turn, as the chat widget sees it: while ctx.view is set, the shown
 --- agent run in its place.

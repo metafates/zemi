@@ -702,12 +702,10 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 			}
 		}
 		if m.Role == fantasy.MessageRoleUser {
-			shown, heads, _ := userRowsFor(text.String()) // show what was typed
-			if shown != "" {
+			// show what was typed; the model's markup drew its work row where
+			// it was delivered, which the log's own rows rebuild
+			if shown, _, _ := userRowsFor(text.String()); shown != "" {
 				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: shown, ID: row.ID, SentAt: row.CreatedAt})
-			}
-			for _, n := range heads {
-				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: n.Text, Status: n.Status})
 			}
 			continue
 		}

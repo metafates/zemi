@@ -108,7 +108,7 @@ zemi.ui.widget.add({
 			end
 			if ag.retry then
 				state = "error"
-				local why = ag.retry.why ~= "" and " - " .. fmt.clip(ag.retry.why, 60) or ""
+				local why = ag.retry.why ~= "" and " · " .. fmt.clip(ag.retry.why, 60) or ""
 				tick = {
 					plain(
 						(

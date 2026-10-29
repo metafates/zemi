@@ -1142,8 +1142,8 @@ func (h *Host) AgentTakeQueue() []string {
 // the composer, and the model's own, which stay queued for it.
 func takeQueued(msgs []string) (taken, kept []string) {
 	for _, m := range msgs {
-		shown, heads, tail := userRowsFor(m)
-		if len(heads) > 0 {
+		shown, attached, tail := userRowsFor(m)
+		if attached {
 			kept = append(kept, agent.AttachMarker+tail)
 		}
 		if shown != "" {
@@ -1163,37 +1163,41 @@ func shownText(head string) string {
 	return head
 }
 
+// ownElements open the tail's element right behind the marker: the three the
+// queue treats as the model's own words (a report, an update, a plugin's
+// send), which takeQueued keeps queued instead of handing back.
+var ownElements = []string{"\n<agent-report ", "\n<agent-update ", "\n<plugin:"}
+
 // userRowsFor splits a user message at agent.AttachMarker into what the user
-// typed (shownText's), the report heads behind it, and the tail the heads
-// came from (takeQueued re-queues it).
-func userRowsFor(text string) (shown string, heads []notice, tail string) {
+// typed (shownText's), whether the tail carries the model's own markup, and
+// the tail itself (takeQueued re-queues it).
+func userRowsFor(text string) (shown string, attached bool, tail string) {
 	var head string
 	head, tail, _ = strings.Cut(text, agent.AttachMarker)
-	return shownText(head), reportHeads(tail), tail
+	for _, e := range ownElements {
+		if strings.HasPrefix(tail, e) {
+			return shownText(head), true, tail
+		}
+	}
+	return shownText(head), false, tail
 }
 
-// Queued is one message waiting in the steering queue, as the chat draws it: a
-// Notice is an agent's or a plugin's message, which the model reads whole
-// behind agent.AttachMarker, so the chat shows the head line of it instead.
+// Queued is one message waiting in the steering queue, as the chat draws it:
+// what the user typed. The model's own markup draws no row here; its work row
+// landed where it was delivered (Host.work).
 type Queued struct {
-	Text   string
-	Notice bool
-	Run    string // the run a notice names, so its row opens the run's transcript
+	Text string
 }
 
 // queuedRows is what the chat draws of a queue, in the order the model reads
-// it: the user's own words, and a notice per head the message carries
-// (`reportHeads`), which wait for the next step boundary. A message with
-// neither draws no row.
+// it: the user's own words, which wait for the next step boundary. The
+// model's own markup draws no row here: its work row landed where it was
+// delivered (Host.work). A message with neither draws no row.
 func queuedRows(msgs []string) []Queued {
 	var out []Queued
 	for _, m := range msgs {
-		shown, heads, _ := userRowsFor(m)
-		if shown != "" {
+		if shown, _, _ := userRowsFor(m); shown != "" {
 			out = append(out, Queued{Text: shown})
-		}
-		for _, n := range heads {
-			out = append(out, Queued{Text: n.Text, Notice: true, Run: n.Run})
 		}
 	}
 	return out

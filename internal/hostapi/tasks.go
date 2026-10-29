@@ -14,9 +14,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
-	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,7 +25,6 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/set"
-	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -919,7 +916,7 @@ func (h *Host) deliverUpdate(run *agentRun, text string) error {
 		return nil
 	}
 	h.work(run.id, cmp.Or(run.description, run.agent), run.agent, string(updateStatus), text)
-	if err := h.AgentSend(h.updateMessage(h.scratchFor(run.parent), run.id, run.agent, text)); err != nil {
+	if err := h.AgentSend(h.updateMessage(h.scratchFor(run.parent), run.id, run.agent, cmp.Or(run.description, run.agent), text)); err != nil {
 		h.Notify(slog.LevelError, "Could not send the update of "+run.id, h.friendlyError(err))
 		return fmt.Errorf("the update did not reach the caller: %s", h.friendlyError(err))
 	}
@@ -934,7 +931,7 @@ func (h *Host) deliverUpdate(run *agentRun, text string) error {
 // description); agent is the run's agent attribute, which the rebuilt row's
 // click reads the run's screen from.
 func (h *Host) work(run, who, agent, status, body string) {
-	who = clipRunes(who, 60) // a model's description the split labels every row with
+	who = clipLine(who, 60) // a model's description the split labels every row with: one line, or the body hides behind it
 	text := who + " · " + strings.TrimSpace(body)
 	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(text), Status: workStatus(status), Run: run, Tool: tools.ToolName(agent)}
 	if h.chat != nil {
@@ -950,20 +947,22 @@ func (h *Host) work(run, who, agent, status, body string) {
 
 // updateMessage is the user message an update reaches the model as, live and
 // stored: behind the marker where @ refs do not attach, under the tag the
-// chat reads the update's line from.
-func (h *Host) updateMessage(pad, id, agentName, text string) string {
-	return agent.Attached(fmt.Sprintf("agent-update run=%q agent=%q", id, agentName), h.truncOutput(pad, "agent", text))
+// chat reads the update's line from, who names it by.
+func (h *Host) updateMessage(pad, id, agentName, who, text string) string {
+	return agent.Attached(fmt.Sprintf("agent-update run=%q agent=%q description=%q", id, agentName, who), h.truncOutput(pad, "agent", text))
 }
 
 // reportHead is the one line the user sees of a background report, named by
-// the run's label, as the chat names it. A workflow's agent attribute is
-// "workflow" or "workflow:<saved name>", and its description names it, since
-// runs of one script differ by no name.
+// the run's description as its work row is; the id trails, where /agents and
+// /workflows act on it. A workflow's agent attribute is "workflow" or
+// "workflow:<saved name>", and its description names it, since runs of one
+// script differ by no name.
 func reportHead(r report) string {
+	who := cmp.Or(r.description, r.agent)
 	if workflowAgent(r.agent) {
-		return fmt.Sprintf("Workflow %s (%s) %s", r.id, clipLine(r.description, 60), string(r.status))
+		who = cmp.Or(r.description, "workflow")
 	}
-	return fmt.Sprintf("Background agent %s (%s) %s", r.id, clipLine(cmp.Or(r.description, r.agent), 60), string(r.status))
+	return fmt.Sprintf("%s %s (%s)", clipLine(who, 60), string(r.status), r.id)
 }
 
 // workflowAgent reports whether a report's agent attribute names a workflow,
@@ -999,7 +998,7 @@ func (h *Host) notifyReport(r report) {
 		pad := h.scratchFor(parent)
 		msg := h.reportMessage(pad, r)
 		if r.status == updateStatus {
-			msg = h.updateMessage(pad, r.id, r.agent, r.body)
+			msg = h.updateMessage(pad, r.id, r.agent, cmp.Or(r.description, r.agent), r.body)
 		}
 		parts, err := json.Marshal(agent.UserMessage(msg), json.Deterministic(true))
 		if err == nil {
@@ -1016,38 +1015,6 @@ func (h *Host) notifyReport(r report) {
 	h.Notify(level, reportHead(r), r.description+"\n"+clipRunes(strings.TrimPrefix(r.body, reportFailed), 300))
 }
 
-// reportTag is a report's opening tag, its element name up to its closing
-// bracket: the patterns below open it with attachedTag.
-const reportTag = `agent-report run="([^"]*)" agent="([^"]*)" status="([^"]*)" description=("(?:[^"\\]|\\.)*")`
-
-// attachedTag opens an element right behind agent.AttachMarker (the tail
-// starts past the first one), so a stray line in a file or a send draws no row;
-// no body carries the marker, agent.AttachElement defuses it.
-var attachedTag = `(?:\A|` + regexp.QuoteMeta(agent.AttachMarker) + `)\n<`
-
-var (
-	reportAttrs = regexp.MustCompile(attachedTag + reportTag)
-	// a zemi.agent.send from a plugin, with its first line that has something in
-	// it: an element whose text opens with blank lines has no line to name it by
-	pluginSent = regexp.MustCompile(attachedTag + `(plugin:[^>\s]+)>\n(?s:(.*?))\n</`)
-	// a running agent's own line, with its first
-	updateSent = regexp.MustCompile(attachedTag + `agent-update run="([^"]*)" agent="([^"]*)">\n(?s:(.*?))\n</`)
-)
-
-// notice is a notice row built from the message behind agent.AttachMarker:
-// the line the user reads, the status of the run it names, so a failed
-// report's row carries its failure, and that run's id, so the chat's row
-// opens its transcript. The Status is empty for a plugin's send, a loop's run
-// or a running agent's line, which draw the plain note mark.
-type notice struct {
-	Text   string
-	Status CallStatus
-	Run    string
-}
-
-// reportMark is a report's status word as its row's mark: a failed run
-// failed, a run that finished with a failed agent inside warns, and
-// anything else finished.
 // workStatus is the mark a work row draws: a final report's outcome, and
 // nothing for an update or a plugin send, which no outcome names.
 func workStatus(status string) CallStatus {
@@ -1060,34 +1027,6 @@ func workStatus(status string) CallStatus {
 		return CallOK
 	}
 	return ""
-}
-
-// reportHeads rebuilds the notice rows from the reports behind a message's
-// agent.AttachMarker (a joined queue may carry several), the plugins' sends
-// and the loop's runs, so a reply that follows no user row says why; none for
-// none of them.
-func reportHeads(tail string) []notice {
-	var heads []notice
-	for _, m := range reportAttrs.FindAllStringSubmatch(tail, -1) {
-		desc, _ := strconv.Unquote(m[4])
-		run := ""
-		if !workflowAgent(m[2]) {
-			run = m[1]
-		}
-		r := report{id: m[1], agent: m[2], status: reportStatus(m[3]), description: desc}
-		heads = append(heads, notice{Text: reportHead(r), Status: workStatus(m[3]), Run: run})
-	}
-	for _, m := range pluginSent.FindAllStringSubmatch(tail, -1) {
-		if line := skill.FirstBodyLine(m[2]); line != "" {
-			heads = append(heads, notice{Text: m[1] + ": " + clipRunes(sanitize.String(line), 200)})
-		}
-	}
-	for _, m := range updateSent.FindAllStringSubmatch(tail, -1) {
-		if line := skill.FirstBodyLine(m[3]); line != "" {
-			heads = append(heads, notice{Text: "Agent " + m[1] + " (" + m[2] + "): " + clipRunes(sanitize.String(line), 200), Run: m[1]})
-		}
-	}
-	return heads
 }
 
 // stopRun cancels a running agent; "" means the one the chat shows.

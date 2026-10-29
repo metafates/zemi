@@ -262,52 +262,9 @@ func TestRunRowFollowsItsRun(t *testing.T) {
 	}
 }
 
-// TestReportHeadsNameTheLine: a plugin send or an update is named
-// by its first line that has something in it, and one that has none is not
-// named at all, so no row is ever drawn with nothing after its tag.
-func TestReportHeadsNameTheLine(t *testing.T) {
-	for _, c := range []struct {
-		name, tail string
-		want       []notice
-	}{
-		{
-			name: "a report", tail: agent.Attached(`agent-report run="r1" agent="explore" status="finished" description="look around"`, "found it"),
-			want: []notice{{Text: "Background agent r1 (look around) finished", Status: CallOK, Run: "r1"}},
-		},
-		{
-			name: "a failed report", tail: agent.Attached(`agent-report run="r1" agent="explore" status="failed" description="look around"`, "it broke"),
-			want: []notice{{Text: "Background agent r1 (look around) failed", Status: CallErr, Run: "r1"}},
-		},
-		{
-			name: "a workflow that finished with a failed agent", tail: agent.Attached(`agent-report run="w1" agent="workflow" status="warn" description="audit"`, "3 of 4 angles came back"),
-			want: []notice{{Text: "Workflow w1 (audit) warn", Status: CallWarn}},
-		},
-		// an element quoted in a body is still the user's text: only one
-		// right behind the marker is a report
-		{name: "a command's attachment is the user's", tail: agent.Attached("command", `see this: <agent-report run="r9" agent="explore" status="finished" description="d">
-not a report
-</agent-report>`), want: nil},
-		{
-			name: "a plugin send after blank lines", tail: agent.Attached("plugin:demo", "\n\nreal line"),
-			want: []notice{{Text: "plugin:demo: real line"}},
-		},
-		{name: "a plugin send with nothing in it", tail: agent.Attached("plugin:demo", ""), want: nil},
-		{
-			name: "an update after a blank line", tail: agent.Attached(`agent-update run="r1" agent="explore"`, "\nkept going"),
-			want: []notice{{Text: "Agent r1 (explore): kept going", Run: "r1"}},
-		},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			if got := reportHeads(c.tail); !slices.Equal(got, c.want) {
-				t.Fatalf("heads = %q, want %q", got, c.want)
-			}
-		})
-	}
-}
-
 // TestMixedMessageRows: a message carrying the user's own words and an agent's
-// markup draws a row of each, and taking the queue back returns the typed line
-// while the markup stays queued for the model.
+// markup draws a row of the words only, and taking the queue back returns the
+// typed line while the markup stays queued for the model.
 func TestMixedMessageRows(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -317,7 +274,7 @@ func TestMixedMessageRows(t *testing.T) {
 	h.agents.steering = []string{"look at this" + markup}
 	h.agents.mu.Unlock()
 
-	want := []Queued{{Text: "look at this"}, {Text: "Background agent r1 (look around) finished", Notice: true, Run: "r1"}}
+	want := []Queued{{Text: "look at this"}}
 	if st := h.AgentStream(); !slices.Equal(st.Steering, want) {
 		t.Fatalf("rows = %+v, want %+v", st.Steering, want)
 	}
@@ -881,11 +838,11 @@ func TestUpdateStoredInItsShape(t *testing.T) {
 	if err != nil || !slices.ContainsFunc(rows, func(r store.LogEntry) bool { return strings.Contains(r.Text, "kept going") }) {
 		t.Fatalf("update never logged: %v", err)
 	}
-	// the update reaches the model behind the marker, under the tag the chat
-	// reads the update's line from
-	want := []notice{{Text: "Agent " + run.id + " (explore): kept going", Run: run.id}}
-	if heads := reportHeads(agent.Attached(fmt.Sprintf("agent-update run=%q agent=%q", run.id, run.agent), "kept going")); !slices.Equal(heads, want) {
-		t.Fatalf("update row = %+v, want %+v", heads, want)
+	// the update reaches the model behind the marker, tagged with the run and
+	// the name its row reads it by
+	want := agent.Attached(fmt.Sprintf("agent-update run=%q agent=%q description=%q", run.id, run.agent, run.description), "kept going")
+	if got := h.updateMessage("", run.id, run.agent, run.description, "kept going"); got != want {
+		t.Fatalf("update message = %q, want %q", got, want)
 	}
 }
 
