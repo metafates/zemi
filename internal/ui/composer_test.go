@@ -656,6 +656,18 @@ func TestCompletionNarrowsHome(t *testing.T) {
 	if got := app.composer.text; got != `@"~Downloads ` {
 		t.Fatalf("bare tilde head stayed open as %q", got)
 	}
+	// esc closes the popup and ctrl+space reopens what the cursor's word
+	// takes, with no edit between
+	app.composer.text, app.composer.cursor = "@~/Down", 7
+	app.updateCompletion()
+	app.composerKey("esc", tea.KeyPressMsg{})
+	if app.completion.shown() {
+		t.Fatal("esc left the popup open")
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeySpace, Mod: tea.ModCtrl})
+	if !app.completion.shown() {
+		t.Fatal("ctrl+space did not reopen the attach popup")
+	}
 }
 
 func TestCompletionScan(t *testing.T) {
