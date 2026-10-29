@@ -1198,6 +1198,29 @@ func TestStreamDoneStoresLastIn(t *testing.T) {
 	}
 }
 
+// TestCloseStopsTheQueueDrain: a host closed inside the idle-drain's window
+// stops the timer, so no drain fires a turn against closed stores.
+func TestCloseStopsTheQueueDrain(t *testing.T) {
+	t.Parallel()
+	h, clock := newLoopHost(t)
+	replyStub(t, h, "ok")
+	h.agents.mu.Lock()
+	scope := h.claim()
+	h.agents.mu.Unlock()
+	if err := h.AgentSend("queued"); err != nil {
+		t.Fatal(err)
+	}
+	scope.cancel()
+	h.nextTurn(scope, nil)
+	if clock.armed() != 1 {
+		t.Fatalf("setup: %d timers, want the drain armed", clock.armed())
+	}
+	h.Close()
+	if clock.armed() != 0 {
+		t.Fatalf("close left the drain armed (%d timers)", clock.armed())
+	}
+}
+
 // TestTurnClockIsTheHostClock: a turn's stamps and the snapshot that reads
 // them share one clock, so a zemi on a clock behind the wall one (a plugin
 // test's) counts no negative elapsed.

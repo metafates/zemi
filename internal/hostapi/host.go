@@ -2722,6 +2722,9 @@ func (h *Host) PurgeGeneration() {
 // Close ends the host: the runtime, what its generation started (timers,
 // jobs, requests, servers) and the stores, so it holds no file or goroutine.
 func (h *Host) Close() {
+	if h.resumeStop != nil {
+		h.resumeStop()
+	}
 	h.RT.Close()
 	h.PurgeGeneration()
 	h.mcp.stopParked()
