@@ -115,7 +115,12 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 	// right here under its own origin; a host command runs off the
 	// interpreter (it may start a turn), so run returns before it finishes.
 	tb.RawSetString("run", L.NewFunction(func(L *glua.LState) int {
-		name, args := L.CheckString(1), L.OptString(2, "")
+		name := L.CheckString(1)
+		parts := make([]string, 0, max(L.GetTop()-1, 0))
+		for i := 2; i <= L.GetTop(); i++ {
+			parts = append(parts, L.CheckString(i))
+		}
+		args := strings.Join(parts, " ")
 		cmd := h.Commands.Lookup(name)
 		if cmd == nil {
 			return luaResult(L, fmt.Errorf("not a command: %s", name))

@@ -458,10 +458,10 @@ function zemi.command.del(name) end
 
 --- Run a registered command as if it were typed.
 ---@param name string
----@param args? string
+---@vararg string Each argument is one word of the typed line, joined with spaces.
 ---@return true|nil ok
 ---@return string|nil err Not a command, bad arguments, or a Lua command's own error; a Go command's failure is shown by zemi, not returned.
-function zemi.command.run(name, args) end
+function zemi.command.run(name, ...) end
 
 ---@return zemi.Command[]
 function zemi.command.list() end

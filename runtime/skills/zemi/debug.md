@@ -50,7 +50,7 @@
 | "next try in Xs" / "retrying now" then an error | network, VPN or `base_url`; the log has each retry's provider error |
 | `boot failed` on a plain, colorless screen | zemi's own Lua layer did not load (a broken install or a bug; user config, plugins and the project can never cause this: a failure there shows the `errors` pill and zemi boots on); `c` in the box copies the error for a report, the log the box names has the whole traceback |
 | statusline `stuck /reload` | a Lua handler wedged the interpreter; `/reload` rebuilds it; find the handler in `/errors` or the log |
-| "Images left out" toast, "`<model>` takes no images; vision = false on its model entry skips this" | the provider refused image input; set `vision = false` on the model entry, or pick a multimodal model for screenshots |
+| "Images left out" toast, "`<model>` takes no images; capabilities = { vision = false } on its model entry skips this" | the provider refused image input; set `capabilities = { vision = false }` on the model entry, or pick a multimodal model for screenshots |
 | context percent missing | the model has no `context_window` (`/health` context row); add it to the model entry |
 | the `/health` `chat builder` row is warn | the builder is behind: lines still placeholders or builds queued (`zemi memories.md` says what the view is); `zoom` still reads the raw log rows while it catches up |
 | project `.agents/` config, AGENTS.md or language servers ignored | the project is not trusted (`/health` trust row); `/trust` shows the prompt again. Decisions live in `~/.local/state/zemi/trust.json` by repository root (`/projects` lists them and forgets one); a linked worktree uses its main checkout's |

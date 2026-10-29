@@ -932,7 +932,11 @@ func (h *Host) deliverUpdate(run *agentRun, text string) error {
 // click reads the run's screen from.
 func (h *Host) work(run, who, agent, status, body string) {
 	who = clipLine(who, 60) // a model's description the split labels every row with: one line, or the body hides behind it
-	text := who + " · " + strings.TrimSpace(body)
+	body = strings.TrimSpace(body)
+	text := who
+	if body != "" {
+		text = who + " · " + body
+	}
 	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(text), Status: workStatus(status), Run: run, Tool: tools.ToolName(agent)}
 	if h.chat != nil {
 		first, err := h.chat.Work(run, who, agent, status, text)
@@ -956,13 +960,25 @@ func (h *Host) updateMessage(pad, id, agentName, who, text string) string {
 // the run's description as its work row is; the id trails, where /agents and
 // /workflows act on it. A workflow's agent attribute is "workflow" or
 // "workflow:<saved name>", and its description names it, since runs of one
-// script differ by no name.
+// script differ by no name. The status reads as what happened to it.
 func reportHead(r report) string {
 	who := cmp.Or(r.description, r.agent)
 	if workflowAgent(r.agent) {
 		who = cmp.Or(r.description, "workflow")
 	}
-	return fmt.Sprintf("%s %s (%s)", clipLine(who, 60), string(r.status), r.id)
+	return fmt.Sprintf("%s %s (%s)", clipLine(who, 60), reportTense(r.status), r.id)
+}
+
+// reportTense is a report's status as the verb its head reads: warned and
+// updated for the statuses that are no events of their own.
+func reportTense(s reportStatus) string {
+	switch s {
+	case reportWarn:
+		return "warned"
+	case updateStatus:
+		return "updated"
+	}
+	return string(s)
 }
 
 // workflowAgent reports whether a report's agent attribute names a workflow,
@@ -1012,7 +1028,15 @@ func (h *Host) notifyReport(r report) {
 	if r.status != reportFailure {
 		level = slog.LevelInfo
 	}
-	h.Notify(level, reportHead(r), r.description+"\n"+clipRunes(strings.TrimPrefix(r.body, reportFailed), 300))
+	if detail := strings.TrimPrefix(r.body, reportFailed); detail != "" {
+		detail = clipRunes(detail, 300)
+		if r.description != "" {
+			detail = r.description + "\n" + detail
+		}
+		h.Notify(level, reportHead(r), detail)
+	} else {
+		h.Notify(level, reportHead(r), r.description)
+	}
 }
 
 // workStatus is the mark a work row draws: a final report's outcome, and

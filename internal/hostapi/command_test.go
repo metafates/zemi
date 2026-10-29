@@ -101,6 +101,14 @@ func TestNargsOK(t *testing.T) {
 		}
 		runUser(t, r, fmt.Sprintf(`local _, err = zemi.command.run("foo", %q); assert((err or "") == %q, err)`, c.args, c.want))
 	}
+	// the variadic shape: each argument one word of the typed line, joined
+	// with spaces before the command's own grammar reads it
+	h.Commands.Add(&Command{Name: "one", NArgs: NArgsOptional, GoFn: func(*Host, string, bool) error { return nil }, Origin: lua.OriginBuiltin, Gen: h.currentGen()})
+	runUser(t, r, `
+		assert(zemi.command.run("one", "a"))
+		local _, err = zemi.command.run("one", "a", "b")
+		assert(err == "/one takes at most one argument", err)
+	`)
 }
 
 // TestStaleKeymapAndCommandDoNotRun: a binding or command looked up before a

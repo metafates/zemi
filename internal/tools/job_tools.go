@@ -495,7 +495,11 @@ func runJobList(ctx context.Context, p *Pipeline, _ jobListArgs) (fantasy.ToolRe
 	}
 	var b strings.Builder
 	for _, j := range jobs {
-		fmt.Fprintf(&b, "%s: %s - %s\n", j.ID, j.Status(), j.Name)
+		name := j.Name
+		if j.Cmd != "" && j.Cmd != j.Name {
+			name = name + " (" + j.Cmd + ")"
+		}
+		fmt.Fprintf(&b, "%s: %s · %s\n", j.ID, j.Status(), name)
 	}
 	return fantasy.NewTextResponse(b.String()), nil
 }

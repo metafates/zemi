@@ -1112,7 +1112,7 @@ func (h *Host) flowControl(id string, act flowAction, n int, agent string) (stri
 		}
 		f.restart.Add(agent)
 		f.agents[i].run.cancel()
-		return "Restarting agent " + clipLine(f.agents[i].description, 60) + " (" + agent + ")", nil
+		return "Restarting agent " + clipLine(cmp.Or(f.agents[i].description, f.agents[i].def), 60) + " (" + agent + ")", nil
 	default:
 		return "", Usagef("unknown workflow action %q", act)
 	}

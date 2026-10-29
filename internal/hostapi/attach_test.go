@@ -133,6 +133,28 @@ func (u *toastUI) Notify(_ slog.Level, title, body string) {
 // TestExpandAttachments: project files referenced with @ attach; a file
 // outside the project attaches through its symlink or its ../ path, and a
 // missing one, a FIFO and a directory say why or stay prose.
+// TestAttachmentCap: a model entry's max_attachments caps the @ references
+// one message carries; past it the reference stays prose the model can still
+// read by path.
+func TestAttachmentCap(t *testing.T) {
+	t.Parallel()
+	h, r := newTestHost(t)
+	runUser(t, r, `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = { { id = "m", max_attachments = 1 } } }) zemi.model.set("a/m")`)
+	proj := h.Dirs.ProjectDir
+	for _, name := range []string{"a.txt", "b.txt"} {
+		if err := os.WriteFile(filepath.Join(proj, name), []byte(name), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, _ := h.expandAttachments("one @a.txt two @b.txt", true)
+	if !strings.Contains(got, "<file path=\"a.txt\">\na.txt\n</file>") {
+		t.Fatalf("the first rides: %q", got)
+	}
+	if !strings.Contains(got, "not attached: the model takes 1 attachments and this is past them") {
+		t.Fatalf("the second is held with the reason: %q", got)
+	}
+}
+
 func TestExpandAttachments(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)

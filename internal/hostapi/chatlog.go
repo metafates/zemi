@@ -521,7 +521,7 @@ func (h *Host) zoom(in zoomArgs) (fantasy.ToolResponse, error) {
 		in.N = 1
 	}
 	if in.N < 0 {
-		return fantasy.NewTextErrorResponse(fmt.Sprintf("n is %d: it must be a power of 2", in.N)), nil
+		return fantasy.NewTextErrorResponse(fmt.Sprintf("n is %d: it must be positive", in.N)), nil
 	}
 	if in.N&(in.N-1) != 0 { // "about 3" reads as the next power of two up
 		in.N = 1 << bits.Len64(uint64(in.N))

@@ -362,7 +362,7 @@ function M.digest(rows, first, last, cwd, home)
 	end
 	if #failed > 0 then
 		if #failed == 1 and #calls == 0 then
-			local name = M.title(M.tool(failed[1]))
+			local name = M.lower(M.VERB[M.tool(failed[1])] or M.title(M.tool(failed[1])))
 			if (failed[1].text or "") ~= "" then
 				parts[#parts + 1] = name .. " failed: " .. failed[1].text
 			else

@@ -264,7 +264,11 @@ local function builder(ctx, width)
 	---@param waiting boolean? Waiting for the turn's next step boundary.
 	function B.user(text, waiting, foreign)
 		local bar_hl = waiting and "Queued" or foreign and "Dim" or "UserMsg"
-		for i, segs in ipairs(zemi.ui.wrap(text, width - 2)) do
+		-- the queued tag rides the first row: the wrap leaves its cells out,
+		-- or the drawn row runs past the region and the terminal wraps it
+		-- onto an unbarred line of its own
+		local room = width - 2 - (waiting and 9 or 0)
+		for i, segs in ipairs(zemi.ui.wrap(text, room)) do
 			local row = { { text = "▌ ", hl = bar_hl, copy = false, hover = false, sticky = not waiting } }
 			if waiting and i == 1 then
 				-- the row is provisional: it is the queue's until the turn reads
@@ -285,19 +289,6 @@ local function builder(ctx, width)
 	end
 
 	-- A subagent's or a plugin's message waiting for the turn's next step
-	-- boundary: the notice row it becomes when the model reads it, tagged
-	-- while it waits. A row naming a run opens its transcript.
-	---@param text string
-	---@param run string?
-	function B.queued(text, run)
-		local click = (run or "") ~= "" and "agent:" .. run or nil
-		B.lines[#B.lines + 1] = {
-			mark("note", click),
-			{ text = " queued ", hl = "Queued", copy = false, click = click },
-			{ text = text, hl = "Dim", click = click },
-		}
-	end
-
 	-- Thinking text on the rail at column 4, prose wide at most, its last
 	-- tail lines when tail is set, sunk at the top while lines are hidden
 	-- above; a blank line keeps only the bar. Its rows are body: no hover,
