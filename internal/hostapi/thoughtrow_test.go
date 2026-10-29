@@ -1,6 +1,9 @@
 package hostapi
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -267,4 +270,99 @@ func TestReplyStatsShed(t *testing.T) {
 	if strings.Contains(narrow, "anthropic") || !strings.Contains(narrow, "1.5s · 100 out") {
 		t.Fatalf("the narrow stats row kept the model or lost the turn:\n%s", narrow)
 	}
+}
+
+// TestReplyReadoutDropsWhenTheNextReplyLands: the readout rides the reply
+// that ends the exchange. A background report's notice alone changes
+// nothing, but the answer turn behind it is another reply, so the readout
+// drops live the way a rebuild draws it - a resume reads the same lines.
+func TestReplyReadoutDropsWhenTheNextReplyLands(t *testing.T) {
+	t.Parallel()
+	h := newTestHostUI(t)
+	h.SetUIHooks(&fakeUI{})
+	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "main.go"), []byte("package main"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	answer := make(chan struct{})
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+			switch {
+			case strings.Contains(system, "a subagent of zemi"):
+				<-release
+				return textParts("R7REPORT ok")
+			case toolResult:
+				return textParts("started it")
+			case strings.Contains(last, "<agent-report "):
+				<-answer // the answer turn waits: the notice alone is on screen
+				return textParts("the report said: R7REPORT ok")
+			}
+			return toolCallParts("c1", "agent", `{"description":"r7 readout","prompt":"reply R7REPORT ok","agent":"explore","background":true}`)
+		}}, nil
+	}
+	if err := h.AgentSend("go"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	// the reply is the transcript's tail: the readout rides it
+	first := widgetText(t, h, "chat", 100, UIState{})
+	if !readoutUnder(t, first, "started it") {
+		t.Fatalf("the tail reply drew no readout:\n%s", first)
+	}
+	close(release)
+	waitFor(t, func() error {
+		for _, m := range h.Session().Transcript {
+			if m.Kind == "notice" && strings.Contains(m.Text, "R7REPORT ok") {
+				return nil
+			}
+		}
+		return fmt.Errorf("report never arrived: %+v", h.Session().Transcript)
+	})
+	// the notice alone changes nothing: the readout stays
+	mid := widgetText(t, h, "chat", 100, UIState{})
+	if !readoutUnder(t, mid, "started it") {
+		t.Fatalf("the notice dropped the readout:\n%s", mid)
+	}
+	close(answer)
+	waitIdle(t, h)
+	// the answer turn behind the notice is another reply: the readout drops,
+	// and a rebuild draws the same lines
+	live := widgetText(t, h, "chat", 100, UIState{})
+	h.setTranscriptFromLog()
+	rebuilt := widgetText(t, h, "chat", 100, UIState{})
+	if live != rebuilt {
+		t.Fatalf("a resume reads other lines than the live window drew:\nlive:\n%s\nrebuilt:\n%s", live, rebuilt)
+	}
+	if readoutUnder(t, live, "started it") {
+		t.Fatalf("the readout stayed under a reply another reply follows:\n%s", live)
+	}
+}
+
+// readoutUnder says the first row after name's row draws a readout: what a
+// turn's readout ends in, the clock.
+func readoutUnder(t *testing.T, frame, name string) bool {
+	t.Helper()
+	lines := strings.Split(frame, "\n")
+	for i, l := range lines {
+		if !strings.Contains(l, name) {
+			continue
+		}
+		for j := i + 1; j < len(lines); j++ {
+			if s := strings.TrimSpace(lines[j]); s != "" {
+				return endsWithClock(s)
+			}
+		}
+	}
+	return false
+}
+
+// endsWithClock says the row's last field is an HH:MM clock, the readout's
+// last part.
+func endsWithClock(s string) bool {
+	if len(s) < 5 {
+		return false
+	}
+	c := s[len(s)-5:]
+	d := func(b byte) bool { return b >= '0' && b <= '9' }
+	return c[2] == ':' && d(c[0]) && d(c[1]) && d(c[3]) && d(c[4])
 }

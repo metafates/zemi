@@ -22,6 +22,8 @@ local util = require("zemi.util")
 ---@field next integer Key of the message after the unit, the row's pos().
 ---@field mode zemi.tui.RunMode|"" How its activity run drew; "" for any other unit.
 ---@field cut integer The head cut the unit drew at: its rows' anchors and calls name the window of that render.
+---@field open boolean? A reply's readout decision is still open: no unnamed row stood after it at render.
+---@field rows integer? The transcript length the unit rendered at, which an open decision re-checks on growth.
 ---@type table<integer, zemi.tui.ChatUnit>
 local units = {}
 local units_key = ""
@@ -859,6 +861,7 @@ zemi.ui.widget.add({
 		local function unit(tr, first, last, mode)
 			local m = tr[first]
 			local content = nil -- where the message ends and meta begins
+			local open = nil -- a reply's readout decision is still open (see the scan below)
 			B.lines, B.prev = {}, first > 1 and block_of(tr[first - 1]) or nil
 			if mode == "fold" or mode == "unfold" then
 				B.gap("activity")
@@ -907,14 +910,17 @@ zemi.ui.widget.add({
 				B.markdown(m.text)
 				-- The readout rides the reply that ends the exchange, and only the
 				-- next text row decides it: a call, notice or error after it changes
-				-- nothing, while another reply means a sentence between runs.
+				-- nothing, while another reply means a sentence between runs. No
+				-- unnamed row after it yet leaves the decision open: the unit says
+				-- so (u.open), and a row landing below redraws it.
 				---@type zemi.Line
 				local stats = {}
 				local final = true
+				open = true
 				for i = last + 1, #tr do
 					local r = tr[i]
 					if (r.kind or "") == "" then
-						final = r.role == "user"
+						final, open = r.role == "user", false
 						break
 					end
 				end
@@ -947,7 +953,7 @@ zemi.ui.widget.add({
 				end
 			end
 			anchored(B.lines, first, content)
-			return { lines = B.lines, next = pos(last + 1), mode = mode, cut = cut_seen }
+			return { lines = B.lines, next = pos(last + 1), mode = mode, cut = cut_seen, open = open, rows = #tr }
 		end
 
 		-- markdown and code carry the theme's colors: a light terminal's
@@ -1040,7 +1046,10 @@ zemi.ui.widget.add({
 			local function stale(first, last, tail)
 				if tail then return true end
 				local u = units[pos(first)]
-				return not u or u.next ~= pos(last + 1) or u.mode ~= mode_of(first)
+				-- a reply whose readout scan found no unnamed row after it
+				-- decided nothing yet: a row landing below can end the
+				-- exchange the readout rides, so it redraws on growth
+				return not u or u.next ~= pos(last + 1) or u.mode ~= mode_of(first) or u.open ~= nil and u.rows ~= #tr
 			end
 			-- A unit drawn before the last trim: its content is good, its
 			-- anchors and calls name the window it drew in, so it restamps
