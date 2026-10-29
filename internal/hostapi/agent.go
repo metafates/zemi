@@ -969,17 +969,32 @@ func (h *Host) viewMessage() (fantasy.Message, bool) {
 // to the composer. After a turn that ended cleanly with nothing queued, a
 // set goal is checked under the same claim (continueGoal). err is how the
 // turn ended.
+// idleResumeWait is how long an interrupt's queue waits before it works
+// itself: esc stops the turn, not the reports behind it, and they run once
+// the user has been away this long.
+const idleResumeWait = 2 * time.Minute
+
+// armQueueDrain schedules drainQueue, replacing one already waiting.
+func (h *Host) armQueueDrain() {
+	if h.resumeStop != nil {
+		h.resumeStop()
+	}
+	stop := h.RT.Clock().AfterFunc(idleResumeWait, func() { h.GoSafe("queue drain", h.drainQueue) })
+	h.resumeStop = func() { stop() }
+}
+
 func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 	ag := h.agents
 	ag.mu.Lock()
 	text := ""
-	var waiting []string // reports and plugin sends a cancel left for the next message
 	if done.ctx.Err() != nil {
-		for _, m := range ag.steering {
-			_, heads, _ := userRowsFor(m)
-			for _, n := range heads {
-				waiting = append(waiting, n.Text)
-			}
+		// esc stopped the turn; the reports behind it wait for the drain
+		// instead of the user's next message
+		if len(ag.steering) > 0 {
+			h.armQueueDrain()
+			h.Notify(slog.LevelInfo, "Queue resumes on its own",
+				fmt.Sprintf("%d queued %s run once you have been away a moment; esc interrupts them.",
+					len(ag.steering), Plural(len(ag.steering), "message", "messages")))
 		}
 	} else {
 		text = joinQueue(ag.steering)
@@ -1013,10 +1028,6 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 		return h.continueGoal(next, goal)
 	}
 	if text == "" {
-		// its notice row is drawn when the model reads it; say now that it waits
-		if len(waiting) > 0 {
-			h.Notify(slog.LevelInfo, "Waiting for your next message", strings.Join(waiting, "\n"))
-		}
 		h.refresh()
 		return nil, ""
 	}
@@ -1182,10 +1193,31 @@ func queuedRows(msgs []string) []Queued {
 
 // joinQueue makes queued messages one message with every shown part ahead
 // of the first agent.AttachMarker, where each reader cuts the text.
+// queueRideBytes caps what one follow-up turn carries whole: older messages
+// are logged, and the view the turn reads already summarizes them, so a
+// backlog left overnight cannot blow the turn's window.
+// NOTE: the cut is by bytes, not by meaning; the summaries may flatten what
+// an earlier message said.
+const queueRideBytes = 64 << 10
+
+// joinQueue joins the queue into one message, the oldest first. The newest
+// messages ride whole within queueRideBytes; the ones older than that count
+// into one line, since the view already carries them.
 func joinQueue(msgs []string) string {
+	ride := len(msgs)
+	used := 0
+	for ; ride > 0; ride-- {
+		if used > 0 && used+len(msgs[ride-1]) > queueRideBytes {
+			break
+		}
+		used += len(msgs[ride-1])
+	}
 	var shown []string
 	var tails strings.Builder
-	for _, m := range msgs {
+	if ride > 0 {
+		shown = append(shown, fmt.Sprintf("%d earlier messages arrived while you worked; the chat's view above already summarizes them.", ride))
+	}
+	for _, m := range msgs[ride:] {
 		head, tail, ok := strings.Cut(m, agent.AttachMarker)
 		if ok {
 			tails.WriteString(agent.AttachMarker + tail)

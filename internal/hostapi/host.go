@@ -526,6 +526,10 @@ type Host struct {
 	// appends and the builder worker over the project store, ended by Close.
 	chat *chatLog
 
+	// resumeStop cancels the queued reports' idle drain nextTurn armed;
+	// guarded by agents.mu with the queue it works on.
+	resumeStop func()
+
 	uiMu sync.RWMutex
 	ui   UIHooks
 
@@ -857,7 +861,7 @@ func (h *Host) appendTranscript(rows ...ChatMessage) {
 		return
 	}
 	for i := range rows {
-		if rows[i].Seq == 0 {
+		if rows[i].Seq == 0 { // the zero value names nothing, like NoSeq
 			rows[i].Seq = NoSeq
 		}
 	}

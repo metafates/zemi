@@ -525,8 +525,8 @@ func TestSteeringQueue(t *testing.T) {
 	send(agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"find \\\"x\\\"\">\nx is in y.go\n</agent-report>\n</attached-files>")
 	h.AgentCancel()
 	h.nextTurn(scope, nil)
-	if !strings.Contains(notes(), "Waiting for your next message: Background agent a1 (find \"x\") finished") {
-		t.Fatalf("no waiting notice: %q", notes())
+	if !strings.Contains(notes(), "Queue resumes on its own: 1 queued message") {
+		t.Fatalf("no resume notice: %q", notes())
 	}
 	// the queued report reaches the next turn's reader whole
 	if _, heads, _ := userRowsFor(agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"find \\\"x\\\"\">\nx is in y.go\n</agent-report>\n</attached-files>"); len(heads) == 0 {
@@ -1919,5 +1919,56 @@ func TestFlushKeepsJob(t *testing.T) {
 	last := h.Session().Transcript[len(h.Session().Transcript)-1]
 	if last.Kind != RowTool || last.Job != "job-1" {
 		t.Fatalf("settled row = %+v, want the job pointer kept", last)
+	}
+}
+
+// TestInterruptedQueueDrains: esc stops the turn and leaves the reports
+// queued; the drain works them after idleResumeWait, as a clean end would
+// have, and an interrupt with nothing queued arms nothing.
+func TestInterruptedQueueDrains(t *testing.T) {
+	t.Parallel()
+	h, clock := newLoopHost(t)
+	replyStub(t, h, "ok")
+	report := agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"find x\">\nfound\n</agent-report>\n</attached-files>"
+	h.agents.mu.Lock()
+	scope := h.claim()
+	h.agents.mu.Unlock()
+	if err := h.AgentSend(report); err != nil {
+		t.Fatal(err)
+	}
+	scope.cancel()
+	h.nextTurn(scope, nil)
+	h.agents.mu.Lock()
+	n := len(h.agents.steering)
+	h.agents.mu.Unlock()
+	if n != 1 || clock.armed() != 1 {
+		t.Fatalf("queue %d, timers %d; want the report queued and the drain armed", n, clock.armed())
+	}
+	f, ok := clock.due(clock.Now().Add(idleResumeWait))
+	if !ok {
+		t.Fatal("no drain timer due")
+	}
+	f()
+	waitFor(t, func() error {
+		h.agents.mu.Lock()
+		defer h.agents.mu.Unlock()
+		if len(h.agents.steering) != 0 {
+			return errors.New("the queue did not drain")
+		}
+		return nil
+	})
+	waitIdle(t, h)
+	tr := h.Session().Transcript
+	if len(tr) == 0 || tr[len(tr)-1].Role != fantasy.MessageRoleAssistant {
+		t.Fatalf("the drain ran no turn: %+v", tr)
+	}
+	// with nothing queued, an interrupt arms nothing
+	h.agents.mu.Lock()
+	scope = h.claim()
+	h.agents.mu.Unlock()
+	scope.cancel()
+	h.nextTurn(scope, nil)
+	if n := clock.armed(); n != 0 {
+		t.Fatalf("%d timers armed with an empty queue", n)
 	}
 }
