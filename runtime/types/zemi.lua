@@ -367,14 +367,15 @@ zemi.keymap = {}
 --- With `opts.focus` the binding is scoped to a focusable node: while it has
 --- the keys its bindings come first, then the global ones. The composer's own
 --- editing keys (ctrl+a,
---- ctrl+e, ctrl+u, ctrl+w, home, end) bind like any other, and the composer
+--- ctrl+e, ctrl+w, home, end) bind like any other, and the composer
 --- then no longer gets them.
 ---
 --- With `opts.list` the key moves in every list, popup and prompt, and stays
 --- what it was elsewhere: `zemi.keymap.set("ctrl+j", "down", { list = true })`
 --- (ctrl+j still scrolls the chat). While a line types, an alias to
---- home, end or ctrl+u keeps the key's own meaning, since the line edits with
---- those. enter, esc, tab, shift+tab, space and backspace raise.
+--- home or end keeps the key's own meaning, since the line edits with
+--- those; a ctrl+u alias still fires, and in a prompt or filter it kills
+--- the line. enter, esc, tab, shift+tab, space and backspace raise.
 ---
 --- Host actions: zemi.composer.{submit,history_prev,history_next,paste,edit},
 --- zemi.composer.insert <text>,

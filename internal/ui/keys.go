@@ -32,7 +32,6 @@ var goKeys = [][2]string{
 	{"alt+left, alt+right", "move by word"},
 	{"ctrl+d/u", "scroll the chat half a view"},
 	{"ctrl+w", "delete the word before the cursor"},
-	{"ctrl+u", "delete back to the line's start"},
 	{"delete", "forward delete"},
 	{"/", "command palette"},
 	{"@", "attach files, dirs and skills"},
@@ -590,8 +589,9 @@ func listMove(key string) int {
 }
 
 // lineKey reports whether a list move is a key a typed line edits with,
-// which the line keeps: home and end. ctrl+d and ctrl+u are never the line's,
-// so the half-page pair scrolls whatever stands above it, typed or not.
+// which the line keeps: home and end. ctrl+d and ctrl+u scroll whatever
+// stands above the line, typed or not; in a prompt or filter ctrl+u kills
+// the line instead (editKey), but an alias to it still fires.
 func lineKey(key string) bool { return key == "home" || key == "end" }
 
 // typing reports whether the keys go to a line being typed: the draft, a

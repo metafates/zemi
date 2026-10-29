@@ -1476,7 +1476,10 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 			hints = append(hints, hintPair{key: "h", verb: "back"})
 		}
 		hints = st.filterHints(append(hints, scroll...), esc)
-		if st.active && len(st.visible) > 0 {
+		if len(st.visible) == 0 {
+			// enter acts on a row; with none, the footer must not promise it
+			hints = slices.DeleteFunc(hints, func(h hintPair) bool { return h.key == "enter" })
+		} else if st.active {
 			// enter runs the row the filter narrowed to, whatever its verb is
 			for i, h := range hints {
 				if h.key == "enter" {

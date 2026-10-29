@@ -238,7 +238,8 @@ func isEditKey(key string) bool {
 }
 
 // editKey applies a cursor move or deletion key; it reports whether key was
-// one.
+// one. ctrl+u kills the line's text back to its start - a prompt's or a
+// filter's; the composer's own draft keeps it for the half-page scroll.
 func (c *composerState) editKey(key string) bool {
 	if !isEditKey(key) {
 		return false
