@@ -135,14 +135,15 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 	}
 	if f.script != "" && f.parent == h.AgentSessionID() {
 		if v.status != RunRunning {
-			o.Keys = append(o.Keys, OverlayKey{Key: "r", Desc: "rerun", Run: "workflows rerun " + f.id})
+			// rerun starts agents, so a word typed at the view arms before it acts
+			o.Keys = append(o.Keys, OverlayKey{Key: "r", Desc: "rerun", Run: "workflows rerun " + f.id, Danger: true})
 		}
-		o.Keys = append(o.Keys, OverlayKey{Key: "o", Desc: "script", Run: "workflows open " + f.id})
+		o.Keys = append(o.Keys, OverlayKey{Key: "o", Desc: "script", Run: "workflows open " + f.id, Danger: true})
 	}
 	if f.src != "" && f.name == "" && f.parent == h.AgentSessionID() { // what saveFlow takes; a saved workflow's run is saved already
 		// w, not s: a running agent row's s stops it, and the row keys lose
 		// to the list's
-		o.Keys = append(o.Keys, OverlayKey{Key: "w", Desc: "save", Run: "workflows save " + f.id})
+		o.Keys = append(o.Keys, OverlayKey{Key: "w", Desc: "save", Run: "workflows save " + f.id, Danger: true})
 	}
 	return o
 }

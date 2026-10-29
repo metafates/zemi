@@ -1158,8 +1158,10 @@ reads cancelled once it ended), and keys acting on the run, `p`,
 `+` and `-` (relative, so a second press before the view rebuilds still
 counts) and `x` (stop, on its second press) while it runs, `r` (rerun,
 whose view takes the ended one's place) once it ended, and `o` (open its
-script) for a run of this session, with `s` (save it to `workflows/` under
-its description's name, never one another workflow has) when the model
+script) for a run of this session, `r` and `o` on their second press so a
+word typed at the view arms before it acts, with `w` (save it to `workflows/` under
+its description's name, never one another workflow has, on its second
+press too) when the model
 wrote the script and this process still holds it as it ran. An agent's
 detail, enter's view of its row in the run and in `/agents` alike, sets its
 facts (status, time, the agent and model it ran as, its usage and run id, a
