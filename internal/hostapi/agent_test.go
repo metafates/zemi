@@ -1111,6 +1111,62 @@ func TestTodoNag(t *testing.T) {
 			t.Fatalf("all done must not nag: %q", got)
 		}
 	})
+
+	t.Run("working with nothing in_progress nags once", func(t *testing.T) {
+		t.Parallel()
+		h, _ := newTestHostDB(t)
+		set(h, []store.Todo{{Content: "a", Status: "done"}, {Content: "b", Status: "pending"}, {Content: "c", Status: "pending"}})
+		engage(h, todoNagAfter)
+		if got := takeNag(h); !strings.Contains(got, "none is in_progress") {
+			t.Fatalf("all-pending nag = %q", got)
+		}
+		set(h, []store.Todo{{Content: "b", Status: "in_progress"}, {Content: "c", Status: "pending"}})
+		engage(h, todoNagAfter)
+		if got := takeNag(h); !strings.Contains(got, "in_progress for") {
+			t.Fatalf("a write re-arms onto the in_progress item: %q", got)
+		}
+	})
+
+	t.Run("a turn with open todos arms one turn-start remind", func(t *testing.T) {
+		t.Parallel()
+		h, _ := newTestHostDB(t)
+		set(h, []store.Todo{{Content: "a", Status: "done"}, {Content: "b", Status: "pending"}})
+		h.armTodoTurnNote()
+		if got := takeNag(h); !strings.Contains(got, "todos are open") {
+			t.Fatalf("turn-start remind = %q", got)
+		}
+		set(h, []store.Todo{{Content: "a", Status: "done"}, {Content: "b", Status: "done"}})
+		h.armTodoTurnNote()
+		if got := takeNag(h); got != "" {
+			t.Fatalf("all done arms nothing: %q", got)
+		}
+	})
+
+	t.Run("delivered steering reminds the model to track it", func(t *testing.T) {
+		t.Parallel()
+		h, _ := newTestHostDB(t)
+		h.agents.mu.Lock()
+		h.agents.todoList = []store.Todo{{Content: "a", Status: "in_progress"}}
+		h.agents.active = true
+		h.agents.mu.Unlock()
+		h.agents.mu.Lock()
+		h.agents.steering = []string{"also update the readme"}
+		h.agents.mu.Unlock()
+		msgs := h.deliverSteering()
+		if len(msgs) != 2 || !strings.Contains(msgs[1], "todo list") {
+			t.Fatalf("steering delivery = %q, want the tracked-work remind second", msgs)
+		}
+		if again := h.deliverSteering(); len(again) != 0 {
+			t.Fatalf("the remind must not repeat: %q", again)
+		}
+		h.agents.mu.Lock()
+		h.agents.todoList = nil
+		h.agents.steering = []string{"another"}
+		h.agents.mu.Unlock()
+		if msgs := h.deliverSteering(); len(msgs) != 1 {
+			t.Fatalf("no list, no remind: %q", msgs)
+		}
+	})
 }
 
 // TestTurnDoneDropsTheRetry: a turn that ends during a retry backoff (esc,

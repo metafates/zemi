@@ -235,7 +235,10 @@ func TestReportNoticeWhereRead(t *testing.T) {
 	}
 	// the toast's head: who first, the id trailing, the statuses that are no
 	// events of their own reading as what happened
-	for _, c := range []struct{ r report; want string }{
+	for _, c := range []struct {
+		r    report
+		want string
+	}{
 		{report{id: "a1", agent: "explore", status: reportFinished, description: "Counting tests"}, "Counting tests finished (a1)"},
 		{report{id: "a1", agent: "explore", status: reportWarn, description: "Counting tests"}, "Counting tests warned (a1)"},
 		{report{id: "a1", agent: "explore", status: updateStatus, description: ""}, "explore updated (a1)"},

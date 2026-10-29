@@ -191,13 +191,13 @@ type agentHost struct {
 	// shellNotes holds !command output waiting for the next message.
 	shellNotes []string
 
-	// todoNag nudges a stale in_progress todo: the item it was set for,
-	// how many tool calls have run since, and whether a remind is already
-	// queued. Any todos write resets it, so an update (or a tick) stops it.
-	todoInProgress string
-	todoSteps      int  // main-runner steps since the last todos write
-	todoTouched    bool // a todos call ran this step
-	todoPending    bool
+	// todoNag nudges a stale todo list: the items it holds, how many steps
+	// have run since the last write, and whether a remind is already queued.
+	// Any todos write resets it, so an update (or a tick) stops it.
+	todoList    []store.Todo // the list as the last todos write left it
+	todoSteps   int          // main-runner steps since the last todos write
+	todoTouched bool         // a todos call ran this step
+	todoPending bool
 	// todoNag waits for the next step boundary of the running turn, outside
 	// steering: a turn that ends first drops it instead of starting another.
 	todoNag string
@@ -856,6 +856,7 @@ func (h *Host) runTurns(runner *agent.Runner, scope *turnScope, text string) {
 		} else {
 			runner.SetHistory(nil)
 		}
+		h.armTodoTurnNote()
 		err := h.sendTurn(scope.ctx, runner, text)
 		// interrupted is the turn's own error, not scope.ctx.Err() alone: the
 		// runner's stream cancel can return the turn before the scope's
@@ -1093,6 +1094,13 @@ func (h *Host) deliverSteering() []string {
 	ag := h.agents
 	ag.mu.Lock()
 	msgs := ag.steering
+	if len(msgs) > 0 && len(ag.todoList) > 0 {
+		// new work arrived while the model works: without this it does the
+		// work first and adds it to the list afterwards, done already
+		msgs = append(msgs, agent.Note(
+			"Work arrived mid-turn: if it belongs on the todo list, add it with the todos tool.",
+		))
+	}
 	if ag.todoNag != "" {
 		msgs = append(msgs, ag.todoNag)
 	}
@@ -1850,12 +1858,38 @@ func (h *Host) recordToolCall(sid string, t StreamTool, ok bool) {
 // NOTE: a fixed knob, not config; every todos write resets the count.
 const todoNagAfter = 4
 
-// maybeNagTodos counts a main-runner step against a stale in_progress
-// todo and nudges once per todos write: the model is free to forget, and
-// the next write re-arms the remind. It rides the model-only steering
-// channel (agent.AttachMarker), so it never reads as the user's own message.
-// Only the main agent's steps during its turn count: a subagent's would
-// arm the nag while nobody can be nudged.
+// armTodoTurnNote arms a turn-start remind while the todo list has open
+// items: a long session's view carries the list only as a summary line, and
+// a model that never opens it works untracked. One note per turn, dropped by
+// the todos write the turn starts with.
+func (h *Host) armTodoTurnNote() {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	if ag.todoNag != "" || len(ag.todoList) == 0 {
+		return
+	}
+	open := 0
+	for _, td := range ag.todoList {
+		if td.Status != store.TodoDone {
+			open++
+		}
+	}
+	if open == 0 {
+		return
+	}
+	ag.todoNag = agent.Note(fmt.Sprintf(
+		"%d todos are open from earlier: keep tracking this work with the todos tool, marking the one you take up in_progress.",
+		open,
+	))
+}
+
+// maybeNagTodos counts a main-runner step against a stale todo list and
+// nudges once per todos write: the model is free to forget, and the next
+// write re-arms the remind. It rides the model-only steering channel
+// (agent.AttachMarker), so it never reads as the user's own message. Only
+// the main agent's steps during its turn count: a subagent's would arm the
+// nag while nobody can be nudged.
 func (h *Host) maybeNagTodos() {
 	// a call esc ended arms nothing: PrepareStep would persist the nag for
 	// a step that never runs, ahead of the user's next message
@@ -1865,17 +1899,36 @@ func (h *Host) maybeNagTodos() {
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	if !ag.active || ag.todoInProgress == "" || ag.todoPending {
+	if !ag.active || ag.todoPending {
 		return
+	}
+	current, open := "", 0
+	for _, td := range ag.todoList {
+		switch td.Status {
+		case store.TodoInProgress:
+			current = td.Content
+		case store.TodoPending:
+			open++
+		}
+	}
+	if current == "" && open == 0 {
+		return // nothing open: nothing to nudge about
 	}
 	ag.todoSteps++
 	if ag.todoSteps < todoNagAfter {
 		return
 	}
 	ag.todoPending = true
+	if current != "" {
+		ag.todoNag = agent.Note(fmt.Sprintf(
+			"%q has been in_progress for %d steps. If it is done, mark it done with the todos tool and set the next item in_progress; if not, carry on.",
+			current, ag.todoSteps,
+		))
+		return
+	}
 	ag.todoNag = agent.Note(fmt.Sprintf(
-		"%q has been in_progress for %d steps. If it is done, mark it done with the todos tool and set the next item in_progress; if not, carry on.",
-		ag.todoInProgress, ag.todoSteps,
+		"%d todos are pending and none is in_progress: set the one you are working on in_progress with the todos tool.",
+		open,
 	))
 }
 
@@ -1886,16 +1939,12 @@ func (h *Host) resetTodoNag(todos []store.Todo) {
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	ag.todoInProgress, ag.todoSteps, ag.todoPending = "", 0, false
+	ag.todoSteps, ag.todoPending = 0, false
 	if len(todos) < 2 {
+		ag.todoList = nil // a single item is a trivial task: it never nags
 		return
 	}
-	for _, td := range todos {
-		if td.Status == store.TodoInProgress {
-			ag.todoInProgress = td.Content
-			return
-		}
-	}
+	ag.todoList = slices.Clip(todos)
 }
 
 // ensureSession ran on the first send; the chat has no session row now, but
