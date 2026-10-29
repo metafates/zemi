@@ -1526,7 +1526,7 @@ func toolSummary(tool, input string) string {
 				done++
 			}
 		}
-		return fmt.Sprintf("%d todos, %d done", len(in.Todos), done)
+		return fmt.Sprintf("%d %s, %d done", len(in.Todos), Plural(len(in.Todos), "todo", "todos"), done)
 	}
 	if qs, ok := m["questions"].([]any); ok && len(qs) > 0 {
 		q, _ := qs[0].(map[string]any)

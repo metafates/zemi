@@ -590,10 +590,17 @@ func (h *Host) sourceOf[S ~string](source S, path string) string {
 	return string(source)
 }
 
+// sectionAcronym names the first path segments that are abbreviations, not
+// words: the section title spells them out like the product does elsewhere.
+var sectionAcronym = map[string]string{"ui": "UI", "lsp": "LSP", "mcp": "MCP", "api": "API"}
+
 // sourceSection names a list section after where its rows come from.
 func sourceSection[S ~string](source S) string {
 	if source == "" {
 		return ""
+	}
+	if a, ok := sectionAcronym[string(source)]; ok {
+		return a
 	}
 	return strings.ToUpper(string(source[:1])) + string(source[1:])
 }

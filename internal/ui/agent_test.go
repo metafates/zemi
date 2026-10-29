@@ -1930,7 +1930,7 @@ func TestWorkingRowRetry(t *testing.T) {
 	for _, c := range []struct {
 		in   time.Duration
 		want string
-	}{{0, ` esc interrupt · retrying now · 20s ┐`}, {4 * time.Second, ` esc interrupt · next try in \ds · 20s ┐`}} {
+	}{{0, ` esc interrupt · retrying now · 0m 20s ┐`}, {4 * time.Second, ` esc interrupt · next try in \ds · 0m 20s ┐`}} {
 		host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Retrying: true, RetryIn: c.in, Retries: 1})
 		app.renderSync(t)
 		if frame := ansi.Strip(app.Frame()); !regexp.MustCompile(c.want).MatchString(frame) {
@@ -1993,7 +1993,7 @@ func TestWorkingRowMascot(t *testing.T) {
 	if at := strings.Index(r, " esc interrupt · 10m 05s"); at <= len(r)/2 {
 		t.Fatalf("the status does not end the rule: %q", r)
 	}
-	if !strings.HasSuffix(short, "esc interrupt · 5s ") || !strings.HasSuffix(r, "esc interrupt · 10m 05s ") {
+	if !strings.HasSuffix(short, "esc interrupt · 0m 05s ") || !strings.HasSuffix(r, "esc interrupt · 10m 05s ") {
 		t.Fatalf("the block does not end the rule as the clock reads: %q then %q", short, r)
 	}
 	// the open prompt says what answers it, so the rule shrinks to the snail

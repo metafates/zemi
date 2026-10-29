@@ -1082,10 +1082,10 @@ func TestWorkingRuleNamesTheBusyJob(t *testing.T) {
 		}
 		return SegsText(lines[0])
 	}
-	if got := row(80); !strings.Contains(got, "reflecting · esc interrupt · 4s") {
+	if got := row(80); !strings.Contains(got, "reflecting · esc interrupt · 0m 04s") {
 		t.Errorf("the rule does not name the busy job: %q", got)
 	}
-	if got := row(34); strings.Contains(got, "reflecting") || !strings.Contains(got, "esc interrupt · 4s") {
+	if got := row(34); strings.Contains(got, "reflecting") || !strings.Contains(got, "esc interrupt · 0m 04s") {
 		t.Errorf("the narrow rule lost the key or the clock: %q", got)
 	}
 }

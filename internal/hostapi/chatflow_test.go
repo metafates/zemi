@@ -715,7 +715,9 @@ func TestResumedWindowDrawsTheZoomAndDatePreviews(t *testing.T) {
 	if !strings.Contains(got, at.Local().Format(previewStamp)) || strings.Contains(got, "T11:03") {
 		t.Fatalf("the date preview is not the compact local stamp:\n%s", got)
 	}
-	if n := strings.Count(got, "no line 9+8 in a chat of 10 messages"); n != 1 {
+	// the refusal draws twice with the rail open, the digest's summary and
+	// the failed row's own output; folded, the digest is the only trace
+	if n := strings.Count(got, "no line 9+8 in a chat of 10 messages"); n != 2 {
 		t.Fatalf("the failed zoom's error drew %d times:\n%s", n, got)
 	}
 }

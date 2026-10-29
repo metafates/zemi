@@ -60,13 +60,14 @@ zemi.ui.widget.add({
 				if busy.cancellable and not ctx.view then parts[#parts + 1] = { fmt.hint(key, verb), 6, 13 } end
 				-- the armed number counts the window it still waits, as the
 				-- turn's does: the job's clock reads as if it ran on
-				local tick = { plain(fmt.duration(busy.elapsed, true)), 5, 7 }
+				local clock = function(s) return string.format("%dm %02ds", math.floor(s / 60), math.floor(s) % 60) end
+				local tick = { plain(clock(busy.elapsed)), 5, 7 }
 				if ctx.interrupt_armed then
 					tick = {
 						plain(
 							fmt.duration(math.ceil(ctx.interrupt_in or 0), true)
 								.. " · "
-								.. fmt.duration(busy.elapsed, true)
+								.. clock(busy.elapsed)
 						),
 						5,
 						7,
@@ -93,15 +94,17 @@ zemi.ui.widget.add({
 			if not running and ag.reasoning ~= "" and ag.text == "" then state = "thinking" end
 			if ag.checking_goal then state = "reading" end
 			if ctx.cancelling then state = "stopping" end
+			-- the turn's clock reads as a clock, never as a countdown: the
+			-- minutes pad, so "0m 48s" next to a bare "3s" window keeps the
+			-- two apart
+			local clock = function(s) return string.format("%dm %02ds", math.floor(s / 60), math.floor(s) % 60) end
 			---@type { [1]: zemi.Line, [2]: integer, [3]: integer }?
-			local tick = { plain(fmt.duration(ag.elapsed, true)), 5, 7 }
+			local tick = { plain(clock(ag.elapsed)), 5, 7 }
 			if ctx.interrupt_armed then
 				-- the number by the armed key is the window it still waits; the
 				-- turn's clock keeps its place beside it, as a retry's does
 				tick = {
-					plain(
-						fmt.duration(math.ceil(ctx.interrupt_in or 0), true) .. " · " .. fmt.duration(ag.elapsed, true)
-					),
+					plain(fmt.duration(math.ceil(ctx.interrupt_in or 0), true) .. " · " .. clock(ag.elapsed)),
 					5,
 					7,
 				}
@@ -118,7 +121,7 @@ zemi.ui.widget.add({
 						)
 							.. why
 							.. " · "
-							.. fmt.duration(ag.elapsed, true)
+							.. clock(ag.elapsed)
 					),
 					5,
 					18,
