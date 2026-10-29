@@ -115,7 +115,7 @@ func (h *Host) zemiPrompt() string {
 const delegationPrompt = `
 
 # Delegating
-Hand work to subagents when an investigation would take many reads and you need only the conclusion, or when a task splits into independent parts. Do targeted work yourself, and do not repeat a search you delegated. Never delegate understanding: pass what you already know (paths, lines, what to change), not "based on your findings, fix it". Fork when the work needs what this conversation already holds: a review of a change just made, a second opinion on what you just read. A fork re-sends the conversation every step, so a search is cheaper fresh. A wait on a run returns early when the run updates: handle it, steer with send_to, then wait again.`
+Hand work to subagents when an investigation would take many reads and you need only the conclusion, or when a task splits into independent parts. When a fresh plan or todo list names several independent parts, send them as parallel agent calls in the same message instead of working them one by one. Do targeted work yourself, and do not repeat a search you delegated. Never delegate understanding: pass what you already know (paths, lines, what to change), not "based on your findings, fix it". Fork when the work needs what this conversation already holds: a review of a change just made, a second opinion on what you just read. A fork re-sends the conversation every step, so a search is cheaper fresh. A wait on a run returns early when the run updates: handle it, steer with send_to, then wait again.`
 
 // InitProject asks the agent to write or refresh AGENTS.md (/init).
 func (h *Host) InitProject() error {
