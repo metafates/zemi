@@ -32,6 +32,7 @@ var goKeys = [][2]string{
 	{"alt+left, alt+right", "move by word"},
 	{"ctrl+d/u", "scroll the chat half a view"},
 	{"ctrl+w", "delete the word before the cursor"},
+	{"ctrl+u", "delete back to the line's start"},
 	{"delete", "forward delete"},
 	{"/", "command palette"},
 	{"@", "attach files, dirs and skills"},

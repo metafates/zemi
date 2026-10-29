@@ -231,7 +231,7 @@ func isEditKey(key string) bool {
 	switch key {
 	case "backspace", "delete", "left", "right", "alt+left", "alt+b", "ctrl+left",
 		"alt+right", "alt+f", "ctrl+right", "home", "ctrl+a", "end", "ctrl+e",
-		"ctrl+w", "alt+backspace":
+		"ctrl+w", "alt+backspace", "ctrl+u":
 		return true
 	}
 	return false
@@ -262,6 +262,15 @@ func (c *composerState) editKey(key string) bool {
 		c.lineEnd()
 	case "ctrl+w", "alt+backspace":
 		c.delWord()
+	case "ctrl+u":
+		// kill to the line's start, readline's: a prefilled prompt's value
+		// clears instead of taking typed text as an append
+		r := c.runes()
+		start := c.cursor
+		for start > 0 && r[start-1] != '\n' {
+			start--
+		}
+		c.replace(start, "")
 	}
 	return true
 }

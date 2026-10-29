@@ -63,6 +63,9 @@ func TestComposerEdit(t *testing.T) {
 	run("word-to-newline", func(c *composerState) { c.insert("a\nb"); c.delWord() }, "a\n", 2)
 	run("word-left", func(c *composerState) { c.insert("one two  "); c.wordLeft() }, "one two  ", 4)
 	run("word-right", func(c *composerState) { c.insert("one two"); c.cursor = 0; c.wordRight(); c.wordRight() }, "one two", 7)
+	run("kill-line", func(c *composerState) { c.insert("3m"); c.editKey("ctrl+u") }, "", 0)
+	run("kill-line-keeps-tail", func(c *composerState) { c.insert("one two"); c.cursor = 4; c.editKey("ctrl+u") }, "two", 0)
+	run("kill-line-keeps-other-lines", func(c *composerState) { c.insert("a\nbc"); c.editKey("ctrl+u") }, "a\n", 2)
 }
 
 func TestComposerUndo(t *testing.T) {
