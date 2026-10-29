@@ -1180,6 +1180,37 @@ func TestTurnDoneLogsTheCutCall(t *testing.T) {
 	}
 }
 
+// TestTurnDoneLogsASettledCutCall: esc mid-command lets the tool return its
+// stopped result first, so ToolCallEnd settles the row before TurnDone - the
+// step still never finished, and the rail still must reach the log.
+func TestTurnDoneLogsASettledCutCall(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.agents.mu.Lock()
+	h.agents.tools = []StreamTool{{
+		ID: "t1", Name: "shell", Label: "slow4",
+		Input: `{"command":"sleep 8","about":"slow4"}`, Status: CallStopped,
+		Output: "stopped: the user interrupted the command",
+	}}
+	h.agents.mu.Unlock()
+	sa := h.streamHooks()
+	sa.TurnDone(context.Canceled, fantasy.Usage{})
+
+	rows, err := h.DB.LogTail(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rebuilt ChatMessage
+	for _, m := range logRows(rows) {
+		if m.Kind == RowTool {
+			rebuilt = m
+		}
+	}
+	if rebuilt.Kind != RowTool || rebuilt.Status != CallStopped || rebuilt.Output != "stopped: the user interrupted the command" {
+		t.Fatalf("rebuilt rail %+v, want the stopped result the live window drew", rebuilt)
+	}
+}
+
 // TestStreamDoneStoresLastIn: a step's context is stored where a resume's
 // meter reads it, and a dropped chat clears it with the chat it belonged to.
 func TestStreamDoneStoresLastIn(t *testing.T) {

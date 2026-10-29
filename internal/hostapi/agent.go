@@ -106,6 +106,7 @@ type agentHost struct {
 	stepRows             int
 	stepThought          time.Duration
 	stepTurnThought      time.Duration
+	stepSettled          bool // the step's OnStepFinish ran, so its calls are logged
 	tools                []StreamTool
 	steering             []string
 	// spoke is closed when the user's own message arrives during a turn

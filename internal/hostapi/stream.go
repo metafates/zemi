@@ -140,6 +140,7 @@ func (s *streamAdapter) openToolRow(row StreamTool) {
 	// later with the run's digest
 	s.h.flushOutput(TurnStat{})
 	ag.tools = append(ag.tools, row)
+	ag.stepSettled = false // the call is not in the log until its step finishes
 	ag.mu.Unlock()
 	s.h.agentStream()
 }
@@ -221,6 +222,7 @@ func (s *streamAdapter) StepDone(st agent.Step) {
 	ag.mu.Lock()
 	model, touched := h.turnModelID(), ag.todoTouched
 	ag.todoTouched = false
+	ag.stepSettled = true // the step's calls and results reached the log
 	ag.mu.Unlock()
 	h.emitStep(store.MainSessionID, model, st)
 	if !touched {
@@ -252,16 +254,22 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	// a call still open here was cut off: by the user, or by the error that
 	// ended the turn
 	var cut []StreamTool
-	for i, t := range ag.tools {
-		if t.Status == CallRun || t.Status == CallWait {
-			ag.tools[i].Status, ag.tools[i].Diff = map[bool]CallStatus{true: CallStopped, false: CallErr}[errors.Is(err, context.Canceled)], ""
-			cut = append(cut, ag.tools[i])
+	for i := range ag.tools {
+		t := &ag.tools[i]
+		open := t.Status == CallRun || t.Status == CallWait
+		if open {
+			t.Status, t.Diff = map[bool]CallStatus{true: CallStopped, false: CallErr}[errors.Is(err, context.Canceled)], ""
+		}
+		if open || !ag.stepSettled {
+			cut = append(cut, *t)
 		}
 	}
-	// a cut call's step never finished, so nothing logged it: log the call and
-	// its result here, so a resumed window draws the rail the live one drew.
-	// The rows land before the flush, so the pairing pairs them at once; a
-	// retry re-streams the step and logs its own.
+	// the last step's calls reach the log only when its OnStepFinish runs; a
+	// step that never finished (esc mid-command: the tool returned its stopped
+	// result before the step died) leaves its whole rail unlogged. Log the
+	// rows here, so a resumed window draws what the live one drew; the rows
+	// land before the flush, so the pairing pairs them at once. A retry
+	// re-streams the step and logs its own.
 	if !hold && h.chat != nil {
 		for _, t := range cut {
 			if e := h.chat.Tool(string(tools.ToolName(t.Name)), t.Input, t.ID); e != nil {

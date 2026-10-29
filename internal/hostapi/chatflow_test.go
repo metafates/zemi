@@ -18,6 +18,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -626,6 +627,7 @@ func TestResumedWindowKeepsTheTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	hk.ToolCallEnd("t1", "read", out("data"), "")
+	hk.StepDone(agent.Step{}) // the step's finish logged the call and its result
 	hk.TextDelta("The answer.")
 	if err := h.chat.Agent("The answer."); err != nil {
 		t.Fatal(err)
