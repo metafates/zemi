@@ -661,6 +661,59 @@ func TestResumedWindowKeepsTheTurn(t *testing.T) {
 	}
 }
 
+// TestResumedWindowDrawsTheZoomAndDatePreviews: a zoom row's preview is the
+// opened line's text, its child address and the second child behind the
+// click; a date row reads the compact local stamp, and a failed zoom's
+// error draws once.
+func TestResumedWindowDrawsTheZoomAndDatePreviews(t *testing.T) {
+	h := newTestHostUI(t, &fakeClock{now: testEpoch})
+	h.SetUIHooks(&fakeUI{})
+	seed := func(tool, input, output string, ok bool) {
+		if err := h.chat.Tool(tool, input, ""); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.chat.Echo(tool, ok, output, StreamTool{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seed("zoom", `{"id":16032,"n":8}`, "16032+4|Rate-limit fixed: real quotas (big 50000)\n16034+2|second child line", true)
+	seed("date", `{"id":16033}`, "2026-10-29T11:03:12.487654321Z", true)
+	seed("zoom", `{"id":9,"n":8}`, "no line 9+8 in a chat of 10 messages", false)
+	rows, err := h.DB.LogTail(chatWindowRows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.SetTranscript(logRows(rows))
+	lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("chat"), 80, 40, UIState{Rail: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	for _, l := range lines {
+		b.WriteString(SegsText(l))
+		b.WriteString("\n")
+	}
+	got := b.String()
+	if !strings.Contains(got, "zoom 16032+8") || strings.Contains(got, `{"id"`) ||
+		!strings.Contains(got, "date 16033") {
+		t.Fatalf("the rows' heads are not the id+n summaries:\n%s", got)
+	}
+	if !strings.Contains(got, "Rate-limit fixed: real quotas (big 50000)") ||
+		strings.Contains(got, "16032+4|") || strings.Contains(got, "second child line") {
+		t.Fatalf("the zoom preview is not the first child's text alone:\n%s", got)
+	}
+	at, err := time.Parse(time.RFC3339Nano, "2026-10-29T11:03:12.487654321Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, at.Local().Format(previewStamp)) || strings.Contains(got, "T11:03") {
+		t.Fatalf("the date preview is not the compact local stamp:\n%s", got)
+	}
+	if n := strings.Count(got, "no line 9+8 in a chat of 10 messages"); n != 1 {
+		t.Fatalf("the failed zoom's error drew %d times:\n%s", n, got)
+	}
+}
+
 // TestResumedWindowKeepsTheFailuresAndCommands: a failed turn's error row and
 // a !command row land in the log, so the window a restart rebuilds from the
 // log draws them as the live one did.

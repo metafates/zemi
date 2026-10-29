@@ -460,6 +460,13 @@ local function builder(ctx, width)
 				-- a labelled counted call on the rail shows its command
 				detail(code and code[1] or fit(input, inner - 2 - RAIL_EDGE), "Dim")
 			end
+			-- a zoom or date row previews the line it opened: the first line
+			-- only, so a split zoom's second child stays behind the click
+			if (name == "zoom" or name == "date") and t.status == "ok" and output ~= "" then
+				local line =
+					fit((output:match("^([^\n]*)"):gsub("^%d+%+%d+|", ""):gsub("%s+", " ")), inner - 2 - RAIL_EDGE)
+				if line ~= "" then detail(line, "Dim") end
+			end
 			if (t.detail or "") ~= "" then detail(fit((t.detail:gsub("%s+", " ")), inner - 2 - RAIL_EDGE), "Dim") end
 			-- the job a timed-out command went on as opens its own view; the
 			-- wording holds after the job exits and after a restart

@@ -1555,6 +1555,21 @@ func toolSummary(tool, input string) string {
 		path, _ := m["path"].(string)
 		return path
 	}
+	if name := tools.ToolName(tool); name == tools.ToolZoom || name == tools.ToolDate { // the line it names, in the id+n shape the chat's summaries use
+		var in zoomArgs // date's input is its id alone, which zoomArgs carries the same way
+		if json.Unmarshal([]byte(input), &in) == nil {
+			id := strconv.FormatInt(in.ID, 10)
+			switch {
+			case name == tools.ToolDate:
+				return id
+			case in.N > 1:
+				return id + "+" + strconv.FormatInt(in.N, 10)
+			case in.Page > 0:
+				return fmt.Sprintf("%s page %d", id, in.Page+1)
+			}
+			return id
+		}
+	}
 	// a tool that names what it does in "action" reads as the action and
 	// what it acts on, not the whole body of what it is about to show
 	if action, ok := m["action"].(string); ok && action != "" {

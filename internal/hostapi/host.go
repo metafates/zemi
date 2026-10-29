@@ -453,6 +453,13 @@ func rowOutput(tool, out string) string {
 			}
 			return strings.Join(rows, "\n")
 		}
+	case tools.ToolName(tool) == tools.ToolDate:
+		// the model reads the full RFC3339Nano stamp; the row reads the
+		// compact local one. Already-compacted text fails the parse and
+		// passes through, so the rebuild is idempotent.
+		if at, err := time.Parse(time.RFC3339Nano, out); err == nil {
+			out = at.Local().Format(previewStamp)
+		}
 	}
 	return shortOutput(out)
 }

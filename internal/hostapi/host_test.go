@@ -1024,6 +1024,22 @@ func TestShortOutput(t *testing.T) {
 	}
 }
 
+// TestRowOutputDates: a date row reads the compact local stamp, and the
+// already-compacted text a rebuild reads back passes through unchanged.
+func TestRowOutputDate(t *testing.T) {
+	const raw = "2026-10-29T11:03:12.487654321Z"
+	want := time.Date(2026, 10, 29, 11, 3, 12, 487654321, time.UTC).Local().Format(previewStamp)
+	if got := rowOutput("date", raw); got != want || got == raw {
+		t.Errorf("rowOutput(date) = %q, want %q", got, want)
+	}
+	if got := rowOutput("date", want); got != want {
+		t.Errorf("a compacted stamp did not pass through: %q, want %q", got, want)
+	}
+	if got := rowOutput("date", "not a stamp"); got != "not a stamp" {
+		t.Errorf("a malformed stamp did not pass through: %q", got)
+	}
+}
+
 // TestOverlayCallbackErrorsRecorded: a raising on_select or on_close reaches
 // /errors, like a timer's or an event handler's.
 func TestOverlayCallbackErrorsRecorded(t *testing.T) {

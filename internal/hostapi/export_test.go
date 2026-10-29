@@ -271,6 +271,14 @@ func TestToolSummary(t *testing.T) {
 		{string(tools.ToolWorkflow), `{"run":"abc123"}`, "status abc123"},
 		{string(tools.ToolLua), `{"about":"Check the plugin","script":"return 1"}`, ""},
 		{string(tools.ToolLua), `{"about":"Run the check","path":"x.lua"}`, "x.lua"},
+		{string(tools.ToolZoom), `{"id":16032}`, "16032"},
+		{string(tools.ToolZoom), `{"id":16032,"n":8}`, "16032+8"},
+		{string(tools.ToolZoom), `{"id":16032,"n":1,"page":1}`, "16032 page 2"},
+		{string(tools.ToolZoom), `{"id":16032,"page":1}`, "16032 page 2"},
+		{string(tools.ToolZoom), `{"id":16032,"n":2,"page":1}`, "16032+2"},
+		{string(tools.ToolZoom), `{"id":1603200}`, "1603200"},
+		{string(tools.ToolZoom), `{"id":"16032"}`, "16032"},
+		{string(tools.ToolDate), `{"id":16032}`, "16032"},
 	} {
 		if got := toolSummary(c.tool, c.in); got != c.want {
 			t.Errorf("toolSummary(%s, %s) = %q, want %q", c.tool, c.in, got, c.want)
