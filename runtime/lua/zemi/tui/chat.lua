@@ -551,7 +551,11 @@ local function builder(ctx, width)
 			return
 		end
 		local head = opened and "section" or nil
-		local click = "turn:" .. pos(first)
+		-- a collapsed run of exactly one thought opens its view at once: a
+		-- rail of one row expanded draws what the view shows. Opened, the
+		-- digest's click closes it again.
+		local one = first == last and list[first].kind == "reasoning"
+		local click = one and not opened and "call:" .. pos(first) or "turn:" .. pos(first)
 		B.digestRow(digest, click, head)
 		if not opened then return end
 		local at = #B.lines
