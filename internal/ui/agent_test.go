@@ -2577,6 +2577,45 @@ func pendingRow(t *testing.T, work func(*hostapi.Host), want string) {
 	}
 }
 
+// TestTodosMeterSpansTheList: the meter's cells cover the whole list, one
+// per item while they fit and scaled past the shown window, so "2/14" never
+// sits beside a meter that only counts the rows on screen.
+func TestTodosMeterSpansTheList(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 100, 24)
+	todos := []store.Todo{{Content: "one", Status: "done"}, {Content: "two", Status: "done"}, {Content: "three", Status: "in_progress"}}
+	for i := range 11 {
+		todos = append(todos, store.Todo{Content: fmt.Sprintf("item %d", i), Status: "pending"})
+	}
+	seedTodos(t, host, todos)
+	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 80, 24, app.uiState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range lines {
+		r := strings.TrimRight(hostapi.SegsText(l), " ")
+		if !strings.HasPrefix(r, "Todos ") {
+			continue
+		}
+		if !strings.Contains(r, "2/14") {
+			t.Fatalf("the header lost the count: %q", r)
+		}
+		// cap at height 24 is 8: eight cells over fourteen items, the first
+		// two done, the third live
+		if n := strings.Count(strings.TrimPrefix(r, "Todos 2/14  "), "█") + strings.Count(strings.TrimPrefix(r, "Todos 2/14  "), "░"); n != 8 {
+			t.Fatalf("the meter drew %d cells for 14 items: %q", n, r)
+		}
+		return
+	}
+	t.Fatalf("no todos header in:\n%s", func() string {
+		var b []string
+		for _, l := range lines {
+			b = append(b, hostapi.SegsText(l))
+		}
+		return strings.Join(b, "\n")
+	}())
+}
+
 // TestLiveRailOpensWhole: a rail the picker walks while its turn still adds
 // calls to it draws every row, as a settled one does, and goes back to the
 // short rail it keeps once the menu closes.

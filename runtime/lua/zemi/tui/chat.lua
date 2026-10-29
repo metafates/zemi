@@ -920,6 +920,11 @@ zemi.ui.widget.add({
 			else
 				B.gap("text")
 				B.markdown(m.text)
+				-- another window wrote this reply: name it under the text, the
+				-- user row's mark, so a spliced exchange reads as whose it was
+				if m.foreign then
+					B.lines[#B.lines + 1] = { { text = "  ", copy = false }, { text = "· other window", hl = "Dim" } }
+				end
 				-- The readout rides the reply that ends the exchange, and only the
 				-- next text row decides it: a call, notice or error after it changes
 				-- nothing, while another reply means a sentence between runs. No
@@ -1297,17 +1302,23 @@ zemi.ui.widget.add({
 			end
 			local first = math.max(1, math.min(live - cap + 1, #todos - cap + 1))
 			local last = math.min(#todos, first + cap - 1)
-			-- a header in the composer rule's voice: the name, how far along, and
-			-- a short meter of one cell per item shown under it
+			-- a header in the composer rule's voice: the name, how far along,
+			-- and a meter over the whole list: one cell per item while they
+			-- fit, else scaled, so the meter never changes meaning
 			local head = {
 				{ text = "Todos ", hl = "TodoTitle" },
 				{ text = (#todos - left) .. "/" .. #todos .. "  ", hl = "Dim" },
 			}
-			for n = first, last do
-				local td = todos[n]
+			for n = 1, math.min(#todos, cap) do
+				local lo, hi = math.floor((n - 1) * #todos / cap), math.floor(n * #todos / cap)
+				local live, all = false, true
+				for i = lo + 1, hi do
+					if todos[i].status == "in_progress" then live = true end
+					if todos[i].status ~= "done" then all = false end
+				end
 				head[#head + 1] = {
-					text = td.status == "done" and "█" or "░",
-					hl = td.status == "done" and "TodoDone" or td.status == "in_progress" and "TodoMark" or "Rule",
+					text = all and "█" or "░",
+					hl = all and "TodoDone" or live and "TodoMark" or "Rule",
 					copy = false,
 				}
 			end

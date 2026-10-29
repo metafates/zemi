@@ -458,7 +458,10 @@ func (a *App) interrupt() {
 		a.finishQuestion(false)
 	}
 	a.host.AgentCancel()
-	a.restoreQueue()
+	if a.restoreQueue() {
+		// the queued words read as lost: the toast says where they went
+		a.pushToast(slog.LevelInfo, "Queued messages restored", "the draft holds them; edit and send again")
+	}
 	a.cancelling = a.host.AgentActive()
 }
 
