@@ -1085,10 +1085,11 @@ func TestQueuedFold(t *testing.T) {
 func TestInterruptKeys(t *testing.T) {
 	esc, ctrlC, up := tea.KeyPressMsg{Code: tea.KeyEscape}, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}, tea.KeyPressMsg{Code: tea.KeyUp}
 	ctrlE, x := tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}, tea.KeyPressMsg{Code: 'x', Text: "x"}
-	var wait tea.KeyPressMsg          // advances the clock 3s
-	view := tea.KeyPressMsg{Code: -1} // opens an agent view
-	stop := tea.KeyPressMsg{Code: -2} // ends the turn
-	box := tea.KeyPressMsg{Code: -3}  // opens a test overlay
+	altEsc := tea.KeyPressMsg{Code: tea.KeyEscape, Mod: tea.ModAlt} // a fast double-press the terminal coalesced
+	var wait tea.KeyPressMsg                                        // advances the clock 3s
+	view := tea.KeyPressMsg{Code: -1}                               // opens an agent view
+	stop := tea.KeyPressMsg{Code: -2}                               // ends the turn
+	box := tea.KeyPressMsg{Code: -3}                                // opens a test overlay
 	for _, c := range []struct {
 		name                      string
 		active, view, busy, quest bool
@@ -1099,6 +1100,7 @@ func TestInterruptKeys(t *testing.T) {
 	}{
 		{"esc arms", true, false, false, false, "", []tea.KeyPressMsg{esc}, false, false, "", "esc again"},
 		{"esc esc interrupts", true, false, false, false, "", []tea.KeyPressMsg{esc, esc}, true, false, "also this", "ctrl+c quit"},
+		{"alt+esc is the coalesced pair, it interrupts", true, false, false, false, "", []tea.KeyPressMsg{altEsc}, true, false, "also this", "ctrl+c quit"},
 		{"esc arms again after 3s", true, false, false, false, "", []tea.KeyPressMsg{esc, wait, esc}, false, false, "", "esc again"},
 		{"esc in an agent view goes back and disarms", true, true, false, false, "", []tea.KeyPressMsg{esc, view, esc, esc}, false, false, "", "esc again"},
 		{"idle esc esc does nothing, the draft kept", false, false, false, false, "a draft", []tea.KeyPressMsg{esc, esc}, false, false, "a draft", ""},

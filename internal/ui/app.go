@@ -465,6 +465,13 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		a.host.EmitAsync(hostapi.EventUIResize, map[string]any{"width": msg.Width, "height": msg.Height})
 		a.bump()
 	case tea.KeyPressMsg:
+		if msg.String() == "alt+esc" {
+			// the terminal merged the two escapes of a fast double-press
+			// into one alt-combo (an ESC wait folds \x1b\x1b): run both
+			// presses, the first arms, the second fires
+			esc := tea.KeyPressMsg{Code: tea.KeyEscape}
+			return tea.Batch(a.handleKey(esc), a.handleKey(esc))
+		}
 		cmd := a.handleKey(msg)
 		a.publishComposer()
 		return cmd
