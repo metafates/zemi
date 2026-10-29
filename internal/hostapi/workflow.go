@@ -1463,7 +1463,7 @@ type workflowArgs struct {
 	Script      string `json:"script,omitempty" desc:"Lua source"`
 	Name        string `json:"name,omitempty" desc:"a saved workflow to run"`
 	Args        any    `json:"args,omitempty" desc:"the script's zemi.workflow.args"`
-	Description string `json:"description,omitempty" desc:"3-6 word label shown to the user"`
+	Description string `json:"description,omitempty" desc:"3-6 word label shown to the user; set it on every run"`
 	Concurrency int    `json:"concurrency,omitempty"`
 	Background  bool   `json:"background,omitempty" desc:"run detached; the result arrives later as a message"`
 	Run         string `json:"run,omitempty" desc:"id of a workflow run in this session to act on; rerun reruns its edited script file, and finished agent calls answer at once"`
