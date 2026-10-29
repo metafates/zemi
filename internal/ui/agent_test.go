@@ -1259,6 +1259,26 @@ func TestInterruptKeys(t *testing.T) {
 	}
 }
 
+// TestQuitHintFollowsTheNextPress: a paste landing inside the quit arm's
+// window fills the draft, and the hint then draws only when the draft is
+// gone and the next ctrl+c really quits.
+func TestQuitHintFollowsTheNextPress(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 90, 16)
+	app.now = func() time.Time { return time.UnixMilli(1000) }
+	app.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	app.Update(tea.PasteMsg{Content: "a pasted draft"})
+	for app.Pump() {
+	}
+	app.renderSync(t)
+	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "again to quit") {
+		t.Fatalf("quit hint under a draft:\n%s", frame)
+	}
+	if !app.isArmed("ctrl+c") {
+		t.Fatal("the paste disarmed quit")
+	}
+}
+
 // TestAgentViewEscRestoresItsMenus: esc on a shown run restores the menu the
 // view was raised from under the screen the back command reopens, so h walks
 // back down the chain the view closed.

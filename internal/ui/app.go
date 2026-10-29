@@ -780,8 +780,12 @@ func (a *App) termBackground() color.Color {
 func (a *App) uiState() hostapi.UIState {
 	st := hostapi.UIState{
 		Time: a.timeStr, Frame: a.frame(),
-		QuitArmed: a.isArmed("ctrl+c"), InterruptArmed: a.isArmed("esc") && a.armed.what == "interrupt",
-		InterruptIn: a.interruptIn(), RowsBelow: a.rowsBelow(),
+		// the arm outlives the state it armed in (a paste fills the draft, a
+		// background report starts a turn): promise a quit only when the next
+		// ctrl+c reaches the arm branch
+		QuitArmed:      a.isArmed("ctrl+c") && a.composer.empty() && !a.host.AgentActive(),
+		InterruptArmed: a.isArmed("esc") && a.armed.what == "interrupt",
+		InterruptIn:    a.interruptIn(), RowsBelow: a.rowsBelow(),
 		Cancelling: a.cancelling, Editing: a.editing, Focus: a.focusedNode(), Regions: a.regions,
 		Rail: a.rail,
 	}
