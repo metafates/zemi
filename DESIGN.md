@@ -2755,7 +2755,9 @@ Every turn is a fresh call:
 - Overflow guard: on a provider's context-too-large refusal, one view
   merge batch (`MergeOnce`) runs and the turn retries once - the view
   outgrew the model's window; the merge is synchronous, so the retry sends
-  the merged view. A refused output cap is dropped, and image
+  the merged view with the task and the steps the turn finished still
+  riding behind it: only the view message swaps. A refused output cap is
+  dropped, and image
   parts a model refuses become a note; each is remembered for the process.
 - A message queued behind a turn becomes one follow-up turn under the claim;
   after a turn that ended cleanly with nothing queued, the goal check
