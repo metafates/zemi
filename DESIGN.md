@@ -1141,7 +1141,8 @@ writes its script and a journal (a header, one line per agent that ended,
 an end line) into the pad of the session that started it; a rerun runs
 that script file, edited or not, and answers each call identical to a
 finished one (agent, model, schema, prompt) from the journal in order,
-starting no agent. `/workflows` heads with making one
+starting no agent - its report names what was replayed and the run the
+answers came from, since they may predate changes made since. `/workflows` heads with making one
 (`new <what it should do>` sends the line with a prompt pointing at the New
 workflow steps in the zemi skill, and the list's first row fills the command;
 a run in flight is what its keys act on by default), then the runs, live ones

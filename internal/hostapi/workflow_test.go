@@ -686,6 +686,12 @@ func TestWorkflowRerun(t *testing.T) {
 				if g.err != nil || g.result != c.want || count()-before != want || reused != len(v.agents)-want {
 					t.Fatalf("rerun %d = %q, %v, %d calls, %d of %d reused; want %q, %d calls", i+1, g.result, g.err, count()-before, reused, len(v.agents), c.want, want)
 				}
+				// a rerun that replayed answers says so in its report, naming the
+				// run the answers came from
+				rep, ok := g.report()
+				if !ok || strings.Contains(rep, "replayed from run") != (reused > 0) || reused > 0 && !strings.Contains(rep, "run "+from+"'s journal") {
+					t.Fatalf("rerun %d report = %q, reused %d; want the replay marker to match", i+1, rep, reused)
+				}
 				f, again = g, ""
 			}
 		})

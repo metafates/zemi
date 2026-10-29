@@ -162,6 +162,7 @@ type flowRun struct {
 	restart set.Set[string] // agent run ids flowControl cancelled to run again
 	result  string          // the script's value: strings as is, anything else JSON
 	err     error
+	from    string // a run of this session whose journal answers this one's calls, "" for none
 	// fails are the parallel branches that failed on their own, as the report
 	// shows them: the script gets them in errs and may drop them
 	fails []string
@@ -220,7 +221,7 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	f := &flowRun{
 		id: store.ShortID(), name: spec.name, description: cmp.Or(flowLabel(spec.description, spec.name, spec.src), "workflow"),
 		parent: parent, background: spec.background, cancel: cancel, wake: make(chan struct{}, 1), progress: spec.progress, src: spec.src,
-		done: make(chan struct{}), status: RunRunning, limit: limit, started: time.Now(), restart: set.Set[string]{},
+		done: make(chan struct{}), status: RunRunning, limit: limit, started: time.Now(), restart: set.Set[string]{}, from: spec.from,
 	}
 	if spec.name != "" {
 		f.about = leadingComment(spec.src)
@@ -1734,9 +1735,26 @@ func (f *flowRun) report() (string, bool) {
 	if f.script != "" {
 		where += " · " + f.script
 	}
+	body := cmp.Or(strings.TrimSpace(f.result), "(the workflow returned nothing)")
+	if n := f.reused(); n > 0 {
+		// a rerun answers identical calls from the earlier run's journal: the
+		// reader must know the report may predate what changed since
+		body += fmt.Sprintf("\n\n(%s replayed from run %s's journal, not run fresh: they may predate changes made since it ran.)", Plural(n, "agent answer was", "agent answers were"), f.from)
+	}
 	// the result leads: a work row draws the body's first line, and the
 	// envelope the model reads the flow's id from rides below it
-	return cmp.Or(strings.TrimSpace(f.result), "(the workflow returned nothing)") + fails + log + "\n\n[" + where + "]", true
+	return body + fails + log + "\n\n[" + where + "]", true
+}
+
+// reused counts the agents this run answered from an earlier run's journal.
+func (f *flowRun) reused() int {
+	n := 0
+	for _, a := range f.agents {
+		if a.reused {
+			n++
+		}
+	}
+	return n
 }
 
 // failLines names the branches that failed on their own, the ones the script
