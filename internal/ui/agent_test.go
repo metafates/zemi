@@ -1673,7 +1673,7 @@ func TestAskGuardUnderDraft(t *testing.T) {
 }
 
 // TestPermissionProseTypesUnderTheAsk: past the grace an ask's choice keys
-// answer only while the draft is empty — prose types into the draft the box
+// answer only while the draft is empty: prose types into the draft the box
 // keeps, a stray "y" in it does not approve, enter sends the draft and the
 // box keeps waiting, and esc still denies. With an empty draft a choice's
 // key answers as before, and enter picks the highlighted `No`.
@@ -2617,7 +2617,7 @@ func TestTodosMeterSpansTheList(t *testing.T) {
 }
 
 // TestTodosMeterWithinTheWindow: a list at or under the shown window draws
-// one cell per item with each cell its own state — the scaled path above
+// one cell per item with each cell its own state: the scaled path above
 // never draws the all-done lie a wrong divisor gives.
 func TestTodosMeterWithinTheWindow(t *testing.T) {
 	t.Parallel()
