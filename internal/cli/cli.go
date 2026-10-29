@@ -407,7 +407,7 @@ func pluginCommand(o *options) *cobra.Command {
 		dirs := o.dirs
 		var err error
 		switch {
-		case c.Name() == "plugin" || (c.Name() == "list" && c.Parent() != nil && c.Parent().Name() == "plugin"):
+		case c.Name() == "list" && c.Parent() != nil && c.Parent().Name() == "plugin":
 			asJSON, _ := c.Flags().GetBool("json")
 			var ps []plugin.Plugin
 			var skipped []plugin.Skipped
@@ -436,7 +436,6 @@ func pluginCommand(o *options) *cobra.Command {
 		Use:   "plugin",
 		Short: "list, install, enable, disable, delete and test plugins",
 		Args:  cobra.NoArgs,
-		RunE:  run,
 	}
 	jsonFlag(cmd)
 	for _, v := range []struct {
