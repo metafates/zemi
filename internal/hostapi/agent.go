@@ -925,7 +925,13 @@ func (h *Host) sendTurn(ctx context.Context, runner *agent.Runner, text string) 
 				h.chat.tree.MergeOnce()
 			}
 			if msg, ok := h.viewMessage(); ok {
-				runner.SetHistory([]fantasy.Message{msg})
+				rest := runner.Snapshot()
+				if isViewMessage(rest) {
+					rest = rest[1:]
+				}
+				// the retry keeps the task and the steps the turn finished:
+				// only the view message swaps, the refused one carried it
+				runner.SetHistory(append([]fantasy.Message{msg}, rest...))
 			}
 			continue
 		}

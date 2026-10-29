@@ -407,6 +407,16 @@ func renderLine(l, i int64, text string) string {
 	return nodeID{l, i}.id() + "|" + strings.ReplaceAll(text, "\n", " ")
 }
 
+// isViewMessage reports whether a history slice opens on the chat view: one
+// user message whose first part carries the view's opening tag.
+func isViewMessage(msgs []fantasy.Message) bool {
+	if len(msgs) == 0 || msgs[0].Role != fantasy.MessageRoleUser || len(msgs[0].Content) == 0 {
+		return false
+	}
+	part, ok := fantasy.AsMessagePart[fantasy.TextPart](msgs[0].Content[0])
+	return ok && strings.HasPrefix(part.Text, "<chat>")
+}
+
 // viewMessage is the fresh turn's opening message: the persisted view, one
 // text part per viewLinesPerPart lines, oldest first. The mark sits on the
 // newest complete block that has a part after it - a complete last block

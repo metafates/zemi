@@ -1241,6 +1241,17 @@ func TestOverflowRetrySendsAMergedView(t *testing.T) {
 	if after >= before {
 		t.Fatalf("the retry's view is %d bytes, not smaller than the refused %d", after, before)
 	}
+	// the retry still carries the task: the merge shrank the view, not the
+	// work the turn was asked for - the refused request's message count
+	// survives, the view message swapped in place
+	if len(prompts[1]) != len(prompts[0]) {
+		t.Fatalf("the retry carries %d messages, the refused request %d - the task dropped", len(prompts[1]), len(prompts[0]))
+	}
+	tail := prompts[1][len(prompts[1])-1]
+	tp, ok := fantasy.AsMessagePart[fantasy.TextPart](tail.Content[0])
+	if tail.Role != fantasy.MessageRoleUser || !ok || !strings.Contains(tp.Text, "do it") {
+		t.Fatalf("the retry ends on %s %q, want the task it was refused for", tail.Role, tp.Text)
+	}
 }
 
 // viewBytes sizes a request's view message: the bytes its parts carry.
