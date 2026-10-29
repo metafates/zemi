@@ -4,7 +4,7 @@ go 1.27.2
 
 require (
 	charm.land/bubbletea/v2 v2.1.0
-	charm.land/catwalk v0.52.83
+	charm.land/catwalk/v3 v3.0.1
 	charm.land/fantasy v0.45.5
 	charm.land/glamour/v2 v2.0.1
 	github.com/alecthomas/chroma/v2 v2.27.0

@@ -1006,7 +1006,8 @@ zemi.provider.add({
 	api_key = zemi.env.get("MYLLM_KEY"),
 	body = { service_tier = "flex" },         -- extra request-body fields (not google)
 	rate_limit = 10,                          -- requests per minute the provider allows
-	models = { { id = "main", display = "Main" } },
+	models = { { id = "main", display = "Main", pricing = { input = 3, output = 15 },
+		capabilities = { vision = true, audio = false } } },
 })
 ```
 
@@ -1188,9 +1189,10 @@ variables after the usable models, and a TUI boot with no model to run
 opens it once), then user config runs. `zemi.provider.add`
 under a builtin id replaces it whole, so a gateway `base_url` keeps
 working; `zemi.provider.del` drops one, `providers.builtin = false` all
+working; `zemi.provider.del` drops one, `providers.builtin = false` all
 of them. An unknown field on the spec or on a model entry raises: a
-text-only model says `vision = false`, and a misspelt key there would
-send it images anyway.
+text-only model says `capabilities = { vision = false }`, and a misspelt
+key there would send it images anyway.
 A `models.default` config left unset runs the catalog's default model, from
 the first provider the user added, else the first usable builtin in
 catalog order (anthropic, openai, gemini, ...): a user typed theirs,
@@ -1925,8 +1927,8 @@ view; a reset's wipe drops the row with the chat.
   shipped right widgets (`statusline.model`, `effort`,
   `context`, `cost`, `hints`) show the model, the context used against the
   window (the session total when the window is unknown), the
-  session cost when the model spec carries prices (`cost_per_1m_in` /
-  `cost_per_1m_out`),
+  session cost when the model spec carries prices (`pricing = { input`,
+  `output`, `cache_write`, `cache_read }`),
   the reasoning effort, and, innermost
   until the first message, the `/` and `@` keys).
   Overlays float, centered or anchored (`anchor = "bottom-left"` or

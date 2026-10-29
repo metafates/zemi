@@ -1542,16 +1542,25 @@ function zemi.log.list() end
 
 -- zemi.provider and zemi.model
 
+---@class zemi.ModelCapabilities
+---@field vision? boolean False for a model that refuses image input; read then returns a text error and @image attachments are omitted with a note. Assumed on where the table omits it.
+---@field audio? boolean True for a model that takes audio parts, as an MCP result's audio; assumed off where the table omits it.
+
+---@class zemi.ModelPricing
+---@field input? number USD per million prompt tokens.
+---@field output? number USD per million completion tokens.
+---@field cache_write? number USD per million tokens written to the prompt cache.
+---@field cache_read? number USD per million tokens read from it.
+
 ---@class zemi.ModelSpec
 ---@field id string
 ---@field display? string
 ---@field context_window? integer Without it there is no context percent in /usage and a subagent trims its history only after the provider refuses it.
----@field cost_per_1m_in? number
----@field cost_per_1m_out? number
----@field cost_per_1m_cache_write? number
----@field cost_per_1m_cache_read? number
+---@field pricing? zemi.ModelPricing
 ---@field max_output? integer Reply token cap; unset, anthropic models get 32000 and other kinds the provider default.
----@field vision? boolean false for a model that refuses image input; read then returns a text error and @image attachments are omitted with a note.
+---@field capabilities? zemi.ModelCapabilities The model's own capabilities, the same shape the bundled catalog carries.
+---@field api? string The wire format the model speaks, `"completions"`, `"responses"` or `"messages"`, when it differs from its provider's own - one provider can serve formats side by side.
+---@field max_attachments? integer The @ references one message may carry.
 ---@field decisions? boolean A model that answers classification through its provider's own protocol; only the `system_one` kind takes it, and no chat turn runs on one.
 ---@field rate_limit? integer|zemi.ProviderRateLimit The model's own quota, for a gateway that limits per model alias; that model alone in its own bucket, the provider's (unset here) taken when absent.
 

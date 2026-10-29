@@ -17,7 +17,7 @@ zemi.provider.add({
 	-- object_mode = "tool", -- how a schema'd ask is put to it: "auto", "json", "tool" or "text"
 	-- rate_limit = 10, -- requests per minute; or { requests = 40, completion_tokens = 52000, window = 60 }
 	models = {
-		{ id = "deepseek-chat", context_window = 128000, cost_per_1m_in = 0.27, cost_per_1m_out = 1.1 },
+		{ id = "deepseek-chat", context_window = 128000, pricing = { input = 0.27, output = 1.1 } },
 	},
 })
 zemi.config.set("models.default", "gw/deepseek-chat")
@@ -31,9 +31,11 @@ A longer prompt cache is an opt-in `body` entry, never a default since model sup
 Model fields besides `id` and `display`:
 
 - `context_window`: without it there is no context percent, and a too-long refusal only merges a view batch and retries once.
-- `cost_per_1m_in`, `cost_per_1m_out`, `cost_per_1m_cache_write` (tokens written to the prompt cache), `cost_per_1m_cache_read` (tokens read from it). Without the cache pair, cached turns read cheaper than they were.
+- `pricing = { input, output, cache_write, cache_read }`: USD per million tokens; the cache pair prices tokens written to and read from the prompt cache. Without the cache pair, cached turns read cheaper than they were.
 - `max_output`: reply cap in tokens; unset, anthropic models get 32000, others the provider default.
-- `vision = false`: the model takes no images: read's description tells it so, read refuses image files, and images leave its history. Without it zemi learns that from the provider's first refusal, for the process.
+- `capabilities = { vision, audio }`: a model that takes no images says `capabilities = { vision = false }` - read's description tells it so, read refuses image files, and images leave its history. Without it zemi learns that from the provider's first refusal, for the process. `audio = true` lets an MCP result's audio ride.
+- `api`: the wire format the model speaks, `"completions"`, `"responses"` or `"messages"`, when it differs from its provider's own - one provider can serve formats side by side.
+- `max_attachments`: the @ references one message may carry, when the model caps them.
 - `decisions = true`: a `SYSTEM_ONE` provider's model that answers `zemi.classify.ask` itself, through that provider's own protocol, with real probabilities. A decisions model is no chat model: `/model` offers it to the slots `zemi.model.add(name, { classify = true })` made, and nothing else takes one.
 
 Any other key, on the provider or on a model entry, is refused as an unknown field.

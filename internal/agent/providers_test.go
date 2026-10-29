@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"charm.land/catwalk/pkg/catwalk"
-	"charm.land/catwalk/pkg/embedded"
+	"charm.land/catwalk/v3/pkg/catwalk"
+	"charm.land/catwalk/v3/pkg/embedded"
 	"charm.land/fantasy"
 	"charm.land/fantasy/providers/anthropic"
 	"charm.land/fantasy/providers/google"
@@ -253,9 +253,9 @@ func TestBuiltin(t *testing.T) {
 		t.Errorf("order: %s, %s", c.Specs[0].ID, c.Specs[1].ID)
 	}
 	for _, p := range []catwalk.Provider{
-		{ID: "bare openai-compat", Type: catwalk.TypeOpenAICompat, APIKey: "$XAI_API_KEY", APIEndpoint: "$GEMINI_API_ENDPOINT"},
-		{ID: "unbundled key", Type: catwalk.TypeAnthropic, APIKey: "$GITHUB_TOKEN"},
-		{ID: "unbundled endpoint", Type: catwalk.TypeOpenAICompat, APIKey: "$XAI_API_KEY", APIEndpoint: "$GITHUB_TOKEN"},
+		{ID: "bare openai-compat", Type: catwalk.TypeCompletions, APIKey: "$XAI_API_KEY", APIEndpoint: "$GEMINI_API_ENDPOINT"},
+		{ID: "unbundled key", Type: catwalk.TypeMessages, APIKey: "$GITHUB_TOKEN"},
+		{ID: "unbundled endpoint", Type: catwalk.TypeCompletions, APIKey: "$XAI_API_KEY", APIEndpoint: "$GITHUB_TOKEN"},
 	} {
 		if c := Builtin([]catwalk.Provider{p}, func(k string) string { return map[string]string{"XAI_API_KEY": "k", "GITHUB_TOKEN": "gh"}[k] }); len(c.Specs) != 0 || len(c.Keys) != 0 {
 			t.Errorf("%s: %+v", p.ID, c)
@@ -263,7 +263,7 @@ func TestBuiltin(t *testing.T) {
 	}
 }
 
-var soloCatalog = []catwalk.Provider{{ID: "solo", Type: catwalk.TypeAnthropic, APIKey: "$ANTHROPIC_API_KEY", Models: []catwalk.Model{{ID: "m"}}}}
+var soloCatalog = []catwalk.Provider{{ID: "solo", Type: catwalk.TypeMessages, APIKey: "$ANTHROPIC_API_KEY", Models: []catwalk.Model{{ID: "m"}}}}
 
 func soloEnv(string) string { return "k" }
 

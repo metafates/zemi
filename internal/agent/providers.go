@@ -27,8 +27,8 @@ import (
 	"time"
 	"unicode"
 
-	"charm.land/catwalk/pkg/catwalk"
-	"charm.land/catwalk/pkg/embedded"
+	"charm.land/catwalk/v3/pkg/catwalk"
+	"charm.land/catwalk/v3/pkg/embedded"
 	"charm.land/fantasy"
 	"charm.land/fantasy/providers/anthropic"
 	"charm.land/fantasy/providers/google"
@@ -72,11 +72,22 @@ type Model struct {
 	CostPer1MCacheWrite float64 // USD per million tokens written to the cache
 	CostPer1MCacheRead  float64 // USD per million tokens read from it
 	TextOnly            bool    // the model refuses image parts
+	Audio               bool    // the model takes audio parts
+	// MaxAttachments caps the @ references one message may carry; 0 is
+	// unbounded.
+	MaxAttachments int
+	// API is the wire format the model speaks (completions, responses,
+	// messages), which may differ from its provider's; "" for a model with no
+	// catalog entry, which the spec's kind decides.
+	API string
 	// Decisions marks a model that answers classification through its
 	// provider's own protocol (a SYSTEM_ONE one), never a chat turn.
 	Decisions bool
 	Efforts   []string // a builtin's reasoning levels; empty takes no effort
 	Effort    string   // a builtin's level when /effort is unset
+	// EffortNames labels the levels for a person ("X-High"), parallel to
+	// Efforts; nil reads them as the values.
+	EffortNames []string
 	// RateLimit is the model's own quota, for a gateway that limits per
 	// model alias; unset takes the provider's.
 	RateLimit RateLimit
@@ -121,7 +132,10 @@ type Spec struct {
 	// it paces through one pair of buckets (requests, completion tokens).
 	// The zero value runs unpaced.
 	RateLimit RateLimit
-	Models    []Model
+	// Affinity is the session-affinity header the provider routes by, ""
+	// taking x-session-affinity.
+	Affinity string
+	Models   []Model
 	// Builtin marks a catalog spec; Register clears it, so a user spec
 	// under a builtin id survives DropBuiltin.
 	Builtin      bool
@@ -186,20 +200,35 @@ type MissingKey struct {
 	Spec    Spec
 }
 
-// builtinKinds maps catwalk types to zemi kinds. NOTE: azure, bedrock,
-// google-vertex and copilot are left out: they need more than one key
-// (endpoint and API version, an AWS credential chain, ADC, OAuth) and a
-// fantasy package each. openrouter and vercel get their own kinds: every
-// kind reads cached tokens from the usage, but only theirs turn the
-// Anthropic cache breakpoints into the cache_control Claude behind them
-// needs.
-var builtinKinds = map[catwalk.Type]Kind{
-	catwalk.TypeAnthropic:    KindAnthropic,
-	catwalk.TypeOpenAI:       KindOpenAI,
-	catwalk.TypeGoogle:       KindGoogle,
-	catwalk.TypeOpenAICompat: KindOpenAICompat,
-	catwalk.TypeOpenRouter:   KindOpenRouter,
-	catwalk.TypeVercel:       KindVercel,
+// builtinKind maps a catalog provider to the fantasy family that talks to
+// it. V3's type names the wire (completions, responses, messages), not the
+// vendor, so the provider id picks the vendor's own package where zemi has
+// one and the wire covers the rest. NOTE: azure, bedrock, google-vertex and
+// copilot are left out: they need more than one key (endpoint and API
+// version, an AWS credential chain, ADC, OAuth) and a fantasy package each.
+// openrouter and vercel get their own kinds: every kind reads cached tokens
+// from the usage, but only theirs turn the Anthropic cache breakpoints into
+// the cache_control Claude behind them needs.
+func builtinKind(id catwalk.InferenceProvider, t catwalk.Type) Kind {
+	switch id {
+	case "openai":
+		return KindOpenAI
+	case "anthropic":
+		return KindAnthropic
+	case "gemini":
+		return KindGoogle
+	case "openrouter":
+		return KindOpenRouter
+	case "vercel":
+		return KindVercel
+	}
+	switch t {
+	case catwalk.TypeMessages:
+		return KindAnthropic
+	case catwalk.TypeResponses:
+		return KindOpenAI
+	}
+	return KindOpenAICompat
 }
 
 // Builtin converts a catwalk catalog, resolving its "$NAME" key and
@@ -219,8 +248,7 @@ func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 	}
 	c := Catalog{Keys: map[string]string{}}
 	for _, p := range providers {
-		kind, ok := builtinKinds[p.Type]
-		if !ok || p.APIKey == "" || !bundledRef(p.APIKey) || !bundledRef(p.APIEndpoint) {
+		if p.APIKey == "" || !bundledRef(p.APIKey) || !bundledRef(p.APIEndpoint) {
 			continue
 		}
 		// the feed is untrusted (bundledRef skips its key refs too): an id
@@ -229,6 +257,7 @@ func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 		if !plainID(string(p.ID)) {
 			continue
 		}
+		kind := builtinKind(p.ID, p.Type)
 		c.Info.Providers++
 		c.Info.Models += len(p.Models)
 		name, key := env(p.APIKey)
@@ -240,15 +269,18 @@ func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 		}
 		spec := Spec{
 			ID: string(p.ID), Kind: kind, BaseURL: base, Builtin: true, KeyEnv: name,
-			DefaultModel: p.DefaultLargeModelID,
+			DefaultModel: p.DefaultLargeModelID, Affinity: p.SessionAffinityHeader,
 		}
 		for _, m := range p.Models {
-			// catwalk's legacy names: "in cached" is the cache write price,
-			// "out cached" the cache read price
 			spec.Models = append(spec.Models, Model{
 				ID: m.ID, Display: m.Name, ContextWindow: m.ContextWindow, MaxOutput: m.DefaultMaxTokens,
-				CostPer1MIn: m.CostPer1MIn, CostPer1MOut: m.CostPer1MOut, CostPer1MCacheWrite: m.CostPer1MInCached, CostPer1MCacheRead: m.CostPer1MOutCached,
-				TextOnly: !m.SupportsImages, Efforts: m.ReasoningLevels, Effort: m.DefaultReasoningEffort,
+				CostPer1MIn: m.Pricing.Input, CostPer1MOut: m.Pricing.Output,
+				CostPer1MCacheWrite: m.Pricing.CacheCreate, CostPer1MCacheRead: m.Pricing.CacheHit,
+				TextOnly: !m.Capabilities.Vision, Audio: m.Capabilities.Audio,
+				MaxAttachments: m.MaxAttachments,
+				API:            string(m.EffectiveType(p.Type)),
+				Efforts:        m.ReasoningEffortLevels(), Effort: m.Reasoning.DefaultEffortLevel,
+				EffortNames: effortNames(m.Reasoning.EffortLevels),
 			})
 		}
 		if key == "" {
@@ -259,6 +291,28 @@ func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 		c.Keys[spec.ID] = key
 	}
 	return c
+}
+
+// effortNames labels a model's effort levels for a person, parallel to the
+// values catwalk's levels carry.
+func effortNames(levels []catwalk.EffortLevel) []string {
+	if len(levels) == 0 {
+		return nil
+	}
+	names := make([]string, len(levels))
+	for i, l := range levels {
+		names[i] = l.Display
+	}
+	return names
+}
+
+// EffortName is the level's display name ("X-High"), the level itself when
+// the catalog named none.
+func (m Model) EffortName(level string) string {
+	if i := slices.Index(m.Efforts, level); i >= 0 && i < len(m.EffortNames) && m.EffortNames[i] != "" {
+		return m.EffortNames[i]
+	}
+	return level
 }
 
 // plainID says whether id may name a provider: it becomes a keychain
@@ -303,7 +357,7 @@ type savedCatalog struct {
 func bundledVersion() string {
 	if bi, ok := debug.ReadBuildInfo(); ok {
 		for _, d := range bi.Deps {
-			if d.Path == "charm.land/catwalk" {
+			if d.Path == "charm.land/catwalk/v3" {
 				return cmp.Or(d.Replace, d).Version
 			}
 		}
@@ -903,20 +957,36 @@ func (r *Registry) CallOptions(id ModelID, effort, sessionID string) fantasy.Pro
 	return nil
 }
 
-// SessionHeaders are the per-call headers of a session's requests:
-// x-session-affinity, which routers such as Fireworks use to send a
-// session to the replica that holds its prompt cache. The value is the
-// session's opaque random id; nil for "". NOTE: only a provider or router
-// that routes on it gains anything; the rest ignore it.
-func SessionHeaders(sessionID string) map[string]string {
+// SessionHeaders are the per-call headers of a session's requests: the
+// affinity header the provider routes by (x-session-affinity, unless its
+// catalog entry names another, as opencode's does), carrying the session's
+// opaque random id; nil for "". NOTE: only a provider or router that routes
+// on it gains anything; the rest ignore it.
+func (r *Registry) SessionHeaders(id ModelID, sessionID string) map[string]string {
 	if sessionID == "" {
 		return nil
 	}
-	return map[string]string{"x-session-affinity": sessionID}
+	name := "x-session-affinity"
+	if spec, ok := r.Lookup(id.Provider()); ok && spec.Affinity != "" {
+		name = spec.Affinity
+	}
+	return map[string]string{name: sessionID}
 }
 
 // effortRank orders the catalog's reasoning levels.
 var effortRank = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+
+// EffortName is a reasoning level as a person reads it, the display name the
+// catalog carries ("X-High"), title case for one it does not.
+func EffortName(level string) string {
+	switch level {
+	case "":
+		return ""
+	case "xhigh":
+		return "X-High"
+	}
+	return strings.ToUpper(level[:1]) + level[1:]
+}
 
 // nearestEffort is the listed level closest to effort, the lower on a tie
 // (lists are ascending); "" when the model lists none.
@@ -1030,6 +1100,18 @@ func (r *Registry) Limiter(id ModelID) *rateLimiter {
 	return r.sharedLimiterLocked(key, apiKey, rate)
 }
 
+// apiKind maps a model's wire format to the fantasy family that speaks it:
+// the spec's own kind where the format leaves it unchanged.
+func apiKind(api string, spec Kind) Kind {
+	switch api {
+	case "messages":
+		return KindAnthropic
+	case "responses":
+		return KindOpenAI
+	}
+	return spec
+}
+
 func (r *Registry) resolve(id ModelID) (fantasy.LanguageModel, error) {
 	providerID, model, ok := id.Split()
 	if !ok {
@@ -1040,22 +1122,43 @@ func (r *Registry) resolve(id ModelID) (fantasy.LanguageModel, error) {
 		return nil, fmt.Errorf("unknown provider %q", providerID)
 	}
 	key := r.apiKey(spec.ID)
-	switch spec.Kind {
+	// the model's wire format wins over the spec's kind: one provider can
+	// serve completions, responses and messages models side by side
+	kind := spec.Kind
+	if mo, ok := spec.Model(model); ok && mo.API != "" {
+		kind = apiKind(mo.API, spec.Kind)
+	}
+	switch kind {
 	case KindAnthropic:
 		return languageModel(spec, key, model, anthropic.New, anthropic.WithBaseURL, anthropic.WithAPIKey, anthropic.WithHeaders,
 			func(c *http.Client) anthropic.Option { return anthropic.WithHTTPClient(c) }, nil)
 	case KindOpenAI:
-		// fantasy sends only the models openai.IsResponsesModel accepts to
-		// /responses, the rest to /chat/completions
-		// fantasy's openai options have no extra body, the SDK sets it
+		// the catalog's wire format decides responses against completions
+		// where it names one; a model with no entry keeps fantasy's own
+		// IsResponsesModel guess. fantasy's openai options have no extra
+		// body, the SDK sets it
 		responses := func(o ...openai.Option) (fantasy.Provider, error) {
 			o = append(o, openai.WithUseResponsesAPI())
+			if mo, ok := spec.Model(model); ok && mo.API != "" {
+				o = append(o, openai.WithResponsesAPIFunc(func(id string) bool { return id == model }))
+			}
 			for _, k := range slices.Sorted(maps.Keys(spec.Body)) {
 				o = append(o, openai.WithSDKOptions(option.WithJSONSet(k, spec.Body[k])))
 			}
 			return openai.New(o...)
 		}
-		return languageModel(spec, key, model, responses, openai.WithBaseURL, openai.WithAPIKey, openai.WithHeaders,
+		var newProvider func(...openai.Option) (fantasy.Provider, error)
+		if mo, ok := spec.Model(model); ok && mo.API == "completions" {
+			newProvider = func(o ...openai.Option) (fantasy.Provider, error) {
+				for _, k := range slices.Sorted(maps.Keys(spec.Body)) {
+					o = append(o, openai.WithSDKOptions(option.WithJSONSet(k, spec.Body[k])))
+				}
+				return openai.New(o...)
+			}
+		} else {
+			newProvider = responses
+		}
+		return languageModel(spec, key, model, newProvider, openai.WithBaseURL, openai.WithAPIKey, openai.WithHeaders,
 			func(c *http.Client) openai.Option { return openai.WithHTTPClient(c) }, openai.WithObjectMode)
 	case KindOpenAICompat:
 		return languageModel(spec, key, model, openaicompat.New, openaicompat.WithBaseURL, openaicompat.WithAPIKey, openaicompat.WithHeaders,

@@ -1,7 +1,7 @@
 charm.land/bubbletea/v2 v2.1.0 h1:A9fj9h5LFrvQhQHFNggp8K8rvY6CUfgn9dMbb6p2HIw=
 charm.land/bubbletea/v2 v2.1.0/go.mod h1:xWHeyxIX9/wiFU2kgPW04ojOZyTzrWf+8lGjUCaftiU=
-charm.land/catwalk v0.52.83 h1:OOMFKiWdS1LzZw20nSO6rHNlMmnw4rsvYl0g4TrJtMY=
-charm.land/catwalk v0.52.83/go.mod h1:9sKba/XPoPO31zIyxveRyMB0hgKBSQRFZH0Jb59p8Nw=
+charm.land/catwalk/v3 v3.0.1 h1:rav9eoYZ59lsNYXJQ/NV0KIGyH8jlAw09pFPV3A5DJs=
+charm.land/catwalk/v3 v3.0.1/go.mod h1:WZ7YpmvKatSJEASko5v5PzXhntJA3cn38v+UM5BY/iw=
 charm.land/fantasy v0.45.5 h1:G16tGUDFWUu9PmbVi2yFQt02wQpQQU41VQa6H6QtLnc=
 charm.land/fantasy v0.45.5/go.mod h1:R/3G7wQHbe4Z9QNqT1PWycLqn0/2MU1cPbjTDJecLeU=
 charm.land/glamour/v2 v2.0.1 h1:xl+r00A4aJWU0z8fgwKd9fQQ4rsphqGUzuEiXZP5n+c=

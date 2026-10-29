@@ -277,6 +277,7 @@ func (h *Host) toolBuilder(skip set.Set[tools.ToolName]) func(*tools.Pipeline) (
 func (h *Host) mainTools() []fantasy.AgentTool {
 	pipe := h.PipelineFor()
 	pipe.Images = func() bool { return h.takesImages(h.roleModel(defaultRole)) }
+	pipe.Audio = func() bool { return h.takesAudio(h.roleModel(defaultRole)) }
 	return h.toolsFor(pipe)
 }
 
@@ -327,7 +328,7 @@ func (h *Host) ensureRunner(toolset []fantasy.AgentTool) (*agent.Runner, error) 
 	h.agents.promptParts, h.agents.promptTokens = sizes, int64(chars/4)
 	h.agents.mu.Unlock()
 	sid := store.MainSessionID
-	r.ProviderOptions, r.Headers = h.Providers.CallOptions(agent.ModelID(id), h.Effort(id), sid), agent.SessionHeaders(sid)
+	r.ProviderOptions, r.Headers = h.Providers.CallOptions(agent.ModelID(id), h.Effort(id), sid), h.Providers.SessionHeaders(agent.ModelID(id), sid)
 	r.MaxOutputTokens = h.maxOutput(id)
 	r.Hooks = h.streamHooks()
 	r.Persist = h.persistMessage
@@ -913,7 +914,7 @@ func (h *Host) sendTurn(ctx context.Context, runner *agent.Runner, text string) 
 			} else {
 				runner.TextOnly = true
 				imagesRejected.Store(model, true)
-				h.Notify(slog.LevelWarn, "Images left out", model+" takes no images; vision = false on its model entry skips this")
+				h.Notify(slog.LevelWarn, "Images left out", model+" takes no images; capabilities = { vision = false } on its model entry skips this")
 			}
 			continue
 		}

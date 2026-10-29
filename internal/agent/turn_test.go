@@ -939,7 +939,7 @@ func TestCacheBreakpoints(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := NewRunner(m, tools, "sys")
-		r.Hooks, r.ProviderOptions, r.Headers = newRecHooks(), reg.CallOptions(ModelID(c.model), "", ""), SessionHeaders("s1")
+		r.Hooks, r.ProviderOptions, r.Headers = newRecHooks(), reg.CallOptions(ModelID(c.model), "", ""), reg.SessionHeaders(ModelID(c.model), "s1")
 		r.History = []fantasy.Message{UserMessage("a"), {Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "b"}}}}
 		_ = r.Send(t.Context(), "c") // the server refuses; only the request matters
 		mu.Lock()

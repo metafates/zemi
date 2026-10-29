@@ -418,7 +418,7 @@ func TestMCPMedia(t *testing.T) {
 		{"a big png is shrunk", "image/png", wide.Bytes(), "image/png 2000x666"},
 		{"an svg is refused with a reason", "image/svg+xml", []byte("<svg/>"), "x\n(the image is not shown: not a readable image: image: unknown format)"},
 	} {
-		resp := mcpMedia("x", c.data, c.mime, nil)
+		resp := mcpMedia("x", c.data, c.mime, nil, nil)
 		got := resp.Content
 		if resp.Type == "image" {
 			cfg, _, _ := image.DecodeConfig(bytes.NewReader(resp.Data))
@@ -427,6 +427,15 @@ func TestMCPMedia(t *testing.T) {
 		if got != c.want {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)
 		}
+	}
+	// audio rides for a model that takes it, and a model the catalog says
+	// cannot, reads the reason instead
+	resp := mcpMedia("x", []byte("a"), "audio/wav", nil, nil)
+	if resp.Type != "media" {
+		t.Fatalf("audio for an unknown model = %q", resp.Type)
+	}
+	if resp := mcpMedia("x", []byte("a"), "audio/wav", nil, func() bool { return false }); resp.Type != "text" {
+		t.Fatalf("audio for a deaf model = %q", resp.Type)
 	}
 }
 

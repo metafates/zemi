@@ -848,7 +848,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 		text = "(no output)"
 	}
 	if data, mime, ok := res.Media(); ok {
-		return mcpMedia(text, data, mime, t.pipe.Images), nil
+		return mcpMedia(text, data, mime, t.pipe.Images, t.pipe.Audio), nil
 	}
 	return fantasy.NewTextResponse(text), nil
 }
@@ -856,7 +856,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 // mcpMedia sends a result's image or audio part with its text. An image
 // goes through tools.FitImage like the read tool's: one a provider refuses
 // would drop every image in the history, or all images for the process.
-func mcpMedia(text string, data []byte, mime string, images func() bool) fantasy.ToolResponse {
+func mcpMedia(text string, data []byte, mime string, images, audio func() bool) fantasy.ToolResponse {
 	kind, _, _ := strings.Cut(mime, "/")
 	limit := mcpMaxMedia
 	if kind == "image" {
@@ -867,6 +867,10 @@ func mcpMedia(text string, data []byte, mime string, images func() bool) fantasy
 	case len(data) > limit:
 		err = fmt.Errorf("a %d byte %s, over the %d byte limit", len(data), kind, limit)
 	case kind != "image":
+		if audio != nil && !audio() {
+			err = errors.New("this model takes no audio")
+			break
+		}
 		out := fantasy.NewMediaResponse(data, mime)
 		out.Content = text
 		return out

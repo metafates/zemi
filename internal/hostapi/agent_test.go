@@ -1479,7 +1479,7 @@ func TestProviderModelNumbers(t *testing.T) {
 	}{
 		{name: "numbers", models: `{ id = "m", context_window = 200000 }`, want: 200000},
 		{name: "a quoted number", models: `{ id = "m", context_window = "200000" }`, err: "models[1].context_window must be a number"},
-		{name: "a quoted cost", models: `{ id = "m", cost_per_1m_in = "1.5" }`, err: "models[1].cost_per_1m_in must be a number"},
+		{name: "a quoted cost", models: `{ id = "m", pricing = { input = "1.5" } }`, err: "models[1].pricing.input must be a number"},
 		{name: "a missing one", models: `{ id = "m" }`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -1511,7 +1511,7 @@ func TestIdleStreamUsesItsModel(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
 		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = {
-			{ id = "big", context_window = 200000, vision = false },
+			{ id = "big", context_window = 200000, capabilities = { vision = false } },
 			{ id = "small", context_window = 32000 },
 		} })
 		zemi.model.set("a/big")
@@ -1773,7 +1773,7 @@ func TestMaxOutput(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
 	runUser(t, r, `
-		zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "big" }, { id = "old", max_output = 4096, vision = false } } })
+		zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "big" }, { id = "old", max_output = 4096, capabilities = { vision = false } } } })
 		zemi.provider.add({ id = "o", kind = "openai", models = { { id = "gpt" } } })
 	`)
 	for model, want := range map[string]int64{"a/big": 32_000, "a/old": 4096, "o/gpt": 0} {

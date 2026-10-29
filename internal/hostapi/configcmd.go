@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 )
@@ -381,6 +382,11 @@ func (h *Host) pickItems(path config.Key) (items []OverlayItem, sel int) {
 	cur := h.Settings.Str(path)
 	for i, c := range h.configChoices(path) {
 		item := OverlayItem{Text: cmp.Or(c, "default"), Run: "config set " + string(path) + " " + c, Verb: VerbPick}
+		// a reasoning level reads by its display name ("X-High"), the value
+		// the config stores beside it
+		if path == config.KeyAgentEffort && c != "" && c != cur {
+			item.Desc = agent.EffortName(c)
+		}
 		if c == cur {
 			item.Tag, sel = "current", i
 		}

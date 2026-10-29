@@ -1174,7 +1174,7 @@ func (b *memTree) build(id nodeID, prompt string, first bool, wait chan struct{}
 			MaxRetries:      &buildMaxRetries,
 			StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
 			ProviderOptions: opts,
-			Headers:         agent.SessionHeaders(store.MainSessionID),
+			Headers:         b.h.Providers.SessionHeaders(agent.ModelID(ref), store.MainSessionID),
 		})
 		if err != nil {
 			return "", err

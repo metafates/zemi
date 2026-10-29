@@ -152,7 +152,7 @@ func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut 
 		MaxOutputTokens: maxOut,
 		StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
 		ProviderOptions: h.Providers.CallOptions(agent.ModelID(id), "", sid),
-		Headers:         agent.SessionHeaders(sid),
+		Headers:         h.Providers.SessionHeaders(agent.ModelID(id), sid),
 	}
 	if retry != nil {
 		last := &agent.LastErr{LanguageModel: model}
@@ -188,7 +188,7 @@ func (h *Host) generateObject(ctx context.Context, sid, system, prompt string, s
 		MaxOutputTokens: maxOut,
 		Temperature:     temp,
 		ProviderOptions: h.Providers.CallOptions(agent.ModelID(id), "", sid),
-		Headers:         agent.SessionHeaders(sid),
+		Headers:         h.Providers.SessionHeaders(agent.ModelID(id), sid),
 	}
 	res, err := model.GenerateObject(ctx, call)
 	if err != nil {
@@ -609,6 +609,13 @@ func (h *Host) takesImages(id string) bool {
 	return !ok || !m.TextOnly
 }
 
+// takesAudio reports whether a model accepts audio parts; unknown models
+// are assumed not to, since the catalog must say so.
+func (h *Host) takesAudio(id string) bool {
+	m, ok := h.modelSpec(id)
+	return ok && m.Audio
+}
+
 // imagesRejected remembers models whose provider refused a request over
 // its image parts, so the turn resends without them and later ones never
 // carry any (like capRejected, per process).
@@ -739,10 +746,39 @@ func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// modelNumericKeys are a model entry's numeric fields: a quoted one, which
-// Lua makes easy, is refused rather than read as 0.
-var modelNumericKeys = []string{
-	"context_window", "max_output", "cost_per_1m_in", "cost_per_1m_out", "cost_per_1m_cache_write", "cost_per_1m_cache_read",
+// modelNumericKeys are a model entry's flat numeric fields: a quoted one,
+// which Lua makes easy, is refused rather than read as 0.
+var modelNumericKeys = []string{"context_window", "max_output", "max_attachments"}
+
+// pricingKeys are a model entry's pricing table, USD per million tokens.
+var pricingKeys = []string{"input", "output", "cache_write", "cache_read"}
+
+// modelAPIs are the wire formats a model entry may name, catwalk's three.
+var modelAPIs = []string{"completions", "responses", "messages"}
+
+// modelCapabilities reads a model entry's capabilities table: the booleans
+// catwalk's schema carries, vision and audio today. Vision is assumed on and
+// audio off where the entry omits them, like the flat field it replaces was.
+func modelCapabilities(e map[string]any, at string) (map[string]bool, error) {
+	caps := map[string]bool{"vision": true, "audio": false}
+	v, ok := e["capabilities"]
+	if !ok || v == nil {
+		return caps, nil
+	}
+	tb, isTable := v.(map[string]any)
+	if !isTable {
+		return nil, fmt.Errorf("%s.capabilities must be a table of booleans", at)
+	}
+	for _, k := range []string{"vision", "audio"} {
+		switch b := tb[k].(type) {
+		case nil:
+		case bool:
+			caps[k] = b
+		default:
+			return nil, fmt.Errorf("%s.capabilities.%s must be a boolean, not a %T", at, k, tb[k])
+		}
+	}
+	return caps, nil
 }
 
 func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
@@ -801,7 +837,13 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		if !ok {
 			return agent.Spec{}, fmt.Errorf("%s must be a table", at)
 		}
-		if err := onlyKeys(e, at, append([]string{"id", "display", "vision", "decisions", "rate_limit"}, modelNumericKeys...)...); err != nil {
+		if err := onlyKeys(e, at, append([]string{"id", "display", "capabilities", "decisions", "rate_limit", "api", "pricing"}, modelNumericKeys...)...); err != nil {
+			return agent.Spec{}, err
+		}
+		// the model's capabilities, catwalk's shape: a table of booleans,
+		// vision assumed on and audio off where the entry omits them
+		caps, err := modelCapabilities(e, at)
+		if err != nil {
 			return agent.Spec{}, err
 		}
 		decided, err := modelBool(e, at, "decisions")
@@ -818,6 +860,31 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 				return agent.Spec{}, fmt.Errorf("%s.%s must be a number, not a %T", at, k, v)
 			}
 		}
+		// the pricing table, catwalk's shape: four numbers that travel
+		// together
+		cost := map[string]float64{}
+		if v, ok := e["pricing"]; ok && v != nil {
+			pt, ok := v.(map[string]any)
+			if !ok {
+				return agent.Spec{}, fmt.Errorf("%s.pricing must be a table of numbers", at)
+			}
+			if err := onlyKeys(pt, at+".pricing", pricingKeys...); err != nil {
+				return agent.Spec{}, err
+			}
+			for _, k := range pricingKeys {
+				switch v := pt[k].(type) {
+				case nil:
+				case float64:
+					cost[k] = max(v, 0)
+				default:
+					return agent.Spec{}, fmt.Errorf("%s.pricing.%s must be a number, not a %T", at, k, v)
+				}
+			}
+		}
+		api, _ := e["api"].(string)
+		if api != "" && !slices.Contains(modelAPIs, api) {
+			return agent.Spec{}, fmt.Errorf("%s.api %q: use %s", at, api, strings.Join(modelAPIs, ", "))
+		}
 		id, ok := e["id"].(string)
 		if !ok || id == "" {
 			return agent.Spec{}, fmt.Errorf("%s.id is required", at)
@@ -832,11 +899,14 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 			Display:             display,
 			ContextWindow:       int64(nums["context_window"]),
 			MaxOutput:           int64(nums["max_output"]),
-			CostPer1MIn:         nums["cost_per_1m_in"],
-			CostPer1MOut:        nums["cost_per_1m_out"],
-			CostPer1MCacheWrite: nums["cost_per_1m_cache_write"],
-			CostPer1MCacheRead:  nums["cost_per_1m_cache_read"],
-			TextOnly:            e["vision"] == false,
+			CostPer1MIn:         cost["input"],
+			CostPer1MOut:        cost["output"],
+			CostPer1MCacheWrite: cost["cache_write"],
+			CostPer1MCacheRead:  cost["cache_read"],
+			TextOnly:            !caps["vision"],
+			Audio:               caps["audio"],
+			MaxAttachments:      int(nums["max_attachments"]),
+			API:                 api,
 			Decisions:           decided,
 			RateLimit:           mrate,
 		})

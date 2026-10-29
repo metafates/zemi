@@ -119,7 +119,7 @@ func TestClassifyAsk(t *testing.T) {
 	}{
 		{
 			name:         "a decisions model over its own protocol",
-			providers:    `zemi.provider.add({ id = "jev", kind = "system_one", base_url = "%s", api_key = "k", models = { { id = "m", decisions = true, cost_per_1m_in = 1, cost_per_1m_out = 2, cost_per_1m_cache_read = 3 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "jev/m" })`,
+			providers:    `zemi.provider.add({ id = "jev", kind = "system_one", base_url = "%s", api_key = "k", models = { { id = "m", decisions = true, pricing = { input = 1, output = 2, cache_read = 3 } } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "jev/m" })`,
 			reply:        systemOne,
 			wantStrategy: "protocol",
 			wantValue:    "true",
@@ -131,7 +131,7 @@ func TestClassifyAsk(t *testing.T) {
 		},
 		{
 			name:         "a chat model whose provider returns token probabilities",
-			providers:    `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "%s", api_key = "k", body = { routing = "cheap" }, models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2, cost_per_1m_cache_read = 3 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`,
+			providers:    `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "%s", api_key = "k", body = { routing = "cheap" }, models = { { id = "m", pricing = { input = 1, output = 2, cache_read = 3 } } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`,
 			reply:        chatCompletion("Yes", map[string]float64{"Yes": -0.1, "No": -2.0}),
 			wantStrategy: "logprobs",
 			wantValue:    "true",
@@ -145,7 +145,7 @@ func TestClassifyAsk(t *testing.T) {
 		},
 		{
 			name:         "a chat model that returns none falls through to a schema",
-			providers:    `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "%s", api_key = "k", object_mode = "text", models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2, cost_per_1m_cache_read = 3 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`,
+			providers:    `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "%s", api_key = "k", object_mode = "text", models = { { id = "m", pricing = { input = 1, output = 2, cache_read = 3 } } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`,
 			reply:        chatCompletion(`{"safe":true}`, nil),
 			wantStrategy: "schema",
 			wantValue:    "true",
@@ -160,7 +160,7 @@ func TestClassifyAsk(t *testing.T) {
 			// vercel surfaces no token probabilities, so the readout is not
 			// worth asking for: one call answers it
 			name:         "a kind that surfaces none goes straight to a schema",
-			providers:    `zemi.provider.add({ id = "a", kind = "vercel", base_url = "%s", api_key = "k", object_mode = "text", models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2, cost_per_1m_cache_read = 3 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`,
+			providers:    `zemi.provider.add({ id = "a", kind = "vercel", base_url = "%s", api_key = "k", object_mode = "text", models = { { id = "m", pricing = { input = 1, output = 2, cache_read = 3 } } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`,
 			reply:        chatCompletion(`{"safe":true}`, nil),
 			wantStrategy: "schema",
 			wantValue:    "true",
@@ -236,7 +236,7 @@ func TestClassifyAskErrors(t *testing.T) {
 	t.Parallel()
 	f := newEndpoint(t, func(string) string { return "not json" })
 	h, r := newTestHostDB(t)
-	runUser(t, r, fmt.Sprintf(`zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "%s", api_key = "k", models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2, cost_per_1m_cache_read = 3 } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`, f.srv.URL))
+	runUser(t, r, fmt.Sprintf(`zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "%s", api_key = "k", models = { { id = "m", pricing = { input = 1, output = 2, cache_read = 3 } } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`, f.srv.URL))
 	runUser(t, r, classifyAskSrc)
 	if failed, _ := h.GlobalDB.GetKV("failed"); failed == "" {
 		t.Fatal("a provider answering nothing but prose answered the call")
@@ -258,7 +258,7 @@ func TestClassifyAskErrors(t *testing.T) {
 	}
 	// a decisions model is no chat model: neither a turn nor /model takes one
 	h2, r2 := newTestHost(t)
-	runUser(t, r2, `zemi.provider.add({ id = "jev", kind = "system_one", base_url = "http://x", api_key = "k", models = { { id = "m", decisions = true, cost_per_1m_in = 1, cost_per_1m_out = 2 } } })`)
+	runUser(t, r2, `zemi.provider.add({ id = "jev", kind = "system_one", base_url = "http://x", api_key = "k", models = { { id = "m", decisions = true, pricing = { input = 1, output = 2 } } } })`)
 	if err := r2.ExecuteChunk(t.Context(), `zemi.model.set("jev/m")`, "test.lua", lua.OriginUser); err == nil || !strings.Contains(err.Error(), "is a decisions model") {
 		t.Errorf("model.set: err %v, want a refusal", err)
 	}
@@ -275,7 +275,7 @@ func TestClassifyGate(t *testing.T) {
 	h, r := newTestHostPlugin(t, `["model"]`)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	runUser(t, r, `zemi.provider.add({ id = "jev", kind = "system_one", base_url = "http://x", api_key = "k", models = { { id = "m", decisions = true, cost_per_1m_in = 1, cost_per_1m_out = 2 } } })
+	runUser(t, r, `zemi.provider.add({ id = "jev", kind = "system_one", base_url = "http://x", api_key = "k", models = { { id = "m", decisions = true, pricing = { input = 1, output = 2 } } } })
 		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "big" } } })
 		zemi.model.add("clf", { desc = "the classifier", classify = true })`)
 	if err := h.OpenModelPicker("clf"); err != nil {

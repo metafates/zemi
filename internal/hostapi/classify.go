@@ -123,7 +123,7 @@ func (h *Host) classifyRequest(id, sid string, state map[string]any, questions m
 			BaseURL: spec.BaseURL,
 			APIKey:  h.Providers.Key(spec.ID),
 			Model:   model.ID,
-			Headers: classifyHeaders(spec.Headers, sid),
+			Headers: classifyHeaders(spec.Headers, h.Providers.SessionHeaders(agent.ModelID(id), sid)),
 			HTTP:    httpc,
 		}
 		return req, nil
@@ -135,7 +135,7 @@ func (h *Host) classifyRequest(id, sid string, state map[string]any, questions m
 	req.Chat = &classify.Chat{
 		Model:   chat,
 		Options: h.Providers.CallOptions(agent.ModelID(id), "", sid),
-		Headers: agent.SessionHeaders(sid),
+		Headers: h.Providers.SessionHeaders(agent.ModelID(id), sid),
 		// a decoded answer is the model's own words, so it is asked greedily
 		Temperature: new(0.0),
 		Logprobs:    h.Providers.LogprobOptions(agent.ModelID(id)),
@@ -145,8 +145,7 @@ func (h *Host) classifyRequest(id, sid string, state map[string]any, questions m
 
 // classifyHeaders are a request's HTTP headers: the provider's own, with the
 // session's affinity beside them.
-func classifyHeaders(spec map[string]string, sid string) map[string]string {
-	session := agent.SessionHeaders(sid)
+func classifyHeaders(spec, session map[string]string) map[string]string {
 	if len(spec) == 0 {
 		return session
 	}

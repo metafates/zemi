@@ -18,8 +18,7 @@ func TestTurnCost(t *testing.T) {
 	runUser(t, r, `zemi.provider.add({
 		id = "p", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1",
 		models = {
-			{ id = "m", cost_per_1m_in = 3, cost_per_1m_out = 15,
-			  cost_per_1m_cache_write = 3.75, cost_per_1m_cache_read = 0.5 },
+			{ id = "m", pricing = { input = 3, output = 15, cache_write = 3.75, cache_read = 0.5 } },
 			{ id = "free" },
 		},
 	})`)
@@ -43,7 +42,7 @@ func TestAgentFinishUsage(t *testing.T) {
 	sid := seedSession(t, h)
 	runUser(t, r, `
 		zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1",
-			models = { { id = "m", cost_per_1m_in = 1, cost_per_1m_out = 2 } } })
+			models = { { id = "m", pricing = { input = 1, output = 2 } } } })
 		zemi.config.set("models.default", "p/m")
 		zemi.event.on("agent.finish", function(ev)
 			local u, s = ev.usage, zemi.agent.usage()

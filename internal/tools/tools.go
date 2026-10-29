@@ -225,6 +225,9 @@ type Pipeline struct {
 	// image instead of sending a request that ends the turn. All calls it
 	// once while it builds, so it must not take a lock All's caller holds.
 	Images func() bool
+	// Audio reports whether the model takes audio parts; nil = no. An MCP
+	// result's audio rides only when it does.
+	Audio func() bool
 
 	// Pad is the scratchpad this pipeline was bound to, "" for none: where
 	// cut output is saved in full and the file tools read and write without

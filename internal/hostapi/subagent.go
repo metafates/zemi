@@ -375,7 +375,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	}
 	// a fork keeps the caller's session: that is what the conversation is cached under
 	cache := cmp.Or(setup.cache, sid)
-	runner.ProviderOptions, runner.Headers = h.Providers.CallOptions(agent.ModelID(modelID), h.Effort(modelID), cache), agent.SessionHeaders(cache)
+	runner.ProviderOptions, runner.Headers = h.Providers.CallOptions(agent.ModelID(modelID), h.Effort(modelID), cache), h.Providers.SessionHeaders(agent.ModelID(modelID), cache)
 	seedLoaded(setup.loaded, runner.History)
 	ctx = context.WithValue(ctx, runSessionKey{}, sid)
 	ctx = context.WithValue(ctx, runKey{}, run)
@@ -455,6 +455,7 @@ func (h *Host) runPipeline(run *agentRun, name, modelID string) *tools.Pipeline 
 	pipe := h.PipelineFor()
 	pipe.TodosRead, pipe.TodosWrite, pipe.Question, pipe.ApprovePlan = nil, nil, nil, nil
 	pipe.Images = func() bool { return h.takesImages(modelID) }
+	pipe.Audio = func() bool { return h.takesAudio(modelID) }
 	if run.parent != "" {
 		pipe.Pad = h.scratchFor(run.parent)
 	}
