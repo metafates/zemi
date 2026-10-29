@@ -138,6 +138,15 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 			b.WriteString(agent.AttachElement(fmt.Sprintf("%s path=%q", tag, name), "not attached: "+why))
 			refused = append(refused, perm.TildePath(name)+": "+why)
 		}
+		// the size note is for the model, which reads the file with its tools;
+		// an oversized image cannot travel at all, so its refusal reaches the user too
+		oversize := func() {
+			why := overLimit(limit)
+			b.WriteString(agent.AttachElement(fmt.Sprintf("%s path=%q", tag, name), "not attached: "+why))
+			if image {
+				refused = append(refused, perm.TildePath(name)+": "+why)
+			}
+		}
 		// a FIFO blocks the read, and an @word naming no file is just prose;
 		// a path that is there but not a regular file says why, like every
 		// other refusal - but a directory attaches its entries listed
@@ -156,7 +165,7 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 		}
 		if fi.Size() > limit { // a huge file would be read whole first
 			f.Close()
-			note(overLimit(limit))
+			oversize()
 			continue
 		}
 		data, err := io.ReadAll(io.LimitReader(f, limit+1))
@@ -165,7 +174,7 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 		case err != nil:
 			note("it could not be read")
 		case int64(len(data)) > limit:
-			note(overLimit(limit))
+			oversize()
 		case image && !images:
 			b.WriteString(agent.AttachElement(fmt.Sprintf("image path=%q", name), "omitted: the current model does not take images"))
 		case image:

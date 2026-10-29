@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/png"
 	"io/fs"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -119,6 +120,16 @@ func mustSkill(t *testing.T, h *Host, name string) skill.Skill {
 	return s
 }
 
+// toastUI records what the user is told
+type toastUI struct {
+	fakeUI
+	notes []string
+}
+
+func (u *toastUI) Notify(_ slog.Level, title, body string) {
+	u.notes = append(u.notes, title+": "+body)
+}
+
 // TestExpandAttachments: project files referenced with @ attach; a file
 // outside the project attaches through its symlink or its ../ path, and a
 // missing one, a FIFO and a directory say why or stay prose.
@@ -176,6 +187,29 @@ func TestExpandAttachments(t *testing.T) {
 			t.Fatalf("missing %q in %q", want, got)
 		}
 	}
+	// the size note is the model's cue to read the file with its tools, not
+	// the user's failure; an oversized image cannot travel, so it still tells
+	ui := &toastUI{}
+	h.SetUIHooks(ui)
+	h.expandAttachments("@big.txt", true)
+	if len(ui.notes) != 0 {
+		t.Fatalf("an oversized text file toasts the user: %v", ui.notes)
+	}
+	img := filepath.Join(proj, "big.png")
+	f, err := os.Create(img)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(attachImageMax + 1); err != nil { // sparse: the size check reads nothing
+		t.Fatal(err)
+	}
+	f.Close()
+	ui.notes = nil
+	h.expandAttachments("@big.png", true)
+	if len(ui.notes) != 1 || !strings.Contains(ui.notes[0], "20 MB") {
+		t.Fatalf("an oversized image refuses to the user: %v", ui.notes)
+	}
+	h.SetUIHooks(&fakeUI{})
 
 	// the composer hands out @dir/ tokens (a completion, a drop): a directory
 	// attaches its own entries, as ls lists them
