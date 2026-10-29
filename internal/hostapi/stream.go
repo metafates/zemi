@@ -244,9 +244,24 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	ag.retries, ag.retryAt, ag.retryWhy = 0, time.Time{}, ""
 	// a call still open here was cut off: by the user, or by the error that
 	// ended the turn
+	var cut []StreamTool
 	for i, t := range ag.tools {
 		if t.Status == CallRun || t.Status == CallWait {
 			ag.tools[i].Status, ag.tools[i].Diff = map[bool]CallStatus{true: CallStopped, false: CallErr}[errors.Is(err, context.Canceled)], ""
+			cut = append(cut, ag.tools[i])
+		}
+	}
+	// a cut call's step never finished, so nothing logged it: log the call and
+	// its result here, so a resumed window draws the rail the live one drew.
+	// The rows land before the flush, so the pairing pairs them at once; a
+	// retry re-streams the step and logs its own.
+	if !hold && h.chat != nil {
+		for _, t := range cut {
+			if e := h.chat.Tool(string(tools.ToolName(t.Name)), t.Input, t.ID); e != nil {
+				h.Log.Warn("call not logged", "origin", "agent", "error", e)
+			} else if e := h.chat.Echo(t.Name, false, t.Output, t); e != nil {
+				h.Log.Warn("call result not logged", "origin", "agent", "error", e)
+			}
 		}
 	}
 	n := h.flushOutput(stat)
@@ -300,8 +315,8 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		row := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: clipRunes(sanitize.String(h.errorRowText(err)), 400)}
 		if errors.Is(err, context.Canceled) {
 			row.Status = CallCancelled
-			// a call the interrupt cut off names itself here: its row never
-			// reached the log, so this is the only trace of what was running
+			// a call the interrupt cut off is logged with its result above,
+			// so a resumed window draws the rail it drew live
 			for _, t := range live {
 				if t.Status != CallStopped {
 					continue

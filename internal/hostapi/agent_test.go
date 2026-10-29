@@ -1134,6 +1134,50 @@ func TestTurnDoneDropsTheRetry(t *testing.T) {
 	}
 }
 
+// TestTurnDoneLogsTheCutCall: a call the turn's end cut off never reached the
+// log (its step's OnStepFinish is gone), so a resumed window drew no rail for
+// it. TurnDone logs the call and its result, and the rebuild draws the row
+// the live window drew.
+func TestTurnDoneLogsTheCutCall(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.agents.mu.Lock()
+	h.agents.tools = []StreamTool{{ID: "t1", Name: "shell", Label: "slow4",
+		Input: `{"command":"sleep 8","about":"slow4"}`, Status: CallRun,
+		Output: "stopped: the user interrupted the command"}}
+	h.agents.mu.Unlock()
+	sa := h.streamHooks()
+	sa.TurnDone(context.Canceled, fantasy.Usage{})
+
+	live := h.Session().Transcript
+	var rail ChatMessage
+	for _, m := range live {
+		if m.Kind == RowTool {
+			rail = m
+		}
+	}
+	rows, err := h.DB.LogTail(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool, echo := false, false
+	for _, r := range rows {
+		tool, echo = tool || r.Kind == store.KindTool, echo || r.Kind == store.KindEcho
+	}
+	if !tool || !echo {
+		t.Fatalf("the log holds no cut call's rows: %v", rows)
+	}
+	var rebuilt ChatMessage
+	for _, m := range logRows(rows) {
+		if m.Kind == RowTool {
+			rebuilt = m
+		}
+	}
+	if rebuilt.Tool != rail.Tool || rebuilt.Label != rail.Label || rebuilt.Status != rail.Status || rebuilt.Output != rail.Output {
+		t.Fatalf("rebuilt rail %+v, want the live one %+v", rebuilt, rail)
+	}
+}
+
 // TestTurnClockIsTheHostClock: a turn's stamps and the snapshot that reads
 // them share one clock, so a zemi on a clock behind the wall one (a plugin
 // test's) counts no negative elapsed.
