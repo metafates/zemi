@@ -144,6 +144,17 @@ func TestOverlayFilter(t *testing.T) {
 		}},
 		{"j moves while no filter types", hostapi.Overlay{}, runes("jj"), func(a *App) string { return state(a, false, "", 5, 2) }},
 		{"a bare letter starts the filter, as a word typed to a picker narrows", hostapi.Overlay{}, runes("b"), func(a *App) string { return state(a, true, "b", 1, 0) }},
+		{"a no-match footer drops enter, esc still clears", hostapi.Overlay{}, runes("/zz"), func(a *App) string {
+			if s := state(a, true, "zz", 0, 0); s != "" {
+				return s
+			}
+			box := a.overlayBox(&a.overlays[0], 80, 20, true)
+			foot := hostapi.SegsText(box[len(box)-2])
+			if strings.Contains(foot, "enter") {
+				return foot
+			}
+			return fail(strings.Contains(foot, "esc clear"), foot)
+		}},
 		{"enter on a kept query acts on the row", hostapi.Overlay{}, runes("/e", "enter", "enter"), func(a *App) string { return closedWith(a, "Beta two") }},
 		{"a typing filter takes the key", hostapi.Overlay{Items: keyed}, runes("/3"), func(a *App) string { return state(a, true, "3", 0, 0) }},
 		{"a row's key acts on the selected row", hostapi.Overlay{Items: keyed}, runes("jj3"), func(a *App) string { return closedWith(a, "gamma three") }},
