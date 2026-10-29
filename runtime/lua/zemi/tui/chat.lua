@@ -529,7 +529,11 @@ local function builder(ctx, width)
 		local full = (ctx.rail or 0) == first
 		local digest = fmt.digest(list, first, last, ctx.cwd, ctx.home)
 		if digest == "" then
-			B.rail(list, first, last, { full = full })
+			-- no digest row to pin: the rail's own head takes the section, so
+			-- the prompt's pin never draws over the rail's rows
+			local at = #B.lines
+			B.rail(list, first, last, { full = full, head = opened and "section" or nil })
+			if opened and #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
 			return
 		end
 		local head = opened and "section" or nil
@@ -599,7 +603,7 @@ local function builder(ctx, width)
 	---@param list zemi.tui.Tool[]
 	---@param first integer
 	---@param last integer
-	---@param o { full: boolean?, live: boolean?, run: integer?, unroll: boolean? } o.full draws every row of the run starting at run with the bodies folded; o.unroll draws a thought as its text.
+	---@param o { full: boolean?, live: boolean?, run: integer?, unroll: boolean?, head: string? } o.full draws every row of the run starting at run with the bodies folded; o.unroll draws a thought as its text; o.head marks the rail's first row sticky.
 	function B.rail(list, first, last, o)
 		frame()
 		local at = #B.lines
@@ -625,6 +629,7 @@ local function builder(ctx, width)
 		-- the fold row bounds the rail's head where its bar would stand, so
 		-- the kept tail draws no opening bar of its own
 		B.steps(list, from, last, o, from > first)
+		if o.head and #B.lines > at then B.lines[at + 1][1].sticky = o.head end
 		frame()
 		if n < 2 then return end
 		local label, click = foldRow(whole[key], n, "more:" .. key)
