@@ -653,9 +653,9 @@ func IsWaitCall(name, input string) bool {
 	return in.Wait || in.Action == "wait"
 }
 
-// maxRetries is the provider retries a step gets; fantasy's default of 3
-// gives up on an overloaded provider inside a minute.
-var maxRetries = 5
+// maxRetries is the provider retries a step gets; a shared gateway's storm
+// outlasts 5 spaced retries, and a run's only patience is this count.
+var maxRetries = 8
 
 // ErrToolLoop ends a turn the model has wedged: see repeatsToolCalls.
 var ErrToolLoop = errors.New("stopped: the agent kept repeating the same tool calls with the same results")
