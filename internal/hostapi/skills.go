@@ -468,7 +468,18 @@ func (h *Host) skillsCommand(args string, confirm bool) error {
 		h.Notify(slog.LevelInfo, "Skill "+fields[0]+"d", fields[1])
 		return nil
 	case len(fields) == 2 && fields[0] == "toggle": // the /skills list, whose marks show the state
-		return h.setSkillEnabled(fields[1], !h.skillsReg.isEnabled(fields[1]))
+		on := !h.skillsReg.isEnabled(fields[1])
+		if err := h.setSkillEnabled(fields[1], on); err != nil {
+			return err
+		}
+		// the same record the verb path gives: a stray key on the list must
+		// not flip a skill silently
+		verb := "disabled"
+		if on {
+			verb = "enabled"
+		}
+		h.Notify(slog.LevelInfo, "Skill "+verb, fields[1])
+		return nil
 	case len(fields) == 2 && fields[0] == "open":
 		return h.openSkillFile(fields[1])
 	case len(fields) == 2 && fields[0] == "delete":
