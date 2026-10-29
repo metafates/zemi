@@ -265,7 +265,9 @@ Contracts that make this safe:
   boundary (before the next model call). A foreground `agent` or
   `workflow` call waiting on its run cannot hold the turn past the user's
   own message (§6.3): the message hands the run off, the call answers at
-  once, and the run's report arrives as a message when it ends. Only the
+  once, and the run's report arrives as a message when it ends. An
+  interrupt of the turn hands its runs off the same way, so the wait
+  stops while the work it waited on goes on. Only the
   user's own line raises that signal (`Host.AgentSendUser`: the composer,
   or a command-line prompt), only when it joined a running turn - one that
   starts a turn leaves its calls waiting - and never a report, a plugin
@@ -1116,7 +1118,8 @@ with `run` sets a running one's limit (1-16, at the next dispatch);
 again, counting toward the 100-agent cap. `background` delivers the result
 like a background agent's report, and a failed run's result says how to
 rerun it. A call without `background` waits for its run, and the user's own
-message hands the run off: the call answers with the background text and the
+message or an interrupt of the turn hands the run off: the call answers with
+the background text and the
 result arrives as a message like that one, since a call cannot hold the turn
 past a message the user sent (§4). A handed-off run keeps its row, revised
 when the run ends - a run that finished with a failed agent or a failed

@@ -1183,7 +1183,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 		" what to report and how to verify. Only its final report comes back, and the user does not see it: relay what matters." +
 		" A long run sends you lines with the update tool as it goes, which you read at your next step." +
 		" Calls sent together run at once." +
-		" Set background for long work you need not wait on. A call without it waits for its run, and hands the run off when the user sends a message while it runs: the report or result then arrives as a message." +
+		" Set background for long work you need not wait on. A call without it waits for its run, and hands the run off when the user sends a message while it runs or when the turn is interrupted: the report or result then arrives as a message." +
 		" send_to continues a run, running or finished, by its run id; stop kills the run." +
 		" wait blocks until a run, or every run and workflow of this session with \"all\", ends instead of working on; a run sending an update, or a sibling finishing or sending one, ends the wait early with a line naming it and the waited run, which keeps running: read it, answer with send_to if needed, then wait again.")
 	b.WriteString("\n\nAgents:")
@@ -1704,6 +1704,11 @@ func (t *agentTool) foreground(call context.Context, callID string, run *agentRu
 	select {
 	case a = <-answers:
 	case <-call.Done():
+		// an interrupt stops the turn, not the run: it hands off the way one a
+		// message took does, and its report arrives as a message
+		if run.detach() {
+			return fantasy.NewTextResponse("The turn was interrupted while agent " + run.id + " (" + run.label() + ") ran; the run goes on in the background, and its report arrives as a message. Wait for it with wait=" + run.id + " or read the report when it lands."), nil
+		}
 		run.cancel()
 		a = <-answers
 	case <-t.h.userSpoke():
@@ -1729,7 +1734,7 @@ func (t *agentTool) foreground(call context.Context, callID string, run *agentRu
 		msg := "agent " + run.id + " failed: " + t.h.friendlyError(a.err)
 		if errors.Is(a.err, context.Canceled) {
 			// the user or the caller's own stop call cancelled it
-			msg = "agent " + run.id + ": this agent was stopped; do not start it again unless asked"
+			msg = "agent " + run.id + " was stopped; do not restart it unless asked"
 		}
 		if a.text != "" {
 			msg += "\n\nIts last message before that:\n" + a.text

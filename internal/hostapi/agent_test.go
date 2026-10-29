@@ -2213,3 +2213,50 @@ func TestInterruptedQueueDrains(t *testing.T) {
 		t.Fatalf("%d timers armed with an empty queue", n)
 	}
 }
+
+// TestInterruptHandsTheForegroundRunOff: esc interrupts the turn a foreground
+// agent call waits in, not the run - the run detaches the way one a message
+// took does, keeps working, and its report lands in the conversation.
+func TestInterruptHandsTheForegroundRunOff(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{}) // a detached run needs the TUI: headless it runs inline
+	release := make(chan struct{})
+	var calls atomic.Int64
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
+			switch {
+			case strings.Contains(system, "a subagent of zemi"):
+				<-release
+				return textParts("found the thing")
+			case toolResult:
+				return textParts("noted")
+			case calls.Add(1) == 1:
+				return toolCallParts("c1", "agent", `{"description":"slow dig","prompt":"find it","agent":"explore"}`)
+			}
+			return textParts("done")
+		}}, nil
+	}
+	if err := h.AgentSend("go"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if n := h.tasks.runningFor(h.AgentSessionID()); n != 1 {
+			return fmt.Errorf("the foreground run is not going: %d", n)
+		}
+		return nil
+	})
+	h.AgentCancel() // the UI interrupt's call
+	close(release)
+	waitFor(t, func() error {
+		if n := h.tasks.runningFor(h.AgentSessionID()); n != 0 {
+			return fmt.Errorf("the run did not finish after its handoff: %d running", n)
+		}
+		for _, m := range h.Session().Transcript {
+			if m.Kind == "notice" && m.Run != "" && strings.Contains(m.Text, "found the thing") {
+				return nil
+			}
+		}
+		return fmt.Errorf("the detached run's report never landed: %+v", h.Session().Transcript)
+	})
+}

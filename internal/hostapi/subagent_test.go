@@ -1308,28 +1308,38 @@ func TestAgentToolHandsOff(t *testing.T) {
 
 // TestForegroundEscStopsTheRun: esc cancels the call's own context, and the run
 // waiting on it must stop - the arm the agent tool shares with a workflow call.
-func TestForegroundEscStopsTheRun(t *testing.T) {
+// TestForegroundEscHandsTheRunOff: esc on a turn a foreground agent call waits
+// in hands the run off the way a message taking the turn does - the call
+// answers at once, the run keeps going, and its report lands as a message.
+func TestForegroundEscHandsTheRunOff(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.SetUIHooks(&fakeUI{})
 	seedSession(t, h)
-	runCtx, runCancel := context.WithCancel(t.Context())
-	run := &agentRun{id: "r1", agent: "explore", status: RunRunning, cancel: runCancel}
+	release := make(chan struct{})
+	run := &agentRun{id: "r1", agent: "explore", parent: h.AgentSessionID(), status: RunRunning, cancel: func() {}}
 	call, esc := context.WithCancel(t.Context())
 	defer esc()
 	answered := make(chan fantasy.ToolResponse, 1)
 	go func() {
 		resp, _ := (&agentTool{h: h}).foreground(call, "c1", run, func(func(string)) (string, error) {
-			<-runCtx.Done() // the run keeps going until the call stops it
-			return "", runCtx.Err()
+			<-release // the run outlives the call: its own context holds it
+			return "found it", nil
 		})
 		answered <- resp
 	}()
 	esc()
 	resp := waitCall(t, answered)
-	if !strings.Contains(resp.Content, "this agent was stopped") {
-		t.Fatalf("esc answered %q, want the run stopped", resp.Content)
+	if !strings.Contains(resp.Content, "the run goes on") || !run.handedOff() {
+		t.Fatalf("esc answered %q (handed off %v), want the run handed off", resp.Content, run.handedOff())
 	}
+	close(release)
+	waitFor(t, func() error {
+		if n := reportRows(h, run.id); n != 1 {
+			return fmt.Errorf("%d report rows, want the detached run's report", n)
+		}
+		return nil
+	})
 }
 
 // TestForegroundRunPanicAnswersTheCall: a panic inside a foreground run must not
@@ -1372,7 +1382,7 @@ func TestAgentToolStopsARun(t *testing.T) {
 		t.Fatalf("stop = %q (error %v), want the stopped text", stop.Content, stop.IsError)
 	}
 	resp := waitCall(t, calls)
-	if !resp.IsError || !strings.Contains(resp.Content, "this agent was stopped") {
+	if !resp.IsError || !strings.Contains(resp.Content, "was stopped") {
 		t.Fatalf("the run's call answered %q (error %v), want the stopped notice", resp.Content, resp.IsError)
 	}
 	waitFor(t, func() error {

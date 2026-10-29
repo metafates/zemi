@@ -913,7 +913,7 @@ func TestStopWording(t *testing.T) {
 	resp, _ := (&agentTool{h: h}).foreground(t.Context(), "c1", &agentRun{id: "r1", agent: "explore"}, func(func(string)) (string, error) {
 		return "", context.Canceled
 	})
-	if !strings.Contains(resp.Content, "this agent was stopped") {
+	if !strings.Contains(resp.Content, "was stopped") {
 		t.Errorf("foreground stop: %q", resp.Content)
 	}
 	if err := h.stopRun(""); err == nil || !strings.Contains(err.Error(), "name the run to stop") {
