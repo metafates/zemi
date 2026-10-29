@@ -867,7 +867,7 @@ func mcpMedia(text string, data []byte, mime string, images, audio func() bool) 
 	case len(data) > limit:
 		err = fmt.Errorf("a %d byte %s, over the %d byte limit", len(data), kind, limit)
 	case kind != "image":
-		if audio != nil && !audio() {
+		if kind == "audio" && audio != nil && !audio() {
 			err = errors.New("this model takes no audio")
 			break
 		}

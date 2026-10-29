@@ -1254,6 +1254,13 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		return resp, nil
 	}
 	defer t.h.postNotify(ctx, t.pipe.Pad, string(tools.ToolAgent), call.Input, &reply, time.Now())
+	// a composed wait validates before the send_to acts, so a mistyped wait
+	// id cannot queue a message or run a continuation it never holds for
+	if in.Wait != "" && in.Wait != "all" {
+		if _, err := t.h.sessionRun(in.Wait); err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+	}
 	if in.SendTo != "" {
 		run, err := t.h.sessionRun(in.SendTo)
 		if err != nil {

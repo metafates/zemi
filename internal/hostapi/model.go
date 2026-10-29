@@ -769,6 +769,9 @@ func modelCapabilities(e map[string]any, at string) (map[string]bool, error) {
 	if !isTable {
 		return nil, fmt.Errorf("%s.capabilities must be a table of booleans", at)
 	}
+	if err := onlyKeys(tb, at+".capabilities", "vision", "audio"); err != nil {
+		return nil, err
+	}
 	for _, k := range []string{"vision", "audio"} {
 		switch b := tb[k].(type) {
 		case nil:
@@ -881,7 +884,10 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 				}
 			}
 		}
-		api, _ := e["api"].(string)
+		api, ok := e["api"].(string)
+		if e["api"] != nil && !ok {
+			return agent.Spec{}, fmt.Errorf("%s.api must be a string, not a %T", at, e["api"])
+		}
 		if api != "" && !slices.Contains(modelAPIs, api) {
 			return agent.Spec{}, fmt.Errorf("%s.api %q: use %s", at, api, strings.Join(modelAPIs, ", "))
 		}

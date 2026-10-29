@@ -380,12 +380,19 @@ func (h *Host) openConfigEdit(ui UIHooks, path config.Key) error {
 // pickItems are path's choices as rows, the current one keyed and its index.
 func (h *Host) pickItems(path config.Key) (items []OverlayItem, sel int) {
 	cur := h.Settings.Str(path)
+	// a reasoning level reads by its display name ("X-High"), the value the
+	// config stores beside it: the live model's own, the generic one without
+	var names func(string) string
+	if path == config.KeyAgentEffort {
+		names = agent.EffortName
+		if m, ok := h.modelSpec(h.liveModelID()); ok && len(m.EffortNames) > 0 {
+			names = m.EffortName
+		}
+	}
 	for i, c := range h.configChoices(path) {
 		item := OverlayItem{Text: cmp.Or(c, "default"), Run: "config set " + string(path) + " " + c, Verb: VerbPick}
-		// a reasoning level reads by its display name ("X-High"), the value
-		// the config stores beside it
-		if path == config.KeyAgentEffort && c != "" && c != cur {
-			item.Desc = agent.EffortName(c)
+		if names != nil && c != "" && c != cur {
+			item.Desc = names(c)
 		}
 		if c == cur {
 			item.Tag, sel = "current", i

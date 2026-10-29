@@ -2803,6 +2803,12 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 			h.agents.mu.Unlock()
 			return h.takesImages(id)
 		},
+		Audio: func() bool {
+			h.agents.mu.Lock()
+			id := h.liveModelID()
+			h.agents.mu.Unlock()
+			return h.takesAudio(id)
+		},
 		Pad:          h.ScratchDir(),
 		ProjectDir:   h.Dirs.ProjectDir,
 		Seen:         h.readLog(),

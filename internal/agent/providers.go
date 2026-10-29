@@ -221,6 +221,10 @@ func builtinKind(id catwalk.InferenceProvider, t catwalk.Type) Kind {
 		return KindOpenRouter
 	case "vercel":
 		return KindVercel
+	case "azure":
+		// its data plane needs an api-version query its plain openai wire
+		// does not carry
+		return ""
 	}
 	switch t {
 	case catwalk.TypeMessages:
@@ -258,6 +262,9 @@ func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 			continue
 		}
 		kind := builtinKind(p.ID, p.Type)
+		if kind == "" {
+			continue
+		}
 		c.Info.Providers++
 		c.Info.Models += len(p.Models)
 		name, key := env(p.APIKey)
@@ -905,6 +912,12 @@ func (r *Registry) CallOptions(id ModelID, effort, sessionID string) fantasy.Pro
 	if !ok {
 		return nil
 	}
+	// the model's wire format wins over the spec's kind, as resolve's does:
+	// one provider can serve completions, responses and messages models side
+	// by side
+	if mo, ok := spec.Model(model); ok && mo.API != "" {
+		spec.Kind = apiKind(mo.API, spec.Kind)
+	}
 	var re *openai.ReasoningEffort
 	if effort != "" {
 		re = new(openai.ReasoningEffort(effort))
@@ -914,8 +927,12 @@ func (r *Registry) CallOptions(id ModelID, effort, sessionID string) fantasy.Pro
 		if sessionID != "" {
 			key = &sessionID
 		}
+		responses := openai.IsResponsesModel(model)
+		if mo, ok := spec.Model(model); ok && mo.API != "" {
+			responses = mo.API == "responses"
+		}
 		switch {
-		case openai.IsResponsesModel(model):
+		case responses:
 			// fantasy drops both reasoning fields for a model it knows does not reason
 			return openai.NewResponsesProviderOptions(&openai.ResponsesProviderOptions{ReasoningEffort: re, ReasoningSummary: new("auto"), PromptCacheKey: key})
 		case re != nil || key != nil:
@@ -1124,12 +1141,14 @@ func (r *Registry) resolve(id ModelID) (fantasy.LanguageModel, error) {
 	key := r.apiKey(spec.ID)
 	// the model's wire format wins over the spec's kind: one provider can
 	// serve completions, responses and messages models side by side
-	kind := spec.Kind
 	if mo, ok := spec.Model(model); ok && mo.API != "" {
-		kind = apiKind(mo.API, spec.Kind)
+		spec.Kind = apiKind(mo.API, spec.Kind)
 	}
-	switch kind {
+	switch spec.Kind {
 	case KindAnthropic:
+		// the SDK appends v1/messages: a base that already ends in /v1 (an
+		// openai-shaped endpoint serving a messages model) would double it
+		spec.BaseURL = strings.TrimSuffix(spec.BaseURL, "/v1")
 		return languageModel(spec, key, model, anthropic.New, anthropic.WithBaseURL, anthropic.WithAPIKey, anthropic.WithHeaders,
 			func(c *http.Client) anthropic.Option { return anthropic.WithHTTPClient(c) }, nil)
 	case KindOpenAI:
