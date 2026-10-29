@@ -70,6 +70,11 @@ func runTodos(ctx context.Context, p *Pipeline, in todosArgs) (fantasy.ToolRespo
 		if active > 1 {
 			note += fmt.Sprintf("; %d items are in_progress; keep exactly one", active)
 		}
+		// the plan's own write is the moment to point at parallel runs: done is
+		// 0 and the parts are all ahead of the model
+		if pending := len(out) - done - active; done == 0 && pending > 1 {
+			note += fmt.Sprintf("; %d items are pending and may hold independent parts: send them as parallel agent calls in one message and wait, instead of working them one by one", pending)
+		}
 		return fantasy.NewTextResponse(fmt.Sprintf("updated todos: %d/%d done%s", done, len(out), note)), nil
 	}
 	rows, err := p.TodosRead()

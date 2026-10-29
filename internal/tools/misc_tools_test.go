@@ -61,6 +61,18 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 	if resp.IsError || len(stored) != 1 || stored[0].Content != "b" || resp.Content != "updated todos: 0/1 done; dropped 1 cancelled" {
 		t.Fatalf("cancelled items drop: stored %+v, %+v", stored, resp)
 	}
+	if len(stored) != 1 {
+		t.Fatalf("failed writes must not replace the list: %+v", stored)
+	}
+
+	resp = call(t, todos, `{"todos":[{"content":"a","status":"pending"},{"content":"b","status":"pending"},{"content":"c","status":"pending"}]}`)
+	if resp.IsError || !strings.Contains(resp.Content, "3 items are pending and may hold independent parts: send them as parallel agent calls") {
+		t.Fatalf("a fresh plan points at parallel runs: %+v", resp)
+	}
+	resp = call(t, todos, `{"todos":[{"content":"a","status":"done"},{"content":"b","status":"pending"},{"content":"c","status":"pending"}]}`)
+	if resp.IsError || strings.Contains(resp.Content, "parallel agent calls") {
+		t.Fatalf("a plan already underway does not nag: %+v", resp)
+	}
 
 	for _, bad := range []struct{ in, want string }{
 		{`{"todos":[{"content":"","status":"pending"}]}`, "todo 1: content is required"},
@@ -73,9 +85,6 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 		if !resp.IsError || !strings.HasPrefix(resp.Content, bad.want) {
 			t.Fatalf("bad input must error: %s -> %+v", bad.in, resp)
 		}
-	}
-	if len(stored) != 1 {
-		t.Fatalf("failed writes must not replace the list: %+v", stored)
 	}
 
 	broken := &Pipeline{}
