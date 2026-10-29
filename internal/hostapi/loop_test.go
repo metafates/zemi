@@ -221,6 +221,8 @@ func newLoopHost(t *testing.T) (*Host, *fakeClock) {
 func TestSetLoopRefuses(t *testing.T) {
 	t.Parallel()
 	h, _ := newLoopHost(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
 	for _, c := range []struct{ args, want string }{
 		{"30s check", "every 1m to 24h"},
 		{"48h check", "every 1m to 24h; a longer wait belongs to cron"},
@@ -229,11 +231,19 @@ func TestSetLoopRefuses(t *testing.T) {
 		{"5m /loop 1m x", "cannot run /loop"},
 		{"/goal the tests pass", "cannot run /goal"},
 		{"stop", "no loop to stop"},
-		{"", "no loop;"},
 	} {
 		if err := h.SetLoop(c.args); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("/loop %s: %v, want %q", c.args, err, c.want)
 		}
+	}
+	// a bare /loop answers in a box that stays, not a toast
+	if err := h.SetLoop(""); err != nil {
+		t.Errorf("/loop : %v, want the empty overlay", err)
+	}
+	ui.mu.Lock()
+	defer ui.mu.Unlock()
+	if len(ui.opened) != 1 || ui.opened[0].Empty == "" {
+		t.Fatalf("/loop with no loop opened %+v, want the empty-state overlay", ui.opened)
 	}
 }
 

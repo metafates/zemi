@@ -1939,6 +1939,9 @@ func (h *Host) resetTodoNag(todos []store.Todo) {
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
+	// the armed note dies with the list: a write makes it stale, a wipe
+	// must not let it ride into the chat that replaced the old one
+	ag.todoNag = ""
 	ag.todoSteps, ag.todoPending = 0, false
 	if len(todos) < 2 {
 		ag.todoList = nil // a single item is a trivial task: it never nags

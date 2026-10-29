@@ -1309,8 +1309,9 @@ zemi.ui.widget.add({
 				{ text = "Todos ", hl = "TodoTitle" },
 				{ text = (#todos - left) .. "/" .. #todos .. "  ", hl = "Dim" },
 			}
-			for n = 1, math.min(#todos, cap) do
-				local lo, hi = math.floor((n - 1) * #todos / cap), math.floor(n * #todos / cap)
+			local cells = math.min(#todos, cap)
+			for n = 1, cells do
+				local lo, hi = math.floor((n - 1) * #todos / cells), math.floor(n * #todos / cells)
 				local live, all = false, true
 				for i = lo + 1, hi do
 					if todos[i].status == "in_progress" then live = true end

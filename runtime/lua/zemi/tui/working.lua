@@ -116,7 +116,7 @@ zemi.ui.widget.add({
 							or "retrying now"
 						)
 							.. why
-							.. " · "
+							.. " · elapsed "
 							.. clock(ag.elapsed)
 					),
 					5,
