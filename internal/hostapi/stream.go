@@ -199,12 +199,19 @@ func (s *streamAdapter) ToolCallEnd(id, name string, result fantasy.ToolResultOu
 // to the "main" anchor row; a subagent run keeps its own rows.
 func (s *streamAdapter) StreamDone(u fantasy.Usage) {
 	ag := s.h.agents
+	in := billedInput(u)
 	ag.mu.Lock()
 	model := s.h.turnModelID()
 	// the context the latest step carried: the statusline's ctx meter reads it
-	ag.lastIn = billedInput(u)
+	ag.lastIn = in
 	ag.mu.Unlock()
 	s.h.bill(store.MainSessionID, model, u)
+	// the resume's meter reads it back instead of estimating
+	if db := s.h.DB; db != nil {
+		if err := db.SetSessionLastIn(store.MainSessionID, in); err != nil {
+			s.h.Log.Warn("usage not logged", "origin", "model", "error", err)
+		}
+	}
 }
 
 // StepDone counts the step for the todo nag unless a todos call ran in it.

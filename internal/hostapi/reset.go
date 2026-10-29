@@ -78,6 +78,12 @@ func (h *Host) chatDropped() {
 	ag.lastIn = 0
 	ag.shellNotes = nil
 	ag.mu.Unlock()
+	// a dropped chat starts its meter over: the stored context is gone with it
+	if h.DB != nil {
+		if err := h.DB.SetSessionLastIn(store.MainSessionID, 0); err != nil {
+			h.Log.Warn("usage not logged", "origin", "reset", "error", err)
+		}
+	}
 	h.resetTodoNag(nil)
 	h.goalDropped()
 	h.forgetInstructions()

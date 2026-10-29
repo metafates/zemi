@@ -988,6 +988,13 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 			h.stampReset(h.session.Transcript)
 		}
 		h.loadGoal()
+		// the meter rides the stored context of the latest step: a resume
+		// shows it before the first new turn bills its own
+		if s, err := h.DB.GetSession(store.MainSessionID); err == nil {
+			h.agents.mu.Lock()
+			h.agents.lastIn = s.LastIn
+			h.agents.mu.Unlock()
+		}
 	}
 	h.picked, h.pluginKeys = map[config.Key]any{}, map[config.Key]Gen{}
 	if h.GlobalDB != nil {

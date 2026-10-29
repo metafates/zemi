@@ -1178,6 +1178,26 @@ func TestTurnDoneLogsTheCutCall(t *testing.T) {
 	}
 }
 
+// TestStreamDoneStoresLastIn: a step's context is stored where a resume's
+// meter reads it, and a dropped chat clears it with the chat it belonged to.
+func TestStreamDoneStoresLastIn(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	sa := h.streamHooks()
+	sa.StreamDone(fantasy.Usage{InputTokens: 900, CacheReadTokens: 100})
+	s, err := h.DB.GetSession(store.MainSessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := billedInput(fantasy.Usage{InputTokens: 900, CacheReadTokens: 100}); s.LastIn != want {
+		t.Fatalf("stored last_in %d, want %d", s.LastIn, want)
+	}
+	h.chatDropped()
+	if s, err := h.DB.GetSession(store.MainSessionID); err != nil || s.LastIn != 0 {
+		t.Fatalf("after a drop: last_in %d err %v, want 0", s.LastIn, err)
+	}
+}
+
 // TestTurnClockIsTheHostClock: a turn's stamps and the snapshot that reads
 // them share one clock, so a zemi on a clock behind the wall one (a plugin
 // test's) counts no negative elapsed.

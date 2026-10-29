@@ -75,6 +75,12 @@ func (s *DB) SetSessionRunStatus(id, status string) error {
 	return s.execOne("set run status", `UPDATE sessions SET run_status = ? WHERE id = ?`, status, id)
 }
 
+// SetSessionLastIn records the context the latest step used, what a resume's
+// ctx meter reads back instead of estimating.
+func (s *DB) SetSessionLastIn(id string, lastIn int64) error {
+	return s.execOne("set last in", `UPDATE sessions SET last_in = ? WHERE id = ?`, lastIn, id)
+}
+
 func (s *DB) GetSession(id string) (*Session, error) {
 	return one(s.db.QueryRow(`SELECT `+sessionCols+` FROM sessions WHERE id = ?`, id), scanSession)
 }
