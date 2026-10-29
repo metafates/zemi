@@ -327,7 +327,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return a.updateCompletion()
 	case "up":
-		if c.empty() && a.restoreQueue() {
+		if c.empty() && a.restoreQueue() > 0 {
 			return nil
 		}
 		if !a.composerMove(-1) {
@@ -458,9 +458,10 @@ func (a *App) interrupt() {
 		a.finishQuestion(false)
 	}
 	a.host.AgentCancel()
-	if a.restoreQueue() {
+	if n := a.restoreQueue(); n > 0 {
 		// the queued words read as lost: the toast says where they went
-		a.pushToast(slog.LevelInfo, "Queued messages restored", "the draft holds them; edit and send again")
+		a.pushToast(slog.LevelInfo, "Queued "+hostapi.Plural(n, "message", "messages")+" restored",
+			"the draft holds them; edit and send again")
 	}
 	a.cancelling = a.host.AgentActive()
 }
