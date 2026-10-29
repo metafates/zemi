@@ -160,7 +160,9 @@ func (c *chatLog) Shell(cmd, out string, ok bool) error {
 }
 
 // Work logs a subagent's report or update: the run it reports for, its name,
-// the report's status word, and the "[Name]" head it opens with.
+// the report's status word, and the "[Name]" head it opens with. A report too
+// long for one row splits into siblings, each labeled, so a continuation
+// reads as the same run's where the split cut it.
 func (c *chatLog) Work(run, name, status, text string) (int64, error) {
 	meta, err := json.Marshal(struct {
 		Run    string `json:"run"`
@@ -170,7 +172,12 @@ func (c *chatLog) Work(run, name, status, text string) (int64, error) {
 	if err != nil {
 		return -1, err
 	}
-	first, _, err := c.append(store.KindWork, text, string(meta), "")
+	label := "[" + name + "] "
+	rows := splitText(text, chatSplitChars-len([]rune(label)))
+	for i := 1; i < len(rows); i++ {
+		rows[i] = label + rows[i]
+	}
+	first, _, err := c.appendRows(store.KindWork, rows, string(meta), "")
 	return first, err
 }
 
@@ -270,8 +277,12 @@ func (c *chatLog) setReplyStat(stat TurnStat, thought time.Duration) error {
 // append logs the rows a text splits into, each with its view line, and
 // returns the first and the last seq it wrote.
 func (c *chatLog) append(kind store.LogKind, text, meta, parts string) (int64, int64, error) {
+	return c.appendRows(kind, splitText(text, chatSplitChars), meta, parts)
+}
+
+func (c *chatLog) appendRows(kind store.LogKind, rows []string, meta, parts string) (int64, int64, error) {
 	first, last := int64(-1), int64(-1)
-	for _, row := range splitText(text, chatSplitChars) {
+	for _, row := range rows {
 		seq, err := c.h.DB.AppendLog(kind, row, meta, parts, "")
 		if err != nil {
 			return first, last, err

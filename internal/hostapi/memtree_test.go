@@ -588,6 +588,33 @@ func TestChatLogKinds(t *testing.T) {
 	}
 }
 
+// TestWorkContinuations: a report longer than one row splits into siblings,
+// each labeled, so a continuation reads as the same run's where the split cut.
+func TestWorkContinuations(t *testing.T) {
+	t.Parallel()
+	h, cl, _ := newTree(t, "x")
+	body := strings.Repeat("paragraph line\n", 1200)
+	if _, err := cl.Work("run1", "Scout", "finished", "[Scout] "+body); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := h.DB.LogTail(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) < 2 || rows[0].Kind != store.KindWork || rows[1].Kind != store.KindWork {
+		t.Fatalf("want split work rows, got %d rows", len(rows))
+	}
+	label := "[Scout] "
+	for i, r := range rows {
+		if !strings.HasPrefix(r.Text, label) {
+			t.Fatalf("row %d unlabeled: %q", i, r.Text[:min(20, len(r.Text))])
+		}
+		if !strings.Contains(r.MetaJSON, `"run":"run1"`) {
+			t.Fatalf("row %d meta %q", i, r.MetaJSON)
+		}
+	}
+}
+
 // TestChatSystemPromptShapes: the builder's system prompt is the one prompt,
 // and the compaction tasks carry the ruler and the <chat> context. The
 // compaction section binds the output, so the prompt carries no turns
