@@ -349,10 +349,11 @@ func (a *App) listDir(dir string) {
 }
 
 // readDir lists one directory for the path candidates: entry names with a
-// trailing slash on directories, directories first then lexical, each kind
-// capped at listMaxFiles so either alone cannot hide the other. A mount
-// that answers slowly holds the worker at most dirListWait; the abandoned
-// read's answer drops.
+// trailing slash on directories, directories first then lexical. The read is
+// whole up to scanMaxFiles - the word's base narrows what the directory
+// holds, and the display caps live in repaths - so a file past a display cap
+// stays reachable by name. A mount that answers slowly holds the worker at
+// most dirListWait; the abandoned read's answer drops.
 func readDir(dir string) []string {
 	ch := make(chan []string, 1)
 	go func() {
@@ -364,15 +365,19 @@ func readDir(dir string) []string {
 		out := make([]string, 0, len(des))
 		n := 0
 		for _, de := range des {
-			if de.IsDir() && n < listMaxFiles {
-				n++
+			if de.IsDir() {
+				if n++; n > scanMaxFiles {
+					break // NOTE: a directory past the scan ceiling narrows its first scanMaxFiles entries
+				}
 				out = append(out, de.Name()+"/")
 			}
 		}
 		n = 0
 		for _, de := range des {
-			if !de.IsDir() && n < listMaxFiles {
-				n++
+			if !de.IsDir() {
+				if n++; n > scanMaxFiles {
+					break
+				}
 				out = append(out, de.Name())
 			}
 		}

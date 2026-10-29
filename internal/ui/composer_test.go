@@ -631,6 +631,20 @@ func TestCompletionNarrowsHome(t *testing.T) {
 	if got := app.completion.paths; len(got) != 1 || got[0].label != "../Downloads/" {
 		t.Fatalf("parent narrowing: %+v", got)
 	}
+	// the narrowing searches the directory whole: a file sorting past the
+	// display caps still answers by name
+	for i := range 250 {
+		if err := os.WriteFile(filepath.Join(home, "Downloads", fmt.Sprintf("aa%03d.txt", i)), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(home, "Downloads", "zeta file.md"), []byte("z"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	open("@~/Downloads/zeta")
+	if got := labels(); len(got) != 1 || got[0] != "~/Downloads/zeta file.md" {
+		t.Fatalf("narrowing past the caps: %q", got)
+	}
 	open("@decoy")
 	if got := app.completion.paths; len(got) != 0 {
 		t.Fatalf("stale listing rows: %+v", got)
