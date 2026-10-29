@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/v2"
 	"errors"
@@ -101,7 +102,7 @@ func (s *streamAdapter) ToolCallPending(id, name string) {
 
 func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	s.h.Log.Debug("tool call start", "origin", "agent", "tool", name, "id", id)
-	row := StreamTool{ID: id, Name: name, Input: toolSummary(name, input), Label: toolLabel(input), Status: CallWait, Diff: inputDiff(name, input)}
+	row := StreamTool{ID: id, Name: name, Input: toolSummary(name, input), Raw: input, Label: toolLabel(input), Status: CallWait, Diff: inputDiff(name, input)}
 	ag := s.h.agents
 	ag.mu.Lock()
 	i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id })
@@ -272,7 +273,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	// re-streams the step and logs its own.
 	if !hold && h.chat != nil {
 		for _, t := range cut {
-			if e := h.chat.Tool(string(tools.ToolName(t.Name)), t.Input, t.ID); e != nil {
+			if e := h.chat.Tool(string(tools.ToolName(t.Name)), cmp.Or(t.Raw, t.Input), t.ID); e != nil {
 				h.Log.Warn("call not logged", "origin", "agent", "error", e)
 			} else if e := h.chat.Echo(t.Name, false, t.Output, t); e != nil {
 				h.Log.Warn("call result not logged", "origin", "agent", "error", e)

@@ -68,6 +68,7 @@ type StreamTool struct {
 	Output  string // the last lines of the result (shortOutput)
 	Name    string
 	Input   string
+	Raw     string // the call's raw args JSON: the log's tool row holds it, where the digest cannot rebuild the label
 	Status  CallStatus
 	Job     string        // shell and job_start calls: the job the work went to
 	Out     tools.Outcome // what the tool reported beyond its text, read when it ends
@@ -1954,10 +1955,10 @@ func (h *Host) aside(ctx context.Context, text string) (string, error) {
 
 const recapPrompt = `The user stepped away and is coming back. In one or two short sentences of plain text, say what this conversation is working toward, then where it stands: the next step, a question waiting on the user, or a check not yet run. Keep file, command and identifier names exact. Call no tools: none will run. No heading, no label, no apology.`
 
-// Recap adds a live-only notice row saying where the session stands, from
-// an aside on the cached conversation. The UI calls it when nobody touched
-// the terminal since a turn ended well, and cancels ctx on the next input;
-// it is a busy job too, so esc stops it and the working row names it.
+// Recap adds a notice row saying where the session stands, from an aside on
+// the cached conversation. The UI calls it when nobody touched the terminal
+// since a turn ended well, and cancels ctx on the next input; it is a busy
+// job too, so esc stops it and the working row names it.
 func (h *Host) Recap(ctx context.Context) {
 	h.GoSafe("recap", func() {
 		ctx, cancel := context.WithCancel(ctx)

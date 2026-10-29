@@ -1211,6 +1211,47 @@ func TestTurnDoneLogsASettledCutCall(t *testing.T) {
 	}
 }
 
+// TestTurnDoneLogsTheRawArgs: ToolCallStart keeps only the digested input on
+// the row, so the cut-call loop logged the digest and the rebuilt rail lost
+// its label and line; the log's tool row holds the raw args, where the
+// rebuild reads both.
+func TestTurnDoneLogsTheRawArgs(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.agents.mu.Lock()
+	h.agents.tools = []StreamTool{{
+		ID: "t1", Name: "shell", Label: "slow4",
+		Input: "sleep 30", Raw: `{"command":"sleep 30","about":"slow4"}`, Status: CallStopped,
+		Output: "stopped: the user interrupted the command",
+	}}
+	h.agents.mu.Unlock()
+	sa := h.streamHooks()
+	sa.TurnDone(context.Canceled, fantasy.Usage{})
+
+	rows, err := h.DB.LogTail(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var toolRow store.LogEntry
+	for _, r := range rows {
+		if r.Kind == store.KindTool {
+			toolRow = r
+		}
+	}
+	if toolRow.Text != `{"command":"sleep 30","about":"slow4"}` {
+		t.Fatalf("the log holds %q, want the raw args the live rail's label came from", toolRow.Text)
+	}
+	var rebuilt ChatMessage
+	for _, m := range logRows(rows) {
+		if m.Kind == RowTool {
+			rebuilt = m
+		}
+	}
+	if rebuilt.Label != "slow4" {
+		t.Fatalf("rebuilt label %q, want the live one", rebuilt.Label)
+	}
+}
+
 // TestStreamDoneStoresLastIn: a step's context is stored where a resume's
 // meter reads it, and a dropped chat clears it with the chat it belonged to.
 func TestStreamDoneStoresLastIn(t *testing.T) {
