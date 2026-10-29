@@ -1048,8 +1048,9 @@ zemi.ui.widget.add({
 				local u = units[pos(first)]
 				-- a reply whose readout scan found no unnamed row after it
 				-- decided nothing yet: a row landing below can end the
-				-- exchange the readout rides, so it redraws on growth
-				return not u or u.next ~= pos(last + 1) or u.mode ~= mode_of(first) or u.open ~= nil and u.rows ~= #tr
+				-- exchange the readout rides, so it redraws on growth. A
+				-- decided unit (u.open == false) keeps its draw.
+				return not u or u.next ~= pos(last + 1) or u.mode ~= mode_of(first) or u.open and u.rows ~= #tr
 			end
 			-- A unit drawn before the last trim: its content is good, its
 			-- anchors and calls name the window it drew in, so it restamps
