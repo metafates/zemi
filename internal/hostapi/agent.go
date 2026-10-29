@@ -1499,6 +1499,9 @@ func toolSummary(tool, input string) string {
 	if json.Unmarshal([]byte(input), &m) != nil {
 		return input
 	}
+	if len(m) == 0 { // an empty call says nothing: "{}" is noise
+		return ""
+	}
 	if _, ok := m["todos"]; ok {
 		var in struct {
 			Todos []store.Todo `json:"todos"`

@@ -2318,6 +2318,7 @@ func TestCallRowClickIDs(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 30)
 	host.AppendMessage("user", "look first")
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "b.go", Status: "ok"})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "notice", Text: "explore · found it", Status: "ok", Run: "r1", Tool: "explore"})
 	appendReply(host, "seen", hostapi.TurnStat{})
 	host.AppendMessage("user", "fix it")
 	appendReasoning(host, "how", hostapi.TurnStat{ThoughtMS: 6000})
@@ -2343,9 +2344,10 @@ func TestCallRowClickIDs(t *testing.T) {
 	}
 	for text, want := range map[string]string{
 		"· 1 file: b.go":          "turn:2",
-		"│ ✻ thought 6.0s":        "call:5",
+		"│ ✻ thought 6.0s":        "call:6",
 		"│ ✓ edit /w/a.go +1 -1":  "call:-1",
 		"│ ✓ read 2 files":        "step:-2",
+		"✓ explore · found it":    "agent:r1",
 		"│ backgrounded as job-1": "job:job-1",
 	} {
 		if got := ids()[text]; got != want {
@@ -2454,12 +2456,16 @@ func TestToolRows(t *testing.T) {
 // progress line under it unchanged; any other running call names its verb.
 func TestRailWaitsOnNestedRun(t *testing.T) {
 	t.Parallel()
-	app, host := bootAgentApp(t, 100, 24)
+	app, host := bootAgentApp(t, 100, 44)
 	host.AppendMessage("user", "review it")
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: []hostapi.StreamTool{
 		{Name: "workflow", Status: "run", Label: "review", Detail: "2/5 agents · paused · picking the diff apart"},
 		{Name: "agent", Status: "run", Label: "explore"},
+		{Name: "agent", Status: "run", Input: "all"},
+		{Name: "workflow", Status: "run", Input: "wait kg29k2v2"},
 		{Name: "read", Status: "run", Input: "a.go"},
+		{Name: "job_read", Status: "run", Input: "job-3"},
+		{Name: "job_list", Status: "run"},
 	}})
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
@@ -2467,7 +2473,11 @@ func TestRailWaitsOnNestedRun(t *testing.T) {
 		"│ ⠋ waiting on workflow review",
 		"│   ⎿ 2/5 agents · paused · picking the diff apart",
 		"│ ⠋ waiting on agent explore",
+		"│ ⠋ waiting for all agents and workflows",
+		"│ ⠋ waiting on workflow kg29k2v2",
 		"│ ⠋ read a.go",
+		"│ ⠋ check job-3",
+		"│ ⠋ list jobs",
 	} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q:\n%s", want, frame)

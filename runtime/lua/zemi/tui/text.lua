@@ -150,9 +150,9 @@ M.VERB = {
 	grep = "Search",
 	shell = "Run",
 	job_start = "Start",
-	job_read = "Check job",
+	job_read = "Check",
 	job_list = "List jobs",
-	job_kill = "Stop job",
+	job_kill = "Stop",
 	todos = "Update todos",
 	question = "Ask",
 	plan = "Plan",
@@ -392,7 +392,17 @@ M.WAIT = { agent = true, workflow = true }
 ---@return string rest
 function M.head(name, label, input, status)
 	local rest = label ~= "" and " " .. M.lower(label) or input ~= "" and " " .. input or ""
-	if status == "run" and M.WAIT[name] then return "waiting on " .. name, rest end
+	-- a wait-only call blocks on other work instead of starting it: "all" is
+	-- the agent tool's sentinel for every run of the session, and a workflow's
+	-- wait control names its run alone, the verb saying the waiting
+	if M.WAIT[name] and input == "all" then
+		return status == "run" and "waiting for" or "waited for", " all agents and workflows"
+	end
+	if status == "run" and M.WAIT[name] then
+		local id = name == "workflow" and rest:match("^ wait (%S+)$") or nil
+		if id then return "waiting on " .. name, " " .. id end
+		return "waiting on " .. name, rest
+	end
 	if name == "shell" and label ~= "" then return label:match("^(%S+)(.*)$") end
 	return M.VERB[name] or M.title(name), rest
 end

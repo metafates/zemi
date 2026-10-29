@@ -934,6 +934,7 @@ func (h *Host) deliverUpdate(run *agentRun, text string) error {
 // description); agent is the run's agent attribute, which the rebuilt row's
 // click reads the run's screen from.
 func (h *Host) work(run, who, agent, status, body string) {
+	who = clipRunes(who, 60) // a model's description the split labels every row with
 	text := who + " · " + strings.TrimSpace(body)
 	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(text), Status: workStatus(status), Run: run, Tool: tools.ToolName(agent)}
 	if h.chat != nil {

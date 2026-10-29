@@ -574,14 +574,18 @@ local function builder(ctx, width)
 	end
 
 	-- A notice row: the status mark it came in with, what it says, and any
-	-- detail in brackets after it.
+	-- detail in brackets after it. A work row's click opens the run it
+	-- reports for, the same view its call's row opens.
 	---@param status string?
 	---@param text string
 	---@param detail string?
+	---@param click string?
 	---@return zemi.Line
-	function B.note(status, text, detail)
-		local row = { mark(MARK_OF[status] or "note"), { text = text, hl = "Dim" } }
-		if (detail or "") ~= "" then row[3] = { text = " (" .. detail .. ")", hl = "Dim", copy = false } end
+	function B.note(status, text, detail, click)
+		local row = { mark(MARK_OF[status] or "note", click), { text = text, hl = "Dim", click = click } }
+		if (detail or "") ~= "" then
+			row[3] = { text = " (" .. detail .. ")", hl = "Dim", copy = false, click = click }
+		end
 		return row
 	end
 
@@ -604,7 +608,13 @@ local function builder(ctx, width)
 		end
 		for i = first, last do
 			local m = list[i]
-			B.lines[#B.lines + 1] = B.note(m.status, m.text, m.detail)
+			-- a work row names the run it reports for; a workflow's report
+			-- opens the workflow's view, an agent's its transcript
+			local click
+			if (m.run or "") ~= "" then
+				click = (m.tool or ""):match("^workflow") and "workflow:" .. m.run or "agent:" .. m.run
+			end
+			B.lines[#B.lines + 1] = B.note(m.status, m.text, m.detail, click)
 		end
 	end
 

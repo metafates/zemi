@@ -217,13 +217,20 @@ func TestReportNoticeWhereRead(t *testing.T) {
 	if d.Text != "Counting tests · done" || d.Tool != "explore" {
 		t.Fatalf("described row: %+v", d)
 	}
+	// a description longer than the split's width cannot break the split
+	h.work("r3", strings.Repeat("d", 5000), "explore", "finished", "body")
+	for _, m := range h.Session().Transcript {
+		if m.Run == "r3" && !strings.HasPrefix(m.Text, clipRunes(strings.Repeat("d", 5000), 60)+" · body") {
+			t.Fatalf("clipped row: %q", m.Text[:min(80, len(m.Text))])
+		}
+	}
 	// the rebuilt window draws the same row from the log
-	rows, err := h.DB.LogTail(2)
-	if err != nil || len(rows) != 2 || rows[0].Kind != store.KindWork {
+	rows, err := h.DB.LogTail(3)
+	if err != nil || len(rows) != 3 || rows[0].Kind != store.KindWork {
 		t.Fatalf("log tail: %+v, %v", rows, err)
 	}
 	built := logRows(rows)
-	if len(built) != 2 || built[0].Text != want || built[0].Status != CallOK || built[0].Run != "r1" || built[0].Tool != "explore" || built[1].Text != "Counting tests · done" {
+	if len(built) != 3 || built[0].Text != want || built[0].Status != CallOK || built[0].Run != "r1" || built[0].Tool != "explore" || built[1].Text != "Counting tests · done" || built[2].Tool != "explore" {
 		t.Fatalf("rebuilt rows: %+v", built)
 	}
 }
