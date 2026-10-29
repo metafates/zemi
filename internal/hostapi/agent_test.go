@@ -1254,7 +1254,9 @@ func TestTurnDoneLogsTheRawArgs(t *testing.T) {
 
 // TestTurnDoneLogsTheCutThought: a step's reasoning reaches the log only at
 // its finish, so esc mid-thought left every thought row live-only - the
-// stretches it flushed and the open buffer log here, in draw order.
+// stretches it flushed and the open buffer log here, in draw order. The
+// prior step is settled, the way a live host arrives (a no-call step never
+// re-arms stepSettled on its own).
 func TestTurnDoneLogsTheCutThought(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -1264,6 +1266,8 @@ func TestTurnDoneLogsTheCutThought(t *testing.T) {
 	h.agents.thought = 400 * time.Millisecond
 	h.agents.mu.Unlock()
 	sa := h.streamHooks()
+	sa.StepDone(agent.Step{}) // the previous step settled...
+	sa.StepStart()            // ...and this one began: its rows are unlogged
 	sa.TurnDone(context.Canceled, fantasy.Usage{})
 
 	rows, err := h.DB.LogTail(10)
@@ -1288,6 +1292,39 @@ func TestTurnDoneLogsTheCutThought(t *testing.T) {
 	}
 	if len(ms) != 2 || ms[0] != 1100 || ms[1] != 400 {
 		t.Fatalf("the rebuilt thoughts carry ms %v, want [1100 400]", ms)
+	}
+}
+
+// TestTurnDoneLogsTheCutReply: a reply cut mid-stream draws its partial text
+// live and dies with the turn otherwise - the log holds it, so a resumed
+// window draws the line the user read. The stretch a call's open flushed
+// above the rail logs with it, in draw order.
+func TestTurnDoneLogsTheCutReply(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "a thought.", Stat: &TurnStat{}})
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: "words before the call"})
+	h.agents.mu.Lock()
+	h.agents.reasonBuf, h.agents.thought = "a thought.", 300*time.Millisecond
+	h.agents.textBuf = "done, here"
+	h.agents.mu.Unlock()
+	sa := h.streamHooks()
+	sa.StepDone(agent.Step{})
+	sa.StepStart()
+	sa.TurnDone(context.Canceled, fantasy.Usage{})
+
+	rows, err := h.DB.LogTail(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var texts []string
+	for _, r := range rows {
+		if r.Kind == store.KindAgent {
+			texts = append(texts, r.Text)
+		}
+	}
+	if len(texts) != 2 || texts[0] != "words before the call" || texts[1] != "done, here" {
+		t.Fatalf("the log holds replies %q, want the flushed stretch and the partial text", texts)
 	}
 }
 

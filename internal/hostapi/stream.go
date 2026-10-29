@@ -48,6 +48,9 @@ func (s *streamAdapter) StepStart() {
 	ag.stepText, ag.stepReason, ag.stepTools, ag.stepRows, ag.stepThought, ag.stepTurnThought = ag.textBuf, ag.reasonBuf, slices.Clip(ag.tools), rows, ag.thought, ag.turnThought
 	ag.stretchMS = nil
 	ag.stepThinking = 0
+	// this step's rows are unlogged until its OnStepFinish; a step that only
+	// streams text never opens a call, so openToolRow would never re-arm this
+	ag.stepSettled = false
 	ag.mu.Unlock()
 }
 
@@ -269,21 +272,30 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	// the last step's calls reach the log only when its OnStepFinish runs; a
 	// step that never finished (esc mid-command: the tool returned its stopped
 	// result before the step died) leaves its whole rail unlogged. The same
-	// holds for the reasoning it drew. Log the rows here, so a resumed window
+	// holds for the reasoning it drew and the reply it streamed. Log the rows
+	// here, so a resumed window
 	// draws what the live one drew; the rows land before the flush, so the
 	// pairing pairs them at once. A retry re-streams the step and logs its own.
 	if !hold && h.chat != nil {
 		if !ag.stepSettled {
 			// the stretches the step already flushed draw unnamed in the
-			// transcript; the open one is still in the buffer. A late
-			// stretch a provider interleaved after a call logs below that
-			// call here, the way a rebuild draws it (see the NOTE on
-			// ReasoningDelta)
+			// transcript - reasoning and reply text alike; the open ones are
+			// still in the buffers. A late stretch a provider interleaved
+			// after a call logs below that call here, the way a rebuild
+			// draws it (see the NOTE on ReasoningDelta)
 			h.tMu.Lock()
 			for _, m := range h.session.Transcript {
-				if m.Kind == RowReasoning && m.Seq == NoSeq {
+				if m.Seq != NoSeq {
+					continue
+				}
+				switch m.Kind {
+				case RowReasoning:
 					if e := h.chat.Thought(m.Text, m.Stat.ThoughtMS); e != nil {
 						h.Log.Warn("thought not logged", "origin", "agent", "error", e)
+					}
+				case "":
+					if e := h.chat.Agent(m.Text); e != nil {
+						h.Log.Warn("reply not logged", "origin", "agent", "error", e)
 					}
 				}
 			}
@@ -295,11 +307,22 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 				}
 			}
 		}
+		// NOTE: a parallel call that settled before a later call opened was
+		// flushed off ag.tools already, and its transcript row holds only the
+		// digested input, which cannot rebuild the label - that row's rail is
+		// the one draw a cut turn can still lose
 		for _, t := range cut {
 			if e := h.chat.Tool(string(tools.ToolName(t.Name)), cmp.Or(t.Raw, t.Input), t.ID); e != nil {
 				h.Log.Warn("call not logged", "origin", "agent", "error", e)
 			} else if e := h.chat.Echo(t.Name, false, t.Output, t); e != nil {
 				h.Log.Warn("call result not logged", "origin", "agent", "error", e)
+			}
+		}
+		// the reply streamed so far draws live and dies with the turn: log
+		// it, or a resumed window loses the line the user read
+		if !ag.stepSettled && strings.TrimSpace(ag.textBuf) != "" {
+			if e := h.chat.Agent(ag.textBuf); e != nil {
+				h.Log.Warn("reply not logged", "origin", "agent", "error", e)
 			}
 		}
 	}
