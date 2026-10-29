@@ -265,8 +265,13 @@ local function builder(ctx, width)
 	---@param waiting boolean? Waiting for the turn's next step boundary.
 	function B.user(text, waiting, foreign)
 		local bar_hl = waiting and "Queued" or foreign and "Dim" or "UserMsg"
-		for _, segs in ipairs(zemi.ui.wrap(text, width - 2)) do
+		for i, segs in ipairs(zemi.ui.wrap(text, width - 2)) do
 			local row = { { text = "▌ ", hl = bar_hl, copy = false, hover = false, sticky = not waiting } }
+			if waiting and i == 1 then
+				-- the row is provisional: it is the queue's until the turn reads
+				-- it, and settles elsewhere without the tag
+				row[#row + 1] = { text = " queued ", hl = "Queued", copy = false }
+			end
 			for _, sg in ipairs(segs) do
 				sg.hl = waiting and "Dim" or "Normal"
 				row[#row + 1] = sg
