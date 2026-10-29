@@ -62,7 +62,15 @@ zemi.ui.widget.add({
 				-- turn's does: the job's clock reads as if it ran on
 				local tick = { plain(fmt.duration(busy.elapsed, true)), 5, 7 }
 				if ctx.interrupt_armed then
-					tick = { plain(fmt.duration(math.ceil(ctx.interrupt_in or 0), true)), 5, 7 }
+					tick = {
+						plain(
+							fmt.duration(math.ceil(ctx.interrupt_in or 0), true)
+								.. " · "
+								.. fmt.duration(busy.elapsed, true)
+						),
+						5,
+						7,
+					}
 				end
 				parts[#parts + 1] = tick
 			elseif ctx.ended == "ok" then
@@ -88,9 +96,15 @@ zemi.ui.widget.add({
 			---@type { [1]: zemi.Line, [2]: integer, [3]: integer }?
 			local tick = { plain(fmt.duration(ag.elapsed, true)), 5, 7 }
 			if ctx.interrupt_armed then
-				-- the number by the armed key is the window it still waits, not
-				-- the turn's clock, so the countdown reads as one
-				tick = { plain(fmt.duration(math.ceil(ctx.interrupt_in or 0), true)), 5, 7 }
+				-- the number by the armed key is the window it still waits; the
+				-- turn's clock keeps its place beside it, as a retry's does
+				tick = {
+					plain(
+						fmt.duration(math.ceil(ctx.interrupt_in or 0), true) .. " · " .. fmt.duration(ag.elapsed, true)
+					),
+					5,
+					7,
+				}
 			end
 			if ag.retry then
 				state = "error"

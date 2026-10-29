@@ -1330,8 +1330,8 @@ func TestWorkflowCallHandsOff(t *testing.T) {
 			act:  func(h *Host, _ context.CancelFunc) { h.UserSpoke() },
 		},
 		{
-			name:          "esc hands the run off",
-			act:           func(_ *Host, cancel context.CancelFunc) { cancel() }, wantInterrupt: true,
+			name: "esc hands the run off",
+			act:  func(_ *Host, cancel context.CancelFunc) { cancel() }, wantInterrupt: true,
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
