@@ -235,6 +235,11 @@ func builtinKind(id catwalk.InferenceProvider, t catwalk.Type) Kind {
 	return KindOpenAICompat
 }
 
+// anthropicBase is the base the anthropic SDK merges v1/messages onto, by
+// replacing the base path's last segment: a trailing slash would make that
+// merge append a second v1.
+func anthropicBase(base string) string { return strings.TrimRight(base, "/") }
+
 // Builtin converts a catwalk catalog, resolving its "$NAME" key and
 // endpoint references through getenv, the only place Go itself reads a key
 // env var. The catalog's order is kept (anthropic, openai, gemini first,
@@ -933,7 +938,10 @@ func (r *Registry) CallOptions(id ModelID, effort, sessionID string) fantasy.Pro
 		}
 		switch {
 		case responses:
-			// fantasy drops both reasoning fields for a model it knows does not reason
+			// fantasy drops both reasoning fields for a model it knows does not reason.
+			// NOTE: that knowledge is a model-name list, so a responses-override model
+			// whose name it does not know (grok-4.x, gpt-6*) silently runs without the
+			// effort; the upgrade is a name-independent hook in fantasy.
 			return openai.NewResponsesProviderOptions(&openai.ResponsesProviderOptions{ReasoningEffort: re, ReasoningSummary: new("auto"), PromptCacheKey: key})
 		case re != nil || key != nil:
 			return openai.NewProviderOptions(&openai.ProviderOptions{ReasoningEffort: re, PromptCacheKey: key})
@@ -1146,9 +1154,7 @@ func (r *Registry) resolve(id ModelID) (fantasy.LanguageModel, error) {
 	}
 	switch spec.Kind {
 	case KindAnthropic:
-		// the SDK appends v1/messages: a base that already ends in /v1 (an
-		// openai-shaped endpoint serving a messages model) would double it
-		spec.BaseURL = strings.TrimSuffix(spec.BaseURL, "/v1")
+		spec.BaseURL = anthropicBase(spec.BaseURL)
 		return languageModel(spec, key, model, anthropic.New, anthropic.WithBaseURL, anthropic.WithAPIKey, anthropic.WithHeaders,
 			func(c *http.Client) anthropic.Option { return anthropic.WithHTTPClient(c) }, nil)
 	case KindOpenAI:

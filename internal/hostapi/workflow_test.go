@@ -414,6 +414,28 @@ func TestWorkflowControl(t *testing.T) {
 			want: "nil stopped by the user",
 		},
 		{
+			name:   "stopping one agent hands the script nil and the reason",
+			script: `local r, err = wf.agent("a") return tostring(r) .. " " .. err`,
+			drive: func(c ctl) {
+				running(1)(c)
+				if err := c.h.stopRun(c.f.view().agents[0].id); err != nil {
+					c.t.Fatal(err)
+				}
+			},
+			want: "nil stopped by the user",
+		},
+		{
+			name:   "stopping the run names it by its description",
+			script: `local r = wf.agent("a") return r`,
+			drive: func(c ctl) {
+				running(1)(c)
+				if got := act(c, actStop, 0, ""); got != "Stopped "+c.f.description+" ("+c.f.id+")" {
+					c.t.Fatalf("stop = %q", got)
+				}
+			},
+			want: "context canceled",
+		},
+		{
 			name:   "a restart runs the call again, the script sees only the second answer, and the row keeps the first attempt's spend",
 			script: `return wf.agent("a")`,
 			drive: func(c ctl) {

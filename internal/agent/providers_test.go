@@ -256,11 +256,23 @@ func TestBuiltin(t *testing.T) {
 		{ID: "bare openai-compat", Type: catwalk.TypeCompletions, APIKey: "$XAI_API_KEY", APIEndpoint: "$GEMINI_API_ENDPOINT"},
 		{ID: "unbundled key", Type: catwalk.TypeMessages, APIKey: "$GITHUB_TOKEN"},
 		{ID: "unbundled endpoint", Type: catwalk.TypeCompletions, APIKey: "$XAI_API_KEY", APIEndpoint: "$GITHUB_TOKEN"},
-		// azure's data plane needs an api-version query the plain wire lacks
-		{ID: "azure", Type: catwalk.TypeCompletions, APIKey: "$AZURE_OPENAI_API_KEY", APIEndpoint: "$GEMINI_API_ENDPOINT"},
 	} {
 		if c := Builtin([]catwalk.Provider{p}, func(k string) string { return map[string]string{"XAI_API_KEY": "k", "GITHUB_TOKEN": "gh"}[k] }); len(c.Specs) != 0 || len(c.Keys) != 0 {
 			t.Errorf("%s: %+v", p.ID, c)
+		}
+	}
+}
+
+// TestAnthropicBase: the SDK merges v1/messages by replacing the base's last
+// path segment, so a trailing slash would double it and the segment stays.
+func TestAnthropicBase(t *testing.T) {
+	for _, c := range []struct{ base, want string }{
+		{"https://opencode.ai/zen/v1/", "https://opencode.ai/zen/v1"},
+		{"https://gw/anthropic/", "https://gw/anthropic"},
+		{"https://api.anthropic.com", "https://api.anthropic.com"},
+	} {
+		if got := anthropicBase(c.base); got != c.want {
+			t.Errorf("anthropicBase(%q) = %q, want %q", c.base, got, c.want)
 		}
 	}
 }

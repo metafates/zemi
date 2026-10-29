@@ -233,6 +233,18 @@ func TestReportNoticeWhereRead(t *testing.T) {
 	if len(built) != 3 || built[0].Text != want || built[0].Status != CallOK || built[0].Run != "r1" || built[0].Tool != "explore" || built[1].Text != "Counting tests · done" || built[2].Tool != "explore" {
 		t.Fatalf("rebuilt rows: %+v", built)
 	}
+	// the toast's head: who first, the id trailing, the statuses that are no
+	// events of their own reading as what happened
+	for _, c := range []struct{ r report; want string }{
+		{report{id: "a1", agent: "explore", status: reportFinished, description: "Counting tests"}, "Counting tests finished (a1)"},
+		{report{id: "a1", agent: "explore", status: reportWarn, description: "Counting tests"}, "Counting tests warned (a1)"},
+		{report{id: "a1", agent: "explore", status: updateStatus, description: ""}, "explore updated (a1)"},
+		{report{id: "f1", agent: "workflow", status: reportFailure, description: ""}, "workflow failed (f1)"},
+	} {
+		if got := reportHead(c.r); got != c.want {
+			t.Errorf("reportHead(%+v) = %q, want %q", c.r, got, c.want)
+		}
+	}
 }
 
 // TestRunRowFollowsItsRun: a call that handed off keeps its row, and the run's

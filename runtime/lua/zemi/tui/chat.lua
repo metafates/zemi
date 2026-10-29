@@ -264,10 +264,10 @@ local function builder(ctx, width)
 	---@param waiting boolean? Waiting for the turn's next step boundary.
 	function B.user(text, waiting, foreign)
 		local bar_hl = waiting and "Queued" or foreign and "Dim" or "UserMsg"
-		-- the queued tag rides the first row: the wrap leaves its cells out,
-		-- or the drawn row runs past the region and the terminal wraps it
-		-- onto an unbarred line of its own
-		local room = width - 2 - (waiting and 9 or 0)
+		-- the queued tag rides the first row (2 bar + 8 chip cells): the wrap
+		-- leaves them out, or the drawn row runs past the region and the
+		-- terminal wraps it onto an unbarred line of its own
+		local room = waiting and width - 10 or width - 2
 		for i, segs in ipairs(zemi.ui.wrap(text, room)) do
 			local row = { { text = "▌ ", hl = bar_hl, copy = false, hover = false, sticky = not waiting } }
 			if waiting and i == 1 then
