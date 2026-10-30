@@ -1609,6 +1609,19 @@ UI extensibility contract:
   spinner stepping every 200 ms while a turn runs, `?` while a prompt waits on
   the user, `✓` or `✗` after a turn that ended while the window was unfocused,
   until it is focused again.
+- Program status: zemi reports what it is doing to its own terminal through
+  the Program Status Protocol (OSC 7501), so tabs and session pickers that
+  draw it show a live state without heuristics: `idle` at the prompt, `working`
+  with the turn's own words, `blocked` with a `kind` — `permission` for the
+  trust, permission and plan prompts, `question` for a question prompt —
+  `done` with the finished task, `error` with the cause's one line, and `idle`
+  again after a user's interrupt. `app=zemi` and the tab title ride every
+  report; a report is sent only when the state changed, and the terminal
+  keeps the record without heartbeats. Detection is skipped: the protocol
+  lets a program report without querying, since a terminal ignores unknown
+  OSCs. A turn's own words (`Task` on the stream snapshot) come from the
+  send that opened it — the user's message, a loop's note, a queued
+  follow-up — one line, 200 characters.
 - Themes: a theme is a palette of fixed roles (`bg`, `fg`, `accent`,
   `literal`, `ok`, `warn`, `danger`, `dim`, `rule`, `panel`, `band`, `addbg`,
   `delbg`, `well`); `zemi.ui.theme.add` takes `bg`, `fg` and the four hues, or a

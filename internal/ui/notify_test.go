@@ -35,7 +35,9 @@ func TestNotifyWhenAway(t *testing.T) {
 		app.wakeTick() // the tick in the batch returns at the next frame boundary
 		for _, m := range runCmd(cmd) {
 			if raw, ok := m.(tea.RawMsg); ok {
-				return fmt.Sprint(raw.Msg)
+				if s := fmt.Sprint(raw.Msg); !strings.Contains(s, "\x1b]7501;") { // the status report rides the same batch
+					return s
+				}
 			}
 		}
 		return ""

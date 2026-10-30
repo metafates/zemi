@@ -33,6 +33,7 @@ import (
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/set"
+	"github.com/metafates/zemi/internal/status"
 )
 
 const (
@@ -184,6 +185,8 @@ type App struct {
 	now          func() time.Time // animation clock; tests pin it
 	cancelling   bool             // interrupt sent, turn not finished yet
 	progress     bool             // the view reports a running turn (OSC 9;4)
+	statusSent   status.Report    // the last OSC 7501 report the terminal holds
+	turnErr      string           // the last failed turn's one-line cause, for the status report
 	progressAt   time.Time        // when beat last flipped (progressInterval)
 	beat         int              // the report's value, flipped so the renderer resends it
 	focused      bool             // terminal focus (true until the terminal reports a blur)
@@ -739,7 +742,7 @@ func (a *App) onFrame() tea.Cmd {
 		a.frameGen++
 	}
 	a.progressTick(active)
-	return tea.Batch(a.frameTickCmd(a.tickInterval()), a.renderStaleWidgetsCmd(false), replay, ended)
+	return tea.Batch(a.frameTickCmd(a.tickInterval()), a.renderStaleWidgetsCmd(false), replay, ended, a.statusTick())
 }
 
 // endTurn stamps how the last turn ended for the eyes and the tab title,
@@ -757,6 +760,7 @@ func (a *App) endTurn(msg turnDoneMsg) tea.Cmd {
 		a.turnEnded, a.recapAt = hostapi.TurnCancelled, time.Time{}
 	} else if msg.err != "" {
 		a.turnEnded, a.recapAt = hostapi.TurnError, time.Time{}
+		a.turnErr = ansi.Truncate(sanitize.Line(msg.err), 200, "…")
 	}
 	a.unseen = ""
 	if !a.focused {
