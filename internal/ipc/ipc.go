@@ -82,6 +82,7 @@ type Reply struct {
 	Queued bool   `json:"queued,omitempty"` // the message joined a running turn
 	Ran    bool   `json:"ran,omitempty"`    // a command ran instead
 	Error  string `json:"error,omitempty"`
+	Note   string `json:"note,omitempty"` // what the window is on, for windows a sender cannot tell apart
 }
 
 // RoundTrip writes one request and reads one reply, both deadline-bounded by

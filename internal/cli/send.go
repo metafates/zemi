@@ -85,6 +85,10 @@ func sendCommand(o *options) *cobra.Command {
 				default:
 					fmt.Fprintln(c.OutOrStdout(), "delivered: a turn starts in the window")
 				}
+				if reply.Note != "" && len(heartbeats) > 1 {
+					// several windows share the store: name the one that took it
+					fmt.Fprintf(c.OutOrStdout(), "  · %s\n", reply.Note)
+				}
 				return true, nil
 			}
 			// fresh heartbeats first; an aged one is probed only when nothing

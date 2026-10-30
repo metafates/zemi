@@ -93,6 +93,15 @@ func (h *Host) listenPeers() {
 	})
 }
 
+// agentsTask is the live turn's own words, what the statusline names: a
+// sender with two windows up reads which one took the message.
+func (h *Host) agentsTask() string {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	return ag.task
+}
+
 // servePeer reads one delivered frame: a prompt goes the way the composer
 // would (a command runs, a message starts a turn or joins the running one),
 // and a hello makes this window re-read its siblings now. The reply tells the
@@ -111,7 +120,7 @@ func (h *Host) servePeer(conn net.Conn) {
 		h.refresh()
 		return
 	}
-	reply := ipc.Reply{OK: true}
+	reply := ipc.Reply{OK: true, Note: clipLine(h.agentsTask(), 60)}
 	queued, ran, err := h.sendPrompt(req.Text)
 	if err != nil {
 		reply.OK, reply.Error = false, err.Error()
