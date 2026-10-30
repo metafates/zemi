@@ -319,6 +319,10 @@ func (h *Host) SyncChat() {
 	h.tMu.Unlock()
 	h.agents.mu.Unlock()
 	if len(foreign) > 0 {
+		// another window may have written the list: the snapshot reloads on
+		// the next render, or this window's block freezes at its own last
+		// write forever
+		h.todosStale.Store(true)
 		h.refresh()
 		// a draft in the composer can be answered by what just arrived: say
 		// it once per draft, so a chatty window cannot re-toast an unchanged one
