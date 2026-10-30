@@ -503,17 +503,26 @@ func (a *App) interrupt() {
 
 // moveSel applies a list key to a selection over n items: the list moves
 // one item, ctrl+d/u half a page, the page keys page items, home/end and
-// g/G the ends. It reports whether the key was a move.
+// g/G the ends. A page key on a list the box already shows whole does
+// nothing: the footer promises scrolling, and there is nothing to scroll.
+// It reports whether the key was a move.
 func moveSel(sel *int, n, page int, key string) bool {
+	fits := n <= page
 	switch key {
-	case "ctrl+d":
-		*sel += max(page/2, 1)
-	case "ctrl+u":
-		*sel -= max(page/2, 1)
-	case "pgup":
-		*sel -= page
-	case "pgdown":
-		*sel += page
+	case "ctrl+d", "ctrl+u", "pgup", "pgdown":
+		if fits {
+			return false
+		}
+		switch key {
+		case "ctrl+d":
+			*sel += max(page/2, 1)
+		case "ctrl+u":
+			*sel -= max(page/2, 1)
+		case "pgup":
+			*sel -= page
+		case "pgdown":
+			*sel += page
+		}
 	case "home", "ctrl+home", "g":
 		*sel = 0
 	case "end", "ctrl+b", "G":

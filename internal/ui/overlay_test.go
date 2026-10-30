@@ -1458,16 +1458,19 @@ func TestMoveSel(t *testing.T) {
 	for _, c := range []struct {
 		key                 string
 		n, page, from, want int
+		still               bool // false when the key is a no-op the list's fit causes
 	}{
-		{"ctrl+d", 20, 10, 0, 5},
-		{"ctrl+u", 20, 10, 12, 7},
-		{"ctrl+d", 20, 10, 17, 19},
-		{"ctrl+u", 20, 10, 3, 0},
-		{"ctrl+d", 20, 1, 0, 1},
-		{"g", 20, 10, 7, 0},
-		{"G", 20, 10, 3, 19},
+		{"ctrl+d", 20, 10, 0, 5, true},
+		{"ctrl+u", 20, 10, 12, 7, true},
+		{"ctrl+d", 20, 10, 17, 19, true},
+		{"ctrl+u", 20, 10, 3, 0, true},
+		{"ctrl+d", 20, 1, 0, 1, true},
+		{"ctrl+d", 5, 8, 1, 1, false}, // a list the box shows whole: nothing to scroll
+		{"pgdown", 5, 8, 1, 1, false},
+		{"g", 20, 10, 7, 0, true},
+		{"G", 20, 10, 3, 19, true},
 	} {
-		if sel := c.from; !moveSel(&sel, c.n, c.page, c.key) || sel != c.want {
+		if sel := c.from; moveSel(&sel, c.n, c.page, c.key) != c.still || sel != c.want {
 			t.Errorf("%s from %d over %d, page %d: %d, want %d", c.key, c.from, c.n, c.page, sel, c.want)
 		}
 	}
