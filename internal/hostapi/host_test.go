@@ -1090,13 +1090,13 @@ func TestWorkingRuleNamesTheBusyJob(t *testing.T) {
 	}
 }
 
-// TestSessionEmojiPool: every marker emoji holds the pool's criteria - one
+// TestProjectEmojiPool: every marker emoji holds the pool's criteria - one
 // codepoint with no joiner, selector, modifier, regional indicator, keycap or
 // combining mark; emoji presentation, curated from Unicode's emoji-variants
 // data, so it renders colored everywhere without VS16; two cells by zemi's
 // own width function and East Asian Wide by UAX #11; and no glyph the UI
 // already draws.
-func TestSessionEmojiPool(t *testing.T) {
+func TestProjectEmojiPool(t *testing.T) {
 	drawn := map[string]bool{}
 	for _, m := range Marks {
 		drawn[m.Glyph] = true
@@ -1104,7 +1104,7 @@ func TestSessionEmojiPool(t *testing.T) {
 	drawn["⚑"], drawn["↻"], drawn["↓"] = true, true, true // the statusline hints
 	drawn["@"], drawn["─"], drawn["…"] = true, true, true // the snail and its rule
 	seen := map[string]bool{}
-	for _, e := range sessionEmoji {
+	for _, e := range projectEmoji {
 		if seen[e] {
 			t.Errorf("%q repeats", e)
 		}
@@ -1133,22 +1133,22 @@ func TestSessionEmojiPool(t *testing.T) {
 	}
 }
 
-// TestSessionMark: the marker is a pure function of the id, and random ids
-// spread over the pool.
-func TestSessionMark(t *testing.T) {
-	if got := SessionMark(""); got != "" {
-		t.Fatalf("no session drew %q", got)
+// TestProjectMark: the marker is a pure function of the root, and random
+// roots spread over the pool.
+func TestProjectMark(t *testing.T) {
+	if got := ProjectMark(""); got != "" {
+		t.Fatalf("no project drew %q", got)
 	}
 	seen := map[string]bool{}
 	for range 200 {
-		id := store.ShortID()
-		if got := SessionMark(id); got != SessionMark(id) || got == "" {
-			t.Fatalf("%s derives %q", id, got)
+		root := filepath.Join(t.TempDir(), store.ShortID())
+		if got := ProjectMark(root); got != ProjectMark(root) || got == "" {
+			t.Fatalf("%s derives %q", root, got)
 		}
-		seen[SessionMark(id)] = true
+		seen[ProjectMark(root)] = true
 	}
 	if len(seen) < 10 {
-		t.Fatalf("200 ids drew only %d markers", len(seen))
+		t.Fatalf("200 roots drew only %d markers", len(seen))
 	}
 }
 

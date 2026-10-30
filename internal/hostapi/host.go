@@ -316,14 +316,14 @@ var Marks = map[MarkKind]Mark{
 // Spinner is the running mark's frames, one per frame tick.
 var Spinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-// sessionEmoji pools the emoji a session's marker is picked from: one
+// projectEmoji pools the emoji a project's marker is picked from: one
 // codepoint, emoji presentation (colored without VS16), East Asian Width W
 // by UAX #11 (so zemi.ui.width and the terminal agree on 2 cells), Emoji 11.0
 // or older so every font that ships emoji has them, and distinct and
 // neutral: no faces, hands, people, flags or symbols the UI draws. The pool
 // test pins the rest; the entries were curated against Unicode's
 // emoji-variants data.
-var sessionEmoji = []string{
+var projectEmoji = []string{
 	"🌊", "💧", "☔", "⛅", "🌈", "🌙", "⭐", "🌍", "🌵", "🌱",
 	"🍀", "🍄", "🌻", "🦋", "🐢", "🐙", "🐳", "🐧", "🐚", "📎",
 	"📌", "🔖", "📚", "📦", "🔑", "🔨", "🧰", "🧩", "🧭", "💡",
@@ -343,24 +343,24 @@ var sessionEmoji = []string{
 	"🔦", "🗼", "🐾",
 }
 
-// SessionMark derives a top-level session's marker emoji from its id: stable
-// across resume and restart, zero storage, and not user-changeable. An empty
-// id (no session yet) has no marker.
-func SessionMark(sid string) string {
-	if sid == "" {
+// ProjectMark derives a project's marker emoji from its root: stable across
+// restart, zero storage, and not user-changeable. An empty root (no
+// repository) has no marker.
+func ProjectMark(root string) string {
+	if root == "" {
 		return ""
 	}
 	var h uint32 = 2166136261
-	for i := range len(sid) {
-		h = (h ^ uint32(sid[i])) * 16777619
+	for i := range len(root) {
+		h = (h ^ uint32(root[i])) * 16777619
 	}
-	return sessionEmoji[h%uint32(len(sessionEmoji))]
+	return projectEmoji[h%uint32(len(projectEmoji))]
 }
 
-// markedTitle is the marker-prefixed title the session surfaces draw: the
-// same shape everywhere a session row names itself, clipped as a row shows it.
-func markedTitle(sid, title string) string {
-	return SessionMark(sid) + " " + clipRunes(title, 60)
+// markedTitle is the marker-prefixed title the project surfaces draw: the
+// same shape everywhere a project row names itself, clipped as a row shows it.
+func markedTitle(root, title string) string {
+	return ProjectMark(root) + " " + clipRunes(title, 60)
 }
 
 // OverlayKey is one character that runs Fn(selected item) on a list, or on
@@ -1188,10 +1188,14 @@ type titleSet struct {
 }
 
 // TerminalTitle is what the terminal tab shows: the title config set this
-// generation.
+// generation, else the project's marker and base name, which is how windows
+// on different repositories tell themselves apart at a glance.
 func (h *Host) TerminalTitle() string {
 	if t := h.title.Load(); t != nil && t.gen == h.currentGen() {
 		return t.text
+	}
+	if root := h.trustRoot(); root != "" {
+		return ProjectMark(root) + " " + filepath.Base(root)
 	}
 	return "zemi"
 }

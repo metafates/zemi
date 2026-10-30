@@ -395,7 +395,7 @@ func (h *Host) projectFields(p Project) []Field {
 	if p.Latest != nil {
 		msgs = fmt.Sprintf("%d · latest %s", p.Messages, ago(p.Latest.UpdatedAt))
 		if t := sanitize.Line(p.Latest.Title); t != "" {
-			msgs += ": " + markedTitle(p.Latest.ID, t)
+			msgs += ": " + markedTitle(p.Root, t)
 		}
 	}
 	state := projectState(h.Dirs.StateHome, p.Root)

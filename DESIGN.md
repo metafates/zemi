@@ -1601,7 +1601,9 @@ UI extensibility contract:
   widget can open nothing a plugin keymap could not. An id without a
   handler draws no hover and does nothing. Ids from model text must not
   become command arguments: use host ids.
-- Terminal title: the tab reads "zemi" until
+- Terminal title: the tab reads the project's marker emoji and base name -
+  the marker derived from the repository root, so windows on different
+  projects tell themselves apart at a glance - until
   `zemi.ui.title(text)` from
   user config replaces it until `title(nil)` or a
   reload that does not set it again. Go strips escapes from it, so it cannot

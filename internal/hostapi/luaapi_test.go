@@ -377,12 +377,14 @@ func TestPurgeStopsLuaWork(t *testing.T) {
 }
 
 // TestTerminalTitle: any origin sets the tab title, nil gives it back to the
-// session, and so does a reload that does not set it again.
+// project's marker and base name, and so does a reload that does not set it
+// again.
 func TestTerminalTitle(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
-	if got := h.TerminalTitle(); got != "zemi" {
-		t.Fatalf("default title %q", got)
+	want := markedTitle(h.trustRoot(), filepath.Base(h.trustRoot()))
+	if got := h.TerminalTitle(); got != want {
+		t.Fatalf("default title %q, want %q", got, want)
 	}
 	runUser(t, r, `zemi.ui.title("build \27]0;x\7 watch")`)
 	if got := h.TerminalTitle(); got != "build watch" {
@@ -394,12 +396,12 @@ func TestTerminalTitle(t *testing.T) {
 	if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
-	if got := h.TerminalTitle(); got != "zemi" {
-		t.Fatalf("after a reload that sets none: %q", got)
+	if got := h.TerminalTitle(); got != want {
+		t.Fatalf("after a reload that sets none: %q, want %q", got, want)
 	}
 	runUser(t, r, `zemi.ui.title("x") zemi.ui.title(nil)`)
-	if got := h.TerminalTitle(); got != "zemi" {
-		t.Fatalf("after title(nil): %q", got)
+	if got := h.TerminalTitle(); got != want {
+		t.Fatalf("after title(nil): %q, want %q", got, want)
 	}
 }
 
