@@ -877,7 +877,6 @@ function zemi.event.stats() end
 ---@field interrupt_in number Seconds the interrupt arm still waits, when armed.
 ---@field key_seq string Keys of a bound sequence typed so far, space-separated; "" when none.
 ---@field rows_below integer Rows under the stage's scrolled region (the chat by default) while it is scrolled up; 0 when it follows the tail.
----@field rows_above integer Rows the tail-following scrolled region hides above it; 0 while it is scrolled up.
 ---@field cancelling boolean An interrupt was sent and the turn has not ended yet.
 ---@field editing string Title of the file open in the user's editor, else "".
 ---@field waiting zemi.Waiting|"" The prompt holding the turn, else "".

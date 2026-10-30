@@ -2369,7 +2369,7 @@ view; a reset's wipe drops the row with the chat.
   (`esc` in an agent view goes back; the esc chord stops a busy job),
   `ctrl+c` moves a draft into the history first, mid-turn included, then on
   an empty composer interrupts a turn at once and twice within 2s when idle
-  quits, `ctrl+t`/`pgdown`,
+  quits, `pgdown`,
   `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j`, `ctrl+home` and `ctrl+b`
   scroll the transcript (the wheel too: mouse cell motion is captured because the
   altscreen has no native scrollback), and `alt+up`/`alt+down` jump to the previous or

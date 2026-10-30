@@ -794,7 +794,7 @@ func (a *App) uiState() hostapi.UIState {
 		// ctrl+c reaches the arm branch
 		QuitArmed:      a.isArmed("ctrl+c") && a.composer.empty() && !a.host.AgentActive(),
 		InterruptArmed: a.isArmed("esc") && a.armed.what == "interrupt",
-		InterruptIn:    a.interruptIn(), RowsBelow: a.rowsBelow(), RowsAbove: a.rowsAbove(),
+		InterruptIn:    a.interruptIn(), RowsBelow: a.rowsBelow(),
 		Cancelling: a.cancelling, Editing: a.editing, Focus: a.focusedNode(), Regions: a.regions,
 		Rail: a.rail,
 	}
@@ -1395,16 +1395,6 @@ func (a *App) rowsBelow() int {
 		return 0
 	}
 	return max(0, st.rows-st.top-st.viewH)
-}
-
-// rowsAbove counts the rows the tail-following viewport hides above it: the
-// bar names them, so a reply cut off by a narrow window is findable.
-func (a *App) rowsAbove() int {
-	st := a.scrolls[a.scrollDef]
-	if st == nil || !st.follow {
-		return 0
-	}
-	return max(0, st.rows-st.viewH)
 }
 
 // scrolledUp reports whether the region a widget draws in is off its tail.

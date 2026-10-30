@@ -5,7 +5,6 @@
 -- ("zemi.ui.scroll.up sidebar"); without one it moves the stage's scrolled
 -- region.
 
-zemi.keymap.set("ctrl+t", "zemi.ui.scroll.up", { desc = "scroll chat up a page" })
 zemi.keymap.set("pgdown", "zemi.ui.scroll.down", { desc = "scroll chat down a page" })
 zemi.keymap.set("ctrl+home", "zemi.ui.scroll.top", { desc = "scroll chat to top" })
 zemi.keymap.set("ctrl+b", "zemi.ui.scroll.bottom", { desc = "scroll chat to bottom" })

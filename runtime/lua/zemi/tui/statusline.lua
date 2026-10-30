@@ -156,7 +156,6 @@ zemi.ui.widget.add({
 	---@return zemi.Line[]
 	render = function(ctx)
 		if (ctx.rows_below or 0) > 0 then return { fmt.hint("↓ " .. ctx.rows_below, "ctrl+b", "bottom") } end
-		if (ctx.rows_above or 0) > 0 then return { fmt.hint("↑ " .. ctx.rows_above, "ctrl+t", "up") } end
 		return {}
 	end,
 })

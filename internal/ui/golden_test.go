@@ -304,7 +304,7 @@ func TestGoldenMemories(t *testing.T) {
 	golden.RequireEqual(t, app.Frame())
 }
 
-// TestGoldenChatScroll pins the transcript scrollback (§8): ctrl+t moves the
+// TestGoldenChatScroll pins the transcript scrollback (§8): ctrl+u moves the
 // viewport off the tail to earlier lines, which stay anchored while the
 // tail keeps filling underneath.
 func TestGoldenChatScroll(t *testing.T) {
@@ -315,7 +315,7 @@ func TestGoldenChatScroll(t *testing.T) {
 
 	for app.Pump() {
 	}
-	app.Update(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+	app.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	for app.Pump() {
 	}
 

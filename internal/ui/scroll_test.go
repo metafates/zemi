@@ -40,9 +40,9 @@ func press(t *testing.T, app *App, key tea.KeyPressMsg) {
 }
 
 // TestChatScrollKeys drives the default scroll bindings end to end:
-// ctrl+t/pgdown page through the transcript, ctrl+d/ctrl+u move half a view like
-// a list does, ctrl+home/ctrl+b jump to the ends, and reaching the bottom
-// re-arms tail follow.
+// ctrl+u/pgdown move through the transcript (up half a view, down a page),
+// ctrl+home/ctrl+b jump to the ends, and reaching the bottom re-arms tail
+// follow.
 func TestChatScrollKeys(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
@@ -57,9 +57,9 @@ func TestChatScrollKeys(t *testing.T) {
 		t.Fatalf("tail view should show the latest reply")
 	}
 
-	press(t, app, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+	press(t, app, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	if app.scrolls["chat"].follow {
-		t.Fatalf("ctrl+t should leave tail follow")
+		t.Fatalf("ctrl+u should leave tail follow")
 	}
 	if strings.Contains(app.Frame(), "reply 30") {
 		t.Fatalf("scrolled view should not show the tail")
@@ -143,7 +143,7 @@ func TestChatScrollStaysAnchored(t *testing.T) {
 	app.renderSync(t)
 	app.Frame()
 
-	press(t, app, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+	press(t, app, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	top := app.scrolls["chat"].top
 	before := app.Frame()
 
@@ -175,7 +175,7 @@ func TestChatScrollShrinks(t *testing.T) {
 	fillChat(host)
 	app.renderSync(t)
 	app.Frame()
-	press(t, app, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+	press(t, app, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	st := app.scrolls["chat"]
 	st.top, st.rows = 2, st.rows+400 // the last frame drew 400 rows more
 	app.frameGen++
@@ -201,7 +201,7 @@ func TestAgentViewKeepsTheSessionPlace(t *testing.T) {
 	fillChat(host)
 	app.renderSync(t)
 	app.Frame()
-	press(t, app, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+	press(t, app, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	app.Frame()
 	session := app.scrolls[app.scrollDef]
 	if session.follow || session.top == 0 {
@@ -277,7 +277,7 @@ func TestAgentViewSendSnapsToTail(t *testing.T) {
 	fillChat(host)
 	app.renderSync(t)
 	app.Frame()
-	press(t, app, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+	press(t, app, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	app.Frame()
 
 	db := testStore(t, host)
@@ -322,7 +322,7 @@ func TestChatScrollFollows(t *testing.T) {
 			fillChat(host)
 			app.renderSync(t)
 			app.Frame()
-			press(t, app, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+			press(t, app, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 			if app.scrolls["chat"].follow {
 				t.Fatalf("precondition: scrolled off the tail")
 			}
@@ -339,7 +339,7 @@ func TestChatScrollFollows(t *testing.T) {
 }
 
 // TestChatScrollShortContent: content shorter than the viewport cannot
-// scroll; ctrl+t is a no-op, and the transcript starts one row below the
+// scroll; ctrl+u is a no-op, and the transcript starts one row below the
 // region's own first row, which is the pad above it.
 func TestChatScrollShortContent(t *testing.T) {
 	t.Parallel()
@@ -348,7 +348,7 @@ func TestChatScrollShortContent(t *testing.T) {
 	app.renderSync(t)
 	app.Frame()
 
-	for _, key := range []tea.KeyPressMsg{{Code: 't', Mod: tea.ModCtrl}, {Code: tea.KeyHome, Mod: tea.ModCtrl}} {
+	for _, key := range []tea.KeyPressMsg{{Code: 'u', Mod: tea.ModCtrl}, {Code: tea.KeyHome, Mod: tea.ModCtrl}} {
 		press(t, app, key)
 		if !app.scrolls["chat"].follow {
 			t.Fatalf("short content cannot scroll: %s", key)
@@ -392,8 +392,8 @@ func TestChatScrollAnchorsThroughRelayout(t *testing.T) {
 	}
 	app.renderSync(t)
 	app.Frame()
-	press(t, app, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
-	press(t, app, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+	press(t, app, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
+	press(t, app, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	want := visible(app.Frame())
 
 	app.Update(tea.WindowSizeMsg{Width: 40, Height: 14})
@@ -491,7 +491,7 @@ func TestChatScrollAnchorsThroughFill(t *testing.T) {
 	// the first pass draws the last three turns
 	first := slices.IndexFunc(full, func(l []hostapi.Segment) bool { return strings.Contains(hostapi.SegsText(l), "message 28") })
 	fill(full[first:], true)
-	press(t, app, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+	press(t, app, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	want, below := text(), app.rowsBelow()
 	fill(full, false)
 	if got := text(); got != want || app.rowsBelow() != below {
