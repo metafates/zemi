@@ -191,7 +191,7 @@ func TestSeedStreamSeedsEveryField(t *testing.T) {
 	h, _ := newTestHost(t)
 	s := StreamSnapshot{
 		Active: true, ByLoop: true, Text: "t", Reasoning: "r", Thinking: true,
-		Model: "a/b", Thought: 2 * time.Second, Elapsed: 3 * time.Second,
+		Task: "the task", Model: "a/b", Thought: 2 * time.Second, Elapsed: 3 * time.Second,
 		SessionIn: 1, SessionOut: 2, SessionCost: 3.5, LastIn: 4, CtxWindow: 5000,
 		CacheRead: 6, CacheBilled: 7, Retrying: true, RetryIn: 8 * time.Second, RetryWhy: "overloaded",
 		Retries: 9, Turn: 10, CheckingGoal: true,

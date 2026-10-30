@@ -111,7 +111,8 @@ type agentHost struct {
 	stepSettled          bool // the step's OnStepFinish ran, so its calls are logged
 	tools                []StreamTool
 	steering             []string
-	steeredTurn          bool // the running turn's input came from the steering queue
+	steeredTurn          bool   // the running turn's input came from the steering queue
+	task                 string // the running turn's own input, one line: the program status report names it
 	// spoke is closed when the user's own message arrives during a turn
 	// (UserSpoke): a foreground call waiting on a long run hands it off
 	// instead of holding the turn past the message. Re-armed where the queue
@@ -561,6 +562,7 @@ func (h *Host) HoldPrompt(prompt string) {
 	held := &heldPrompt{scope: h.claim(), text: agent.Defuse(prompt), base: base, cut: h.trCut.Load()}
 	h.tMu.RUnlock()
 	ag.held = held
+	ag.task = clipLine(held.text, 200) // the hold reads as the turn's own words
 	ag.beginTurn()
 	ag.mu.Unlock()
 	h.startTurn(held.text, held)
@@ -664,6 +666,11 @@ func (h *Host) sendClaimed(scope *turnScope, text string, held *heldPrompt) (err
 		}
 	}()
 	ag := h.agents
+	// the turn's words read before the runner builds (interpreter work):
+	// the UI's first working report names what the turn is on
+	ag.mu.Lock()
+	ag.task = clipLine(text, 200)
+	ag.mu.Unlock()
 	fail := func(err error) error {
 		h.endScope(scope)
 		h.refresh()

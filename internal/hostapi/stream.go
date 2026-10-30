@@ -452,7 +452,8 @@ type StreamSnapshot struct {
 	Active    bool
 	Text      string
 	Reasoning string
-	Thinking  bool // a reasoning block is open: the model thinks right now
+	Thinking  bool   // a reasoning block is open: the model thinks right now
+	Task      string // the running turn's own input, one line
 	Tools     []StreamTool
 	Model     string
 	Steering  []Queued      // what waits for the turn's next step boundary, oldest first
@@ -529,6 +530,7 @@ func (h *Host) streamLocked() StreamSnapshot {
 	}
 	out := StreamSnapshot{
 		Active: ag.active, Text: ag.textBuf, Reasoning: ag.reasonBuf, Thinking: ag.thinking,
+		Task:    ag.task,
 		Thought: thought, Elapsed: elapsed,
 		SessionIn: ag.sessIn, SessionOut: ag.sessOut, LastIn: ag.lastIn,
 		CacheRead: ag.cacheRead, CacheBilled: ag.cacheBilled,
@@ -565,6 +567,7 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 	ag.byLoop = s.ByLoop
 	ag.textBuf = s.Text
 	ag.reasonBuf = s.Reasoning
+	ag.task = s.Task
 	ag.tools = s.Tools
 	ag.modelSeed = s.Model
 	ag.thought = s.Thought
