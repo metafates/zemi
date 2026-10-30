@@ -149,6 +149,11 @@ load() {
 	elif [ "$SESSION" != "$LAB_SESSION" ]; then
 		tmux -L "$SERVER" has-session -t "$SESSION" 2>/dev/null ||
 			die "no window '$SESSION' (zemi-lab peer first)"
+	else
+		# the boot execs down to zemi, so a gone pane is a dead zemi - a
+		# corpse would serve its last screen to every drive command
+		tmux -L "$SERVER" has-session -t "$SESSION" 2>/dev/null ||
+			die "the main window has no live process (zemi died? zemi-lab down and up again)"
 	fi
 }
 
@@ -308,13 +313,14 @@ for line in sys.stdin.read().splitlines():
     # the spinner animates wherever it runs; the eyes decay in the border
     line = re.sub(r"[\u2800-\u28ff]+", "@", line)
     line = re.sub(r"(┌ )@[.·?><^]{2}", r"\1@··", line)
-    # a turn telemetry ticks mid-screen: model · seconds · N out · clock,
-    # wrapped rows once the model token scrolls off its line. The
-    # transcript carries the same shape as the user typed it, so a ▌ row
-    # keeps its figures
-    if line.lstrip()[:1] != "▌":
-        line = re.sub(r"· \d+(?:\.\d+)?s · \d+ out · \d{1,2}:\d{2}", "· @ · @ out · @", line)
-        line = re.sub(r"\d+(?:\.\d+)?s · \d+ out · \d{1,2}:\d{2}", "@ · @ out · @", line)
+    # a turn telemetry ticks mid-screen: model · seconds · N out · clock;
+    # narrow labs drop the model token, leaving the seconds at the head of
+    # the row. The transcript carries the same shape as the user typed it,
+    # so both rules anchor on the telemetry shape itself - a provider/model
+    # token before the seconds, or the seconds at the head - and a user
+    # row (a ▌ mark or a leading ·) keeps its figures
+    line = re.sub(r"(\S+/\S+) · \d+(?:\.\d+)?s · \d+ out · \d{1,2}:\d{2}", r"\1 · @ · @ out · @", line)
+    line = re.sub(r"^(\s*)\d+(?:\.\d+)?s · \d+ out · \d{1,2}:\d{2}", r"\1@ · @ out · @", line)
     # the right rail thumb travels as rows scroll: read it as the empty
     # cell it lands on, so a box border keeps its column (a masked border
     # reads as a rail cell and eats a trailing duration with it)
@@ -335,6 +341,7 @@ for i in range(len(out) - 1, -1, -1):
         line = re.sub(r"(?<=in )\d+[ms]\b", "@s", line)  # a retry countdown ticks
         line = re.sub(r"\d+ (out|tok)", r"@ \1", line)  # token counts
         line = re.sub(r"\$\d+(\.\d+)?", "$@", line)     # cost figures
+        line = re.sub(r"\d+[km]?/\d+[km]?(?= ?ctx)", "@", line)  # the context meter
         line = re.sub(r"\d{1,2}:\d{2}", "@", line)      # the clock
         out[i] = line
         break
@@ -753,6 +760,10 @@ cmd_prompt() {
 
 cmd_type() {
 	[ $# -ge 1 ] || die "type: text"
+	# a stopped zemi buffers pty input: the keys queue behind the freeze and
+	# land after kill -CONT, so the type would only seem to fail
+	stopped &&
+		die "type: zemi is stopped (kill -CONT the pid first - the keys would queue and land later)"
 	prompt_lock
 	kind=$(overlay_kind)
 	case "$kind" in
@@ -804,6 +815,8 @@ cmd_wait() {
 
 cmd_ask() {
 	case "${1:-}" in y | n | t) ;; *) die "ask: y, n or t" ;; esac
+	stopped &&
+		die "ask: zemi is stopped (kill -CONT the pid first)"
 	# there must be a permission ask to answer: with none up, "overlay gone"
 	# is trivially true and the command would lie. The rex lab reads the
 	# terminal's blocked record (kind=permission); tmux's ? title mark cannot
@@ -882,6 +895,10 @@ cmd_snap() {
 	load
 	out=${1:-$TREE/snap/prev.txt}
 	case "$out" in /*) ;; *) out=$TREE/snap/$out ;; esac
+	case "${1:-}" in
+		*.txt | "") ;;
+		*) echo "note: no .txt suffix to replace - the masked capture is $out (not $out.txt)" >&2 ;;
+	esac
 	mkdir -p "$(dirname "$out")"
 	cap >"${out%.txt}.raw"
 	[ -s "${out%.txt}.raw" ] || die "capture failed (the pane is gone?)"
@@ -958,6 +975,9 @@ cmd_peer() {
 			*) WIN=$1; shift ;;
 		esac
 	done
+	case "$WIN" in
+		main | fake | recorder) die "'$WIN' is lab plumbing or the main window - pick another peer name" ;;
+	esac
 	load
 	BIN=${ZEMI_BIN:-$REPO/bin/zemi}
 	case $BIN in /*) ;; *) BIN=$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN") ;; esac
@@ -1278,6 +1298,13 @@ cmd_down() {
 					i=$((i + 1))
 				done
 			fi
+			# the dance gives a recorder seconds to die unmarked (the
+			# first check ran before it): re-ask the kernel, so a
+			# mid-teardown death still lands the mark
+			{ [ -n "$live" ] || [ -n "$force" ]; } && [ ! -f "$TREE/.lab.kept" ] && {
+				lsof -t "$TREE/events.jsonl" >/dev/null 2>&1 ||
+					touch "$TREE/.lab.stale-stream"
+			}
 			rex kill "$LAB_RSESSION" 2>/dev/null || true
 		elif [ "${LAB_BACKEND:-tmux}" != rex ]; then
 			# the rex branch refuses a corpse above; tmux's pane gone is the

@@ -41,7 +41,8 @@ $S/zemi-lab ask y                  # answer a permission ask (y|n|t); refuses wh
 $S/zemi-lab up -x 60 -y 15         # narrow layouts are baked into up
 $S/zemi-lab size 60 15             # resize after the fact; rex fails loudly when it did not stick
 $S/zemi-lab peer                   # a second zemi on the same tree and store,
-                                   # its own fake model and request stream (req-peer)
+                                   # its own fake model and request stream (req-peer);
+                                   # the names main, fake, recorder are reserved
 $S/zemi-lab -s peer prompt 'name one river'   # drive the peer; -s main|peer aims every command
 $S/zemi-lab snap && $S/zemi-lab diff          # row-shift check: mask volatile spans,
                                    # exit 1 when rows moved (raw captures kept beside)
@@ -98,9 +99,10 @@ gate plugin whose `permission.request` handler returns
 `{decision = "ask"}`, since zemi never asks by design - DESIGN §9), `--rex` (the Rex
 backend below). A running lab can be made to ask without a reboot: drop the same two files
 into `$TREE/data/plugins/local/askgate/.zemi/` (plugin.json + init.lua; their contents are
-the `write_config()` block in the zemi-lab script) and an action asks: on an idle lab the
-re-load lands at once, so the first action after planting already asks; mid-turn the first
-one starts before the plugin re-loads and the one after it asks. `zemi-lab attach` sits at the
+the `write_config()` block in the zemi-lab script) and an action asks: the re-load is
+debounced, so a first action fired at once can run ungated (the gate races the debounce) -
+pause a beat after planting or expect the second action to ask; mid-turn the first one
+starts before the plugin re-loads and the one after it asks. `zemi-lab attach` sits at the
 lab in a real terminal (tmux) or prints how to open it (Rex). `zemi-lab health [args...]`
 runs `zemi-safe health` against the lab tree.
 
@@ -136,7 +138,8 @@ streamed chunks.
   rows (its queued `· other window` row, its error rows): diff a single-window lab, or
   with the peer idle. The raw captures are kept beside
   the masked ones for re-checking (`snap m1.txt` keeps `m1.raw` - the suffix replaces
-  `.txt`; a relative name lands in `$TREE/snap/`).
+  `.txt`; a relative name lands in `$TREE/snap/`; a suffixless name warns and writes the
+  bare name).
 - The pane title marks state: `? ` while an ask is up, plain otherwise -
   `zemi-lab title` prints it on either backend (a rex lab also streams each change as a
   `title_changed` event, so the count of title writes is assertable - count from a
@@ -160,7 +163,7 @@ streamed chunks.
   `Ts+`) and `wait`/`prompt` refuse it in 0s. The tmux pane's pid IS zemi (the boot line
   execs down), but a `kill -STOP` from a tool shell does not take on it (state stays
   `Ss+`, three shells observed; SIGKILL lands fine). A stopped zemi's frozen screen
-  reads as settled to a compare, so `wait` and `prompt` refuse one (`kill -CONT` to
+  reads as settled to a compare, so `wait`, `prompt`, `type` and `ask` refuse one (`kill -CONT` to
   resume).
 - Direct `tmux -L zl-<name>` probes need the lab's socket dir: the lab exports
   `TMUX_TMPDIR=$TMPDIR`, so set it the same way or tmux looks in `/tmp/tmux-*`
@@ -255,9 +258,10 @@ $S/zemi-lab -n ps down                          # quits zemi first, so the exit 
   `events program_status_removed` shows `reason=clear` - the session is gone by
   then, which is why `events` falls back to the kept tree's final stream (and warns
   when that stream ends before the tree's last write: a recorder killed mid-lab makes
-  absence assertions false-pass). A recorder already dead at teardown marks the tree,
-  and `events` on that kept tree refuses - absence assertions on a stream that stopped
-  early false-pass; read `events.jsonl` directly when you only want what did arrive.
+  absence assertions false-pass). A recorder dead at teardown - before the quit dance or
+  during it - marks the tree, and `events` on that kept tree refuses - absence assertions
+  on a stream that stopped early false-pass; read `events.jsonl` directly when you only
+  want what did arrive.
 - `down` on a lab whose zemi is already dead refuses: the quit dance would burn 4s and
   land no exit clear anyone could assert - `down --force` reaps without it, and without
   the dance (a corpse's keys land nowhere).
