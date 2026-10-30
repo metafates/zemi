@@ -316,6 +316,19 @@ func (h *Host) messagesList(p pickTr, at int) Overlay {
 	for i := range rows {
 		rows[i] = -len(p.live) - 1 - i
 	}
+	// the wipe's own row leads the list: the reset note the transcript draws
+	// nothing of, reachable here and by view alone — the fold header counts it
+	if h.DB != nil {
+		if first, err := h.DB.LogFrom(0, 1); err == nil && len(first) == 1 && first[0].Kind == store.KindNote {
+			o.Items = append(o.Items, OverlayItem{
+				Text:    firstLine(first[0].Text),
+				Desc:    "a reset wiped the chat before this",
+				Section: "Earlier",
+				Run:     "messages view #" + strconv.FormatInt(first[0].Seq, 10),
+				Verb:    VerbOpen,
+			})
+		}
+	}
 	for _, e := range turnElements(p, rows) {
 		m := p.at(e.idx)
 		var item OverlayItem

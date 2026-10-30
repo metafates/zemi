@@ -547,7 +547,15 @@ local function builder(ctx, width)
 		-- digest's click closes it again.
 		local one = first == last and list[first].kind == "reasoning"
 		local click = one and not opened and "call:" .. pos(first) or "turn:" .. pos(first)
-		B.digestRow(digest, click, head)
+		-- another window's turn reads marked, as its user and reply rows do
+		local foreign = false
+		for i = first, last do
+			if list[i].foreign then
+				foreign = true
+				break
+			end
+		end
+		B.digestRow(digest, click, head, foreign)
 		if not opened then return end
 		local at = #B.lines
 		-- a lone thought opens as its text: the digest above it already says how long it thought
@@ -560,10 +568,17 @@ local function builder(ctx, width)
 	---@param digest string
 	---@param click string?
 	---@param sticky string?
-	function B.digestRow(digest, click, sticky)
+	---@param foreign boolean?
+	function B.digestRow(digest, click, sticky, foreign)
+		local mark = foreign and " · other window" or ""
 		push({
 			{ text = "· ", hl = "Dim", copy = false, hover = false, click = click, sticky = sticky },
-			{ text = fmt.clip(digest, width - 2 - RAIL_EDGE), hl = "Dim", click = click },
+			{
+				text = fmt.clip(digest, math.max(width - 2 - RAIL_EDGE - #mark, 8)),
+				hl = "Dim",
+				click = click,
+			},
+			{ text = mark, hl = "Dim", copy = false, click = click },
 		})
 	end
 
