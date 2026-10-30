@@ -88,8 +88,10 @@ type Request struct {
 	Arg     string // path, url or command
 	Reason  string // human-facing description for the overlay
 	Preview string // a file tool's unified diff, a script, a tool call's input
-	// Description is the model's own summary of a command; the command is
-	// what gets checked and shown, this only helps the user read it
+	// Description is what the ask's about row quotes: the model's own
+	// summary of a command, or a tool's own description when the model
+	// named none. The command is what gets checked and shown, this only
+	// helps the user read it
 	Description string
 	// Read marks a call the request's tool itself knows is read-only (an
 	// MCP tool its server annotates so): it settles on its own

@@ -817,7 +817,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	req := tools.Request{Tool: tool, Subject: "mcp." + name, Arg: t.tool.Name, Preview: call.Input, Read: t.tool.ReadOnly()}
+	req := tools.Request{Tool: tool, Subject: "mcp." + name, Arg: t.tool.Name, Preview: call.Input, Description: t.tool.Description, Read: t.tool.ReadOnly()}
 	if v := t.pipe.CheckDenied(req); !v.Allowed {
 		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "mcp."+name+" "+t.tool.Name)), nil
 	}

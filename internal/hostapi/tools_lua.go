@@ -297,7 +297,7 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply 
 		return resp, nil
 	}
 	defer a.h.postNotify(ctx, a.pipe.Pad, a.t.Name, call.Input, &reply, time.Now())
-	req := tools.Request{Tool: a.t.Name, Subject: "tool." + a.t.Name, Arg: a.t.Name, Preview: call.Input, Owner: a.h.OriginBadge(a.t.Origin, a.t.Path)}
+	req := tools.Request{Tool: a.t.Name, Subject: "tool." + a.t.Name, Arg: a.t.Name, Preview: call.Input, Description: a.t.Desc, Owner: a.h.OriginBadge(a.t.Origin, a.t.Path)}
 	if v := a.pipe.CheckDenied(req); !v.Allowed {
 		return fantasy.NewTextErrorResponse(tools.DeniedText(v, req.Subject)), nil
 	}
