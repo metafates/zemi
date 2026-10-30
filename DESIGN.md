@@ -1621,7 +1621,10 @@ UI extensibility contract:
   lets a program report without querying, since a terminal ignores unknown
   OSCs. A turn's own words (`Task` on the stream snapshot) come from the
   send that opened it — the user's message, a loop's note, a queued
-  follow-up — one line, 200 characters.
+  follow-up — one line, 200 characters. One-time completions no record
+  carries — an MCP sign-in finishing or failing, a turn that crashed —
+  alert in the `ui.notify` style (osc by default) while the window is
+  unfocused.
 - Themes: a theme is a palette of fixed roles (`bg`, `fg`, `accent`,
   `literal`, `ok`, `warn`, `danger`, `dim`, `rule`, `panel`, `band`, `addbg`,
   `delbg`, `well`); `zemi.ui.theme.add` takes `bg`, `fg` and the four hues, or a

@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"os"
 	"os/exec"
 	"runtime"
 	"slices"
@@ -190,15 +189,6 @@ func healthResult(v any) (HealthLevel, string, error) {
 	return HealthOK, "", nil
 }
 
-// oscTerms are the TERM_PROGRAM and TERM values of terminals that show OSC 9
-// as a desktop notification. TERM survives ssh, TERM_PROGRAM does not.
-var oscTerms = []string{"iTerm.app", "ghostty", "WezTerm", "xterm-ghostty", "xterm-kitty", "wezterm"}
-
-// statusTerms name terminals that follow the program status protocol
-// (OSC 7501) and surface a record change themselves; auto leaves the
-// notifying to such a terminal instead of doubling it.
-var statusTerms = []string{"rex"}
-
 // notifiers name the native notifier per GOOS.
 var notifiers = map[string]string{"darwin": "osascript", "linux": "notify-send"}
 
@@ -206,7 +196,7 @@ var notifiers = map[string]string{"darwin": "osascript", "linux": "notify-send"}
 // uses, and why. has runs only when the answer needs it: it walks PATH.
 // missing is the machine-read why: the native notifier the setting names is
 // not there, which /health warns about.
-func notifyStyle(setting string, env func(string) string, goos string, has func(string) bool) (style, why string, missing bool) {
+func notifyStyle(setting, goos string, has func(string) bool) (style, why string, missing bool) {
 	tool := notifiers[goos]
 	switch setting {
 	case config.NotifyNative:
@@ -214,37 +204,21 @@ func notifyStyle(setting string, env func(string) string, goos string, has func(
 			return config.NotifyNative, "via " + tool, false
 		}
 		return config.NotifyBell, cmp.Or(tool, "a notifier") + " not found", true
-	case config.NotifyAuto:
+	case config.NotifyBell:
+		return config.NotifyBell, "set in config", false
 	default:
-		return setting, "set in config", false
+		return config.NotifyOSC, "set in config", false
 	}
-	remote := slices.ContainsFunc([]string{"SSH_TTY", "SSH_CONNECTION"}, func(k string) bool { return env(k) != "" })
-	native := tool != "" && !remote && has(tool)
-	// tmux, GNU screen and zellij drop OSC 9 unless it is passed through
-	muxed := slices.ContainsFunc([]string{"TMUX", "STY", "ZELLIJ"}, func(k string) bool { return env(k) != "" })
-	if !muxed {
-		for _, k := range []string{"TERM_PROGRAM", "TERM"} {
-			v := env(k)
-			if slices.Contains(oscTerms, v) {
-				return config.NotifyOSC, "auto: " + k + "=" + v, false
-			}
-			if slices.Contains(statusTerms, v) {
-				return config.NotifyOff, "auto: " + k + "=" + v + " follows program status (OSC 7501) itself", false
-			}
-		}
-	}
-	if native {
-		return config.NotifyNative, "auto: via " + tool, false
-	}
-	return config.NotifyBell, "auto: no OSC 9 terminal or local notifier found", false
 }
 
 // NotifyStyle is notifyStyle for this process.
 func (h *Host) NotifyStyle() (style, why string, missing bool) {
-	return notifyStyle(h.Settings.Str(config.KeyUINotify), os.Getenv, runtime.GOOS, func(name string) bool {
-		_, err := exec.LookPath(name)
-		return err == nil
-	})
+	return notifyStyle(h.Settings.Str(config.KeyUINotify), runtime.GOOS, hasNotifier)
+}
+
+func hasNotifier(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
 }
 
 // NotifyArgv is the command that shows text as a native notification. The
@@ -366,8 +340,6 @@ func (h *Host) goHealthRows() []HealthRow {
 	add(HealthOK, "shell", proc.Shell())
 
 	switch style, why, missing := h.NotifyStyle(); {
-	case style == config.NotifyOff:
-		add(HealthOK, "notify", "off")
 	case missing:
 		add(HealthWarn, "notify", "native wanted, bell used: "+why)
 	default:

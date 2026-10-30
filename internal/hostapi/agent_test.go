@@ -829,6 +829,7 @@ type fakeUI struct {
 }
 
 func (f *fakeUI) Notify(slog.Level, string, string) {}
+func (f *fakeUI) Alert(slog.Level, string, string)  {}
 func (f *fakeUI) OpenOverlay(o Overlay) {
 	f.mu.Lock()
 	f.opened = append(f.opened, o)

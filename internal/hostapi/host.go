@@ -38,6 +38,9 @@ import (
 // internal/ui; hostapi never imports the UI.
 type UIHooks interface {
 	Notify(level slog.Level, title, body string)
+	// Alert raises what Notify does plus, while the window is unfocused, a
+	// one-time notification (Host.Alert).
+	Alert(level slog.Level, title, body string)
 	OpenOverlay(o Overlay)
 	// RefreshOverlay replaces the open overlay id with what build returns,
 	// calling build only while it is open: for a screen a clock refreshes.
@@ -1221,6 +1224,25 @@ func (h *Host) Notify(level slog.Level, title, body string) {
 		ui.Notify(level, title, body)
 		return
 	}
+	h.notifyStderr(level, title, body)
+}
+
+// Alert raises what Notify does plus, while the window is unfocused, a
+// one-time notification: for completions no status record carries, which a
+// terminal that follows OSC 7501 itself would never surface. Headless, it is
+// Notify.
+func (h *Host) Alert(level slog.Level, title, body string) {
+	h.recordNotify(level, title, body)
+	if ui := h.hooks(); ui != nil {
+		ui.Alert(level, title, body)
+		return
+	}
+	h.notifyStderr(level, title, body)
+}
+
+// notifyStderr is the headless Notify: a warning or an error on Stderr, so
+// an early failure is never swallowed.
+func (h *Host) notifyStderr(level slog.Level, title, body string) {
 	if level < slog.LevelWarn {
 		return
 	}

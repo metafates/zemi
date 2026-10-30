@@ -116,14 +116,12 @@ type watcher struct {
 // The ui.notify styles, in the order the setting lists them: the resolver that
 // picks one and the dispatch that fires it read the same names.
 const (
-	NotifyAuto   = "auto"
 	NotifyOSC    = "osc"
 	NotifyNative = "native"
 	NotifyBell   = "bell"
-	NotifyOff    = "off"
 )
 
-var notifyStyles = []string{NotifyAuto, NotifyOSC, NotifyNative, NotifyBell, NotifyOff}
+var notifyStyles = []string{NotifyOSC, NotifyNative, NotifyBell}
 
 // The log levels log.level takes, in rising order.
 var logLevels = []string{"debug", "info", "warn", "error"}
@@ -169,7 +167,7 @@ func (s *Store) defineDefaults() {
 		{Path: KeyEditorCommand, Kind: KindString, Default: "", Desc: "editor for zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},
 		{Path: KeyKeymapLeader, Kind: KindString, Default: "ctrl+x", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
 		{Path: KeyUIMouse, Kind: KindBool, Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
-		{Path: KeyUINotify, Kind: KindString, Default: NotifyAuto, Choices: notifyStyles, Desc: "how zemi alerts while its window is unfocused, as a turn ends or a prompt waits: osc (a terminal notification), native (osascript or notify-send), bell, off; auto picks what shows on this machine (/health names it)"},
+		{Path: KeyUINotify, Kind: KindString, Default: NotifyOSC, Choices: notifyStyles, Desc: "how zemi alerts while its window is unfocused, as a turn ends, a prompt waits, or background work completes: osc (default; a terminal notification), native (osascript or notify-send), bell"},
 		{Path: KeyLogLevel, Kind: KindString, Default: "debug", Choices: logLevels, Desc: "what the launch log file (~/.local/state/zemi/logs) records: debug, info, warn or error"},
 	}
 	for _, def := range defaults {

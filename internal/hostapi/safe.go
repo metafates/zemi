@@ -48,7 +48,7 @@ func (h *Host) safe(where string, fn func()) {
 func (h *Host) endTurnAfterPanic() {
 	if r := recover(); r != nil {
 		h.clearCrashedTurn(r)
-		h.Notify(slog.LevelError, "Turn crashed", "it was stopped; /errors has the cause")
+		h.Alert(slog.LevelError, "Turn crashed", "it was stopped; /errors has the cause")
 		h.refresh()
 	}
 }

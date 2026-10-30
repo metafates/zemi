@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
@@ -157,6 +158,19 @@ func (a *App) BootError() error { return a.bootErr }
 func (a *App) Notify(level slog.Level, title, body string) {
 	title, body = sanitize.String(title), sanitize.String(body)
 	a.do(func() { a.pushToast(level, title, body) })
+}
+
+// Alert implements hostapi.UIHooks (Host.Alert): the toast, plus a one-time
+// notification while the window is unfocused.
+func (a *App) Alert(level slog.Level, title, body string) {
+	a.Notify(level, title, body)
+	a.await(func() tea.Cmd {
+		text := "zemi: " + hostapi.ToastTitle(level, title)
+		if line := ansi.Truncate(sanitize.Line(body), 200, "…"); line != "" {
+			text += ": " + line
+		}
+		return a.notifyIfAway(text)
+	})
 }
 
 func (a *App) OpenOverlay(o hostapi.Overlay) {

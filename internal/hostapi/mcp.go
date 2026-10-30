@@ -1334,7 +1334,7 @@ func (h *Host) authorizeMCP(ctx context.Context, s *mcpServer) error {
 	h.mcpChanged()
 	if err != nil && !errors.Is(err, context.Canceled) {
 		h.RecordError(errMCP, s.name, err.Error())
-		h.Notify(slog.LevelError, "Could not sign in to "+s.name, err.Error())
+		h.Alert(slog.LevelError, "Could not sign in to "+s.name, err.Error())
 	}
 	return err
 }
@@ -1345,9 +1345,9 @@ func (h *Host) signedInMCP(name string) {
 	if s, err := h.mcpServerNamed(name); err == nil && !s.enabledFlag() {
 		return
 	}
-	h.Notify(slog.LevelInfo, "Signed in", name)
+	h.Alert(slog.LevelInfo, "Signed in", name)
 	if err := h.restartMCP(name); err != nil {
-		h.Notify(slog.LevelError, "Could not restart "+name, err.Error())
+		h.Alert(slog.LevelError, "Could not restart "+name, err.Error())
 	}
 }
 

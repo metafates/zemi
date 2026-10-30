@@ -601,10 +601,10 @@ func TestConfigSetAnyOrigin(t *testing.T) {
 		t.Fatalf("project config set agent.effort: %v", err)
 	}
 	runUser(t, r, `zemi.config.set("ui.notify", false)`)
-	if v, _ := h.Settings.Get("ui.notify"); v != config.NotifyAuto {
+	if v, _ := h.Settings.Get("ui.notify"); v != config.NotifyOSC {
 		t.Errorf("ui.notify = %v after a refused set, want the default", v)
 	}
-	if !h.Recorded(`config key ui.notify expects auto, osc, native, bell or off`) {
+	if !h.Recorded(`config key ui.notify expects osc, native or bell`) {
 		t.Error("the refused value is not flagged in /errors")
 	}
 	runUser(t, r, `zemi.config.set("agent.max_background", 42)`)

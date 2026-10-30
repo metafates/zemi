@@ -28,7 +28,8 @@ type pluginsUI struct {
 	notes  chan string
 }
 
-func (u *pluginsUI) OpenOverlay(o Overlay) { u.opened <- o }
+func (u *pluginsUI) Alert(slog.Level, string, string) {}
+func (u *pluginsUI) OpenOverlay(o Overlay)            { u.opened <- o }
 func (u *pluginsUI) Notify(level slog.Level, title, body string) {
 	u.notes <- notifyName(level) + ": " + title + ": " + body
 }

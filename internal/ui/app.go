@@ -587,8 +587,15 @@ func (a *App) notifyIfAway(text string) tea.Cmd {
 	if a.focused {
 		return nil
 	}
+	style, _, _ := a.host.NotifyStyle()
+	return a.notifyAs(style, text)
+}
+
+// notifyAs sends text in the ui.notify style; a style this terminal has no
+// channel for sends nothing.
+func (a *App) notifyAs(style, text string) tea.Cmd {
 	text = sanitize.String(text)
-	switch style, _, _ := a.host.NotifyStyle(); style {
+	switch style {
 	case config.NotifyOSC:
 		return tea.Raw(ansi.Notify(text))
 	case config.NotifyBell:

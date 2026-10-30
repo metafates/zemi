@@ -56,7 +56,6 @@ func TestNotifyWhenAway(t *testing.T) {
 		{"away after a loop's run", "osc", nil, false, true, false, ""},
 		{"away as the loop ends", "osc", nil, false, true, true, "\x1b]9;zemi: the loop ended\x07"},
 		{"away with a bell", "bell", nil, false, false, false, "\a"},
-		{"away and off", "off", nil, false, false, false, ""},
 		{"back", "osc", tea.FocusMsg{}, false, false, false, ""},
 	} {
 		if _, err := host.Settings.SetQuiet("ui.notify", c.style); err != nil {
@@ -76,6 +75,48 @@ func TestNotifyWhenAway(t *testing.T) {
 		app.looping = c.looped
 		if got := frame(); got != c.want {
 			t.Errorf("%s: sent %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// TestAlertWhenAway: a background completion (Host.Alert) toasts and
+// notifies in the ui.notify style while the window is away, even where a
+// turn's end would not — the event style no status record carries.
+func TestAlertWhenAway(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name, style string
+		focus       tea.Msg
+		want        string // the raw bytes sent, "" for no notification
+	}{
+		{"away", "osc", tea.BlurMsg{}, "\x1b]9;zemi: Signed in: github\x07"},
+		{"focused", "osc", nil, ""},
+		{"away with a bell", "bell", tea.BlurMsg{}, "\a"},
+	} {
+		app, host := notifyApp(t)
+		if _, err := host.Settings.SetQuiet("ui.notify", c.style); err != nil {
+			t.Fatal(err)
+		}
+		if c.focus != nil {
+			app.Update(c.focus)
+		}
+		app.testQueue = make(chan tea.Msg, 2) // the toast and the alert post apart
+		app.Alert(slog.LevelInfo, "Signed in", "github")
+		var sent string
+		for range 2 {
+			if _, cmd := app.Update(<-app.testQueue); cmd != nil {
+				for _, m := range runCmd(cmd) {
+					if raw, ok := m.(tea.RawMsg); ok {
+						sent = fmt.Sprint(raw.Msg)
+					}
+				}
+			}
+		}
+		if sent != c.want {
+			t.Errorf("%s: sent %q, want %q", c.name, sent, c.want)
+		}
+		if len(app.toasts) == 0 {
+			t.Errorf("%s: no toast", c.name)
 		}
 	}
 }

@@ -1053,6 +1053,7 @@ func (u *testUI) CloseLuaOverlays() {
 }
 
 func (*testUI) Notify(slog.Level, string, string)                   {}
+func (*testUI) Alert(slog.Level, string, string)                    {}
 func (*testUI) Refresh()                                            {}
 func (*testUI) Scroll(ScrollAction, string)                         {}
 func (*testUI) LayoutRects() map[string]Rect                        { return nil }

@@ -228,33 +228,20 @@ func TestWaitMCP(t *testing.T) {
 	<-done
 }
 
-// TestNotifyStyle: auto sends OSC 9 where a terminal draws it, the native
-// notifier where one shows otherwise, and a bell when neither is found.
+// TestNotifyStyle: the native style falls back to a bell when the notifier
+// is missing, and the others stand as set.
 func TestNotifyStyle(t *testing.T) {
 	for _, c := range []struct {
-		name, setting, goos, env, tools, want string
-		missing                               bool
+		name, setting, goos, tools, want string
+		missing                          bool
 	}{
-		{"ghostty", "auto", "darwin", "TERM_PROGRAM=ghostty", "osascript", "osc", false},
-		{"ghostty without a notifier", "auto", "darwin", "TERM_PROGRAM=ghostty", "", "osc", false},
-		{"kitty over ssh", "auto", "linux", "TERM=xterm-kitty SSH_TTY=/dev/pts/1", "notify-send", "osc", false},
-		{"kitty on linux", "auto", "linux", "TERM=xterm-kitty", "notify-send", "osc", false},
-		{"rex reports status itself", "auto", "darwin", "TERM_PROGRAM=rex", "osascript", "off", false},
-		{"rex in tmux", "auto", "darwin", "TERM_PROGRAM=rex TMUX=x", "osascript", "native", false},
-		{"tmux on a mac", "auto", "darwin", "TERM_PROGRAM=tmux TERM=xterm-ghostty TMUX=x", "osascript", "native", false},
-		{"screen on a mac", "auto", "darwin", "TERM_PROGRAM=ghostty TERM=screen STY=1.pts-0", "osascript", "native", false},
-		{"Apple Terminal without a notifier", "auto", "darwin", "TERM_PROGRAM=Apple_Terminal", "", "bell", false},
-		{"linux over ssh", "auto", "linux", "TERM=xterm-256color SSH_CONNECTION=x", "notify-send", "bell", false},
-		{"native with no tool", "native", "linux", "", "", "bell", true},
-		{"off", "off", "darwin", "TERM_PROGRAM=ghostty", "osascript", "off", false},
+		{"osc is the default", "osc", "darwin", "osascript", "osc", false},
+		{"bell", "bell", "darwin", "osascript", "bell", false},
+		{"native with a notifier", "native", "darwin", "osascript", "native", false},
+		{"native without a notifier", "native", "linux", "", "bell", true},
 	} {
-		env := map[string]string{}
-		for kv := range strings.FieldsSeq(c.env) {
-			k, v, _ := strings.Cut(kv, "=")
-			env[k] = v
-		}
 		has := func(name string) bool { return name == c.tools }
-		got, why, missing := notifyStyle(c.setting, func(k string) string { return env[k] }, c.goos, has)
+		got, why, missing := notifyStyle(c.setting, c.goos, has)
 		if got != c.want || missing != c.missing {
 			t.Errorf("%s: %s missing=%v (%s), want %s missing=%v", c.name, got, missing, why, c.want, c.missing)
 		}
