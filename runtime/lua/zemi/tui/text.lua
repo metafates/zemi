@@ -364,10 +364,22 @@ function M.digest(rows, first, last, cwd, home)
 	end
 	-- a report the turn waited on exists nowhere else: its body rides the
 	-- lone agent run's fold row, the way a failed call's digest carries its
-	-- refusal
-	if #works == 1 and #calls == 1 and M.family(M.tool(calls[1])) == "agent" then
-		local body = (works[1].text or ""):match("^.- · (.*)$") or ""
-		if body ~= "" then parts[#parts + 1] = body end
+	-- refusal. A run the turn itself waited on reports as its result — the
+	-- body sits past the run id head that result carries.
+	local fam = #calls == 1 and M.family(M.tool(calls[1])) or nil
+	if fam and fam[2] == "agent run" then
+		local body
+		if #works == 1 then
+			body = (works[1].text or ""):match("^.- · (.*)$") or ""
+		else
+			for line in (calls[1].output or ""):gmatch("[^\n]+") do
+				if line ~= "" and not line:match("^%[run ") then
+					body = line
+					break
+				end
+			end
+		end
+		if body ~= "" and body ~= nil then parts[#parts + 1] = body end
 	end
 	if #failed > 0 then
 		if #failed == 1 and #calls == 0 then

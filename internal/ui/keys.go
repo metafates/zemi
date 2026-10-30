@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
@@ -102,6 +103,14 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		ok, replay := a.keySequence(key, "")
 		if !ok {
+			// a fast esc+key arrives as one alt-combo the terminal folded
+			// (the ESC wait): run the two keys it was, esc then the key, so
+			// typing that started with esc does not lose its first letter
+			if msg.Mod == tea.ModAlt && msg.Code < utf8.RuneSelf && unicode.IsPrint(rune(msg.Code)) {
+				esc := tea.KeyPressMsg{Code: tea.KeyEscape}
+				plain := tea.KeyPressMsg{Code: msg.Code, Text: string(rune(msg.Code))}
+				return tea.Batch(replay, a.handleKey(esc), a.handleKey(plain))
+			}
 			return tea.Batch(replay, a.composerKey(key, msg))
 		}
 		a.bump()
