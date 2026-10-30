@@ -921,6 +921,37 @@ func turnStart(row ChatMessage) bool {
 	return row.Kind == RowShell || row.Kind == RowMessage && row.Role == fantasy.MessageRoleUser
 }
 
+// markDeadTail terminates the tail a window died inside: a turn whose rows
+// hold no reply and no error row never ended — the window closed on it
+// (a kill, a quit, a crash) — and the view says so, the way an interrupt's
+// "■ Interrupted" does. Boot-only: the log stays as it is, a live peer's
+// sync never draws one, and the next turn's rows make the check pass.
+func (h *Host) markDeadTail() {
+	tr := h.session.Transcript
+	start := -1
+	for i := len(tr) - 1; i >= 0; i-- {
+		if turnStart(tr[i]) {
+			start = i
+			break
+		}
+	}
+	for _, m := range tr[start+1:] {
+		if m.Kind == RowError || m.Kind == RowMessage && m.Role == fantasy.MessageRoleAssistant {
+			return
+		}
+	}
+	if start < 0 && len(tr) > 0 {
+		return // a tail with no turn of its own: nothing is dangling
+	}
+	if len(tr) == 0 {
+		return
+	}
+	h.session.Transcript = append(tr, ChatMessage{
+		Role: fantasy.MessageRoleAssistant, Kind: RowError,
+		Text: "the window closed mid-turn", Status: CallCancelled, Seq: NoSeq,
+	})
+}
+
 // NewHost wires the registries and opens the stores (best effort:
 // failures surface at the namespaces boot step).
 func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs config.Dirs) *Host {
@@ -993,6 +1024,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		if rows, err := h.DB.LogTail(chatWindowRows * 3); err == nil {
 			h.session.Transcript = alignTrim(logRows(rows))
 			h.stampReset(h.session.Transcript)
+			h.markDeadTail()
 		}
 		h.loadGoal()
 		// the meter rides the stored context of the latest step: a resume

@@ -667,6 +667,64 @@ func TestResumedWindowKeepsTheTurn(t *testing.T) {
 	}
 }
 
+// TestResumedWindowNamesADeadTail: a log whose last turn holds no reply and
+// no error row is a window that closed on it — the boot rebuild ends with
+// the death marker, the way an interrupt's "■ Interrupted" does; a tail
+// whose turn answered draws none.
+func TestResumedWindowNamesADeadTail(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		seed   func(h *Host) error
+		marker bool
+	}{
+		{"a bare prompt", func(h *Host) error {
+			_, err := h.chat.User("go", "")
+			h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: "go"})
+			return err
+		}, true},
+		{"a settled call with no reply", func(h *Host) error {
+			if _, err := h.chat.User("go", ""); err != nil {
+				return err
+			}
+			if err := h.chat.Tool("read", `{"path":"a.go"}`, ""); err != nil {
+				return err
+			}
+			return h.chat.Echo("read", true, "data", StreamTool{})
+		}, true},
+		{"a turn that answered", func(h *Host) error {
+			if _, err := h.chat.User("go", ""); err != nil {
+				return err
+			}
+			return h.chat.Agent("The answer.")
+		}, false},
+		{"an interrupted turn", func(h *Host) error {
+			if _, err := h.chat.User("go", ""); err != nil {
+				return err
+			}
+			return h.chat.Error("Interrupted", true)
+		}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h := newTestHostUI(t, &fakeClock{now: testEpoch})
+			h.SetUIHooks(&fakeUI{})
+			if err := c.seed(h); err != nil {
+				t.Fatal(err)
+			}
+			rows, err := h.DB.LogTail(chatWindowRows)
+			if err != nil {
+				t.Fatal(err)
+			}
+			h.SetTranscript(logRows(rows))
+			h.markDeadTail()
+			tr := h.Session().Transcript
+			last := tr[len(tr)-1]
+			if c.marker != (last.Kind == RowError && last.Text == "the window closed mid-turn") {
+				t.Fatalf("the tail ends with %+v, marker wanted %v", last, c.marker)
+			}
+		})
+	}
+}
+
 // TestResumedWindowDrawsTheZoomAndDatePreviews: a zoom row's preview is the
 // opened line's text, its child address and the second child behind the
 // click; a date row reads the compact local stamp, and a failed zoom's

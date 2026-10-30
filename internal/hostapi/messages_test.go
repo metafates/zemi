@@ -664,7 +664,9 @@ func TestMessagesPagesFromBoot(t *testing.T) {
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
-	if n := len(h.Session().Transcript); n != chatWindowRows {
+	// the dead tail of the seed's last turn draws the boot marker: the
+	// window plus the row that says the window closed on it
+	if n := len(h.Session().Transcript); n != chatWindowRows+1 {
 		t.Fatalf("the boot window holds %d rows", n)
 	}
 	o, ok := h.messagesOlder()
@@ -674,7 +676,9 @@ func TestMessagesPagesFromBoot(t *testing.T) {
 	if o.Items[0].Section != "Earlier" {
 		t.Fatalf("the first loaded row reads %q, want Earlier", o.Items[0].Section)
 	}
-	if len(o.Items) != chatWindowRows+100 {
+	// the dead tail's marker row rides the transcript, so the extended list
+	// carries it
+	if len(o.Items) != chatWindowRows+100+1 {
 		t.Fatalf("the extended list holds %d rows", len(o.Items))
 	}
 	if o.Items[0].Anchor != 0 {
