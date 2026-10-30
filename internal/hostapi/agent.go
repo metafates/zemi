@@ -72,6 +72,7 @@ type StreamTool struct {
 	Status  CallStatus
 	Job     string        // shell and job_start calls: the job the work went to
 	Out     tools.Outcome // what the tool reported beyond its text, read when it ends
+	logged  bool          // the pair reached the log at its step's StepDone; the cut path must not log it twice
 	partial string        // the head of the streaming input, until Label is known
 }
 

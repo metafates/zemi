@@ -1269,6 +1269,34 @@ func TestTurnDoneLogsASettledCutCall(t *testing.T) {
 	}
 }
 
+// TestTurnDoneSkipsALoggedCall: a call whose step settled is already in the
+// log; a later step's unsettled death must not re-log its pair under the
+// same call id - the doubled echo read ok=false against status ok.
+func TestTurnDoneSkipsALoggedCall(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.agents.mu.Lock()
+	h.agents.tools = []StreamTool{{
+		ID: "t1", Name: "shell", Label: "hi",
+		Input: `{"command":"echo hi","about":"say hi"}`, Status: CallOK,
+		Output: "hi", logged: true,
+	}}
+	h.agents.stepSettled = false // a later step opened and never finished
+	h.agents.mu.Unlock()
+	sa := h.streamHooks()
+	sa.TurnDone(context.Canceled, fantasy.Usage{})
+
+	rows, err := h.DB.LogTail(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rows {
+		if r.Kind == store.KindTool || r.Kind == store.KindEcho {
+			t.Fatalf("the logged call's pair was logged twice: %s %s", r.Kind, r.Text)
+		}
+	}
+}
+
 // TestTurnDoneLogsTheRawArgs: ToolCallStart keeps only the digested input on
 // the row, so the cut-call loop logged the digest and the rebuilt rail lost
 // its label and line; the log's tool row holds the raw args, where the

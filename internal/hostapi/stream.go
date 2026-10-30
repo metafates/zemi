@@ -228,6 +228,9 @@ func (s *streamAdapter) StepDone(st agent.Step) {
 	model, touched := h.turnModelID(), ag.todoTouched
 	ag.todoTouched = false
 	ag.stepSettled = true // the step's calls and results reached the log
+	for i := range ag.tools {
+		ag.tools[i].logged = true
+	}
 	ag.mu.Unlock()
 	h.emitStep(store.MainSessionID, model, st)
 	if !touched {
@@ -265,7 +268,9 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		if open {
 			t.Status, t.Diff = map[bool]CallStatus{true: CallStopped, false: CallErr}[errors.Is(err, context.Canceled)], ""
 		}
-		if open || !ag.stepSettled {
+		// the pair a settled step logged is already in the log; the cut path
+		// logs only what no StepDone ever wrote, and says how the call ended
+		if open || !ag.stepSettled && !t.logged {
 			cut = append(cut, *t)
 		}
 	}
@@ -318,7 +323,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		for _, t := range cut {
 			if e := h.chat.Tool(string(tools.ToolName(t.Name)), cmp.Or(t.Raw, t.Input), t.ID); e != nil {
 				h.Log.Warn("call not logged", "origin", "agent", "error", e)
-			} else if e := h.chat.Echo(t.Name, false, t.Output, t); e != nil {
+			} else if e := h.chat.Echo(t.Name, t.Status == CallOK, t.Output, t); e != nil {
 				h.Log.Warn("call result not logged", "origin", "agent", "error", e)
 			}
 		}
