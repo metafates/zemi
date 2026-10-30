@@ -12,7 +12,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/metafates/zemi/internal/ipc"
@@ -25,6 +24,10 @@ const (
 	// and stalls is dropped, and the reply takes as long as the send does.
 	peerReadWait = 5 * time.Second
 )
+
+// PeersTTL is how long a heartbeat names a live window, shared with the
+// presence readers outside this package, so a stale peer is stale everywhere.
+const PeersTTL = peersTTL
 
 // peersView is the snapshot a render reads: the windows sharing this store
 // besides this one, and how many of them run a turn.
@@ -94,12 +97,12 @@ func (h *Host) listenPeers() {
 // would (a command runs, a message starts a turn or joins the running one),
 // and a hello makes this window re-read its siblings now. The reply tells the
 // sender which happened; a connection with no frame is a bind probe and goes
-// unanswered.
+// unanswered, but a read frame is always answered.
 func (h *Host) servePeer(conn net.Conn) {
 	defer func() { _ = conn.Close() }()
 	_ = conn.SetReadDeadline(time.Now().Add(peerReadWait))
 	req, err := ipc.ReadRequest(conn)
-	if err != nil || strings.TrimSpace(req.Text) == "" && !req.Hello {
+	if err != nil {
 		return
 	}
 	if req.Hello {
@@ -109,11 +112,11 @@ func (h *Host) servePeer(conn net.Conn) {
 		return
 	}
 	reply := ipc.Reply{OK: true}
-	queued, err := h.sendPrompt(req.Text)
+	queued, ran, err := h.sendPrompt(req.Text)
 	if err != nil {
 		reply.OK, reply.Error = false, err.Error()
 	} else {
-		reply.Queued = queued
+		reply.Queued, reply.Ran = queued, ran
 	}
 	_ = ipc.WriteReply(conn, reply)
 }
@@ -176,7 +179,8 @@ func (h *Host) beat() {
 	}
 	_ = os.Rename(tmp, h.peersPath)
 	view := peersView{}
-	entries, err := os.ReadDir(filepath.Dir(h.peersPath))
+	dir := filepath.Dir(h.peersPath)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		h.peers.Store(&view)
 		return
@@ -189,12 +193,15 @@ func (h *Host) beat() {
 		}
 		info, err := e.Info()
 		if err != nil || time.Since(info.ModTime()) > peersTTL {
+			// stale names a window that quit or died, and senders read these
+			// files for socket paths: the junk goes
+			_ = os.Remove(filepath.Join(dir, name))
 			continue
 		}
 		var hb struct {
 			Working bool `json:"working"`
 		}
-		if raw, err := os.ReadFile(filepath.Join(filepath.Dir(h.peersPath), name)); err == nil && json.Unmarshal(raw, &hb) == nil {
+		if raw, err := os.ReadFile(filepath.Join(dir, name)); err == nil && json.Unmarshal(raw, &hb) == nil {
 			view.n++
 			if hb.Working {
 				view.working++

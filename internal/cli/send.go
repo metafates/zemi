@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/ipc"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
@@ -43,6 +44,10 @@ func sendCommand(o *options) *cobra.Command {
 				if filepath.Ext(e.Name()) != ".json" {
 					continue
 				}
+				info, err := e.Info()
+				if err != nil || time.Since(info.ModTime()) > hostapi.PeersTTL {
+					continue // a stale heartbeat names a window that quit or died
+				}
 				var hb struct {
 					Sock string `json:"sock"`
 				}
@@ -64,14 +69,19 @@ func sendCommand(o *options) *cobra.Command {
 				if !reply.OK {
 					return errors.New(reply.Error)
 				}
-				if reply.Queued {
+				switch {
+				case reply.Ran:
+					fmt.Fprintln(c.OutOrStdout(), "delivered: the command runs in the window")
+				case reply.Queued:
 					fmt.Fprintln(c.OutOrStdout(), "delivered: the message joined the window's running turn")
-				} else {
+				default:
 					fmt.Fprintln(c.OutOrStdout(), "delivered: a turn starts in the window")
 				}
 				return nil
 			}
-			if lastErr != nil {
+			// a dead heartbeat is the same "nothing to deliver to" as no
+			// heartbeat at all; only a real dial failure speaks for itself
+			if lastErr != nil && !errors.Is(lastErr, ipc.ErrDead) {
 				return lastErr
 			}
 			return fmt.Errorf("no zemi window is live in %s", perm.TildePath(o.dirs.TrustRoot()))

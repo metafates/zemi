@@ -245,20 +245,21 @@ func (h *Host) CommandFailed(name string, err error) {
 // markdown commands reach a script, a git hook or a loop; anything else is
 // a message for the model.
 func (h *Host) SendPrompt(prompt string) error {
-	_, err := h.sendPrompt(prompt)
+	_, _, err := h.sendPrompt(prompt)
 	return err
 }
 
 // sendPrompt is SendPrompt, reporting whether the message joined a running
-// turn (a command reports false: it ran).
-func (h *Host) sendPrompt(prompt string) (queued bool, err error) {
+// turn, and whether a command ran instead of a message starting a turn.
+func (h *Host) sendPrompt(prompt string) (queued, ran bool, err error) {
 	typed, attached := agent.CutAttached(prompt)
 	if rest, ok := strings.CutPrefix(typed, "/"); ok {
 		if name, args := SplitCommand(rest); h.Commands.Lookup(name) != nil {
-			return false, h.RunCommand(context.Background(), name, args+attached, false)
+			return false, true, h.RunCommand(context.Background(), name, args+attached, false)
 		}
 	}
-	return h.agentSendUser(prompt)
+	queued, err = h.agentSendUser(prompt)
+	return queued, false, err
 }
 
 // ConfirmArgs splits a command line's consent: confirm is an armed danger

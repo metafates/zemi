@@ -80,6 +80,7 @@ type Request struct {
 type Reply struct {
 	OK     bool   `json:"ok"`
 	Queued bool   `json:"queued,omitempty"` // the message joined a running turn
+	Ran    bool   `json:"ran,omitempty"`    // a command ran instead
 	Error  string `json:"error,omitempty"`
 }
 
