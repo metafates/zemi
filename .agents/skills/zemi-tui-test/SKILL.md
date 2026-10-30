@@ -112,6 +112,34 @@ the lab does) is what makes `capture-pane -e` show `38;2;r;g;b`. `-m` applies
 after init.lua. Parallel testers each take their own `$T`, tmux server name and port: on a
 shared port the other tester's server answers, and on a shared tree its `init.lua` loads.
 
+## What tmux swallows: drive Rex instead
+
+tmux eats the sequences the OUTER terminal would act on — OSC 7501 program status, OSC 9
+notifications, window titles. When the change under test is one of those, run zemi in a Rex
+block instead of tmux (2026-10-30, the notification-duplication fix):
+
+```sh
+S=$(rex new zemi-lab-<name> --json | python3 -c 'import json,sys;print(json.load(sys.stdin)["session_id"])')
+rex events -s "$S" --json > events.jsonl &          # the stream IS the assertion surface
+rex run -s "$S" -c "$T/proj" --label=zemi --keep-open --json -- \
+  env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN=$PWD/bin/zemi \
+  .agents/skills/zemi-tui-test/zemi-safe "$T" --trust
+rex send -s "$S" -b BLOCK -- 'the prompt'; rex send-key -s "$S" -b BLOCK -- enter
+```
+
+- `rex events` carries one block event per thing the terminal saw: `program_status_changed`
+  (7501 records, with `record.state/kind/msg`), `desktop_notification` (OSC 9), `bell`,
+  `title_changed`. Count events per block id to assert "one notification, not two".
+- `rex block call -s "$S" -b BLOCK program_status` prints the records the terminal holds —
+  what survives after a quit tells whether the exit clear reached the wire.
+- `state=clear` records emit no event; read `program_status` instead.
+- Rex answers the OSC 7501 feature query, so a status-following build suppresses its own
+  alerts there; tmux never answers, which is the right control for the other side.
+- The block takes focus at creation and no blur arrives on its own: open a second block to
+  steal focus before asserting on unfocused behavior.
+- Kill a lab zemi by the exact pid from `rex block call process` (never a broad `ps | grep`).
+  `rex kill` takes sessions only; quit zemi in the pane, then drop the whole session with it.
+
 ## The chaos driver
 
 `chaos-qa` runs a seeded random action sequence - turns, esc, overlays, armed
