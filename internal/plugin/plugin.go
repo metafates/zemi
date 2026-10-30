@@ -1680,10 +1680,14 @@ func disabled(d config.Dirs) (set.Set[string], error) {
 }
 
 // setDisabled rewrites disabled through a temp file and a rename, so a CLI
-// and a TUI writing at once never leave a torn file.
-// NOTE: two concurrent writes can keep only one change; an flock on the root
-// would serialize them.
+// and a TUI writing at once never leave a torn file; the lock serializes the
+// read-modify-write, so the second writer keeps the first one's change.
 func setDisabled(d config.Dirs, name string, off bool) error {
+	unlock, err := filelock.Lock(filepath.Join(d.PluginsRoot(), "disabled")+".lock", 30*time.Second)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	cur, err := disabled(d)
 	if err != nil || cur.Has(name) == off {
 		return err
