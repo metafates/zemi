@@ -90,6 +90,9 @@ load() {
 	# shellcheck disable=SC1090
 	. "$ENVF"
 	BACKEND=${LAB_BACKEND:-tmux}
+	case "$SESSION" in
+		fake | recorder) die "'$SESSION' is lab plumbing, not a window (-s main|peer)" ;;
+	esac
 	if [ "$BACKEND" = rex ]; then
 		RSESSION=${LAB_RSESSION:-}
 		RBLK=$(block_id "$SESSION")
@@ -164,17 +167,21 @@ for line in sys.stdin:
 }
 
 # wait_stable [pattern] [secs]: the app redraws nothing when idle, so three
-# identical captures mean settled; with a pattern, 0 once it shows, 1 when the
-# screen settled without it or never settled.
+# identical captures mean settled; with a pattern, 0 once the settled screen
+# shows it - while the screen still moves, turn N's rows still carry turn
+# N-1's reply, so a pattern alone proves nothing - 1 when the screen settled
+# without it or never settled.
 wait_stable() {
 	PAT=${1:-} SECS=${2:-30}
 	i=0 prev="" same=0
 	while [ "$i" -lt $((SECS * 4)) ]; do
 		cur=$(cap)
-		if [ -n "$PAT" ] && printf '%s\n' "$cur" | grep -qF -- "$PAT"; then return 0; fi
 		if [ "$cur" = "$prev" ]; then same=$((same + 1)); else same=0; fi
-		if [ "$same" -ge 3 ]; then [ -z "$PAT" ] && return 0; return 1; fi
 		prev=$cur
+		if [ "$same" -ge 3 ]; then
+			if [ -z "$PAT" ] || printf '%s\n' "$cur" | grep -qF -- "$PAT"; then return 0; fi
+			return 1
+		fi
 		i=$((i + 1))
 		sleep 0.25
 	done
@@ -596,8 +603,13 @@ cmd_status() {
 			rex block ls -s "$RSESSION" --json 2>/dev/null | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
-for b in (d["blocks"] if isinstance(d, dict) else d):
-    print("   ", b.get("label", "?"), b["block_id"])
+try:
+    for b in (d["blocks"] if isinstance(d, dict) else d):
+        print("   ", b.get("label", "?"), b["block_id"])
+    sys.stdout.flush()
+except BrokenPipeError:
+    import os
+    os._exit(0)
 ' || say "  rex session down"
 			;;
 		*)
@@ -630,15 +642,23 @@ cmd_records() {
 # surface for the sequences tmux swallows. NAME filters by event name; no
 # match exits 1, so a test can `zemi-lab events desktop_notification`.
 cmd_events() {
-	load
+	# no load: a downed session (down --keep) is exactly the state events must
+	# still serve - its kept tree holds the final stream, the only read left
+	# that can assert the exit clear
+	[ -f "$ENVF" ] || die "no lab '$NAME' at $TREE (zemi-lab up first)"
+	# shellcheck disable=SC1090
+	. "$ENVF"
+	BACKEND=${LAB_BACKEND:-tmux}
+	RSESSION=${LAB_RSESSION:-}
+	RBLK=$(block_id "$SESSION")
 	[ "$BACKEND" = rex ] || die "events: a rex lab only (tmux swallows those sequences)"
 	[ -f "$TREE/events.jsonl" ] || die "no events stream at $TREE/events.jsonl"
-	# the recorder is a block; a dead one freezes the stream and a frozen
-	# stream passes every grep - check it is alive before the stream is read
-	REC=$(block_id recorder)
-	if [ -n "$REC" ]; then
-		rex block call -s "$RSESSION" -b "$REC" size >/dev/null 2>&1 ||
-			die "the events recorder is gone; the stream at $TREE/events.jsonl is stale (zemi-lab up again)"
+	# a live session's stream must still be written: a dead recorder freezes it
+	# and a frozen stream passes every grep, so ask the kernel who holds
+	# events.jsonl open, not whether the recorder's block still answers
+	if rex block ls -s "$RSESSION" --json >/dev/null 2>&1; then
+		lsof -t "$TREE/events.jsonl" >/dev/null 2>&1 ||
+			die "nothing is writing $TREE/events.jsonl; the stream is stale (zemi-lab up again)"
 	fi
 	BLOCK_LIST=$(awk '{print $2}' "$BLOCKS" 2>/dev/null)
 	BLOCKS="$RBLK $BLOCK_LIST" ZEMI_LAB_EVENTS="$TREE/events.jsonl" python3 - "$@" <<'PYEOF'
@@ -676,22 +696,27 @@ def brief(n, p):
 
 
 hits = 0
-for line in open(os.environ["ZEMI_LAB_EVENTS"]):
-    try:
-        d = json.loads(line)
-    except ValueError:
-        continue
-    ev = d.get("payload", {}).get("event", {})
-    if ev.get("type") != "block_event":
-        continue
-    p = ev.get("payload", {})
-    if p.get("block_id") not in ids:
-        continue
-    n = p.get("name", "")
-    if names and n not in names:
-        continue
-    hits += 1
-    print(n + "\t" + brief(n, p.get("payload", {})))
+try:
+    for line in open(os.environ["ZEMI_LAB_EVENTS"]):
+        try:
+            d = json.loads(line)
+        except ValueError:
+            continue
+        ev = d.get("payload", {}).get("event", {})
+        if ev.get("type") != "block_event":
+            continue
+        p = ev.get("payload", {})
+        if p.get("block_id") not in ids:
+            continue
+        n = p.get("name", "")
+        if names and n not in names:
+            continue
+        hits += 1
+        print(n + "\t" + brief(n, p.get("payload", {})))
+    sys.stdout.flush()
+except BrokenPipeError:
+    import os
+    os._exit(0)
 if hits == 0:
     print("no matching events")
     sys.exit(1)
@@ -719,6 +744,9 @@ cmd_down() {
 			# ctrl+c ride zemi's armed quit (rex kill would leave stale records)
 			if [ -f "$BLOCKS" ]; then
 				while read -r _ bid; do
+					# an open ask or overlay swallows ctrl+c, so one escape
+					# dismisses it before the armed quit is sent
+					rex send-key -s "$LAB_RSESSION" -b "$bid" -- escape 2>/dev/null || true
 					rex send-key -s "$LAB_RSESSION" -b "$bid" -- ctrl+c 2>/dev/null || true
 					rex send-key -s "$LAB_RSESSION" -b "$bid" -- ctrl+c 2>/dev/null || true
 				done <"$BLOCKS"
@@ -753,7 +781,7 @@ case "$CMD" in
 	size) cmd_size "$@" ;;
 	snap) cmd_snap "$@" ;;
 	diff) cmd_diff "$@" ;;
-	events) load; cmd_events "$@" ;;
+	events) cmd_events "$@" ;;
 	records) cmd_records "$@" ;;
 	title) cmd_title "$@" ;;
 	last) load; cmd_last "$@" ;;

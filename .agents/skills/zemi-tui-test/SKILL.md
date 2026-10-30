@@ -34,6 +34,7 @@ $S/zemi-lab cap | grep -v '^ *$'   # whole pane, plain text; cap -e keeps colors
 $S/zemi-lab wait '1 command'       # screen stopped changing and the row shows
 $S/zemi-lab wait ask               # wait for a permission ask (the box's No row)
 $S/zemi-lab send Escape            # key names, as tmux spells them (C-c, Escape)
+$S/zemi-lab type 'partial text'    # literal text into the composer, no Enter
 $S/zemi-lab ask y                  # answer a permission ask (y|n|t), past the grace
 $S/zemi-lab up -x 60 -y 15         # narrow layouts are baked into up
 $S/zemi-lab size 60 15             # resize after the fact; rex fails loudly when it did not stick
@@ -45,6 +46,7 @@ $S/zemi-lab title                  # the pane title (? while an ask is up)
 $S/zemi-lab events                 # rex lab: what the terminal saw, one line per event
 $S/zemi-lab records                # rex lab: the OSC 7501 records the terminal holds
 $S/zemi-lab db                     # prints the zemi.db path (SQLite; read rows yourself)
+$S/zemi-lab logs                   # prints the zemi log path (read it yourself)
 $S/zemi-lab status                 # the tree, port, session and every block id
 $S/zemi-lab down                   # quit zemi, kill sessions and server, delete the tree
 ```
@@ -58,8 +60,8 @@ up (a prompt typed during an ask queues a turn behind it) - not a turn-end guara
 prompt), `--asks` (installs a gate plugin whose `permission.request` handler returns
 `{decision = "ask"}`, since zemi never asks by design - DESIGN §9), `--rex` (the Rex
 backend below). A running lab can be made to ask without a reboot: drop the same two files
-into `$TREE/data/plugins/local/askgate/.zemi/` (plugin.json + init.lua) and the next action
-asks. `zemi-lab attach` sits at the
+into `$TREE/data/plugins/local/askgate/.zemi/` (plugin.json + init.lua; their contents are
+the `write_config()` block in the zemi-lab script) and the next action asks. `zemi-lab attach` sits at the
 lab in a real terminal (tmux) or prints how to open it (Rex).
 
 ## The fake model
@@ -94,6 +96,9 @@ streamed chunks.
   `tmux send-keys -l ... $'\x1b[201~'` - a `respawn-pane` does NOT clear it (the bytes
   survive the respawn and re-wedge the fresh zemi). The lab sends one atomic call per
   command.
+- Direct `tmux -L zl-<name>` probes need the lab's socket dir: the lab exports
+  `TMUX_TMPDIR=$TMPDIR`, so set it the same way or tmux looks in `/tmp/tmux-*`
+  and finds no server.
 - send-keys cannot inject a positioned mouse click: a click path is Go-test only, with
   findCell and clickAt in internal/ui/mouse_test.go.
 - `zemi.ui.screenshot()` from the Lua tool or a keymap returns the same text without styling.
@@ -154,20 +159,26 @@ $S/zemi-lab -n ps down                          # quits zemi first, so the exit 
   exactly its previous content (same state, msg and owner) emits nothing, so per-turn
   counts can undercount - assert on set membership (`grep -q done`) and on `records` (with
   its `updated_at`), not on the order or presence of records (with an instant fake the
-  `working` record can be swallowed entirely; `delay_ms` makes it show). Also in the
+  `working` record can be swallowed entirely, and a turn whose reply repeats the previous
+  one can leave no trace at all - not even a fresh `updated_at`; `delay_ms` or a varied
+  reply makes a turn show). Also in the
   stream, unfiltered noise: `process_changed`, `pwd_changed`, client-driven
   `size_changed`. A `state=clear` on quit arrives as `program_status_removed`; `records`
   prints what the terminal holds right now. The recorder is a block of its own (id in
-  `status`); `events` checks it is alive rather than read a frozen stream.
+  `status`); `events` checks a live stream has a writer - the kernel's list of files held
+  open, not the block's pulse, since a frozen stream passes every grep - and after a
+  `down --keep` it reads the kept tree's final stream.
 - Rex answers the OSC 7501 feature query, so a status-following build suppresses its own
   alerts there and the events stay clean; tmux never answers, which is the right control
   for the other side of that branch.
 - A block takes focus at creation and no blur arrives on its own: open a second block (or
   `peer`) to steal focus before asserting on unfocused behavior.
-- `down` sends zemi's armed ctrl+c quit before killing the session - a plain kill would
-  strand the last record on the dead block. The exit clear is assertable only with
-  `down --keep` (a plain `down` deletes the tree with the stream): then
-  `events program_status_removed` shows `reason=clear`.
+- `down` dismisses an open ask or overlay (one escape) and then sends zemi's armed
+  ctrl+c quit before killing the session - a plain kill would strand the last record on
+  the dead block, and with an ask up even a bare ctrl+c is swallowed. The exit clear is
+  assertable only with `down --keep` (a plain `down` deletes the tree with the stream):
+  then `events program_status_removed` shows `reason=clear` - the session is gone by
+  then, which is why `events` falls back to the kept tree's final stream.
 - `zemi-lab status` prints the session and every block id (zemi is `main`); kill a wedged
   lab zemi by the exact pid from `rex block call -b BLOCK process` (never a broad
   `ps | grep`). `rex kill` takes sessions only.
