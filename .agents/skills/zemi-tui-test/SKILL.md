@@ -81,7 +81,9 @@ texts glued as one message nobody typed. It refuses while
 any overlay waits on the user: a permission ask (`ask y|n` first) or a question/plan
 overlay (`send Escape` first) - past one, its first letters answer the overlay and the
 rest lands as a mangled draft. On tmux the mark cannot name the kind, so the refusal
-names both remedies instead of a key that would answer the wrong one. A steer sent while
+names both remedies instead of a key that would answer the wrong one. Browser popups
+(Messages, Agents) set no mark and are invisible to this guard: `prompt` types into
+their filter and dies at the composer check - close them (`send Escape`) and retry. A steer sent while
 a turn runs can have an ask rise over
 it: `prompt` then names the overlay instead of blaming a stuck zemi - settle it
 (`ask y` answers a permission ask, `send Escape` dismisses a plan/question one)

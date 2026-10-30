@@ -241,6 +241,9 @@ sys.exit(1)
 # state - never from screen text, which transcript rows echo. A rex lab
 # reads the OSC 7501 blocked record (permission, question); tmux swallows
 # those sequences, so its title mark (? while any prompt waits) stands in.
+# Browser popups (Messages, Agents) set no mark and are invisible here:
+# cmd_prompt typing into one dies late at the composer check - that
+# refusal is the detection, not a bug.
 overlay_kind() {
 	if [ "$BACKEND" = rex ]; then
 		rex block call -s "$RSESSION" -b "$RBLK" program_status 2>/dev/null |
