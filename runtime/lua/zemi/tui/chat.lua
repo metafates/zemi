@@ -1319,13 +1319,13 @@ zemi.ui.widget.add({
 			local first = math.max(1, math.min(live - cap + 1, #todos - cap + 1))
 			local last = math.min(#todos, first + cap - 1)
 			-- a header in the composer rule's voice: the name, how far along,
-			-- and a meter over the whole list: one cell per item while they
+			-- and a meter over the whole list: two cells per item while they
 			-- fit, else scaled, so the meter never changes meaning
 			local head = {
 				{ text = "Todos ", hl = "TodoTitle" },
 				{ text = (#todos - left) .. "/" .. #todos .. "  ", hl = "Dim" },
 			}
-			local cells = math.min(#todos, cap)
+			local cells = 2 * math.min(#todos, cap)
 			-- a cell fills at the done fraction, rounded up: a part-done list
 			-- lights its first cells even when no cell's whole range is done,
 			-- so the meter never reads emptier than the count; hue keeps the
@@ -1339,7 +1339,7 @@ zemi.ui.widget.add({
 					if todos[i].status == "in_progress" then live = true end
 				end
 				head[#head + 1] = {
-					text = n <= filled and "█" or "░",
+					text = "━",
 					hl = live and "TodoMark" or n <= filled and "TodoDone" or "Rule",
 					copy = false,
 				}

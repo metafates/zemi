@@ -2646,9 +2646,9 @@ func TestTodosMeterSpansTheList(t *testing.T) {
 		if !strings.Contains(r, "2/14") {
 			t.Fatalf("the header lost the count: %q", r)
 		}
-		// cap at height 24 is 8: eight cells over fourteen items, the first
+		// cap at height 24 is 8: sixteen cells over fourteen items, the first
 		// two done, the third live
-		if n := strings.Count(strings.TrimPrefix(r, "Todos 2/14  "), "█") + strings.Count(strings.TrimPrefix(r, "Todos 2/14  "), "░"); n != 8 {
+		if n := strings.Count(strings.TrimPrefix(r, "Todos 2/14  "), "━"); n != 16 {
 			t.Fatalf("the meter drew %d cells for 14 items: %q", n, r)
 		}
 		return
@@ -2664,7 +2664,7 @@ func TestTodosMeterSpansTheList(t *testing.T) {
 
 // TestTodosMeterFillsTheFraction: a scaled meter fills ceil(done×cells/total)
 // cells, so a part-done list never reads emptier than its count (1 of 6 over
-// three cells lights the first).
+// six cells lights the first).
 func TestTodosMeterFillsTheFraction(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 100, 24)
@@ -2673,7 +2673,7 @@ func TestTodosMeterFillsTheFraction(t *testing.T) {
 		todos = append(todos, store.Todo{Content: fmt.Sprintf("item %d", i), Status: "pending"})
 	}
 	seedTodos(t, host, todos)
-	// cap at height 9 is 3: three cells over six items
+	// cap at height 9 is 3: six cells over six items
 	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 80, 9, app.uiState())
 	if err != nil {
 		t.Fatal(err)
@@ -2681,7 +2681,7 @@ func TestTodosMeterFillsTheFraction(t *testing.T) {
 	for _, l := range lines {
 		r := strings.TrimRight(hostapi.SegsText(l), " ")
 		if strings.HasPrefix(r, "Todos ") {
-			if !strings.Contains(r, "1/6  █░░") {
+			if !strings.Contains(r, "1/6  ━━━━━━") {
 				t.Fatalf("the meter read emptier than the count: %q", r)
 			}
 			return
@@ -2691,7 +2691,7 @@ func TestTodosMeterFillsTheFraction(t *testing.T) {
 }
 
 // TestTodosMeterWithinTheWindow: a list at or under the shown window draws
-// one cell per item with each cell its own state: the scaled path above
+// two cells per item with each cell its own state: the scaled path above
 // never draws the all-done lie a wrong divisor gives.
 func TestTodosMeterWithinTheWindow(t *testing.T) {
 	t.Parallel()
@@ -2708,8 +2708,8 @@ func TestTodosMeterWithinTheWindow(t *testing.T) {
 		if !strings.HasPrefix(r, "Todos ") {
 			continue
 		}
-		if !strings.Contains(r, "1/3  █░░") {
-			t.Fatalf("three items must draw three cells, one per item: %q", r)
+		if !strings.Contains(r, "1/3  ━━━━━━") {
+			t.Fatalf("three items must draw six cells, two per item: %q", r)
 		}
 		return
 	}
