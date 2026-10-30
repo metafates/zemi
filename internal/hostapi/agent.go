@@ -111,6 +111,7 @@ type agentHost struct {
 	stepSettled          bool // the step's OnStepFinish ran, so its calls are logged
 	tools                []StreamTool
 	steering             []string
+	steeredTurn          bool // the running turn's input came from the steering queue
 	// spoke is closed when the user's own message arrives during a turn
 	// (UserSpoke): a foreground call waiting on a long run hands it off
 	// instead of holding the turn past the message. Re-armed where the queue
@@ -134,8 +135,7 @@ type agentHost struct {
 	ctxWin      int64
 	sessCost    float64 // USD, from model spec prices
 
-	// readMu guards reads, instr and loaded, the per-session bookkeeping
-	// the tools carry (what the model has read, which instruction files it
+	// readMu guards reads, instr and loaded, the per-session bookkeeping	// the tools carry (what the model has read, which instruction files it
 	// has been given, which MCP tools tool_search loaded).
 	readMu sync.Mutex
 	reads  map[string]*sync.Map
@@ -528,6 +528,7 @@ func (h *Host) agentSend(text string) (queued bool, err error) {
 	}
 	// Held from here on: building the prompt waits on the interpreter, and a
 	// send arriving meanwhile must queue instead of starting a second turn.
+	ag.steeredTurn = false // the user's own words open the turn
 	scope := h.claim()
 	ag.mu.Unlock()
 	return false, h.sendClaimed(scope, text, nil)
@@ -831,6 +832,7 @@ func (h *Host) handOff(scope *turnScope) {
 	if scope.ctx.Err() == nil {
 		queued = joinQueue(ag.steering)
 		ag.steering = nil
+		ag.steeredTurn = queued != "" // the queue's words open the turn
 	}
 	if queued == "" {
 		h.release()
@@ -1012,6 +1014,7 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 	} else {
 		text = joinQueue(ag.steering)
 		ag.steering = nil
+		ag.steeredTurn = text != "" // the queue's words open the next turn
 	}
 	if ag.todoNag != "" {
 		ag.todoNag, ag.todoPending = "", false

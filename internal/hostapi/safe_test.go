@@ -98,10 +98,15 @@ func TestFailedTurnLeavesErrorRow(t *testing.T) {
 		err          error
 		text, status string
 		call         string
+		steered      bool // the turn's words came from the queue
 	}{
-		{errors.New("dial tcp: no route to host"), "Dial tcp: no route to host", "", "err"},
-		{context.Canceled, "Interrupted\nwhile the read call ran", "cancelled", "stopped"},
+		{errors.New("dial tcp: no route to host"), "Dial tcp: no route to host", "", "err", false},
+		{context.Canceled, "Interrupted\nwhile the read call ran", "cancelled", "stopped", false},
+		{context.Canceled, "Interrupted\nwhile the read call ran\nthe queued message was not answered", "cancelled", "stopped", true},
 	} {
+		h.agents.mu.Lock()
+		h.agents.steeredTurn = c.steered
+		h.agents.mu.Unlock()
 		sa.ToolCallStart("a", "glob", `{"pattern":"*"}`)
 		sa.ToolCallEnd("a", "glob", out("x.go"), "")
 		sa.ToolCallPending("b", "read")

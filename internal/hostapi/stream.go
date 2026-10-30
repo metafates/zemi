@@ -249,6 +249,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	now := h.now()
 	model := h.turnModelID()
 	text, live := ag.textBuf, ag.tools
+	steered := ag.steeredTurn
 	// the reply row's stat carries the turn's whole thought: the live digest
 	// reads it the way the rebuilt window reads the log's row
 	stat := TurnStat{In: usage.InputTokens, Out: usage.OutputTokens, Ended: now.Unix(), Model: model, ThoughtMS: (ag.turnThought + ag.thought).Milliseconds()}
@@ -400,6 +401,11 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 					continue
 				}
 				row.Text = clipRunes(row.Text+"\nwhile the "+name+" call ran", 400)
+			}
+			// the turn's words came from the queue: the interrupt strands them
+			// unanswered, and the row says so
+			if steered {
+				row.Text = clipRunes(row.Text+"\nthe queued message was not answered", 400)
 			}
 		}
 		if h.chat != nil {
