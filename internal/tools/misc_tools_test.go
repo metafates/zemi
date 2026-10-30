@@ -66,7 +66,7 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 	}
 
 	resp = call(t, todos, `{"todos":[{"content":"a","status":"pending"},{"content":"b","status":"pending"},{"content":"c","status":"pending"}]}`)
-	if resp.IsError || !strings.Contains(resp.Content, "3 items are pending: the ones that need little from each other can go out as parallel agent calls") {
+	if resp.IsError || !strings.Contains(resp.Content, "3 items are pending: the ones that need little from each other can run as parallel agent calls") {
 		t.Fatalf("a fresh plan points at parallel runs: %+v", resp)
 	}
 	resp = call(t, todos, `{"todos":[{"content":"a","status":"done"},{"content":"b","status":"pending"},{"content":"c","status":"pending"}]}`)

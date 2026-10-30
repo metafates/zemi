@@ -1889,7 +1889,7 @@ const newAgentPrompt = "I want a new zemi subagent that does what the command ab
 // agentsCommands is /agents.
 func (h *Host) agentsCommands() []*Command {
 	return []*Command{{
-		Name: "agents", NArgs: NArgsAny, Desc: "see running agents and the ones zemi can start, or make one",
+		Name: "agents", NArgs: NArgsAny, Desc: "see running agents and the ones zemi can start, or make a new agent",
 		GoFn: func(h *Host, args string, confirm bool) error {
 			typed, attached := agent.CutAttached(args)
 			sub, id, _ := strings.Cut(strings.TrimSpace(typed), " ")

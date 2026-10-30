@@ -463,7 +463,7 @@ func (a *App) interrupt() {
 	if n := a.restoreQueue(); n > 0 {
 		// the queued words read as lost: the toast says where they went
 		a.pushToast(slog.LevelInfo, "Queued "+hostapi.Plural(n, "message", "messages")+" restored",
-			"the draft holds them; edit and send again")
+			"the draft holds the text; edit and send again")
 	}
 	a.cancelling = a.host.AgentActive()
 }

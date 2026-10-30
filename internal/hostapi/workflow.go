@@ -1839,7 +1839,7 @@ const newWorkflowPrompt = "I want a new zemi workflow that does what the command
 // workflowCommands are /workflows and /review.
 func (h *Host) workflowCommands() []*Command {
 	return []*Command{{
-		Name: "workflows", NArgs: NArgsAny, Desc: "see workflow runs and saved workflows, act on them, or make one",
+		Name: "workflows", NArgs: NArgsAny, Desc: "see workflow runs and saved workflows, act on them, or make a new workflow",
 		GoFn: func(h *Host, args string, confirm bool) error {
 			typed, attached := agent.CutAttached(args)
 			f := strings.Fields(typed)

@@ -525,10 +525,10 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "health", Desc: "check zemi's setup", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			return h.OpenHealth()
 		}},
-		{Name: "goal", NArgs: hostapi.NArgsAny, Desc: "keep working until a condition holds; alone, show it", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
+		{Name: "goal", NArgs: hostapi.NArgsAny, Desc: "keep working until a condition holds; with no argument, shows it", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.SetGoal(args)
 		}, GoComplete: stopCompleter(func(h *hostapi.Host) bool { _, ok := h.Goal(); return ok })},
-		{Name: "loop", NArgs: hostapi.NArgsAny, Desc: "run a prompt again on a timer; alone, show it", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
+		{Name: "loop", NArgs: hostapi.NArgsAny, Desc: "run a prompt again on a timer; with no argument, shows it", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.SetLoop(args)
 		}, GoComplete: stopCompleter(func(h *hostapi.Host) bool { _, ok := h.Loop(); return ok })},
 		{Name: "btw", NArgs: hostapi.NArgsSome, Desc: "ask a side question the conversation does not keep", GoFn: func(h *hostapi.Host, args string, confirm bool) error {

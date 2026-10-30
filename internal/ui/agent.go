@@ -857,6 +857,11 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	var content [][]hostapi.Segment
 	switch {
 	case req.Subject == perm.SubjectShell:
+		// the facts row already carries a one-line command: the panel below
+		// would repeat it and eat a fifth of a short screen
+		if strings.Count(req.Arg, "\n") == 0 && ansi.StringWidth(sanitize.String(req.Arg)) <= inner {
+			break
+		}
 		content = a.codePanel(req.Arg, "bash", hostapi.FillCanvas, inner)
 	case isDiff:
 		content = hostapi.DiffRows(req.Preview, inner)

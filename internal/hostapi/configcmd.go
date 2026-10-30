@@ -128,7 +128,7 @@ func (h *Host) configSections() []OverlayItem {
 		keys[seg] = append(keys[seg], rest)
 	}
 	items := []OverlayItem{
-		{Text: "Show as Lua", Verb: VerbOpen, Run: "config lua", Preview: "every setting off its default, as the zemi.config.set lines init.lua would write"},
+		{Text: "Show as Lua", Verb: VerbOpen, Run: "config lua", Preview: "every setting that differs from the default, as the zemi.config.set lines init.lua would write"},
 		{Text: "Open init.lua", Verb: VerbOpen, Run: "config open", Preview: "your config in the editor; zemi reloads when you save it"},
 	}
 	for _, sec := range order {
@@ -402,7 +402,7 @@ func (h *Host) pickItems(path config.Key) (items []OverlayItem, sel int) {
 	return items, sel
 }
 
-// configLua is every setting off its default as the line init.lua sets it
+// configLua is every setting that differs from the default, as the line init.lua sets it
 // with, for y to copy.
 func (h *Host) configLua() string {
 	var lines []string
