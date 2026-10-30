@@ -48,6 +48,19 @@ func runTodos(ctx context.Context, p *Pipeline, in todosArgs) (fantasy.ToolRespo
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
+		// a write that quietly drops open items is how a long session loses
+		// track of work: name what vanished, so the list stays the record
+		vanished := []string{}
+		if old, err := p.TodosRead(); err == nil {
+			for _, td := range old {
+				if td.Status == store.TodoDone {
+					continue
+				}
+				if !slices.ContainsFunc(out, func(n store.Todo) bool { return n.Content == td.Content }) {
+					vanished = append(vanished, td.Content)
+				}
+			}
+		}
 		if err := p.TodosWrite(out); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
@@ -66,6 +79,18 @@ func runTodos(ctx context.Context, p *Pipeline, in todosArgs) (fantasy.ToolRespo
 		note := ""
 		if cancelled > 0 {
 			note = fmt.Sprintf("; dropped %d cancelled", cancelled)
+		}
+		if len(vanished) > 0 {
+			shown, more := vanished, ""
+			if len(shown) > 3 {
+				shown, more = shown[:3], fmt.Sprintf(" +%d more", len(vanished)-3)
+			}
+			one, it := "items", "them"
+			if len(vanished) == 1 {
+				one, it = "item", "it"
+			}
+			note += fmt.Sprintf("; %d open %s left the list (\"%s\"%s): put %s back or mark %s done",
+				len(vanished), one, strings.Join(shown, "\", \""), more, it, it)
 		}
 		if active > 1 {
 			note += fmt.Sprintf("; %d items are in_progress; keep exactly one", active)

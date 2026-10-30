@@ -54,11 +54,11 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 		t.Fatalf("absent todos is read-only: %+v", resp)
 	}
 	resp = call(t, todos, `{"todos":[{"content":"a","status":"in_progress"},{"content":"b","status":"in_progress"}]}`)
-	if resp.IsError || len(stored) != 2 || resp.Content != "updated todos: 0/2 done; 2 items are in_progress; keep exactly one" {
+	if resp.IsError || len(stored) != 2 || resp.Content != `updated todos: 0/2 done; 1 open item left the list ("first"): put it back or mark it done; 2 items are in_progress; keep exactly one` {
 		t.Fatalf("two in_progress: stored %d, %+v", len(stored), resp)
 	}
 	resp = call(t, todos, `{"todos":[{"content":"a","status":"cancelled"},{"content":"b","status":"pending"}]}`)
-	if resp.IsError || len(stored) != 1 || stored[0].Content != "b" || resp.Content != "updated todos: 0/1 done; dropped 1 cancelled" {
+	if resp.IsError || len(stored) != 1 || stored[0].Content != "b" || resp.Content != `updated todos: 0/1 done; dropped 1 cancelled; 1 open item left the list ("a"): put it back or mark it done` {
 		t.Fatalf("cancelled items drop: stored %+v, %+v", stored, resp)
 	}
 	if len(stored) != 1 {
@@ -72,6 +72,16 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 	resp = call(t, todos, `{"todos":[{"content":"a","status":"done"},{"content":"b","status":"pending"},{"content":"c","status":"pending"}]}`)
 	if resp.IsError || strings.Contains(resp.Content, "parallel agent calls") {
 		t.Fatalf("a plan already underway does not nag: %+v", resp)
+	}
+
+	// a write that drops an open item names it, so work never vanishes quietly
+	resp = call(t, todos, `{"todos":[{"content":"c","status":"done"}]}`)
+	if resp.IsError || !strings.Contains(resp.Content, `1 open item left the list ("b"): put it back or mark it done`) {
+		t.Fatalf("a dropped open item is named: %+v", resp)
+	}
+	resp = call(t, todos, `{"todos":[{"content":"c","status":"done"}]}`)
+	if resp.IsError || strings.Contains(resp.Content, "left the list") {
+		t.Fatalf("a list that keeps its open items stays quiet: %+v", resp)
 	}
 
 	for _, bad := range []struct{ in, want string }{
