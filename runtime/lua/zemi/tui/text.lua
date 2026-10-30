@@ -387,6 +387,7 @@ function M.digest(rows, first, last, cwd, home)
 			-- the row's output is the refusal; the input summary only says
 			-- what was attempted
 			local why = (failed[1].output or ""):match("^[^\n]*") or ""
+			why = why:gsub("^error: ", "") -- the stamp is model-facing; the row reads the message
 			if why == "" then why = failed[1].text or "" end
 			if why ~= "" then
 				parts[#parts + 1] = name .. " failed: " .. why

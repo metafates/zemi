@@ -487,7 +487,7 @@ func TestMouseQuestion(t *testing.T) {
 		clickAt(app, x+1, y)
 	}
 	click("skip")
-	click("add a note")
+	click("add one")
 	pressKeys(app, "why", "enter")
 	click("[1] Apply")
 	if app.question.at != 0 {
