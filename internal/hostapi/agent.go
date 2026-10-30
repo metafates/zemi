@@ -733,7 +733,10 @@ func (h *Host) claim() *turnScope {
 	h.agents.active = true
 	h.agents.spoke = nil // a new turn: the last one's spoken signal is spent
 	h.turn.Store(t)
-	// the working flag moved: tell the siblings now, not at their next beat
+	// the working flag moved: tell the siblings now, not at their next beat —
+	// and name it in this window's own heartbeat, so a peer booting beside the
+	// turn's first second does not mourn a live writer
+	h.GoSafe("beat", h.beat)
 	h.GoSafe("peer poke", h.peerPoke)
 	return t
 }
@@ -1182,15 +1185,27 @@ func (h *Host) deliverSteering() []string {
 	ag := h.agents
 	ag.mu.Lock()
 	msgs := ag.steering
-	if len(msgs) > 0 && len(ag.todoList) > 0 {
-		// new work arrived while the model works: without this it does the
-		// work first and adds it to the list afterwards, done already
-		open := 0
-		for _, td := range ag.todoList {
-			if td.Status != store.TodoDone {
-				open++
+	steered := len(msgs) > 0
+	ag.mu.Unlock()
+	// the store is the list's truth: another window's write never reaches
+	// this window's cache, and the note counts what is really open. The read
+	// stays outside ag.mu, where no store call belongs.
+	open := -1
+	if steered && h.DB != nil {
+		if todos, err := h.DB.Todos(h.AgentSessionID()); err == nil && len(todos) > 0 {
+			open = 0
+			for _, td := range todos {
+				if td.Status != store.TodoDone {
+					open++
+				}
 			}
 		}
+	}
+	ag.mu.Lock()
+	msgs = ag.steering
+	if len(msgs) > 0 && open >= 0 {
+		// new work arrived while the model works: without this it does the
+		// work first and adds it to the list afterwards, done already
 		note := "Work arrived mid-turn: if it belongs on the todo list, add it with the todos tool."
 		if open > 0 {
 			note += fmt.Sprintf(" %d %s still open: keep the list current as you take the new work on.", open, Plural(open, "todo is", "todos are"))

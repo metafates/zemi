@@ -1195,8 +1195,11 @@ func TestTodoNag(t *testing.T) {
 	t.Run("delivered steering reminds the model to track it", func(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
+		// the store is the list's truth: the note counts it, not the cache
+		if err := h.DB.SetTodos(h.AgentSessionID(), []store.Todo{{Content: "a", Status: "in_progress"}}); err != nil {
+			t.Fatal(err)
+		}
 		h.agents.mu.Lock()
-		h.agents.todoList = []store.Todo{{Content: "a", Status: "in_progress"}}
 		h.agents.active = true
 		h.agents.mu.Unlock()
 		h.agents.mu.Lock()
@@ -1210,9 +1213,11 @@ func TestTodoNag(t *testing.T) {
 			t.Fatalf("the remind must not repeat: %q", again)
 		}
 		h.agents.mu.Lock()
-		h.agents.todoList = nil
 		h.agents.steering = []string{"another"}
 		h.agents.mu.Unlock()
+		if err := h.DB.SetTodos(h.AgentSessionID(), nil); err != nil {
+			t.Fatal(err)
+		}
 		if msgs := h.deliverSteering(); len(msgs) != 1 {
 			t.Fatalf("no list, no remind: %q", msgs)
 		}
