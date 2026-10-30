@@ -154,3 +154,7 @@ is graded by the same score.
 Kill the tmux session and the server; leave nothing running. Delete the tree when done: a
 stale tree with an old `init.lua` shape is the usual cause of a confusing second run, and
 each scratch binary is 100 MB. The lab's `down` does all three.
+
+Never kill a zemi found by a broad `ps aux | grep zemi`: a bare PID from that grep may be the
+user's own zemi (a persona kill -9'd it exactly that way on 2026-10-30). Match the lab
+instead - the tree path `zemi-lab-<name>` in the command line, or `$S/zemi-lab -n <name> down`.
