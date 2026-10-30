@@ -4,7 +4,8 @@
 # classify, zemi.model.ask) get a plain chat.completion. Every accepted request
 # body lands in OUTDIR/last_request.json (atomic) and OUTDIR/requests/NNN.json,
 # so two consecutive bodies diff byte for byte (prompt cache); a refused
-# request (a 429) records nothing.
+# request (a 429) records nothing. Each recorded body's number is
+# countersigned in OUTDIR/.accepts, which the lab's delivery counter reads.
 # While OUTDIR/rate_fail holds a positive count, that many requests are refused
 # with a 429 and a 300ms retry-after, the count decrementing per refusal.
 # OUTDIR/rate_limit holds "REQUESTS[:TOKENS][:WINDOW]" (e.g. "40:52000:60"): the
@@ -103,6 +104,20 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(out))); self.end_headers(); self.wfile.write(out)
             print("REQ %d -> 429 (%d left)" % (n, fail - 1), flush=True)
             return
+        # the body is recorded once the fake commits to answering it: a
+        # refused request (a 429) never reaches a model, so it must not count
+        # for the lab's request counter. A drop commits (a 200, a stream
+        # started), so it records like any answer. .accepts countersigns the
+        # count - the lab's matcher trusts that number, not the request
+        # files, which anything with tree write access can plant
+        data = json.dumps(body, indent=1)
+        tmp = os.path.join(OUT, "requests/.%d.json" % n)
+        open(tmp, "w").write(data)
+        os.replace(tmp, os.path.join(OUT, "requests/%03d.json" % n))
+        tmp2 = os.path.join(OUT, ".last_request.tmp")
+        open(tmp2, "w").write(data)
+        os.replace(tmp2, os.path.join(OUT, "last_request.json"))
+        set_ctl(".accepts", n)
         drop = ctl("drop")
         if drop > 0:
             set_ctl("drop", drop - 1)
@@ -112,16 +127,6 @@ class H(BaseHTTPRequestHandler):
             self.connection.close()
             print("REQ %d -> dropped mid-stream" % n, flush=True)
             return
-        # the body is recorded only once the fake commits to answering it: a
-        # refused request (a 429) never reaches a model, so it must not count
-        # for the lab's request counter
-        data = json.dumps(body, indent=1)
-        tmp = os.path.join(OUT, "requests/.%d.json" % n)
-        open(tmp, "w").write(data)
-        os.replace(tmp, os.path.join(OUT, "requests/%03d.json" % n))
-        tmp2 = os.path.join(OUT, ".last_request.tmp")
-        open(tmp2, "w").write(data)
-        os.replace(tmp2, os.path.join(OUT, "last_request.json"))
         # delay_ms holds the reply (turn) open, pace_ms spaces the chunks
         delay = ctl("delay_ms")
         if delay > 0:

@@ -59,8 +59,9 @@ $S/zemi-lab down                   # quit zemi, kill sessions and server, delete
 against the composer box's own rows, however tall a narrow pane folds them, never the
 whole screen, which transcript rows echo), types, sends Enter, then waits for the request
 to reach the model (the fake's request counter, which counts only requests the fake
-accepted - a 429 refusal never reached a model - because the screen cannot prove a turn
-started), that a request carries the prompt's text with its marker (each `prompt` appends
+accepted - a 429 refusal never reached a model, a mid-stream drop counts, it got its
+200 - because the screen cannot prove a turn started), that a request carries the
+prompt's text with its marker (each `prompt` appends
 a unique `[zl:PID]` to the text and the match wants marker and full text together: the
 marker alone is the caller's pid, readable off the composer and typeable by another
 window - which is why every window boots its own fake model writing under its own dir
@@ -103,7 +104,8 @@ the `write_config()` block in the zemi-lab script) and an action asks: the re-lo
 debounced, so a first action fired at once can run ungated (the gate races the debounce) -
 pause a beat after planting or expect the second action to ask; mid-turn the first one
 starts before the plugin re-loads and the one after it asks. `zemi-lab attach` sits at the
-lab in a real terminal (tmux) or prints how to open it (Rex). `zemi-lab health [args...]`
+lab in a real terminal (tmux; from a tool shell it prints the raw `open terminal failed:
+not a terminal` - expected) or prints how to open it (Rex). `zemi-lab health [args...]`
 runs `zemi-safe health` against the lab tree.
 
 ## The fake model
@@ -115,7 +117,9 @@ completion. Every accepted request body lands in `last_request.json` and
 `requests/NNN.json` under
 the tree, so two consecutive bodies diff byte for byte (prompt cache); `zemi-lab last`
 prints the latest. A refused request (a 429) writes nothing - that is what makes the
-counter a reached-the-model check. The generated init.lua adds no second model, so nothing
+counter a reached-the-model check, and the fake countersigns each accepted body's number
+in `.accepts`, which the counter reads - a planted `requests/NNN.json` fools nothing.
+The generated init.lua adds no second model, so nothing
 else writes a
 request between yours. Control files in the tree, read per request like `drop` and
 `rate_fail`: `delay_ms` holds a reply open (not a 429 or a drop), `pace_ms` spaces the
@@ -131,7 +135,9 @@ streamed chunks.
   against it and exits 1 on a shift; the mask blanks what moves on its own - the
   statusline's figures (elapsed, token counts, cost, the clock), the braille spinner, the
   snail's eyes, the right rail's thumb cell, a working border's figures (elapsed clock,
-  retry countdown), a finished turn's `model · Ns · N out · clock` telemetry, a row's
+  retry countdown), a finished turn's `model · Ns · N out · clock` telemetry (the rules
+  anchor the row's head and its clock at the row's end, so a user row quoting the shape
+  mid-row keeps its figures), a row's
   trailing `· Ns` and a running tool's right-aligned seconds - and never the user's own
   words in the rows, so
   a diff shows text as written. With a peer up, one window's diff conflates the peer's
@@ -173,7 +179,8 @@ streamed chunks.
 - `zemi.ui.screenshot()` from the Lua tool or a keymap returns the same text without styling.
 - Idle CPU: `ps -o %cpu -p "$pid"` over 30 s must stay near 0, with the pid from the
   backend, not a bare `pgrep -f "zemi --trust"`, which hits every lab's zemi: tmux's
-  pane pid IS zemi (`zemi-safe` execs it), rex's is the block's foreground pid.
+  pane pid IS zemi (`zemi-safe` execs it), rex's is the block's foreground pid. %cpu is
+  a decaying average - a just-finished turn reads 0.6-1.2% for a while; judge the floor.
 - `db` prints the path to this project's zemi.db (SQLite) - session rows, tool telemetry
   and usage live there; reading them is your own sqlite3 one-liner.
 

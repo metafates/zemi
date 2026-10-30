@@ -98,6 +98,13 @@ req_base() {
 	[ "$SESSION" = main ] && printf '%s' "$TREE" || printf '%s/req-%s' "$TREE" "$SESSION"
 }
 
+# accepted REQ: how many requests this window's fake countersigned in
+# .accepts - the delivery counter reads that, never the request files,
+# which anything with tree write access can plant
+accepted() {
+	cat "$1/.accepts" 2>/dev/null || echo 0
+}
+
 # rex_sessions_by_label: every lab session is labeled zemi-lab-$NAME, so the
 # up guard and down find a session even when the tree (and with it the env
 # file that named it) is gone.
@@ -196,13 +203,18 @@ sys.exit(0 if ok else 1)
 # in a request, and pre-baseline requests cannot vouch for this prompt at
 # all. An erased draft (an interrupt restores it to the composer) leaves no
 # trace, and no older turn can impersonate it the way a duplicate text could
-# a content match.
+# a content match. A planted request file, numbered past the fake's
+# countersign (.accepts), is skipped.
 request_carries() {
 	python3 -c '
 import glob, json, os, sys
 tree = os.path.dirname(sys.argv[1])
 needle = sys.argv[2]
 at = int(sys.argv[3]) if len(sys.argv) > 3 else 0
+try:
+    acc = int(open(os.path.join(tree, ".accepts")).read())
+except (OSError, ValueError):
+    acc = 0
 def texts(m):
     c = m.get("content")
     if isinstance(c, list):
@@ -210,7 +222,8 @@ def texts(m):
     return [c] if isinstance(c, str) else []
 for f in sorted(glob.glob(os.path.join(tree, "requests", "[0-9]*.json"))):
     try:
-        if int(os.path.basename(f).split(".")[0]) <= at:
+        n = int(os.path.basename(f).split(".")[0])
+        if n <= at or n > acc:
             continue
         d = json.load(open(f))
     except (ValueError, OSError):
@@ -315,12 +328,13 @@ for line in sys.stdin.read().splitlines():
     line = re.sub(r"(┌ )@[.·?><^]{2}", r"\1@··", line)
     # a turn telemetry ticks mid-screen: model · seconds · N out · clock;
     # narrow labs drop the model token, leaving the seconds at the head of
-    # the row. The transcript carries the same shape as the user typed it,
-    # so both rules anchor on the telemetry shape itself - a provider/model
-    # token before the seconds, or the seconds at the head - and a user
-    # row (a ▌ mark or a leading ·) keeps its figures
-    line = re.sub(r"(\S+/\S+) · \d+(?:\.\d+)?s · \d+ out · \d{1,2}:\d{2}", r"\1 · @ · @ out · @", line)
-    line = re.sub(r"^(\s*)\d+(?:\.\d+)?s · \d+ out · \d{1,2}:\d{2}", r"\1@ · @ out · @", line)
+    # the row. The telemetry owns its row and is right-aligned, so both
+    # rules anchor the head of the row (a provider/model token, or the
+    # seconds) and its end (the clock): a user row quoting the shape -
+    # after a ▌ mark, a leading ·, or with words past the clock - keeps
+    # its figures
+    line = re.sub(r"^(\s*)(\S+/\S+) · \d+(?:\.\d+)?s · \d+ out · \d{1,2}:\d{2}[ │@█▌]*$", r"\1\2 · @ · @ out · @", line)
+    line = re.sub(r"^(\s*)\d+(?:\.\d+)?s · \d+ out · \d{1,2}:\d{2}[ │@█▌]*$", r"\1@ · @ out · @", line)
     # the right rail thumb travels as rows scroll: read it as the empty
     # cell it lands on, so a box border keeps its column (a masked border
     # reads as a rail cell and eats a trailing duration with it)
@@ -341,7 +355,7 @@ for i in range(len(out) - 1, -1, -1):
         line = re.sub(r"(?<=in )\d+[ms]\b", "@s", line)  # a retry countdown ticks
         line = re.sub(r"\d+ (out|tok)", r"@ \1", line)  # token counts
         line = re.sub(r"\$\d+(\.\d+)?", "$@", line)     # cost figures
-        line = re.sub(r"\d+[km]?/\d+[km]?(?= ?ctx)", "@", line)  # the context meter
+        line = re.sub(r"\d+(?:\.\d+)?[kKmM]?/\d+(?:\.\d+)?[kKmM]?(?= ?ctx)", "@", line)  # the context meter
         line = re.sub(r"\d{1,2}:\d{2}", "@", line)      # the clock
         out[i] = line
         break
@@ -689,7 +703,7 @@ cmd_prompt() {
 	# the last prompt, so a turn that died before the model cannot silently
 	# serve the previous body to a prompt-cache diff (per window: a peer's
 	# prompt must not move this window's freshness mark)
-	find "$req/requests" -type f 2>/dev/null | wc -l >"$TREE/.lab.turn-$SESSION"
+	accepted "$req" >"$TREE/.lab.turn-$SESSION"
 	# a leftover draft glues onto the text; one C-c clears it (a second, on an
 	# empty composer, quits) - but the C-c can be eaten by an overlay still
 	# closing (send Escape; prompt right after), so verify the composer box
@@ -726,7 +740,7 @@ cmd_prompt() {
 		# the request must carry this text: the count alone fires on any
 		# request landing after the baseline - a queued steer's turn-start,
 		# work predating the prompt - while this text sits undelivered
-		if [ "$(find "$req/requests" -type f 2>/dev/null | wc -l)" -gt "$at" ] &&
+		if [ "$(accepted "$req")" -gt "$at" ] &&
 			request_carries "$msg" "$at"; then
 			break
 		fi
@@ -1043,7 +1057,7 @@ cmd_last() {
 	[ -f "$req/last_request.json" ] || die "no request yet (last_request.json is missing)"
 	if [ -f "$TREE/.lab.turn-$SESSION" ]; then
 		at_prompt=$(cat "$TREE/.lab.turn-$SESSION")
-		now_count=$(find "$req/requests" -type f 2>/dev/null | wc -l)
+		now_count=$(accepted "$req")
 		[ "$now_count" -gt "$at_prompt" ] ||
 			die "no request arrived after the last prompt (the turn died before the model? check zemi-lab logs)"
 	fi
@@ -1164,8 +1178,7 @@ STALE
 		[ -n "$late" ] &&
 			printf 'zemi-lab: warning: %s was written after the stream ended; the recorder died early and absence assertions on this kept stream can false-pass\n' "$late" >&2
 	fi
-	BLOCK_LIST=$(awk '$1 != "fake" && $1 !~ /^fake-/ && $1 != "recorder" {print $2}' "$BLOCKS" 2>/dev/null)
-	BLOCKS="$RBLK $BLOCK_LIST" ZEMI_LAB_EVENTS="$TREE/events.jsonl" python3 - "$@" <<'PYEOF'
+	BLOCKS="$RBLK" ZEMI_LAB_EVENTS="$TREE/events.jsonl" python3 - "$@" <<'PYEOF'
 import json, os, sys
 
 ids = {x for x in os.environ.get("BLOCKS", "").split() if x}
