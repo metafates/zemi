@@ -512,6 +512,44 @@ func TestCompletionFlow(t *testing.T) {
 	}
 }
 
+// TestCompletionAfterProseQuotes: a quote in prose opens nothing, so an
+// unclosed apostrophe (`don't`) or quotation mark never swallows the rest
+// of the line the way a shell's would, and the @ after it still triggers.
+// The frame the attach grammar reads - the quote right after @ - keeps
+// holding its spaces.
+func TestCompletionAfterProseQuotes(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	app.completion.setFiles([]string{"my notes.txt", "main.go"})
+
+	type k struct {
+		key  string
+		text string
+	}
+	send := func(ks ...k) {
+		for _, x := range ks {
+			app.composerKey(x.key, tea.KeyPressMsg{Text: x.text})
+		}
+	}
+
+	send(k{"d", "d"}, k{"o", "o"}, k{"n", "n"}, k{"'", "'"}, k{"t", "t"}, k{" ", " "}, k{"@", "@"}, k{"m", "m"})
+	if !app.completion.open || app.completion.token != "m" {
+		t.Fatalf("popup after a prose apostrophe: open=%v token=%q", app.completion.open, app.completion.token)
+	}
+	if got := app.completion.matches; len(got) != 2 {
+		t.Fatalf("token 'm' matches: %v", got)
+	}
+	app.composer.text, app.composer.cursor = `said "see @m`, 12
+	app.updateCompletion()
+	if !app.completion.open || app.completion.token != "m" {
+		t.Fatalf("popup after a prose quote: open=%v token=%q", app.completion.open, app.completion.token)
+	}
+	app.composer.text, app.composer.cursor = `@"my no`, 7
+	app.updateCompletion()
+	if !app.completion.open || app.completion.token != `"my no` || len(app.completion.matches) != 1 {
+		t.Fatalf("a quoted word holds its space: open=%v token=%q matches=%v", app.completion.open, app.completion.token, app.completion.matches)
+	}
+}
+
 func TestSkillCompletion(t *testing.T) {
 	app, host := bootAgentApp(t, 60, 12)
 	dir := filepath.Join(host.Dirs.ConfigHome, "skills", "lint")

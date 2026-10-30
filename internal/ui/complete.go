@@ -180,8 +180,11 @@ func (a *App) closeQuotedWord() {
 
 // wordStart is the rune index a completion word starts at: after the last
 // whitespace outside a quoted run, a run between matched quotes being one
-// word, so a quoted token holds its spaces. A quote opened and never
-// closed swallows the rest of the line, as a shell's does.
+// word, so a quoted token holds its spaces. A quote opens a run only right
+// after the `@` trigger, the one place the attach grammar reads a frame
+// (attachRef); a quote anywhere else is an ordinary character, so prose
+// apostrophes (`don't`) and stray quotes never swallow the rest of the
+// line the way a shell's unclosed quote would.
 func wordStart(r []rune, cur int) int {
 	line := 0
 	for i := cur - 1; i >= 0; i-- {
@@ -199,7 +202,7 @@ func wordStart(r []rune, cur int) int {
 			if c == quote {
 				quote = 0
 			}
-		case c == '"' || c == '\'':
+		case (c == '"' || c == '\'') && i > 0 && r[i-1] == '@':
 			quote = c
 		case strings.ContainsRune(" \t\n\f\r", c):
 			start = i + 1
