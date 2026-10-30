@@ -99,11 +99,11 @@ stylua:
 	@if command -v $(STYLUA) >/dev/null; then $(STYLUA) --check runtime testdata; \
 	else echo "stylua: $(STYLUA) not installed, skipped (STYLUA=/path/to/stylua to point at one)"; fi
 
-# shellcheck -S warning over the tracked scripts with a sh shebang; skipped without the binary
+# shellcheck over the tracked scripts with a sh shebang; skipped without the binary
 shellcheck:
 	@if command -v $(SHELLCHECK) >/dev/null; then \
 		scripts=$$(git ls-files -co --exclude-standard | xargs grep -Il -m1 '^#!.*sh' 2>/dev/null); \
-		if [ -n "$$scripts" ]; then $(SHELLCHECK) -S warning $$scripts; fi; \
+		if [ -n "$$scripts" ]; then $(SHELLCHECK) $$scripts; fi; \
 	else echo "shellcheck: $(SHELLCHECK) not installed, skipped (SHELLCHECK=/path/to/shellcheck to point at one)"; fi
 
 # gofmt check over the tracked Go files

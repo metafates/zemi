@@ -116,6 +116,7 @@ load() {
 	case "$SESSION" in
 		fake | recorder) die "'$SESSION' is lab plumbing, not a window (-s main|peer)" ;;
 	esac
+	# shellcheck disable=SC2153  # LAB_SESSION comes from the sourced env file, not this script
 	if [ "$BACKEND" = rex ]; then
 		RSESSION=${LAB_RSESSION:-}
 		RBLK=$(block_id "$SESSION")
@@ -126,6 +127,7 @@ load() {
 		# command would serve the corpse's last screen, so check the block's
 		# foreground pid with the kernel before serving anything
 		fgp=$(fgpid "$RSESSION" "$RBLK")
+		# shellcheck disable=SC2015  # either an empty pid or a dead one dies here
 		[ -n "$fgp" ] && kill -0 "$fgp" 2>/dev/null ||
 			die "the '$SESSION' block has no live process (zemi died? zemi-lab down and up again)"
 	elif [ "$SESSION" != "$LAB_SESSION" ]; then
@@ -338,9 +340,9 @@ trust_note() {
 		case "$(cap)" in
 			*"Trust this"*)
 				if [ "$BACKEND" = rex ]; then
-					say "  the trust overlay is up: 'zemi-lab ask y' answers it (or boot with --trust)"
+					say "  the trust overlay is up: 'zemi-lab ask y' answers it (or boot trusted, the default)"
 				else
-					say "  the trust overlay is up: 'zemi-lab send y' answers it (or boot with --trust; resend once - the first key can land in the grace)"
+					say "  the trust overlay is up: 'zemi-lab send y' answers it (or boot trusted, the default; resend once - the first key can land in the grace)"
 				fi
 				return
 				;;
@@ -502,7 +504,7 @@ cmd_prompt() {
 	# the request count before Enter: last refuses to serve a body older than
 	# the last prompt, so a turn that died before the model cannot silently
 	# serve the previous body to a prompt-cache diff
-	ls "$TREE"/requests 2>/dev/null | wc -l >"$TREE/.lab.turn"
+	find "$TREE/requests" -type f 2>/dev/null | wc -l >"$TREE/.lab.turn"
 	# a leftover draft glues onto the text; one C-c clears it (a second, on an
 	# empty composer, quits) - but the C-c can be eaten by an overlay still
 	# closing (send Escape; prompt right after), so verify the composer box
@@ -533,7 +535,7 @@ cmd_prompt() {
 	at=$(cat "$TREE/.lab.turn")
 	i=0
 	while [ "$i" -lt 40 ]; do
-		[ "$(ls "$TREE"/requests 2>/dev/null | wc -l)" -gt "$at" ] && break
+		[ "$(find "$TREE/requests" -type f 2>/dev/null | wc -l)" -gt "$at" ] && break
 		i=$((i + 1))
 		sleep 0.25
 	done
@@ -733,7 +735,7 @@ cmd_peer() {
 	if [ "$BACKEND" = rex ]; then
 		[ -n "$(block_id "$WIN")" ] && die "window '$WIN' is already up (zemi-lab down reboots all)"
 		RB=$(rex run -s "$RSESSION" -c "$TREE/proj" --label "$WIN" --keep-open --focus=false --json -- \
-			env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN="$BIN" "$DIR/zemi-safe" "$TREE" $LAB_TRUST |
+			env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN="$BIN" "$DIR/zemi-safe" "$TREE" ${LAB_TRUST:+"$LAB_TRUST"} |
 			python3 -c 'import json,sys;print(json.load(sys.stdin)["block_ids"][0])') ||
 			die "the $WIN block failed to start"
 		rex block call -s "$RSESSION" -b "$RB" resize "{\"columns\":$W,\"rows\":$H}" >/dev/null ||
@@ -744,7 +746,7 @@ cmd_peer() {
 	else
 		tmux -L "$SERVER" has-session -t "$WIN" 2>/dev/null && die "window '$WIN' is already up (zemi-lab down reboots all)"
 		tmux -L "$SERVER" new-session -d -s "$WIN" -x "$W" -y "$H" -c "$TREE/proj" \
-			"env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' '$DIR/zemi-safe' '$TREE' $LAB_TRUST" ||
+			"env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' '$DIR/zemi-safe' '$TREE'${LAB_TRUST:+ $LAB_TRUST}" ||
 			die "tmux new-session failed"
 	fi
 	i=0
@@ -765,7 +767,7 @@ cmd_last() {
 	[ -f "$TREE/last_request.json" ] || die "no request yet (last_request.json is missing)"
 	if [ -f "$TREE/.lab.turn" ]; then
 		at_prompt=$(cat "$TREE/.lab.turn")
-		now_count=$(ls "$TREE"/requests 2>/dev/null | wc -l)
+		now_count=$(find "$TREE/requests" -type f 2>/dev/null | wc -l)
 		[ "$now_count" -gt "$at_prompt" ] ||
 			die "no request arrived after the last prompt (the turn died before the model? check zemi-lab logs)"
 	fi
@@ -773,12 +775,16 @@ cmd_last() {
 }
 
 cmd_db() {
+	# shellcheck disable=SC2012  # newest db first, on the lab's own tree
 	db=$(ls -t "$TREE"/state/projects/*/zemi.db 2>/dev/null | head -1) || true
+	# shellcheck disable=SC2015  # found or die
 	[ -n "$db" ] && say "$db" || die "no zemi.db yet"
 }
 
 cmd_logs() {
+	# shellcheck disable=SC2012  # newest log first, on the lab's own tree
 	log=$(ls -t "$TREE"/state/logs/* 2>/dev/null | head -1) || true
+	# shellcheck disable=SC2015  # found or die
 	[ -n "$log" ] && say "$log" || die "no log yet"
 }
 

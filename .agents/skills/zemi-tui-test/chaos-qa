@@ -31,7 +31,7 @@ zemi.provider.add({ id = "fake", kind = "openai_compat",
 	models = { { id = "m", context_window = 128000 } } })
 zemi.config.set("models.default", "fake/m")
 L
-    python3 "$S/fake_openai.py" $PORT "$T/out" &
+    python3 "$S/fake_openai.py" "$PORT" "$T/out" &
     FPID=$!
     # the pane's shell is whatever tmux's default is (fish here): run the
     # supervisor through sh, whose syntax the loop is
@@ -42,12 +42,8 @@ L
     ;;
 esac
 
-DB() {
-    echo "$T/state/projects/$(cat "$T"/state/projects/*/root 2>/dev/null | head -1 >/dev/null; ls "$T"/state/projects | head -1)/zemi.db"
-}
-
 checks() {
-    local fail=0 db; db=$(ls "$T"/state/projects/*/zemi.db 2>/dev/null | head -1)
+    local fail=0 db; db=$(find "$T"/state/projects -name zemi.db 2>/dev/null | head -1)
     [ -n "$db" ] || { echo "  check: no store yet"; return 0; }
     local bad
     bad=$(sqlite3 "$db" "pragma integrity_check" 2>&1)
