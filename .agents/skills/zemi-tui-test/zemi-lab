@@ -1,15 +1,19 @@
 #!/bin/sh
-# zemi-lab: a throwaway zemi TUI in tmux against a fake model, plus commands to
-# drive and read it. Every lab is name-scoped (tree, tmux server, port), so
-# testers run in parallel with -n NAME. See SKILL.md next to this file.
+# zemi-lab: a throwaway zemi TUI against a fake model, in tmux or in a Rex
+# block, plus commands to drive and read it. Every lab is name-scoped (tree,
+# tmux server or Rex session, port), so testers run in parallel with -n NAME.
+# See SKILL.md next to this file.
 set -u
 
 usage() {
 	cat <<'U'
 usage: zemi-lab [-n name] command [args]
 
-  up [-x W -y H] [--theme T] [--asks] [--untrusted]
-                     build, throwaway tree, fake model, TUI, wait for boot
+  up [-x W -y H] [--theme T] [--asks] [--untrusted] [--rex]
+                     build, throwaway tree, fake model, TUI, wait for boot.
+                     --rex runs zemi in a Rex block: the terminal acts on the
+                     sequences tmux swallows (OSC 7501, OSC 9, titles) and
+                     reports them as events
   peer [-x W -y H] [NAME]
                      another zemi on the same tree and store: what windows on
                      one project see, for sync and presence work; a third
@@ -22,18 +26,20 @@ usage: zemi-lab [-n name] command [args]
                      `wait ask` waits for a permission ask
   ask y|n|t          answer a permission ask until the box is gone
   cap [-e] [FILE]    capture the whole pane (-e keeps colors)
-                     NOTE: captures can carry literal tab bytes from bubbletea's
-                     cursor optimization, so split panes over a non-multiple-of-8
-                     origin may render captured rows misaligned - upstream, not zemi
   size W H           resize the window
   snap [FILE]        capture, mask the volatile spans, save (default
                      $TREE/snap/prev.txt; the raw capture is kept beside it)
   diff [A] [B]       diff two masked captures - a fresh one against A, or
                      A against B - and exit 1 when rows moved
+  events [NAME...]   block events the terminal saw (rex lab): filter by
+                     program_status_changed, desktop_notification, bell,
+                     title_changed, child_exited; exit 1 on no match
+  records            the OSC 7501 records the terminal holds (rex lab)
+  title              the pane title
   last               the fake model's last request body
   db | logs | status | health [args...]
-  attach             the lab in a real terminal
-  down [--keep]      kill the sessions and server, delete the tree
+  attach             how to watch this lab
+  down [--keep]      quit zemi, kill the sessions and server, delete the tree
 U
 	exit 2
 }
@@ -50,22 +56,76 @@ REPO=$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null || true)
 TREE=${ZEMI_LAB_TREE:-${TMPDIR:-/tmp}/zemi-lab-$NAME}
 SERVER=zl-$NAME
 ENVF=$TREE/.lab.env
+BLOCKS=$TREE/.lab.blocks
 export TMUX_TMPDIR="${TMPDIR:-/tmp}"
+
+BACKEND=tmux
+RSESSION="" RBLK=""
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'zemi-lab: %s\n' "$*" >&2; exit 1; }
+
+# block_id NAME: the Rex block id a lab window maps to (from .lab.blocks,
+# "name id" lines written at up/peer).
+block_id() { awk -v n="$1" '$1 == n {print $2}' "$BLOCKS" 2>/dev/null; }
 
 load() {
 	[ -f "$ENVF" ] || die "no lab '$NAME' at $TREE (zemi-lab up first)"
 	# shellcheck disable=SC1090
 	. "$ENVF"
-	if [ "$SESSION" != "$LAB_SESSION" ]; then
+	BACKEND=${LAB_BACKEND:-tmux}
+	if [ "$BACKEND" = rex ]; then
+		RSESSION=${LAB_RSESSION:-}
+		RBLK=$(block_id "$SESSION")
+		[ -n "$RBLK" ] || die "no window '$SESSION' (zemi-lab peer first)"
+		rex block ls -s "$RSESSION" --json >/dev/null 2>&1 ||
+			die "the Rex session is gone (zemi-lab up first)"
+	elif [ "$SESSION" != "$LAB_SESSION" ]; then
 		tmux -L "$SERVER" has-session -t "$SESSION" 2>/dev/null ||
 			die "no window '$SESSION' (zemi-lab peer first)"
 	fi
 }
 
-cap() { tmux -L "$SERVER" capture-pane -t "$SESSION" -p 2>/dev/null || true; }
+cap() {
+	case $BACKEND in
+		rex) rex capture -s "$RSESSION" -b "$RBLK" 2>/dev/null || true ;;
+		*) tmux -L "$SERVER" capture-pane -t "$SESSION" -p 2>/dev/null || true ;;
+	esac
+}
+
+# key_rex: tmux key spelling (C-c, Escape, BTab) into Rex's (ctrl+c, escape,
+# shift+tab); unknown names pass through and rex rejects them loudly.
+key_rex() {
+	case "$1" in
+		C-*) printf 'ctrl+%s' "${1#C-}" ;;
+		M-*) printf 'alt+%s' "${1#M-}" ;;
+		Escape | Enter | Space | Tab | Backspace | Del | Up | Down | Left | Right | Home | End | PageUp | PageDown | Insert)
+			printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+			;;
+		BSpace) printf 'backspace' ;;
+		BTab) printf 'shift+tab' ;;
+		*) printf '%s' "$1" ;;
+	esac
+}
+
+send_keys() {
+	case $BACKEND in
+		rex)
+			for k do
+				rex send-key -s "$RSESSION" -b "$RBLK" -- "$(key_rex "$k")" ||
+					die "send: rex refused key '$k'"
+			done
+			;;
+		*) tmux -L "$SERVER" send-keys -t "$SESSION" "$@" ;;
+	esac
+}
+
+type_text() {
+	case $BACKEND in
+		rex) rex send -s "$RSESSION" -b "$RBLK" -- "$*" || die "rex send failed" ;;
+		*) tmux -L "$SERVER" send-keys -t "$SESSION" -l -- "$*" ;;
+	esac
+}
 
 # mask_volatile blanks the spans that move on their own - the readout's
 # elapsed seconds, tokens and cost, the braille spinner, the clock - so a
@@ -105,34 +165,21 @@ wait_stable() {
 
 free_port() { python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'; }
 
-cmd_up() {
-	W=140 H=40 THEME="" ASKS="" TRUST=--trust
-	while [ $# -gt 0 ]; do
-		case "$1" in
-			-x) W=$2; shift 2 ;;
-			-y) H=$2; shift 2 ;;
-			--theme) THEME=$2; shift 2 ;;
-			--asks) ASKS=1; shift ;;
-			--untrusted) TRUST=""; shift ;;
-			*) die "up: unknown flag $1" ;;
-		esac
+# wait_port: the fake model is ready when it listens, not when its block
+# merely exists - a bind failure or a slow start reads the same way here.
+wait_port() {
+	i=0
+	while [ "$i" -lt 40 ]; do
+		python3 -c "import socket; s = socket.socket(); s.settimeout(0.5); s.connect(('127.0.0.1', $PORT)); s.close()" 2>/dev/null && return 0
+		i=$((i + 1))
+		sleep 0.25
 	done
-	[ -n "$REPO" ] || die "not inside the zemi repository; set ZEMI_BIN"
+	return 1
+}
 
-	BIN=${ZEMI_BIN:-$REPO/bin/zemi}
-	if [ -z "${ZEMI_BIN:-}" ]; then
-		say "building $BIN..."
-		make -C "$REPO" build >/dev/null || die "make build failed"
-	fi
-	case $BIN in /*) ;; *) BIN=$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN") ;; esac
-	[ -x "$BIN" ] || die "no zemi binary at $BIN"
-
-	tmux -L "$SERVER" kill-server 2>/dev/null || true
-	mkdir -p "$TREE/config" "$TREE/data" "$TREE/state" "$TREE/cache" "$TREE/proj"
-	[ -d "$TREE/proj/.git" ] || (cd "$TREE/proj" && git init -q) || die "git init failed"
-	echo hello >"$TREE/proj/a.txt"
-
-	PORT=$(free_port) || die "python3 is needed"
+# write_config: the generated init.lua and the askgate plugin, shared by both
+# backends.
+write_config() {
 	{
 		echo 'zemi.provider.add({ id = "fake", kind = "openai_compat",'
 		echo "	api_key = \"x\", base_url = \"http://127.0.0.1:$PORT/v1\","
@@ -151,18 +198,125 @@ cmd_up() {
 			echo 'zemi.event.on("permission.request", function() return { decision = "ask" } end)'
 		} >"$TREE/data/plugins/local/askgate/.zemi/init.lua"
 	fi
+}
+
+# wait_boot: poll captures until the composer shows, or fail loudly.
+wait_boot() {
+	i=0
+	while [ "$i" -lt 120 ]; do
+		case "$(cap)" in *"Ask anything"*) return 0 ;; esac
+		i=$((i + 1))
+		sleep 0.25
+	done
+	cap | grep -v '^ *$' | tail -10 >&2
+	die "zemi did not boot in 30s"
+}
+
+cmd_up() {
+	W=140 H=40 THEME="" ASKS="" TRUST=--trust
+	BACKEND=tmux
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			-x) W=$2; shift 2 ;;
+			-y) H=$2; shift 2 ;;
+			--theme) THEME=$2; shift 2 ;;
+			--asks) ASKS=1; shift ;;
+			--untrusted) TRUST=""; shift ;;
+			--rex) BACKEND=rex; shift ;;
+			*) die "up: unknown flag $1" ;;
+		esac
+	done
+	[ -n "$REPO" ] || die "not inside the zemi repository; set ZEMI_BIN"
+
+	BIN=${ZEMI_BIN:-$REPO/bin/zemi}
+	if [ -z "${ZEMI_BIN:-}" ]; then
+		say "building $BIN..."
+		make -C "$REPO" build >/dev/null || die "make build failed"
+	fi
+	case $BIN in /*) ;; *) BIN=$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN") ;; esac
+	[ -x "$BIN" ] || die "no zemi binary at $BIN"
+
+	# a previous run of this lab: kill its tmux server up front (the rex side
+	# of a backend switch is torn down below from the env file)
+	tmux -L "$SERVER" kill-server 2>/dev/null || true
+	mkdir -p "$TREE/config" "$TREE/data" "$TREE/state" "$TREE/cache" "$TREE/proj"
+	[ -d "$TREE/proj/.git" ] || (cd "$TREE/proj" && git init -q) || die "git init failed"
+	echo hello >"$TREE/proj/a.txt"
+
+	PORT=$(free_port) || die "python3 is needed"
+	write_config
+
+	if [ "$BACKEND" = rex ]; then
+		command -v rex >/dev/null 2>&1 || die "rex is not on PATH (up without --rex for the tmux lab)"
+		# a previous run of this lab: its session still holds the blocks
+		if [ -f "$ENVF" ]; then
+			# shellcheck disable=SC1090
+			. "$ENVF"
+			[ -n "${LAB_RSESSION:-}" ] && rex kill "$LAB_RSESSION" 2>/dev/null
+		fi
+		rm -f "$BLOCKS"
+
+		RS=$(rex new "zemi-lab-$NAME" --json | python3 -c 'import json,sys;print(json.load(sys.stdin)["session_id"])') ||
+			die "rex new failed"
+		RSESSION=$RS
+		# record the session now: a failed boot must still leave a lab that
+		# up (again) or down can tear down
+		cat >"$ENVF" <<EOF
+LAB_NAME="$NAME"
+LAB_TREE="$TREE"
+LAB_BACKEND="rex"
+LAB_RSESSION="$RS"
+LAB_SESSION="main"
+LAB_PEER="peer"
+EOF
+		# the events recorder is a block, so it survives this shell: its stream
+		# is the assertion surface for everything the terminal saw
+		rex run -s "$RS" --label events --keep-open --focus=false --json -- \
+			sh -c "rex events -s '$RS' --json > '$TREE/events.jsonl' 2> '$TREE/events.err'" >/dev/null ||
+			die "the events recorder failed to start"
+		FB=$(rex run -s "$RS" --label fake --keep-open --focus=false --json -- \
+			python3 "$DIR/fake_openai.py" "$PORT" "$TREE" |
+			python3 -c 'import json,sys;print(json.load(sys.stdin)["block_ids"][0])') ||
+			die "the fake model block failed to start"
+		wait_port || {
+			rex capture -s "$RS" -b "$FB" 2>/dev/null | grep -v '^ *$' | tail -5 >&2
+			die "the fake model died (port taken?)"
+		}
+		RB=$(rex run -s "$RS" -c "$TREE/proj" --label "$SESSION" --keep-open --focus=false --json -- \
+			env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN="$BIN" "$DIR/zemi-safe" "$TREE" $TRUST |
+			python3 -c 'import json,sys;print(json.load(sys.stdin)["block_ids"][0])') ||
+			die "the zemi block failed to start"
+		rex block call -s "$RS" -b "$RB" resize "{\"columns\":$W,\"rows\":$H}" >/dev/null ||
+			die "resize to $W x $H failed"
+		{
+			printf 'main %s\n' "$RB"
+			printf 'fake %s\n' "$FB"
+		} >"$BLOCKS"
+		RBLK=$RB
+		wait_boot
+
+		cat >"$ENVF" <<EOF
+LAB_NAME="$NAME"
+LAB_TREE="$TREE"
+LAB_BACKEND="rex"
+LAB_RSESSION="$RS"
+LAB_PORT="$PORT"
+LAB_TRUST="$TRUST"
+LAB_SESSION="main"
+LAB_PEER="peer"
+EOF
+		say "lab $NAME up (rex): $TREE, fake model 127.0.0.1:$PORT, session $RS ($W x $H)"
+		say "  zemi-lab events | records | title          what the terminal saw"
+		say "  zemi-lab prompt 'call shell {\"command\":\"ls\",\"about\":\"list\"}'"
+		say "  zemi-lab cap | wait PATTERN | send Escape | ask y | db | logs | last | down"
+		return
+	fi
 
 	# the fake model runs as a tmux session, so it survives this command and
 	# dies with the lab; CWD is the tree, so its files never land in a repo
 	tmux -L "$SERVER" new-session -d -s fake -c "$TREE" \
 		"python3 '$DIR/fake_openai.py' $PORT '$TREE'" || die "tmux new-session failed"
-	i=0
-	while [ "$i" -lt 8 ]; do
-		tmux -L "$SERVER" has-session -t fake 2>/dev/null && break
-		i=$((i + 1))
-		sleep 0.25
-	done
-	tmux -L "$SERVER" has-session -t fake 2>/dev/null || {
+	wait_port || {
 		tmux -L "$SERVER" capture-pane -t fake -p 2>/dev/null | grep -v '^ *$' | tail -5 >&2
 		die "the fake model died (port taken?)"
 	}
@@ -170,21 +324,12 @@ cmd_up() {
 	tmux -L "$SERVER" new-session -d -s "$SESSION" -x "$W" -y "$H" -c "$TREE/proj" \
 		"env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' '$DIR/zemi-safe' '$TREE' $TRUST" ||
 		die "tmux new-session failed"
-
-	i=0
-	while [ "$i" -lt 60 ]; do
-		case "$(cap)" in *"Ask anything"*) break ;; esac
-		i=$((i + 1))
-		sleep 0.5
-	done
-	[ "$i" -lt 60 ] || {
-		cap | grep -v '^ *$' | tail -10 >&2
-		die "zemi did not boot in 30s"
-	}
+	wait_boot
 
 	cat >"$ENVF" <<EOF
 LAB_NAME="$NAME"
 LAB_TREE="$TREE"
+LAB_BACKEND="tmux"
 LAB_SERVER="$SERVER"
 LAB_SESSION="$SESSION"
 LAB_PORT="$PORT"
@@ -202,24 +347,24 @@ cmd_prompt() {
 		*"Ask anything"*) ;;
 		*)
 			# a leftover draft glues onto the text; one C-c clears it (a second quits)
-			tmux -L "$SERVER" send-keys -t "$SESSION" C-c
+			send_keys C-c
 			sleep 0.3
 			case "$(cap)" in *"Ask anything"*) ;; *) die "the composer will not empty (an overlay is open?)" ;; esac
 			;;
 	esac
-	tmux -L "$SERVER" send-keys -t "$SESSION" -l -- "$*"
-	tmux -L "$SERVER" send-keys -t "$SESSION" Enter
+	type_text "$*"
+	send_keys Enter
 	wait_stable "" 30 || die "the screen never settled after the prompt"
 }
 
 cmd_type() {
 	[ $# -ge 1 ] || die "type: text"
-	tmux -L "$SERVER" send-keys -t "$SESSION" -l -- "$*"
+	type_text "$@"
 }
 
 cmd_send() {
 	[ $# -ge 1 ] || die "send: key names"
-	tmux -L "$SERVER" send-keys -t "$SESSION" "$@"
+	send_keys "$@"
 }
 
 cmd_wait() {
@@ -238,7 +383,7 @@ cmd_ask() {
 	i=0
 	while [ "$i" -lt 10 ]; do
 		case "$(cap)" in
-			*"No, and tell"*) tmux -L "$SERVER" send-keys -t "$SESSION" "$1"; sleep 0.5 ;;
+			*"No, and tell"*) send_keys "$1"; sleep 0.5 ;;
 			*) exit 0 ;;
 		esac
 		i=$((i + 1))
@@ -250,18 +395,34 @@ cmd_cap() {
 	e="" out=""
 	while [ $# -gt 0 ]; do
 		case "$1" in
-			-e) e=-e ;;
+			-e) e=1 ;;
 			-*) die "cap: -e or a file" ;;
 			*) out=$1 ;;
 		esac
 		shift
 	done
-	if [ -n "$out" ]; then
-		tmux -L "$SERVER" capture-pane -t "$SESSION" -p $e >"$out" || die "capture failed"
-		say "$out"
-	else
-		exec tmux -L "$SERVER" capture-pane -t "$SESSION" -p $e
-	fi
+	load
+	case $BACKEND in
+		rex)
+			fmt=text
+			[ -n "$e" ] && fmt=vt
+			if [ -n "$out" ]; then
+				rex capture -s "$RSESSION" -b "$RBLK" --format="$fmt" >"$out" || die "capture failed"
+				say "$out"
+			else
+				exec rex capture -s "$RSESSION" -b "$RBLK" --format="$fmt"
+			fi
+			;;
+		*)
+			[ -n "$e" ] && e=-e || e=""
+			if [ -n "$out" ]; then
+				tmux -L "$SERVER" capture-pane -t "$SESSION" -p $e >"$out" || die "capture failed"
+				say "$out"
+			else
+				exec tmux -L "$SERVER" capture-pane -t "$SESSION" -p $e
+			fi
+			;;
+	esac
 }
 
 # cmd_snap: capture, mask, save - one side of a row-shift diff.
@@ -303,7 +464,15 @@ cmd_diff() {
 	fi
 }
 
-cmd_size() { [ $# -eq 2 ] || die "size: W H"; tmux -L "$SERVER" resize-window -t "$SESSION" -x "$1" -y "$2"; }
+cmd_size() {
+	[ $# -eq 2 ] || die "size: W H"
+	load
+	case $BACKEND in
+		rex) rex block call -s "$RSESSION" -b "$RBLK" resize "{\"columns\":$1,\"rows\":$2}" >/dev/null ||
+			die "resize failed" ;;
+		*) tmux -L "$SERVER" resize-window -t "$SESSION" -x "$1" -y "$2" ;;
+	esac
+}
 
 # cmd_peer: a second zemi on the same tree, so two windows share the store,
 # the config and the fake model exactly as two real windows on one project
@@ -322,17 +491,33 @@ cmd_peer() {
 	BIN=${ZEMI_BIN:-$REPO/bin/zemi}
 	case $BIN in /*) ;; *) BIN=$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN") ;; esac
 	[ -x "$BIN" ] || die "no zemi binary at $BIN"
-	tmux -L "$SERVER" has-session -t "$WIN" 2>/dev/null && die "window '$WIN' is already up (zemi-lab down reboots all)"
-	tmux -L "$SERVER" new-session -d -s "$WIN" -x "$W" -y "$H" -c "$TREE/proj" \
-		"env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' '$DIR/zemi-safe' '$TREE' $LAB_TRUST" ||
-		die "tmux new-session failed"
+	if [ "$BACKEND" = rex ]; then
+		[ -n "$(block_id "$WIN")" ] && die "window '$WIN' is already up (zemi-lab down reboots all)"
+		RB=$(rex run -s "$RSESSION" -c "$TREE/proj" --label "$WIN" --keep-open --focus=false --json -- \
+			env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN="$BIN" "$DIR/zemi-safe" "$TREE" $LAB_TRUST |
+			python3 -c 'import json,sys;print(json.load(sys.stdin)["block_ids"][0])') ||
+			die "the $WIN block failed to start"
+		rex block call -s "$RSESSION" -b "$RB" resize "{\"columns\":$W,\"rows\":$H}" >/dev/null ||
+			die "resize to $W x $H failed"
+		printf '%s %s\n' "$WIN" "$RB" >>"$BLOCKS"
+		RBLK=$RB
+	else
+		tmux -L "$SERVER" has-session -t "$WIN" 2>/dev/null && die "window '$WIN' is already up (zemi-lab down reboots all)"
+		tmux -L "$SERVER" new-session -d -s "$WIN" -x "$W" -y "$H" -c "$TREE/proj" \
+			"env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' '$DIR/zemi-safe' '$TREE' $LAB_TRUST" ||
+			die "tmux new-session failed"
+	fi
 	i=0
-	while [ "$i" -lt 60 ]; do
-		case "$(tmux -L "$SERVER" capture-pane -t "$WIN" -p 2>/dev/null)" in *"Ask anything"*) break ;; esac
+	while [ "$i" -lt 120 ]; do
+		case $BACKEND in
+			rex) cur=$(rex capture -s "$RSESSION" -b "$RBLK" 2>/dev/null || true) ;;
+			*) cur=$(tmux -L "$SERVER" capture-pane -t "$WIN" -p 2>/dev/null || true) ;;
+		esac
+		case "$cur" in *"Ask anything"*) break ;; esac
 		i=$((i + 1))
-		sleep 0.5
+		sleep 0.25
 	done
-	[ "$i" -lt 60 ] || die "window '$WIN' did not boot in 30s"
+	[ "$i" -lt 120 ] || die "window '$WIN' did not boot in 30s"
 	say "window $WIN up on the same store: drive it with zemi-lab -s $WIN prompt|cap|wait"
 }
 
@@ -354,15 +539,137 @@ cmd_logs() {
 cmd_status() {
 	load
 	say "lab $NAME: $TREE"
-	say "  fake model 127.0.0.1:${LAB_PORT:-?}, tmux server $SERVER"
-	tmux -L "$SERVER" list-sessions 2>/dev/null || say "  tmux server down"
+	say "  fake model 127.0.0.1:${LAB_PORT:-?}"
+	case $BACKEND in
+		rex)
+			say "  rex session $RSESSION"
+			rex block ls -s "$RSESSION" --json 2>/dev/null | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+for b in (d["blocks"] if isinstance(d, dict) else d):
+    print("   ", b.get("label", "?"), b["block_id"])
+' || say "  rex session down"
+			;;
+		*)
+			say "  tmux server $SERVER"
+			tmux -L "$SERVER" list-sessions 2>/dev/null || say "  tmux server down"
+			;;
+	esac
+}
+
+# cmd_title: the pane title - a spinner while a turn runs, `? ` while an ask
+# is up (rex lab: whatever the last title_changed carried).
+cmd_title() {
+	load
+	case $BACKEND in
+		rex)
+			rex block call -s "$RSESSION" -b "$RBLK" title 2>/dev/null |
+				python3 -c 'import json,sys;print(json.load(sys.stdin).get("title",""))' || die "title failed"
+			;;
+		*) tmux -L "$SERVER" display -p -t "$SESSION" '#{pane_title}' ;;
+	esac
+}
+
+cmd_records() {
+	load
+	[ "$BACKEND" = rex ] || die "records: a rex lab only (tmux swallows OSC 7501)"
+	rex block call -s "$RSESSION" -b "$RBLK" program_status 2>/dev/null || die "records failed"
+}
+
+# cmd_events: what the terminal saw, one line per event - the assertion
+# surface for the sequences tmux swallows. NAME filters by event name; no
+# match exits 1, so a test can `zemi-lab events desktop_notification`.
+cmd_events() {
+	load
+	[ "$BACKEND" = rex ] || die "events: a rex lab only (tmux swallows those sequences)"
+	[ -f "$TREE/events.jsonl" ] || die "no events stream at $TREE/events.jsonl"
+	BLOCK_LIST=$(awk '{print $2}' "$BLOCKS" 2>/dev/null)
+	BLOCKS="$RBLK $BLOCK_LIST" ZEMI_LAB_EVENTS="$TREE/events.jsonl" python3 - "$@" <<'PYEOF'
+import json, os, sys
+
+ids = {x for x in os.environ.get("BLOCKS", "").split() if x}
+names = set(sys.argv[1:])
+
+
+def brief(n, p):
+    if n == "process_changed":
+        f = p.get("foreground")
+        if not f:
+            return "fg=none"
+        return "fg=%s pid=%s" % (f.get("name", "?"), f.get("pid", "?"))
+    if n == "program_status_changed":
+        r = p.get("record", {})
+        s = "state=" + r.get("state", "")
+        if r.get("kind"):
+            s += " kind=" + r["kind"]
+        if r.get("msg"):
+            s += " msg=" + r["msg"]
+        return s
+    if n == "program_status_removed":
+        return "reason=" + p.get("reason", "")
+    if n == "desktop_notification":
+        return (p.get("title", "") + " | " + p.get("body", "")).strip(" |")
+    if n == "title_changed":
+        return repr(p.get("title", ""))
+    if n == "child_exited":
+        return "exit=" + str(p.get("exit_code"))
+    if n == "size_changed":
+        return "%sx%s" % (p.get("columns"), p.get("rows"))
+    return json.dumps(p)[:120]
+
+
+hits = 0
+for line in open(os.environ["ZEMI_LAB_EVENTS"]):
+    try:
+        d = json.loads(line)
+    except ValueError:
+        continue
+    ev = d.get("payload", {}).get("event", {})
+    if ev.get("type") != "block_event":
+        continue
+    p = ev.get("payload", {})
+    if p.get("block_id") not in ids:
+        continue
+    n = p.get("name", "")
+    if names and n not in names:
+        continue
+    hits += 1
+    print(n + "\t" + brief(n, p.get("payload", {})))
+if hits == 0:
+    print("no matching events")
+    sys.exit(1)
+PYEOF
 }
 
 cmd_health() { "$DIR/zemi-safe" "$TREE" -C "$TREE/proj" health "$@"; }
 
+cmd_attach() {
+	load
+	case $BACKEND in
+		rex) say "the lab runs in Rex session $RSESSION; open it in the Rex app or: rex focus -s '$RSESSION'" ;;
+		*) exec tmux -L "$SERVER" attach -t "$SESSION" ;;
+	esac
+}
+
 cmd_down() {
 	keep=""
 	[ "${1:-}" = --keep ] && keep=1
+	if [ -f "$ENVF" ]; then
+		# shellcheck disable=SC1090
+		. "$ENVF"
+		if [ "${LAB_BACKEND:-tmux}" = rex ] && [ -n "${LAB_RSESSION:-}" ]; then
+			# quit zemi first so the exit clear reaches the terminal; the two
+			# ctrl+c ride zemi's armed quit (rex kill would leave stale records)
+			if [ -f "$BLOCKS" ]; then
+				while read -r _ bid; do
+					rex send-key -s "$LAB_RSESSION" -b "$bid" -- ctrl+c 2>/dev/null || true
+					rex send-key -s "$LAB_RSESSION" -b "$bid" -- ctrl+c 2>/dev/null || true
+				done <"$BLOCKS"
+				sleep 1.5
+			fi
+			rex kill "$LAB_RSESSION" 2>/dev/null || true
+		fi
+	fi
 	tmux -L "$SERVER" kill-server 2>/dev/null || true
 	if [ -z "$keep" ]; then
 		case "$TREE" in
@@ -380,16 +687,19 @@ case "$CMD" in
 	send) load; cmd_send "$@" ;;
 	wait) load; cmd_wait "$@" ;;
 	ask) load; cmd_ask "$@" ;;
-	cap) load; cmd_cap "$@" ;;
-	size) load; cmd_size "$@" ;;
+	cap) cmd_cap "$@" ;;
+	size) cmd_size "$@" ;;
 	snap) cmd_snap "$@" ;;
 	diff) cmd_diff "$@" ;;
+	events) load; cmd_events "$@" ;;
+	records) cmd_records "$@" ;;
+	title) cmd_title "$@" ;;
 	last) load; cmd_last "$@" ;;
 	db) load; cmd_db "$@" ;;
 	logs) load; cmd_logs "$@" ;;
 	status) load; cmd_status "$@" ;;
 	health) load; cmd_health "$@" ;;
-	attach) load; exec tmux -L "$SERVER" attach -t "$SESSION" ;;
+	attach) load; cmd_attach "$@" ;;
 	down) cmd_down "$@" ;;
 	*) usage ;;
 esac

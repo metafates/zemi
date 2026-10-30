@@ -1,29 +1,33 @@
 ---
 name: zemi-tui-test
-description: "Load to check a UI or agent change end to end, capture a screen, or reproduce a bug Go tests cannot: zemi-lab drives the real binary in tmux against a fake model, in a throwaway config tree."
+description: "Load to check a UI or agent change end to end, capture a screen, or reproduce a bug Go tests cannot: zemi-lab drives the real binary in tmux or in a Rex block against a fake model, in a throwaway config tree."
 ---
 
 # Testing zemi in a real terminal
 
 Go tests cover most things; drive the binary when the change is visible (chrome, prompts,
 pickers) or crosses the model loop (tools, permission asks, the view, a reset).
-Use tmux: pyte-style emulators garble bubbletea's incremental renderer, tmux does not.
+Two backends: tmux (default) and Rex (`up --rex`). pyte-style emulators garble bubbletea's
+incremental renderer, tmux does not. Rex also acts on the sequences tmux swallows — OSC 7501
+program status, OSC 9 notifications, titles — and reports them as events, so the
+terminal-state work is testable only there.
 
 ## The lab: zemi-lab
 
 `zemi-lab` (next to this file) is the whole procedure in one driver. `up` builds `bin/zemi`
 (`ZEMI_BIN` overrides, otherwise `make build`), makes a throwaway tree at
 `$TMPDIR/zemi-lab-<name>` (all four `ZEMI_*_HOME` dirs under it via `zemi-safe`, a git repo
-at `proj/`), starts `fake_openai.py` and a tmux session on its own server, and waits for the
-composer instead of sleeping. The pane gets truecolor with `NO_COLOR` unset; the fake
-server's files land in the tree, never in a repo. Every lab is name-scoped (tree, tmux
-server, port), so parallel testers take `-n <name>`.
+at `proj/`), starts `fake_openai.py` and a TUI, and waits for the composer instead of
+sleeping. The pane gets truecolor with `NO_COLOR` unset; the fake server's files land in the
+tree, never in a repo. Every lab is name-scoped (tree, tmux server or Rex session, port), so
+parallel testers take `-n <name>`. The backend is recorded in the tree's `.lab.env`; the
+drive commands aim at whichever one booted.
 
 ```sh
 S=.agents/skills/zemi-tui-test
-$S/zemi-lab up                     # 140x40 TUI; --asks adds a gate plugin that forces the ask overlay
+$S/zemi-lab up                     # 140x40 TUI in tmux; --rex runs it in a Rex block
 $S/zemi-lab prompt 'call shell {"command":"ls","about":"list"}'
-$S/zemi-lab cap | grep -v '^ *$'   # whole pane, plain text; cap -e keeps SGR colors
+$S/zemi-lab cap | grep -v '^ *$'   # whole pane, plain text; cap -e keeps colors
 $S/zemi-lab wait '1 command'       # screen stopped changing and the row shows
 $S/zemi-lab send Escape            # key names, as tmux spells them (C-c, Escape)
 $S/zemi-lab ask y                  # answer a permission ask (y|n|t), past the grace
@@ -32,8 +36,11 @@ $S/zemi-lab peer                   # a second zemi on the same tree and store
 $S/zemi-lab -s peer prompt 'name one river'   # drive the peer; -s main|peer aims every command
 $S/zemi-lab snap && $S/zemi-lab diff          # row-shift check: mask volatile spans,
                                    # exit 1 when rows moved (raw captures kept beside)
+$S/zemi-lab title                  # the pane title (a spinner while a turn runs, ? on an ask)
+$S/zemi-lab events                 # rex lab: what the terminal saw, one line per event
+$S/zemi-lab records                # rex lab: the OSC 7501 records the terminal holds
 $S/zemi-lab db                     # this project's zemi.db; logs is the launch log
-$S/zemi-lab down                   # kill sessions and server, delete the tree (--keep keeps)
+$S/zemi-lab down                   # quit zemi, kill sessions and server, delete the tree
 ```
 
 `prompt` clears a leftover draft first (one ctrl+c; a second would quit), types, sends
@@ -41,7 +48,10 @@ Enter, and waits for the screen to settle - never a blind sleep. It returns when
 screen settles (a settle heuristic), which can be mid-turn - not a turn-end guarantee.
 `up` flags: `-x W -y H`
 (default 140x40), `--theme whorl-light`, `--untrusted` (drops `--trust`, for the trust
-prompt). `zemi-lab attach` sits at the lab in a real terminal.
+prompt), `--asks` (installs a gate plugin whose `permission.request` handler returns
+`{decision = "ask"}`, since zemi never asks by design - DESIGN §9; it loads live within a
+second of a running lab), `--rex` (the Rex backend below). `zemi-lab attach` sits at the
+lab in a real terminal (tmux) or prints how to open it (Rex).
 
 ## The fake model
 
@@ -55,10 +65,6 @@ request between yours. Control files in the tree, read per request like `drop` a
 `rate_fail`: `delay_ms` holds a reply open (not a 429 or a drop), `pace_ms` spaces the
 streamed chunks.
 
-A permission ask needs a gate plugin - zemi never asks by design (DESIGN §9): `up --asks`
-installs one whose `permission.request` handler returns `{decision = "ask"}` (a plugin with
-`perm` in its `uses`), and it loads live within a second of a running lab.
-
 ## Reading a screen
 
 - A permission ask is a prompt box under the chat; `y` yes, `n` no, `t` no and tell, or
@@ -70,7 +76,8 @@ installs one whose `permission.request` handler returns `{decision = "ask"}` (a 
   elapsed seconds, token counts, cost, the clock) and the raw captures are kept beside
   the masked ones for re-checking.
 - The pane title marks state: a spinner while a turn runs, `? ` while an ask is up -
-  `tmux -L zl-<name> display -p '#{pane_title}'`.
+  `zemi-lab title` prints it on either backend (a rex lab also streams it as
+  `title_changed` events, so title churn is countable).
 - Capture the WHOLE pane, not row ranges: popups sit mid-screen and the composer is 3 rows;
   row-range captures made a working app look hung three separate times.
 - A burst of send-keys can wedge a pane's input (an unterminated bracketed paste swallows
@@ -112,33 +119,40 @@ the lab does) is what makes `capture-pane -e` show `38;2;r;g;b`. `-m` applies
 after init.lua. Parallel testers each take their own `$T`, tmux server name and port: on a
 shared port the other tester's server answers, and on a shared tree its `init.lua` loads.
 
-## What tmux swallows: drive Rex instead
+## The rex lab: what tmux never sees
 
-tmux eats the sequences the OUTER terminal would act on — OSC 7501 program status, OSC 9
-notifications, window titles. When the change under test is one of those, run zemi in a Rex
-block instead of tmux (2026-10-30, the notification-duplication fix):
+`up --rex` puts zemi in a Rex block (session `zemi-lab-<name>`): an events recorder block
+writes every event the terminal sees to `$TREE/events.jsonl`, the fake model and zemi run as
+labeled blocks, and the drive commands (prompt, cap, wait, ask, send, size, snap, diff)
+work as in tmux, with key names translated. Use it whenever the change under test is one of
+the sequences tmux eats:
 
 ```sh
-S=$(rex new zemi-lab-<name> --json | python3 -c 'import json,sys;print(json.load(sys.stdin)["session_id"])')
-rex events -s "$S" --json > events.jsonl &          # the stream IS the assertion surface
-rex run -s "$S" -c "$T/proj" --label=zemi --keep-open --json -- \
-  env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN=$PWD/bin/zemi \
-  .agents/skills/zemi-tui-test/zemi-safe "$T" --trust
-rex send -s "$S" -b BLOCK -- 'the prompt'; rex send-key -s "$S" -b BLOCK -- enter
+$S/zemi-lab -n ps up --rex --asks
+$S/zemi-lab -n ps prompt 'call shell {"command":"ls","about":"list"}'
+$S/zemi-lab -n ps events program_status_changed
+program_status_changed	state=idle
+program_status_changed	state=working msg=call shell {"command":"ls","about":"list"}
+program_status_changed	state=blocked kind=permission msg=Run this command? · list
+program_status_changed	state=done msg=done, here is the reply.
+$S/zemi-lab -n ps events desktop_notification   # exit 1 = none; the count IS the "one, not two" assertion
+$S/zemi-lab -n ps records                       # what the terminal holds right now, as JSON
+$S/zemi-lab -n ps down                          # quits zemi first, so the exit clear reaches the wire
 ```
 
-- `rex events` carries one block event per thing the terminal saw: `program_status_changed`
-  (7501 records, with `record.state/kind/msg`), `desktop_notification` (OSC 9), `bell`,
-  `title_changed`. Count events per block id to assert "one notification, not two".
-- `rex block call -s "$S" -b BLOCK program_status` prints the records the terminal holds —
-  what survives after a quit tells whether the exit clear reached the wire.
-- `state=clear` records emit no event; read `program_status` instead.
+- The events stream is the assertion surface: `title_changed`, `desktop_notification` (OSC
+  9), `bell`, `size_changed`, `child_exited` are all there, filterable by name, exit 1 on no
+  match. A `state=clear` on quit arrives as `program_status_removed`; `records` prints the
+  records the terminal holds right now.
 - Rex answers the OSC 7501 feature query, so a status-following build suppresses its own
-  alerts there; tmux never answers, which is the right control for the other side.
-- The block takes focus at creation and no blur arrives on its own: open a second block to
-  steal focus before asserting on unfocused behavior.
-- Kill a lab zemi by the exact pid from `rex block call process` (never a broad `ps | grep`).
-  `rex kill` takes sessions only; quit zemi in the pane, then drop the whole session with it.
+  alerts there and the events stay clean; tmux never answers, which is the right control
+  for the other side of that branch.
+- A block takes focus at creation and no blur arrives on its own: open a second block (or
+  `peer`) to steal focus before asserting on unfocused behavior.
+- `down` sends zemi's armed ctrl+c quit before killing the session - a plain kill would
+  strand the last record on the dead block.
+- Kill a wedged lab zemi by the exact pid from `rex block call -b BLOCK process` (never a
+  broad `ps | grep`). `rex kill` takes sessions only.
 
 ## The chaos driver
 
@@ -179,9 +193,10 @@ is graded by the same score.
 
 ## Clean up
 
-Kill the tmux session and the server; leave nothing running. Delete the tree when done: a
-stale tree with an old `init.lua` shape is the usual cause of a confusing second run, and
-each scratch binary is 100 MB. The lab's `down` does all three.
+Tear the lab down with `down` (tmux session and server, or the Rex session) and leave
+nothing running. Delete the tree when done: a stale tree with an old `init.lua` shape is the
+usual cause of a confusing second run, and each scratch binary is 100 MB. `down` does all of
+it; `--keep` spares the tree.
 
 Never kill a zemi found by a broad `ps aux | grep zemi`: a bare PID from that grep may be the
 user's own zemi (a persona kill -9'd it exactly that way on 2026-10-30). Match the lab
