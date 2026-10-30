@@ -227,17 +227,23 @@ func argAt(lead, line string) ([]string, int) {
 	return fields, len(fields)
 }
 
+// usageToastBytes is the body length past which a usage refusal cannot fit
+// the toast's three rows on a common terminal: cut there, its payload would
+// name no place to read on.
+const usageToastBytes = 160
+
 // CommandFailed reports a command's error: one of how it was asked
-// (ErrUsage) is a warn, anything else did not happen and is recorded.
+// (ErrUsage) is a warn, anything else did not happen and is recorded. A
+// usage body too long for the toast rides /errors, where its hint points.
 func (h *Host) CommandFailed(name string, err error) {
-	if errors.Is(err, ErrUsage) {
+	if errors.Is(err, ErrUsage) && len(err.Error()) <= usageToastBytes {
 		// a usage warn is the driver's input, not a failure: the command
 		// names itself and the body says what it needed
 		h.Notify(slog.LevelWarn, "/"+name, err.Error())
 		return
 	}
 	h.RecordError("command", name, err.Error())
-	h.Notify(slog.LevelError, "Could not run /"+name, err.Error())
+	h.Notify(slog.LevelError, "/"+name, err.Error())
 }
 
 // SendPrompt sends a prompt as the composer would: one naming a registered
