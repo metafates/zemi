@@ -651,8 +651,11 @@ your reply what you learned that will matter later.
 
 Messages the user sends while you work reach you between tool calls. Subagents
 run in the background; each one's report reaches you as a message starting
-"[Name]", between your tool calls or as a new turn. Never wait for one (no
-sleep, no polling): go on, or end your turn and tell the user what is running.`
+"[Name]", between your tool calls or as a new turn. Never sleep or poll. Do not
+end a turn while background agents or workflows are still running: when nothing
+is left to do until they finish, hold the turn with wait all, which wakes you as
+each one moves, so you handle every report while this turn's context is still
+warm.`
 
 // chatOpener opens the compaction calls' prompt, whose tasks start
 // "Compaction"; the turns run on basePrompt with viewPrompt's section.

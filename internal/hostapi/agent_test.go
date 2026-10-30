@@ -968,6 +968,33 @@ func TestPipelineTodos(t *testing.T) {
 	}
 }
 
+// TestEndTurnRunsNote: a clean end with a live run holds the turn on a note
+// that names it, a noted run stays silent, and the user's message re-arms
+// the reminder.
+func TestEndTurnRunsNote(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	run, _ := h.newRun(t.Context(), AgentDef{Name: "explore"}, "look around", "look", true)
+	if err := h.tasks.add(run); err != nil {
+		t.Fatal(err)
+	}
+	note := func() string {
+		h.agents.mu.Lock()
+		defer h.agents.mu.Unlock()
+		return h.endTurnRunsNote()
+	}
+	if got := note(); !strings.Contains(got, "agent "+run.id) || !strings.Contains(got, "wait all") {
+		t.Fatalf("the note = %q", got)
+	}
+	if got := note(); got != "" {
+		t.Fatalf("a noted run drew another note: %q", got)
+	}
+	h.UserSpoke()
+	if got := note(); got == "" {
+		t.Fatal("a user message did not re-arm the reminder")
+	}
+}
+
 // TestTodoNag: a stale in_progress todo earns a model-only remind after
 // todoNagAfter steps, once per engagement; any todos write re-arms it, and
 // a step counts once however many calls it batched.

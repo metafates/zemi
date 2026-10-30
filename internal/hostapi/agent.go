@@ -207,6 +207,13 @@ type agentHost struct {
 	// steering: a turn that ends first drops it instead of starting another.
 	todoNag string
 
+	// bgNoted holds the runs an end-of-turn note already named, so a model
+	// that ends its turn again anyway is not nagged twice about one fleet.
+	bgNoted map[string]bool
+	// bgNoteTurn marks the running turn as one the note started, so a model
+	// that ignores it cannot be driven in circles by notes of its own.
+	bgNoteTurn bool
+
 	// goal is the session's goal (/goal), nil for none; goalPending the
 	// condition of a /goal sent and not yet stored; goalRuns counts the turns
 	// it started in a row, and checkingGoal holds while nextTurn asks whether
@@ -751,6 +758,7 @@ func (h *Host) UserSpoke() {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	ag.spokeClose()
+	ag.bgNoted = nil // a user exchange re-arms the hold-the-turn reminder
 }
 
 // spokeClose raises this turn's signal (ag.mu held), so a call that waits on it
@@ -987,6 +995,45 @@ func (h *Host) viewMessage() (fantasy.Message, bool) {
 	return h.chat.viewMessage()
 }
 
+// endTurnRunsNote builds the note a cleanly ended turn starts on while work
+// that reports to the conversation still runs: the model holds the turn with
+// wait all instead of leaving the reports to cold turns on the summary view.
+// A workflow's own agents report to the script, never here. A run already
+// noted stays silent, so a model that ends the turn anyway is nagged once per
+// fleet and the reports still wake it. ag.mu held.
+func (h *Host) endTurnRunsNote() string {
+	ag := h.agents
+	runs := slices.DeleteFunc(h.tasks.runningOf(store.MainSessionID), func(r *agentRun) bool { return r.workflow != "" })
+	flows := h.tasks.runningFlows(store.MainSessionID)
+	if len(runs) == 0 && len(flows) == 0 {
+		ag.bgNoted = nil
+		return ""
+	}
+	var lines []string
+	for _, r := range runs {
+		if !ag.bgNoted[r.id] {
+			lines = append(lines, fmt.Sprintf("agent %s (%s)", r.id, r.label()))
+		}
+	}
+	for _, f := range flows {
+		if !ag.bgNoted[f.id] {
+			lines = append(lines, fmt.Sprintf("workflow %s (%s)", f.id, f.description))
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	ag.bgNoted = map[string]bool{}
+	for _, r := range runs {
+		ag.bgNoted[r.id] = true
+	}
+	for _, f := range flows {
+		ag.bgNoted[f.id] = true
+	}
+	return agent.Note(fmt.Sprintf("%s still running. Do not end the turn while background work runs: wait for it (agent wait all wakes you as each one moves), or stop what is no longer needed (agent send_to stop).",
+		strings.Join(lines, ", ")))
+}
+
 // nextTurn runs after each turn: messages queued after the last step
 // boundary become one follow-up turn, otherwise the agent goes idle.
 // active stays held across the handoff, so a submit in between queues
@@ -1045,6 +1092,18 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 		ag.goalRuns, ag.byLoop = 0, false
 	}
 	var next *turnScope
+	// the note never chains: a turn it started ends into the reports' own
+	// wakes, so a model that ignores it is not driven in circles
+	noted := ag.bgNoteTurn
+	ag.bgNoteTurn = false
+	if text == "" && goal == nil {
+		// a clean end with work still running holds the turn instead of
+		// releasing it (endTurnRunsNote); an error or an interrupt releases
+		if err == nil && done.ctx.Err() == nil && !noted {
+			text = h.endTurnRunsNote()
+			ag.bgNoteTurn = text != ""
+		}
+	}
 	if text == "" && goal == nil {
 		h.release()
 	} else {

@@ -273,9 +273,10 @@ func TestReplyStatsShed(t *testing.T) {
 }
 
 // TestReplyReadoutDropsWhenTheNextReplyLands: the readout rides the reply
-// that ends the exchange. A background report's notice alone changes
-// nothing, but the answer turn behind it is another reply, so the readout
-// drops live the way a rebuild draws it - a resume reads the same lines.
+// that ends the exchange. The parent turn holds on its background run (the
+// end-of-turn note), the report lands in the same chain, and the answer
+// behind it is another reply, so the readout drops live the way a rebuild
+// draws it - a resume reads the same lines.
 func TestReplyReadoutDropsWhenTheNextReplyLands(t *testing.T) {
 	t.Parallel()
 	h := newTestHostUI(t)
@@ -296,6 +297,8 @@ func TestReplyReadoutDropsWhenTheNextReplyLands(t *testing.T) {
 			case strings.Contains(last, "<agent-report "):
 				<-answer // the answer turn waits: the notice alone is on screen
 				return textParts("the report said: R7REPORT ok")
+			case strings.Contains(last, "Do not end the turn"):
+				return toolCallParts("w1", "agent", `{"wait":"all"}`)
 			}
 			return toolCallParts("c1", "agent", `{"description":"r7 readout","prompt":"reply R7REPORT ok","agent":"explore","background":true}`)
 		}}, nil
@@ -303,12 +306,13 @@ func TestReplyReadoutDropsWhenTheNextReplyLands(t *testing.T) {
 	if err := h.AgentSend("go"); err != nil {
 		t.Fatal(err)
 	}
-	waitIdle(t, h)
-	// the reply is the transcript's tail: the readout rides it
-	first := widgetText(t, h, "chat", 100, UIState{})
-	if !readoutUnder(t, first, "started it") {
-		t.Fatalf("the tail reply drew no readout:\n%s", first)
-	}
+	// the turn holds on the run instead of ending into it
+	waitFor(t, func() error {
+		if n := h.tasks.runningFor(h.AgentSessionID()); n != 1 {
+			return fmt.Errorf("running = %d, want 1", n)
+		}
+		return nil
+	})
 	close(release)
 	waitFor(t, func() error {
 		for _, m := range h.Session().Transcript {
@@ -325,8 +329,9 @@ func TestReplyReadoutDropsWhenTheNextReplyLands(t *testing.T) {
 	}
 	close(answer)
 	waitIdle(t, h)
-	// the answer turn behind the notice is another reply: the readout drops,
-	// and a rebuild draws the same lines
+	// the answer behind the report is another reply: the readout drops from
+	// the exchange's first reply and rides the last, and a rebuild draws the
+	// same lines
 	live := widgetText(t, h, "chat", 100, UIState{})
 	h.setTranscriptFromLog()
 	rebuilt := widgetText(t, h, "chat", 100, UIState{})
@@ -335,6 +340,9 @@ func TestReplyReadoutDropsWhenTheNextReplyLands(t *testing.T) {
 	}
 	if readoutUnder(t, live, "started it") {
 		t.Fatalf("the readout stayed under a reply another reply follows:\n%s", live)
+	}
+	if !readoutUnder(t, live, "the report said") {
+		t.Fatalf("the final reply drew no readout:\n%s", live)
 	}
 }
 

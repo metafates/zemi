@@ -300,7 +300,10 @@ applied one. A store made before goose only gains its version table: the baselin
   are logged, and the view the turn reads already summarizes them. An interrupt keeps the
   queue: `nextTurn` arms `drainQueue`, which resumes it after `idleResumeWait` (2m) once the
   user is away, as a clean end would have. With nothing left, a
-  set goal's continuation is the other follow-up `nextTurn` starts under the claim. `release`
+  set goal's continuation is the other follow-up `nextTurn` starts under the claim, and a
+  clean end with background work still running starts a third: a note that holds the turn
+  on it (`endTurnRunsNote` - wait all or stop, each run named once, a turn the note started
+  never noted again). `release`
   settles the todo list on the way out.
 - **Goals.** `/goal <condition>` (goal.go, `Host.SetGoal`, DESIGN §6.3) sends the typed line with
   a brief behind `agent.Attached("goal")`; `setGoalFrom` sets `ag.goal` only for a user row

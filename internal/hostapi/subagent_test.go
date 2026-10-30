@@ -864,6 +864,8 @@ func TestAgentUpdateReachesTheCaller(t *testing.T) {
 			case strings.Contains(last, "<agent-report "):
 				// the call woke on the update, so the run reports as a message
 				return textParts("noted")
+			case strings.Contains(last, "Do not end the turn"):
+				return toolCallParts("w1", "agent", `{"wait":"all"}`)
 			}
 			return toolCallParts("c1", "agent", `{"description":"d","prompt":"look","agent":"general"}`)
 		}}, nil
@@ -910,6 +912,8 @@ func TestAgentMessageKeepsThePin(t *testing.T) {
 				return textParts("started it")
 			case strings.Contains(last, "<agent-report "):
 				return textParts("got the report")
+			case strings.Contains(last, "Do not end the turn"):
+				return toolCallParts("w1", "agent", `{"wait":"all"}`)
 			}
 			return toolCallParts("c1", "agent", `{"description":"d","prompt":"look","agent":"general","background":true}`)
 		}}, nil
@@ -917,7 +921,13 @@ func TestAgentMessageKeepsThePin(t *testing.T) {
 	if err := h.AgentSend("go"); err != nil {
 		t.Fatal(err)
 	}
-	waitIdle(t, h)
+	// the turn holds on the run instead of ending into it
+	waitFor(t, func() error {
+		if n := h.tasks.runningFor(sid); n != 1 {
+			return fmt.Errorf("running = %d, want 1", n)
+		}
+		return nil
+	})
 	runs := h.tasks.runsOf(sid)
 	if len(runs) != 1 {
 		t.Fatalf("runs = %v", runs)

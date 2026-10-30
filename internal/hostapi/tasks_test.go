@@ -119,8 +119,8 @@ func TestBackgroundCap(t *testing.T) {
 }
 
 // TestBackgroundAgent: the parent turn launches a slow background agent and
-// finishes; the report then arrives as a message that starts a new turn,
-// shown in the transcript as a one-line notice.
+// holds on it (the end-of-turn note); the report then arrives inside the
+// same chain, shown in the transcript as a one-line notice.
 func TestBackgroundAgent(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -141,6 +141,8 @@ func TestBackgroundAgent(t *testing.T) {
 			case strings.Contains(last, "<agent-report "):
 				reportMsg = last
 				return textParts("the agent reported: " + last[strings.Index(last, "found"):strings.Index(last, "found")+15])
+			case strings.Contains(last, "Do not end the turn"):
+				return toolCallParts("w1", "agent", `{"wait":"all"}`)
 			}
 			return toolCallParts("c1", "agent", `{"description":"slow @main.go search","prompt":"find it","agent":"explore","background":true}`)
 		}}, nil
@@ -148,10 +150,13 @@ func TestBackgroundAgent(t *testing.T) {
 	if err := h.AgentSend("go"); err != nil {
 		t.Fatal(err)
 	}
-	waitIdle(t, h)
-	if n := h.tasks.runningFor(h.AgentSessionID()); n != 1 {
-		t.Fatalf("background agents running = %d, want 1", n)
-	}
+	// the turn holds on the run instead of ending into it
+	waitFor(t, func() error {
+		if n := h.tasks.runningFor(h.AgentSessionID()); n != 1 {
+			return fmt.Errorf("background agents running = %d, want 1", n)
+		}
+		return nil
+	})
 	close(release)
 	waitFor(t, func() error {
 		if tr := h.Session().Transcript; tr[len(tr)-1].Text != "the agent reported: found the thing" || h.AgentActive() {

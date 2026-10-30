@@ -2803,7 +2803,9 @@ Every turn is a fresh call:
   parts a model refuses become a note; each is remembered for the process.
 - A message queued behind a turn becomes one follow-up turn under the claim;
   after a turn that ended cleanly with nothing queued, the goal check
-  (§6.3) is what `nextTurn` starts under the same claim.
+  (§6.3) is what `nextTurn` starts under the same claim, else a note that
+  holds the turn on background work still running - a run already noted
+  stays silent, and a turn the note started is not noted again.
 
 ### 10.5 zoom, date and /note
 
