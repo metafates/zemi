@@ -166,28 +166,67 @@ sys.exit(0 if ok else 1)
 ' "$1"
 }
 
-# request_is_ours TEXT: whether the fake's latest request carries TEXT as its
-# final user message. The request count alone cannot attribute a request: a
-# queued steer's turn-start or any work predating the prompt fires the same
-# counter while this text sits undelivered. Both sides space-strip, as the
+# request_is_ours TEXT AT: whether a request newer than the AT requests the
+# baseline counted queued TEXT. zemi reshapes the conversation between
+# requests - the chat builder folds older turns into a <chat> summary whose
+# rows carry ids, the newest message stays verbatim - so neither the final
+# message nor a message count marks what is new. A delivery shows as one of:
+# a fold row whose id exceeds every id the baseline carried, a verbatim user
+# message the baseline did not carry, or the request's final user message.
+# Replay of an older turn fails all three: its fold row keeps its old id and
+# its verbatim text sits in the baseline. Both sides space-strip, as the
 # composer check does: zemi trims the text at submit, so an edge space must
 # not fork the match.
 request_is_ours() {
 	python3 -c '
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except (ValueError, OSError):
-    raise SystemExit(1)
-msgs = [m for m in d.get("messages", []) if m.get("role") == "user"]
-if not msgs:
-    raise SystemExit(1)
-c = msgs[-1].get("content")
-if isinstance(c, list):
-    c = " ".join(p.get("text", "") for p in c if isinstance(p, dict))
+import glob, json, os, re, sys
+tree = os.path.dirname(sys.argv[1])
+at = int(sys.argv[3])
 needle = sys.argv[2].replace(" ", "")
-sys.exit(0 if isinstance(c, str) and needle in c.replace(" ", "") else 1)
-' "$TREE/last_request.json" "$1"
+def parts(m):
+    c = m.get("content")
+    if isinstance(c, list):
+        return [p.get("text", "") for p in c if isinstance(p, dict)]
+    return [c] if isinstance(c, str) else []
+files = sorted(glob.glob(os.path.join(tree, "requests", "[0-9]*.json")))
+old, top = [], -1
+for f in files[:at]:
+    try:
+        d = json.load(open(f))
+    except (ValueError, OSError):
+        continue
+    for m in d.get("messages", []):
+        if m.get("role") != "user":
+            continue
+        for t in parts(m):
+            old.append(t.replace(" ", ""))
+            top = max([top] + [int(i) for i in re.findall(r"(\d+)\+\d+\|", t)])
+for f in files[at:]:
+    try:
+        d = json.load(open(f))
+    except (ValueError, OSError):
+        continue
+    ms = [m for m in d.get("messages", []) if m.get("role") == "user"]
+    for m in ms:
+        c = m.get("content")
+        if isinstance(c, str):
+            # a verbatim message the baseline did not carry
+            s = c.replace(" ", "")
+            if s not in old and needle in s:
+                sys.exit(0)
+        else:
+            for p in c or []:
+                if not isinstance(p, dict):
+                    continue
+                # a summary fold row newer than every row the baseline carried
+                for line in p.get("text", "").splitlines():
+                    r = re.match(r"(\d+)\+\d+\|(.*)", line)
+                    if r and int(r.group(1)) > top and needle in r.group(2).replace(" ", ""):
+                        sys.exit(0)
+    if ms and isinstance(ms[-1].get("content"), str) and needle in ms[-1]["content"].replace(" ", ""):
+        sys.exit(0)
+sys.exit(1)
+' "$TREE/last_request.json" "$1" "$2"
 }
 
 # overlay_kind: what overlay waits on the user right now, read from terminal
@@ -265,14 +304,16 @@ type_text() {
 }
 
 # mask_volatile blanks the spans that move on their own - the readout's
-# elapsed seconds, tokens and cost, the braille spinner, the clock - so a
-# diff shows only real row shifts. Raw captures are kept beside the masked
-# ones (snap saves both), so any diff is re-checkable unmasked.
+# elapsed seconds, tokens and cost, the braille spinner, the clock, the
+# snail's eyes - so a diff shows only real row shifts. Raw captures are kept
+# beside the masked ones (snap saves both), so any diff is re-checkable
+# unmasked.
 mask_volatile() {
 	python3 -c '
 import re, sys
 for line in sys.stdin:
     line = re.sub(r"[\u2800-\u28ff]+", "@", line)  # the spinner animates
+    line = re.sub(r"@[.·?><^]{2}", "@··", line)    # the eyes decay to idle
     line = re.sub(r"\b\d+m\b", "@m", line)         # elapsed minutes
     line = re.sub(r"\d+(\.\d+)?s", "@s", line)     # elapsed seconds
     line = re.sub(r"\d+ (out|tok)", r"@ \1", line)  # token counts
@@ -568,7 +609,7 @@ cmd_prompt() {
 		# request landing after the baseline - a queued steer's turn-start,
 		# work predating the prompt - while this text sits undelivered
 		if [ "$(find "$TREE/requests" -type f 2>/dev/null | wc -l)" -gt "$at" ] &&
-			request_is_ours "$*"; then
+			request_is_ours "$*" "$at"; then
 			break
 		fi
 		i=$((i + 1))
@@ -638,7 +679,9 @@ cmd_ask() {
 		case "$kind" in
 			permission) ;;
 			"") die "no permission ask is up (wait ask first - the ask may have been answered already)" ;;
-			# a plan ask wedges under y|n (its keys type into its changes box)
+			# y and n do not answer these: a plan ask's keys type into its
+			# changes box, a question's start an answer - Escape dismisses both
+			question | blocked) die "a $kind ask is up (y|n do not answer it - send Escape dismisses it)" ;;
 			*) die "a $kind ask is up (ask answers y|n - send Escape dismisses it)" ;;
 		esac
 	else
