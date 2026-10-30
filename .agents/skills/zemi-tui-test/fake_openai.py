@@ -46,10 +46,26 @@ class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-        last = body["messages"][-1]
-        c = last.get("content") or ""
-        text = c if isinstance(c, str) else " ".join(p.get("text", "") for p in c)
-        m = last["role"] == "user" and re.match(r"call (\w+) (\{.*\})", text)
+        # the turn's own user texts sit after the last assistant message; the
+        # todo nag rides after them as another user message, so the call is
+        # searched over the turn's texts, never read off the last message
+        cur = 0
+        for i, msg in enumerate(body["messages"]):
+            if msg.get("role") == "assistant":
+                cur = i + 1
+        m = None
+        text = ""
+        for msg in body["messages"][cur:]:
+            if msg.get("role") != "user":
+                continue
+            c = msg.get("content") or ""
+            text = c if isinstance(c, str) else " ".join(p.get("text", "") for p in c)
+            m = re.match(r"call (\w+) (\{.*\})", text) or m
+        if m:
+            text = m.string
+        elif not text:
+            c = body["messages"][-1].get("content") or ""
+            text = c if isinstance(c, str) else " ".join(p.get("text", "") for p in c)
         n = len(os.listdir(os.path.join(OUT, "requests"))) + 1
         print("REQ %d stream=%s %s" % (n, body.get("stream"), text[:60].replace("\n", " ")), flush=True)
         try:

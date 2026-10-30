@@ -308,11 +308,17 @@ for line in sys.stdin.read().splitlines():
     # the spinner animates wherever it runs; the eyes decay in the border
     line = re.sub(r"[\u2800-\u28ff]+", "@", line)
     line = re.sub(r"(┌ )@[.·?><^]{2}", r"\1@··", line)
-    # a finished turn telemetry rides mid-screen once a later turn scrolls
-    # it up: model · seconds · N out · clock
-    line = re.sub(r"· \d+(?:\.\d+)?s · \d+ out · \d{1,2}:\d{2}", "· @ · @ out · @", line)
-    # the right rail thumb cell travels as rows scroll
-    line = re.sub(r"[█▌│]$", "@", line)
+    # a turn telemetry ticks mid-screen: model · seconds · N out · clock,
+    # wrapped rows once the model token scrolls off its line. The
+    # transcript carries the same shape as the user typed it, so a ▌ row
+    # keeps its figures
+    if line.lstrip()[:1] != "▌":
+        line = re.sub(r"· \d+(?:\.\d+)?s · \d+ out · \d{1,2}:\d{2}", "· @ · @ out · @", line)
+        line = re.sub(r"\d+(?:\.\d+)?s · \d+ out · \d{1,2}:\d{2}", "@ · @ out · @", line)
+    # the right rail thumb travels as rows scroll: read it as the empty
+    # cell it lands on, so a box border keeps its column (a masked border
+    # reads as a rail cell and eats a trailing duration with it)
+    line = re.sub(r"[█▌]$", "│", line)
     # a working border ticks its elapsed clock and retry countdown; it is
     # ui chrome, so every figure on it is volatile
     if line.lstrip()[:1] in ("┌", "└"):
@@ -333,11 +339,10 @@ for i in range(len(out) - 1, -1, -1):
         out[i] = line
         break
 for i, line in enumerate(out):
-    # a running tool ticks its right-aligned duration every second; the two
-    # spaces of its gap keep a user row ending in its own `in 5m` (one
-    # space) intact, and a trailing rail cell may ride either
-    line = re.sub(r"(· )\d+(?:\.\d+)?[smh](\s+@)?\s*$", r"\1@\2", line)
-    line = re.sub(r"(\s{2,})\d+(?:\.\d+)?[smh](\s+@)?\s*$", r"\1@\2", line)
+    # a running tool ticks its right-aligned duration every second, with a
+    # rail cell or border riding behind it; the two spaces of its gap keep
+    # a user row ending in its own `in 5m` (one space) intact
+    line = re.sub(r"(\s{2,})\d+(?:\.\d+)?[smh]\s*[│@]?\s*$", r"\1@", line)
     out[i] = line
 sys.stdout.write("\n".join(out) + "\n")
 '
@@ -635,6 +640,16 @@ stopped() {
 	return 1
 }
 
+# dead: whether the selected window's zemi is gone - a missing pane or block
+# polls a screen that can never change, so wait would settle on a corpse
+dead() {
+	case $BACKEND in
+	rex) [ -n "$(fgpid "$RSESSION" "$RBLK")" ] && return 1 ;;
+	*) tmux -L "$SERVER" has-session -t "$SESSION" 2>/dev/null && return 1 ;;
+	esac
+	return 0
+}
+
 # fake_dead: whether the selected window's fake model stopped - a dead model
 # burns the whole poll window on connection errors the window shows as its
 # own rows, so the die names it instead of a queue
@@ -648,6 +663,8 @@ fake_dead() {
 
 cmd_prompt() {
 	[ $# -ge 1 ] || die "prompt: text"
+	stopped &&
+		die "prompt: zemi is stopped (kill -CONT the pid first - a frozen screen reads as settled)"
 	prompt_lock
 	req=$(req_base)
 	kind=$(overlay_kind)
@@ -728,7 +745,10 @@ cmd_prompt() {
 			*) die "the prompt was delivered but a $kind overlay rose over it - the turn starts once it is dismissed (send Escape, then wait again)" ;;
 		esac
 	}
-	wait_stable "" 30 || die "the screen never settled after the prompt"
+	# the delivery above is the contract; a turn outlasting the settle
+	# window is a delivered prompt whose working border still ticks
+	wait_stable "" 30 ||
+		say "the screen never settled within 30s (a turn is still running - 'wait PATTERN' waits it out)"
 }
 
 cmd_type() {
@@ -768,6 +788,8 @@ cmd_send() {
 cmd_wait() {
 	stopped &&
 		die "wait: zemi is stopped (kill -CONT the pid first - a frozen screen reads as settled)"
+	dead &&
+		die "wait: this window's zemi is gone (the pane is dead - zemi-lab logs have why; up reboots the lab)"
 	case "${1:-}" in
 		ask)
 			wait_ask && exit 0
@@ -1122,7 +1144,7 @@ STALE
 		[ -n "$late" ] &&
 			printf 'zemi-lab: warning: %s was written after the stream ended; the recorder died early and absence assertions on this kept stream can false-pass\n' "$late" >&2
 	fi
-	BLOCK_LIST=$(awk '$1 == "fake" || $1 ~ /^fake-/ {print $2}' "$BLOCKS" 2>/dev/null)
+	BLOCK_LIST=$(awk '$1 != "fake" && $1 !~ /^fake-/ && $1 != "recorder" {print $2}' "$BLOCKS" 2>/dev/null)
 	BLOCKS="$RBLK $BLOCK_LIST" ZEMI_LAB_EVENTS="$TREE/events.jsonl" python3 - "$@" <<'PYEOF'
 import json, os, sys
 
@@ -1185,7 +1207,14 @@ if hits == 0:
 PYEOF
 }
 
-cmd_health() { "$DIR/zemi-safe" "$TREE" -C "$TREE/proj" health "$@"; }
+cmd_health() {
+	# a peer's health reads its own config (its fake's port), not main's
+	if [ "$SESSION" = main ]; then
+		"$DIR/zemi-safe" "$TREE" -C "$TREE/proj" health "$@"
+	else
+		ZEMI_LAB_CONFIG="$TREE/config-$SESSION" "$DIR/zemi-safe" "$TREE" -C "$TREE/proj" health "$@"
+	fi
+}
 
 cmd_attach() {
 	load
@@ -1235,7 +1264,7 @@ cmd_down() {
 			# (rex kill would otherwise strand the last record). A corpse skips
 			# the dance: its keys land nowhere and the 4s wait buys nothing.
 			if [ -n "$live" ] && [ -f "$BLOCKS" ]; then
-				zblocks=$(awk '$1 == "fake" || $1 ~ /^fake-/ {print $2}' "$BLOCKS")
+				zblocks=$(awk '$1 != "fake" && $1 !~ /^fake-/ && $1 != "recorder" {print $2}' "$BLOCKS")
 				for bid in $zblocks; do
 					rex send-key -s "$LAB_RSESSION" -b "$bid" -- escape 2>/dev/null || true
 				done
@@ -1250,7 +1279,17 @@ cmd_down() {
 				done
 			fi
 			rex kill "$LAB_RSESSION" 2>/dev/null || true
+		elif [ "${LAB_BACKEND:-tmux}" != rex ]; then
+			# the rex branch refuses a corpse above; tmux's pane gone is the
+			# same situation and gets the same refusal (a kept tree's plain
+			# down, the documented cleanup, skips it)
+			tmux -L "$SERVER" has-session -t "$SESSION" 2>/dev/null ||
+				[ -n "$force" ] || [ -f "$TREE/.lab.kept" ] ||
+				die "zemi's main window is dead (the pane is gone); down --force reaps the lab"
 		fi
+	else
+		# a mistyped -n must not read as a successful teardown
+		say "no lab named $NAME is up (nothing to tear down)"
 	fi
 	# the label, not the env file, is what down trusts: a tree moved
 	# (ZEMI_LAB_TREE) or deleted, a backend switch - whatever diverged, every

@@ -84,7 +84,9 @@ a turn runs can have an ask rise over
 it: `prompt` then names the overlay instead of blaming a stuck zemi - settle it
 (`ask y` answers a permission ask, `send Escape` dismisses a plan/question one)
 and wait again. It returns when the screen settles (a settle heuristic),
-which can be mid-turn - not a turn-end guarantee - and `wait PATTERN` can match the
+which can be mid-turn - not a turn-end guarantee; a turn outlasting the 30s settle
+window still exits 0 with a note, because the delivery already passed - and
+`wait PATTERN` can match the
 PREVIOUS turn's reply: after an errored turn (a mid-stream drop) the settled screen still
 shows turn N-1's rows, so `wait 'done, here is the reply.'` exits 0 on the old row. Assert
 the turn via the request counter (`last`) or the events, never `wait` alone.
@@ -96,8 +98,9 @@ gate plugin whose `permission.request` handler returns
 `{decision = "ask"}`, since zemi never asks by design - DESIGN §9), `--rex` (the Rex
 backend below). A running lab can be made to ask without a reboot: drop the same two files
 into `$TREE/data/plugins/local/askgate/.zemi/` (plugin.json + init.lua; their contents are
-the `write_config()` block in the zemi-lab script) and the action after the next asks: the
-first one starts before the plugin re-loads, the one after it asks. `zemi-lab attach` sits at the
+the `write_config()` block in the zemi-lab script) and an action asks: on an idle lab the
+re-load lands at once, so the first action after planting already asks; mid-turn the first
+one starts before the plugin re-loads and the one after it asks. `zemi-lab attach` sits at the
 lab in a real terminal (tmux) or prints how to open it (Rex). `zemi-lab health [args...]`
 runs `zemi-safe health` against the lab tree.
 
@@ -137,7 +140,7 @@ streamed chunks.
 - The pane title marks state: `? ` while an ask is up, plain otherwise -
   `zemi-lab title` prints it on either backend (a rex lab also streams each change as a
   `title_changed` event, so the count of title writes is assertable - count from a
-  marker event onward, boot writes two identical titles back to back). `wait ask` and
+  marker event onward; boot writes one title). `wait ask` and
   `ask` read this state (rex: the blocked record's kind - Rex's parser keeps
   permission/question/auth; zemi's plan kind rides the wire but Rex drops that record,
   so a plan ask reads as kindless `blocked`, which the guards cover with the Escape
@@ -153,11 +156,12 @@ streamed chunks.
   `tmux send-keys -l ... $'\x1b[201~'` - a `respawn-pane` does NOT clear it (the bytes
   survive the respawn and re-wedge the fresh zemi). The lab sends one atomic call per
   command.
-- SIGSTOP is a tmux trap, not a lab one: stopping the lab's zemi collapses the pane in
-  ~1s (the wrapper exits on its stopped child while zemi survives), so a STOP experiment
-  on tmux becomes a dead-pane experiment - run those on the rex backend. A stopped
-  zemi's frozen screen reads as settled to a compare, so `wait` refuses one
-  (`kill -CONT` to resume).
+- SIGSTOP experiments run on the rex backend: the block's fg pid stops cleanly (state
+  `Ts+`) and `wait`/`prompt` refuse it in 0s. The tmux pane's pid IS zemi (the boot line
+  execs down), but a `kill -STOP` from a tool shell does not take on it (state stays
+  `Ss+`, three shells observed; SIGKILL lands fine). A stopped zemi's frozen screen
+  reads as settled to a compare, so `wait` and `prompt` refuse one (`kill -CONT` to
+  resume).
 - Direct `tmux -L zl-<name>` probes need the lab's socket dir: the lab exports
   `TMUX_TMPDIR=$TMPDIR`, so set it the same way or tmux looks in `/tmp/tmux-*`
   and finds no server.
@@ -180,7 +184,7 @@ not forwarded, and from fish, which does not split `$VAR` into words.
 ```sh
 T=$TMPDIR/zt; mkdir -p $T/proj $T/config && (cd $T/proj && git init -q)
 make build
-(cd $T && python3 .agents/skills/zemi-tui-test/fake_openai.py 18472 $T &) ; sleep 0.3
+(python3 "$PWD/.agents/skills/zemi-tui-test/fake_openai.py" 18472 $T &) ; sleep 0.3
 cat > $T/config/init.lua <<'L'
 zemi.provider.add({ id = "fake", kind = "openai_compat",
 	api_key = "x", base_url = "http://127.0.0.1:18472/v1",
@@ -189,7 +193,7 @@ zemi.config.set("models.default", "fake/m")
 L
 tmux -L zt new-session -d -s zt -x 140 -y 40 -c $T/proj \
   "env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN=$PWD/bin/zemi \
-   .agents/skills/zemi-tui-test/zemi-safe $T --trust"
+   $PWD/.agents/skills/zemi-tui-test/zemi-safe $T --trust"
 tmux -L zt capture-pane -t zt -p            # -e keeps colors (SGR) for theme checks
 ```
 
