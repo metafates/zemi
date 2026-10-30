@@ -2295,7 +2295,7 @@ view; a reset's wipe drops the row with the chat.
   is always in the log, reachable via
   `zoom` and `/copy` (the last reply as the model wrote it),
   so no widget can hide what the model actually received. `/messages` is the
-  map of it (`alt+m`): one builtin list of the whole conversation, every turn
+  map of it (`ctrl+m`): one builtin list of the whole conversation, every turn
   a section header over the rows it held (a prompt, reply, notice, error or
   command), saying the turn's clock and what it counted, and a turn's whole
   activity as one row saying how many steps it took, as the chat draws that
@@ -2369,11 +2369,11 @@ view; a reset's wipe drops the row with the chat.
   (`esc` in an agent view goes back; the esc chord stops a busy job),
   `ctrl+c` moves a draft into the history first, mid-turn included, then on
   an empty composer interrupts a turn at once and twice within 2s when idle
-  quits, `pgup`/`pgdown`,
+  quits, `ctrl+t`/`pgdown`,
   `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j`, `ctrl+home` and `ctrl+b`
   scroll the transcript (the wheel too: mouse cell motion is captured because the
   altscreen has no native scrollback), and `alt+up`/`alt+down` jump to the previous or
-  next prompt or opened run; `alt+m` opens `/messages`, the map of the
+  next prompt or opened run; `ctrl+m` opens `/messages`, the map of the
   conversation, which scrolls the chat as its selection moves; `ctrl+d`/`ctrl+u` scroll it half a view, the one step
   a list moves on them and a box's text takes as it overflows, which the footer
   names as `ctrl+d/u scroll`. The pair is never the typed line's, so a prompt's
@@ -2395,7 +2395,7 @@ view; a reset's wipe drops the row with the chat.
   answered in an overlay, from the view so far,
   never stored), `/note <text>` (one note-kind row into the chat, a chapter
   mark, mid-turn too), `/copy [reply|code [n]]` (the last reply or its code blocks as
-  written; bare over a reply with code blocks opens their picker), `/messages` (the map of the conversation, `alt+m`), `/logs` (recent
+  written; bare over a reply with code blocks opens their picker), `/messages` (the map of the conversation, `ctrl+m`), `/logs` (recent
   `print` and `zemi.log` lines), `/health` (one row per check, problems first: store,
   providers, catalog, model, context window, git, shell, notify,
   the chat builder (§10), skills, the Lua runtime, layout, plugins,

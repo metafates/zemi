@@ -1190,7 +1190,7 @@ zemi.ui.widget.add({
 							.. older
 							.. " earlier "
 							.. (older == 1 and "message" or "messages")
-							.. " · alt+m to browse",
+							.. " · ctrl+m to browse",
 						hl = "Dim",
 						copy = false,
 						hover = false,
