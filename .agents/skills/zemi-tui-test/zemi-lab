@@ -19,9 +19,9 @@ usage: zemi-lab [-n name] [-s main|peer] command [args]
                      one project see, for sync and presence work; a third
                      window takes a name (default peer)
   -s main|peer       which window the drive commands act on
-  prompt TEXT        clear a leftover draft, type TEXT, Enter, wait for the
-                     request to reach the model and the screen to settle;
-                     refuses while any overlay waits on the user
+  prompt TEXT        clear a leftover draft, type TEXT plus a per-call marker,
+                     Enter, wait for that marker to reach the model and the
+                     screen to settle; refuses while any overlay waits
   type TEXT          literal text into the composer, no Enter; returns once
                      the text shows in the composer; refuses under an overlay
   send KEYS...       key names as tmux spells them (Enter, Escape, C-c, DC)
@@ -166,67 +166,35 @@ sys.exit(0 if ok else 1)
 ' "$1"
 }
 
-# request_is_ours TEXT AT: whether a request newer than the AT requests the
-# baseline counted queued TEXT. zemi reshapes the conversation between
-# requests - the chat builder folds older turns into a <chat> summary whose
-# rows carry ids, the newest message stays verbatim - so neither the final
-# message nor a message count marks what is new. A delivery shows as one of:
-# a fold row whose id exceeds every id the baseline carried, a verbatim user
-# message the baseline did not carry, or the request's final user message.
-# Replay of an older turn fails all three: its fold row keeps its old id and
-# its verbatim text sits in the baseline. Both sides space-strip, as the
-# composer check does: zemi trims the text at submit, so an edge space must
-# not fork the match.
-request_is_ours() {
+# request_carries NONCE: whether any request the fake holds carries NONCE.
+# The nonce rides a prompt's text and is unique to that call - it exists
+# nowhere before its typing - so only the draft's delivery can put it in a
+# request: as a verbatim user message, or inside a later <chat> fold or
+# compaction block, both built from delivered messages. An erased draft (an
+# interrupt restores it to the composer) leaves no trace, and no older turn
+# can impersonate it the way a duplicate text could a content match.
+request_carries() {
 	python3 -c '
-import glob, json, os, re, sys
+import glob, json, os, sys
 tree = os.path.dirname(sys.argv[1])
-at = int(sys.argv[3])
-needle = sys.argv[2].replace(" ", "")
-def parts(m):
+needle = sys.argv[2]
+def texts(m):
     c = m.get("content")
     if isinstance(c, list):
         return [p.get("text", "") for p in c if isinstance(p, dict)]
     return [c] if isinstance(c, str) else []
-files = sorted(glob.glob(os.path.join(tree, "requests", "[0-9]*.json")))
-old, top = [], -1
-for f in files[:at]:
+for f in sorted(glob.glob(os.path.join(tree, "requests", "[0-9]*.json"))):
     try:
         d = json.load(open(f))
     except (ValueError, OSError):
         continue
     for m in d.get("messages", []):
-        if m.get("role") != "user":
-            continue
-        for t in parts(m):
-            old.append(t.replace(" ", ""))
-            top = max([top] + [int(i) for i in re.findall(r"(\d+)\+\d+\|", t)])
-for f in files[at:]:
-    try:
-        d = json.load(open(f))
-    except (ValueError, OSError):
-        continue
-    ms = [m for m in d.get("messages", []) if m.get("role") == "user"]
-    for m in ms:
-        c = m.get("content")
-        if isinstance(c, str):
-            # a verbatim message the baseline did not carry
-            s = c.replace(" ", "")
-            if s not in old and needle in s:
-                sys.exit(0)
-        else:
-            for p in c or []:
-                if not isinstance(p, dict):
-                    continue
-                # a summary fold row newer than every row the baseline carried
-                for line in p.get("text", "").splitlines():
-                    r = re.match(r"(\d+)\+\d+\|(.*)", line)
-                    if r and int(r.group(1)) > top and needle in r.group(2).replace(" ", ""):
-                        sys.exit(0)
-    if ms and isinstance(ms[-1].get("content"), str) and needle in ms[-1]["content"].replace(" ", ""):
-        sys.exit(0)
+        if m.get("role") == "user":
+            for t in texts(m):
+                if needle in t:
+                    sys.exit(0)
 sys.exit(1)
-' "$TREE/last_request.json" "$1" "$2"
+' "$TREE/last_request.json" "$1"
 }
 
 # overlay_kind: what overlay waits on the user right now, read from terminal
@@ -313,9 +281,10 @@ mask_volatile() {
 import re, sys
 for line in sys.stdin:
     line = re.sub(r"[\u2800-\u28ff]+", "@", line)  # the spinner animates
-    line = re.sub(r"@[.·?><^]{2}", "@··", line)    # the eyes decay to idle
+    line = re.sub(r"(┌ )@[.·?><^]{2}", r"\1@··", line)  # the eyes decay to idle
     line = re.sub(r"\b\d+m\b", "@m", line)         # elapsed minutes
-    line = re.sub(r"\d+(\.\d+)?s", "@s", line)     # elapsed seconds
+    line = re.sub(r"\d+\.\d+s", "@s", line)        # elapsed seconds
+    line = re.sub(r"(?<=in )\d+[ms]\b", "@s", line)  # a retry countdown ticks
     line = re.sub(r"\d+ (out|tok)", r"@ \1", line)  # token counts
     line = re.sub(r"\$\d+(\.\d+)?", "$@", line)     # cost figures
     line = re.sub(r"\d{1,2}:\d{2}", "@", line)      # the clock
@@ -588,12 +557,15 @@ cmd_prompt() {
 	done
 	composer_has "Ask anything" ||
 		die "the composer will not empty (a draft survived 4 ctrl+c - an overlay may still be open)"
-	type_text "$*"
+	# a per-call marker rides the text, so delivery is attributable to it
+	# alone (request_carries); the composer check must match what was typed
+	msg="$* [zl:$$]"
+	type_text "$msg"
 	# the text must sit in the composer before Enter: with an overlay up the
 	# keys go to the overlay and the composer silently keeps its draft
 	i=0
 	while [ "$i" -lt 8 ]; do
-		composer_has "$*" && break
+		composer_has "$msg" && break
 		i=$((i + 1))
 		sleep 0.25
 	done
@@ -609,7 +581,7 @@ cmd_prompt() {
 		# request landing after the baseline - a queued steer's turn-start,
 		# work predating the prompt - while this text sits undelivered
 		if [ "$(find "$TREE/requests" -type f 2>/dev/null | wc -l)" -gt "$at" ] &&
-			request_is_ours "$*" "$at"; then
+			request_carries "[zl:$$]"; then
 			break
 		fi
 		i=$((i + 1))
@@ -622,7 +594,12 @@ cmd_prompt() {
 		case "$kind" in
 			permission) die "the prompt was delivered but a permission ask rose over it - the turn starts once it is answered (ask y, then wait again)" ;;
 			prompt) die "the prompt was delivered but an overlay rose over it (tmux cannot name it; 'cap' shows which) - settle it (ask y|n or send Escape), then wait again" ;;
-			"") die "no request carrying this text arrived within 10s (check zemi-lab logs)" ;;
+			"")
+				if [ "$(find "$TREE/requests" -type f 2>/dev/null | wc -l)" -gt "$at" ]; then
+					die "a turn ran but this prompt's marker never reached the model - the draft was likely eaten or restored by an interrupt (zemi-lab logs)"
+				fi
+				die "no request arrived within 10s (queued behind a running turn? zemi-lab logs)"
+				;;
 			*) die "the prompt was delivered but a $kind overlay rose over it - the turn starts once it is dismissed (send Escape, then wait again)" ;;
 		esac
 	}
@@ -699,7 +676,14 @@ cmd_ask() {
 		send_keys "$1"; sleep 0.5
 		i=$((i + 1))
 	done
-	die "the ask is still up after 10 tries"
+	[ "$i" -lt 10 ] || {
+		if [ "$BACKEND" = rex ]; then
+			die "the ask is still up after 10 tries"
+		fi
+		# tmux's mark cannot tell the kinds apart, so the y's may have keyed
+		# into a plan's changes box or a question's answer - name the escape
+		die "the ask is still up after 10 tries (tmux's ? mark hides the kind: a plan or question overlay eats y|n - 'cap' shows which, send Escape dismisses it)"
+	}
 }
 
 cmd_cap() {
@@ -1112,6 +1096,10 @@ cmd_down() {
 	# a rex lab never had a tmux server; probing its socket would create the
 	# dead socket file this teardown is supposed to leave nothing of
 	[ "${LAB_BACKEND:-tmux}" = rex ] || tmux -L "$SERVER" kill-server 2>/dev/null || true
+	# kill-server itself probes the server: a dead one leaves (or gains) its
+	# zero-byte socket file, and a live one keeps its socket
+	[ "${LAB_BACKEND:-tmux}" = rex ] ||
+		{ tmux -L "$SERVER" has-session 2>/dev/null || rm -f "${TMPDIR:-/tmp}"/tmux-*/"$SERVER"; }
 	# the kept mark tells a later plain down this tree is a kept one, so the
 	# documented cleanup (a plain down re-tears it) skips the corpse refusal
 	if [ -n "$keep" ]; then

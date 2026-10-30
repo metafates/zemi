@@ -58,9 +58,12 @@ against the composer box's own rows, however tall a narrow pane folds them, neve
 whole screen, which transcript rows echo), types, sends Enter, then waits for the request
 to reach the model (the fake's request counter, which counts only requests the fake
 accepted - a 429 refusal never reached a model - because the screen cannot prove a turn
-started), that the request carries the typed text (a count alone fires on any request
-landing after the baseline - a queued steer's turn-start, work predating the prompt - while
-the text sits undelivered) and for the screen to settle. It refuses while
+started), that a request carries the prompt's marker (each `prompt` appends a unique
+`[zl:PID]` to the text before typing: only the draft's delivery - as a verbatim user
+message, or inside a later `<chat>` fold built from delivered messages - can put it in a
+request, so neither a count alone (fires on any request landing after the baseline) nor a
+duplicate text (a re-sent older turn reads as delivered) can pass for it, and an
+interrupt-restored draft leaves no trace) and for the screen to settle. It refuses while
 any overlay waits on the user: a permission ask (`ask y|n` first) or a question/plan
 overlay (`send Escape` first) - past one, its first letters answer the overlay and the
 rest lands as a mangled draft. On tmux the mark cannot name the kind, so the refusal
@@ -113,8 +116,9 @@ streamed chunks.
   `zemi-lab title` prints it on either backend (a rex lab also streams each change as a
   `title_changed` event, so the count of title writes is assertable). `wait ask` and
   `ask` read this state (rex: the blocked record's kind; tmux: the mark, which cannot
-  tell a permission ask from a question or plan overlay - it answers whatever holds it;
-  use a rex lab when the distinction matters).
+  tell a permission ask from a question or plan overlay - it answers whatever holds it,
+  and a plan or question overlay eats every y|n, so a stuck `ask` on tmux dies naming
+  Escape; use a rex lab when the distinction matters).
 - Capture the WHOLE pane, not row ranges: popups sit mid-screen and the composer is 3 rows;
   row-range captures made a working app look hung three separate times.
 - A burst of send-keys can wedge a pane's input (an unterminated bracketed paste swallows
