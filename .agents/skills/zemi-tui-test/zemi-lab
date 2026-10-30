@@ -1001,11 +1001,14 @@ cmd_peer() {
 	# cannot certify a prompt another window never delivered
 	PFAKE=$TREE/req-$WIN
 	PPORT=$(free_port) || die "python3 is needed"
+	case $BACKEND in
+	rex) [ -n "$(block_id "$WIN")" ] && die "window '$WIN' is already up (zemi-lab down reboots all)" ;;
+	*) tmux -L "$SERVER" has-session -t "$WIN" 2>/dev/null && die "window '$WIN' is already up (zemi-lab down reboots all)" ;;
+	esac
 	rm -rf "$PFAKE" "$TREE/config-$WIN"
 	mkdir -p "$PFAKE" "$TREE/config-$WIN"
 	write_config "$TREE/config-$WIN" "$PPORT"
 	if [ "$BACKEND" = rex ]; then
-		[ -n "$(block_id "$WIN")" ] && die "window '$WIN' is already up (zemi-lab down reboots all)"
 		FB2=$(rex run -s "$RSESSION" --label "fake-$WIN" --keep-open --focus=false --json -- \
 			python3 "$DIR/fake_openai.py" "$PPORT" "$PFAKE" |
 			python3 -c 'import json,sys;print(json.load(sys.stdin)["block_ids"][0])') ||
@@ -1027,7 +1030,6 @@ cmd_peer() {
 		} >>"$BLOCKS"
 		RBLK=$RB
 	else
-		tmux -L "$SERVER" has-session -t "$WIN" 2>/dev/null && die "window '$WIN' is already up (zemi-lab down reboots all)"
 		tmux -L "$SERVER" new-session -d -s "fake-$WIN" -c "$PFAKE" \
 			"python3 '$DIR/fake_openai.py' $PPORT '$PFAKE'" || die "the $WIN fake model failed to start"
 		wait_port "$PPORT" || {
