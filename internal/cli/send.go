@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -39,14 +40,14 @@ func sendCommand(o *options) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("no zemi window is live in %s", perm.TildePath(o.dirs.TrustRoot()))
 			}
-			var lastErr error
+			type peer struct {
+				sock  string
+				fresh bool
+			}
+			var peersByAge []peer
 			for _, e := range entries {
 				if filepath.Ext(e.Name()) != ".json" {
 					continue
-				}
-				info, err := e.Info()
-				if err != nil || time.Since(info.ModTime()) > hostapi.PeersTTL {
-					continue // a stale heartbeat names a window that quit or died
 				}
 				var hb struct {
 					Sock string `json:"sock"`
@@ -55,19 +56,26 @@ func sendCommand(o *options) *cobra.Command {
 				if err != nil || json.Unmarshal(raw, &hb) != nil || hb.Sock == "" {
 					continue
 				}
-				conn, err := ipc.Dial(hb.Sock, sendDialWait)
+				fresh := false
+				if info, err := e.Info(); err == nil && time.Since(info.ModTime()) <= hostapi.PeersTTL {
+					fresh = true
+				}
+				peersByAge = append(peersByAge, peer{hb.Sock, fresh})
+			}
+			// deliver prints the verdict and reports whether it happened; a
+			// window that refused names why
+			deliver := func(sock string) (bool, error) {
+				conn, err := ipc.Dial(sock, sendDialWait)
 				if err != nil {
-					lastErr = err
-					continue
+					return false, err
 				}
 				reply, err := ipc.RoundTrip(conn, &ipc.Request{Text: text}, sendReplyWait)
 				_ = conn.Close()
 				if err != nil {
-					lastErr = err
-					continue
+					return false, err
 				}
 				if !reply.OK {
-					return errors.New(reply.Error)
+					return false, errors.New(cmp.Or(reply.Error, "the window refused this delivery"))
 				}
 				switch {
 				case reply.Ran:
@@ -77,11 +85,29 @@ func sendCommand(o *options) *cobra.Command {
 				default:
 					fmt.Fprintln(c.OutOrStdout(), "delivered: a turn starts in the window")
 				}
-				return nil
+				return true, nil
 			}
-			// a dead heartbeat is the same "nothing to deliver to" as no
-			// heartbeat at all; only a real dial failure speaks for itself
-			if lastErr != nil && !errors.Is(lastErr, ipc.ErrDead) {
+			// fresh heartbeats first; an aged one is probed only when nothing
+			// fresh answered, since mtime has writers other than the window
+			// and a corpse fails its dial in ms
+			var lastErr error
+			for _, fresh := range []bool{true, false} {
+				for _, p := range peersByAge {
+					if p.fresh != fresh {
+						continue
+					}
+					ok, err := deliver(p.sock)
+					if ok {
+						return nil
+					}
+					// a dead heartbeat is the same "nothing to deliver to" as
+					// no heartbeat at all; only a real failure speaks for itself
+					if !errors.Is(err, ipc.ErrDead) {
+						lastErr = err
+					}
+				}
+			}
+			if lastErr != nil {
 				return lastErr
 			}
 			return fmt.Errorf("no zemi window is live in %s", perm.TildePath(o.dirs.TrustRoot()))

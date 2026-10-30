@@ -96,8 +96,8 @@ func (h *Host) listenPeers() {
 // servePeer reads one delivered frame: a prompt goes the way the composer
 // would (a command runs, a message starts a turn or joins the running one),
 // and a hello makes this window re-read its siblings now. The reply tells the
-// sender which happened; a connection with no frame is a bind probe and goes
-// unanswered, but a read frame is always answered.
+// sender which happened; a bind probe or an unreadable frame goes
+// unanswered, a read frame is always answered.
 func (h *Host) servePeer(conn net.Conn) {
 	defer func() { _ = conn.Close() }()
 	_ = conn.SetReadDeadline(time.Now().Add(peerReadWait))
@@ -156,6 +156,19 @@ func (h *Host) peerPoke() {
 		_, _ = ipc.RoundTrip(conn, &ipc.Request{Hello: true}, 2*time.Second)
 		_ = conn.Close()
 	}
+}
+
+// peerAlive dials the window whose heartbeat advertises sock: a live one
+// answers a hello in ms, a dead one fails the dial. mtime has writers other
+// than the window; the dial is the ground truth.
+func peerAlive(sock string) bool {
+	conn, err := ipc.Dial(sock, time.Second)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = conn.Close() }()
+	_, err = ipc.RoundTrip(conn, &ipc.Request{Hello: true}, 2*time.Second)
+	return err == nil
 }
 
 // beat rewrites this window's heartbeat, then re-reads the siblings' into

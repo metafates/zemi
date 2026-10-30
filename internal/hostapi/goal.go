@@ -188,7 +188,9 @@ func (h *Host) setGoalFrom(seq int64, msg fantasy.Message) {
 // it, a row that predates the field, or a fresh boot of the same chat - the
 // writer's heartbeat is gone, so one window takes the chain over instead of
 // leaving a resumed goal with nobody to run it. Two live windows still never
-// run it twice.
+// run it twice. mtime is the cheap test and it has writers other than the
+// window, so a stale heartbeat is probed at the writer's socket before the
+// chain is taken.
 func (h *Host) goalMine(g *Goal) bool {
 	if g.Writer == "" || g.Writer == h.origin {
 		return true
@@ -196,8 +198,18 @@ func (h *Host) goalMine(g *Goal) bool {
 	if h.peersPath == "" {
 		return true // presence is off (headless): the store's one window is ours
 	}
-	raw, err := os.Stat(filepath.Join(filepath.Dir(h.peersPath), g.Writer+".json"))
-	return err != nil || time.Since(raw.ModTime()) > peersTTL
+	path := filepath.Join(filepath.Dir(h.peersPath), g.Writer+".json")
+	raw, err := os.Stat(path)
+	if err == nil && time.Since(raw.ModTime()) <= peersTTL {
+		return false
+	}
+	var hb struct {
+		Sock string `json:"sock"`
+	}
+	if b, err := os.ReadFile(path); err == nil && json.Unmarshal(b, &hb) == nil && hb.Sock != "" && peerAlive(hb.Sock) {
+		return false
+	}
+	return true
 }
 
 func (h *Host) stopGoal() error {
