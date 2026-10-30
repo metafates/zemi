@@ -26,7 +26,7 @@ usage: zemi-lab [-n name] [-s main|peer] command [args]
                      the text shows in the composer; refuses under an overlay
   send KEYS...       key names as tmux spells them (Enter, Escape, C-c, DC)
   wait [PATTERN]     until the screen stops changing, and PATTERN shows;
-                     `wait ask` waits for a permission ask
+                     `wait ask` waits for any overlay (ask, question, plan)
   ask y|n|t          answer a permission ask; refuses when none is up
   cap [-e] [FILE]    capture the whole pane (-e keeps colors)
   size W H           resize the window; a rex lab fails loudly when the
@@ -44,7 +44,8 @@ usage: zemi-lab [-n name] [-s main|peer] command [args]
   last               the fake model's last request body
   db | logs | status | health [args...]
   attach             how to watch this lab
-  down [--keep]      quit zemi, kill the sessions and server, delete the tree
+  down [--keep]      quit zemi, kill the sessions and server, delete the
+                     tree; a plain down also re-tears a kept tree
   down --force       reap a lab whose zemi is already dead (no exit clear)
 U
 	exit 2
@@ -93,6 +94,20 @@ for s in json.load(sys.stdin).get("sessions", []):
 '
 }
 
+# fgpid SESSION BLOCK: the block's foreground pid, empty when the block or
+# its answer is gone - a dead block must read as "no pid", never a traceback.
+fgpid() {
+	rex block call -s "$1" -b "$2" process 2>/dev/null |
+		python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except ValueError:
+    raise SystemExit
+print((d.get("foreground") or {}).get("pid", ""))
+'
+}
+
 load() {
 	[ -f "$ENVF" ] || die "no lab '$NAME' at $TREE (zemi-lab up first)"
 	# shellcheck disable=SC1090
@@ -110,8 +125,7 @@ load() {
 		# a block outlives its process: after a wedged-zemi kill every drive
 		# command would serve the corpse's last screen, so check the block's
 		# foreground pid with the kernel before serving anything
-		fgp=$(rex block call -s "$RSESSION" -b "$RBLK" process 2>/dev/null |
-			python3 -c 'import json,sys;f=(json.load(sys.stdin).get("foreground") or {});print(f.get("pid",""))')
+		fgp=$(fgpid "$RSESSION" "$RBLK")
 		[ -n "$fgp" ] && kill -0 "$fgp" 2>/dev/null ||
 			die "the '$SESSION' block has no live process (zemi died? zemi-lab down and up again)"
 	elif [ "$SESSION" != "$LAB_SESSION" ]; then
@@ -127,17 +141,26 @@ cap() {
 	esac
 }
 
-# composer_has TEXT: whether the composer box's rows carry TEXT. The box at
-# the bottom is read by its border rows, never the whole screen: a transcript
-# row echoing the same words must not pass for the composer, and a narrow
-# pane folds the text across rows, so the box's rows are joined and unspaced.
+# composer_has TEXT: whether the composer box's rows carry TEXT. The box is
+# read as the bottom-most block of box rows, never the whole screen: a
+# transcript row echoing the same words must not pass for the composer. The
+# box is a scrolling viewport - a long text shows only its tail - and a
+# narrow pane folds rows, so the match is on the joined, unspaced rows: the
+# whole text when it fits, else its last 40 characters at the content's end.
 composer_has() {
-	cap | tail -8 | python3 -c '
+	cap | python3 -c '
 import sys
 text = sys.argv[1].replace(" ", "")
-rows = [l for l in sys.stdin.read().splitlines() if l.lstrip().startswith("│")]
-joined = "".join(r.replace("│", "").replace(" ", "") for r in rows)
-sys.exit(0 if text in joined else 1)
+run = []
+for l in reversed(sys.stdin.read().splitlines()):
+    s = l.strip()
+    if s.startswith("│"):
+        run.append(l)
+    elif run:
+        break
+joined = "".join(r.replace("│", "").replace(" ", "") for r in reversed(run))
+ok = text in joined or (len(text) > 40 and joined.endswith(text[-40:]))
+sys.exit(0 if ok else 1)
 ' "$1"
 }
 
@@ -164,6 +187,19 @@ for r in d.get("records", []):
 	case "$(tmux -L "$SERVER" display -p -t "$SESSION" '#{pane_title}' 2>/dev/null)" in
 		"? "*) printf 'prompt' ;;
 	esac
+}
+
+# wait_ask [secs]: until any overlay waits on the user - terminal state on
+# both backends (rex: the blocked record; tmux: the ? title mark), never
+# screen text, which a narrow pane folds and transcript rows echo.
+wait_ask() {
+	SECS=${1:-30} i=0
+	while [ "$i" -lt $((SECS * 4)) ]; do
+		[ -n "$(overlay_kind)" ] && return 0
+		i=$((i + 1))
+		sleep 0.25
+	done
+	return 1
 }
 
 # key_rex: tmux key spelling (C-c, Escape, BTab, DC) into Rex's (ctrl+c,
@@ -291,6 +327,29 @@ wait_boot() {
 	die "zemi did not boot in 30s"
 }
 
+# trust_note: an untrusted boot stops at the trust overlay, which holds the
+# keys - say so instead of a bare success the first prompt would die behind.
+# Bounded poll: the overlay renders a beat after the composer does. Rex sees
+# it as a blocked permission record (ask y works); tmux's title mark does not
+# cover it, so there the y key goes straight to the overlay.
+trust_note() {
+	i=0
+	while [ "$i" -lt 12 ]; do
+		case "$(cap)" in
+			*"Trust this"*)
+				if [ "$BACKEND" = rex ]; then
+					say "  the trust overlay is up: 'zemi-lab ask y' answers it (or boot with --trust)"
+				else
+					say "  the trust overlay is up: 'zemi-lab send y' answers it (or boot with --trust; resend once - the first key can land in the grace)"
+				fi
+				return
+				;;
+		esac
+		i=$((i + 1))
+		sleep 0.25
+	done
+}
+
 cmd_up() {
 	W=140 H=40 THEME="" ASKS="" TRUST=--trust
 	BACKEND=tmux
@@ -330,9 +389,10 @@ cmd_up() {
 
 	mkdir -p "$TREE/config" "$TREE/data" "$TREE/state" "$TREE/cache" "$TREE/proj"
 	# a kept tree reboots clean: the last incarnation's snapshots, request
-	# marker and body would poison diff, last and this boot's first prompt
+	# marker and body would poison diff, last and this boot's first prompt,
+	# and a stale stale-stream or kept mark would refuse a healthy teardown
 	rm -rf "$TREE/snap"
-	rm -f "$TREE/.lab.turn" "$TREE/last_request.json"
+	rm -f "$TREE/.lab.turn" "$TREE/last_request.json" "$TREE/.lab.stale-stream" "$TREE/.lab.kept"
 	[ -d "$TREE/proj/.git" ] || (cd "$TREE/proj" && git init -q) || die "git init failed"
 	echo hello >"$TREE/proj/a.txt"
 
@@ -384,6 +444,7 @@ EOF
 		} >"$BLOCKS"
 		RBLK=$RB
 		wait_boot
+		trust_note
 
 		cat >"$ENVF" <<EOF
 LAB_NAME="$NAME"
@@ -414,6 +475,7 @@ EOF
 		"env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' '$DIR/zemi-safe' '$TREE' $TRUST" ||
 		die "tmux new-session failed"
 	wait_boot
+	trust_note
 
 	cat >"$ENVF" <<EOF
 LAB_NAME="$NAME"
@@ -475,7 +537,15 @@ cmd_prompt() {
 		i=$((i + 1))
 		sleep 0.25
 	done
-	[ "$i" -lt 40 ] || die "no model request arrived within 10s of the prompt (zemi stuck or stopped? zemi-lab logs)"
+	[ "$i" -lt 40 ] || {
+		# a steer sent while a turn runs starts its own model call only after
+		# the turn - and any ask that rose over it - settles: name that
+		# instead of blaming a stuck zemi
+		kind=$(overlay_kind)
+		[ -n "$kind" ] &&
+			die "the prompt was delivered but a $kind overlay rose over it - the turn starts once it is answered (ask y, then wait again)"
+		die "no model request arrived within 10s of the prompt (zemi stuck or stopped? zemi-lab logs)"
+	}
 	wait_stable "" 30 || die "the screen never settled after the prompt"
 }
 
@@ -506,7 +576,10 @@ cmd_send() {
 
 cmd_wait() {
 	case "${1:-}" in
-		ask) PAT="No, and tell" ;;
+		ask)
+			wait_ask && exit 0
+			die "wait: no overlay appeared within 30s"
+			;;
 		*) PAT=${1:-} ;;
 	esac
 	wait_stable "$PAT" 30 && exit 0
@@ -516,24 +589,24 @@ cmd_wait() {
 
 cmd_ask() {
 	case "${1:-}" in y | n | t) ;; *) die "ask: y, n or t" ;; esac
-	# there must be an ask to answer: with none up, "box gone" is trivially
-	# true and the command would lie. The rex lab reads the terminal's
-	# blocked record; tmux falls back to the box's No row on the screen
-	# (a transcript row echoing that literal can still fool it there).
+	# there must be a permission ask to answer: with none up, "overlay gone"
+	# is trivially true and the command would lie. The rex lab reads the
+	# terminal's blocked record (kind=permission); tmux's ? title mark cannot
+	# tell the overlay kinds apart, so it answers whatever holds the mark.
 	if [ "$BACKEND" = rex ]; then
 		[ "$(overlay_kind)" = permission ] ||
 			die "no permission ask is up (wait ask first - the ask may have been answered already)"
 	else
-		wait_stable "No, and tell" 5 ||
-			die "no permission ask is up (wait ask first - the ask may have been answered already)"
+		wait_ask 5 ||
+			die "no overlay is up (wait ask first - the ask may have been answered already)"
 	fi
-	# the first key can land in the grace; resend until the box is gone
+	# the first key can land in the grace; resend until the overlay is gone
 	i=0
 	while [ "$i" -lt 10 ]; do
 		if [ "$BACKEND" = rex ]; then
 			[ "$(overlay_kind)" != permission ] && exit 0
-		else
-			case "$(cap)" in *"No, and tell"*) ;; *) exit 0 ;; esac
+		elif [ -z "$(overlay_kind)" ]; then
+			exit 0
 		fi
 		send_keys "$1"; sleep 0.5
 		i=$((i + 1))
@@ -895,26 +968,33 @@ cmd_down() {
 		# shellcheck disable=SC1090
 		. "$ENVF"
 		if [ "${LAB_BACKEND:-tmux}" = rex ] && [ -n "${LAB_RSESSION:-}" ]; then
-			# a dead zemi turns the quit dance into a 4s wait that silently
-			# lands no exit clear: refuse, and let --force reap without it
-			if [ -f "$BLOCKS" ] && [ -z "$force" ]; then
-				fgp=$(rex block call -s "$LAB_RSESSION" -b "$(awk '$1 == "main" {print $2}' "$BLOCKS")" process 2>/dev/null |
-					python3 -c 'import json,sys;f=(json.load(sys.stdin).get("foreground") or {});print(f.get("pid",""))')
-				{ [ -n "$fgp" ] && kill -0 "$fgp" 2>/dev/null; } ||
-					die "zemi is already dead (${fgp:-no live process}); down --force reaps without the exit clear"
+			live=""
+			if [ -f "$BLOCKS" ]; then
+				fgp=$(fgpid "$LAB_RSESSION" "$(awk '$1 == "main" {print $2}' "$BLOCKS")")
+				{ [ -n "$fgp" ] && kill -0 "$fgp" 2>/dev/null; } && live=1
 			fi
+			# a dead zemi turns the quit dance into a 4s wait that silently
+			# lands no exit clear: refuse - unless the tree was kept (the
+			# documented cleanup is a plain down) or --force reaps without it
+			[ -n "$live" ] || [ -n "$force" ] || [ -f "$TREE/.lab.kept" ] ||
+				die "zemi is already dead (${fgp:-no live process}); down --force reaps without the exit clear"
 			# a recorder that died before the quit leaves a stream that ends
-			# early: mark it, so kept-tree events refuses absence assertions
-			lsof -t "$TREE/events.jsonl" >/dev/null 2>&1 ||
-				touch "$TREE/.lab.stale-stream"
+			# early: mark it, so kept-tree events refuses absence assertions.
+			# A teardown of an already-kept tree must not re-mark: its stream
+			# is complete by then and the recorder is supposed to be gone.
+			{ [ -n "$live" ] || [ -n "$force" ]; } && [ ! -f "$TREE/.lab.kept" ] && {
+				lsof -t "$TREE/events.jsonl" >/dev/null 2>&1 ||
+					touch "$TREE/.lab.stale-stream"
+			}
 			# quit zemi first so the exit clear reaches the terminal. Keys go to
 			# the zemi blocks only: a ctrl+c to the recorder's block would kill
 			# the stream mid-write. An ask or overlay is dismissed first, and a
 			# mid-turn zemi eats the first ctrl+c as an interrupt (a drafted one
 			# as a draft-clear), so send until the terminal reports the status
 			# removed - bounded, then a plain kill takes whatever is left
-			# (rex kill would otherwise strand the last record).
-			if [ -f "$BLOCKS" ]; then
+			# (rex kill would otherwise strand the last record). A corpse skips
+			# the dance: its keys land nowhere and the 4s wait buys nothing.
+			if [ -n "$live" ] && [ -f "$BLOCKS" ]; then
 				zblocks=$(awk '$1 != "fake" && $1 != "recorder" {print $2}' "$BLOCKS")
 				for bid in $zblocks; do
 					rex send-key -s "$LAB_RSESSION" -b "$bid" -- escape 2>/dev/null || true
@@ -938,6 +1018,13 @@ cmd_down() {
 	# shellcheck disable=SC2046
 	rex kill $(rex_sessions_by_label) 2>/dev/null || true
 	tmux -L "$SERVER" kill-server 2>/dev/null || true
+	# the kept mark tells a later plain down this tree is a kept one, so the
+	# documented cleanup (a plain down re-tears it) skips the corpse refusal
+	if [ -n "$keep" ]; then
+		[ -d "$TREE" ] && touch "$TREE/.lab.kept"
+	else
+		rm -f "$TREE/.lab.kept"
+	fi
 	if [ -z "$keep" ]; then
 		case "$TREE" in
 			${TMPDIR:-/tmp}/* | /tmp/* | /private/tmp/*) rm -rf "$TREE" ;;

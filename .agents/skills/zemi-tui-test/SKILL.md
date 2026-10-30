@@ -33,7 +33,8 @@ $S/zemi-lab up                     # 140x40 TUI in tmux; --rex runs it in a Rex 
 $S/zemi-lab prompt 'call shell {"command":"ls","about":"list"}'
 $S/zemi-lab cap | grep -v '^ *$'   # whole pane, plain text; cap -e keeps colors
 $S/zemi-lab wait '1 command'       # screen stopped changing and the row shows
-$S/zemi-lab wait ask               # wait for a permission ask (the box's No row)
+$S/zemi-lab wait ask               # wait for any overlay (ask, question, plan);
+                                   # reads the terminal's state, not screen text
 $S/zemi-lab send Escape            # key names, as tmux spells them (C-c, Escape)
 $S/zemi-lab type 'partial text'    # literal text into the composer; returns once it shows
 $S/zemi-lab ask y                  # answer a permission ask (y|n|t); refuses when none is up
@@ -53,16 +54,26 @@ $S/zemi-lab down                   # quit zemi, kill sessions and server, delete
 ```
 
 `prompt` clears a leftover draft first (ctrl+c until the composer box empties - verified
-against the box's own rows, never the whole screen, which transcript rows echo), types,
-sends Enter, then waits for the request to reach the model (the fake's request counter -
-the screen cannot prove a turn started) and for the screen to settle. It refuses while
+against the composer box's own rows, however tall a narrow pane folds them, never the
+whole screen, which transcript rows echo), types, sends Enter, then waits for the request
+to reach the model (the fake's request counter, which counts only requests the fake
+accepted - a 429 refusal never reached a model - because the screen cannot prove a turn
+started) and for the screen to settle. It refuses while
 any overlay waits on the user: a permission ask (`ask y|n` first) or a question/plan
 overlay (`send Escape` first) - past one, its first letters answer the overlay and the
-rest lands as a mangled draft. It returns when the screen settles (a settle heuristic),
-which can be mid-turn - not a turn-end guarantee.
+rest lands as a mangled draft. A steer sent while a turn runs can have an ask rise over
+it: `prompt` then names the overlay instead of blaming a stuck zemi - answer it (`ask y`)
+and wait again. It returns when the screen settles (a settle heuristic),
+which can be mid-turn - not a turn-end guarantee - and `wait PATTERN` can match the
+PREVIOUS turn's reply: after an errored turn (a mid-stream drop) the settled screen still
+shows turn N-1's rows, so `wait 'done, here is the reply.'` exits 0 on the old row. Assert
+the turn via the request counter (`last`) or the events, never `wait` alone.
 `up` flags: `-x W -y H`
-(default 140x40), `--theme whorl-light`, `--untrusted` (drops `--trust`, for the trust
-prompt), `--asks` (installs a gate plugin whose `permission.request` handler returns
+(default 140x40), `--theme whorl-light`, `--untrusted` (drops `--trust`; the boot then
+stops at the trust overlay, which `up` reports; rex answers it with `ask y`, tmux with
+`send y` (the mark does not cover it there, and the first key can land in the grace -
+resend once)), `--asks` (installs a
+gate plugin whose `permission.request` handler returns
 `{decision = "ask"}`, since zemi never asks by design - DESIGN §9), `--rex` (the Rex
 backend below). A running lab can be made to ask without a reboot: drop the same two files
 into `$TREE/data/plugins/local/askgate/.zemi/` (plugin.json + init.lua; their contents are
@@ -74,9 +85,12 @@ lab in a real terminal (tmux) or prints how to open it (Rex).
 `fake_openai.py` is a 40-line OpenAI-compatible server: it streams a reply with a reasoning
 delta, or calls a tool once when the user message reads `call NAME {json}`, and answers
 non-streaming requests (the object calls: classify, `zemi.model.ask`) with a plain
-completion. Every request body lands in `last_request.json` and `requests/NNN.json` under
+completion. Every accepted request body lands in `last_request.json` and
+`requests/NNN.json` under
 the tree, so two consecutive bodies diff byte for byte (prompt cache); `zemi-lab last`
-prints the latest. The generated init.lua adds no second model, so nothing else writes a
+prints the latest. A refused request (a 429) writes nothing - that is what makes the
+counter a reached-the-model check. The generated init.lua adds no second model, so nothing
+else writes a
 request between yours. Control files in the tree, read per request like `drop` and
 `rate_fail`: `delay_ms` holds a reply open (not a 429 or a drop), `pace_ms` spaces the
 streamed chunks.
@@ -93,7 +107,10 @@ streamed chunks.
   the masked ones for re-checking.
 - The pane title marks state: `? ` while an ask is up, plain otherwise -
   `zemi-lab title` prints it on either backend (a rex lab also streams each change as a
-  `title_changed` event, so the count of title writes is assertable).
+  `title_changed` event, so the count of title writes is assertable). `wait ask` and
+  `ask` read this state (rex: the blocked record's kind; tmux: the mark, which cannot
+  tell a permission ask from a question or plan overlay - it answers whatever holds it;
+  use a rex lab when the distinction matters).
 - Capture the WHOLE pane, not row ranges: popups sit mid-screen and the composer is 3 rows;
   row-range captures made a working app look hung three separate times.
 - A burst of send-keys can wedge a pane's input (an unterminated bracketed paste swallows
@@ -196,7 +213,8 @@ $S/zemi-lab -n ps down                          # quits zemi first, so the exit 
   and `events` on that kept tree refuses - absence assertions on a stream that stopped
   early false-pass; read `events.jsonl` directly when you only want what did arrive.
 - `down` on a lab whose zemi is already dead refuses: the quit dance would burn 4s and
-  land no exit clear anyone could assert - `down --force` reaps without it.
+  land no exit clear anyone could assert - `down --force` reaps without it, and without
+  the dance (a corpse's keys land nowhere).
 - `zemi-lab status` prints the session and every block id (zemi is `main`); kill a wedged
   lab zemi by the exact pid from `rex block call -b BLOCK process` (never a broad
   `ps | grep`). `rex kill` takes sessions only. A drive command after such a kill dies
@@ -245,7 +263,8 @@ is graded by the same score.
 Tear the lab down with `down` (tmux session and server, or the Rex session) and leave
 nothing running. Delete the tree when done: a stale tree with an old `init.lua` shape is the
 usual cause of a confusing second run, and each scratch binary is 100 MB. `down` does all of
-it; `--keep` spares the tree. A failed `up` leaves the tree for inspection; `down` clears
+it; `--keep` spares the tree, and a later plain `down` re-tears a kept tree (no `--force`
+needed). A failed `up` leaves the tree for inspection; `down` clears
 it.
 
 Never kill a zemi found by a broad `ps aux | grep zemi`: a bare PID from that grep may be the

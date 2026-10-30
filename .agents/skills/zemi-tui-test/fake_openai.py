@@ -1,9 +1,10 @@
 # Fake OpenAI-compatible server for driving zemi without a real model.
 # A user message "call NAME {json}" makes the model call that tool once; anything
 # else gets a short streamed reply. Non-streaming requests (the object calls:
-# classify, zemi.model.ask) get a plain chat.completion. Every request body lands
-# in OUTDIR/last_request.json (atomic) and OUTDIR/requests/NNN.json, so two
-# consecutive bodies diff byte for byte (prompt cache).
+# classify, zemi.model.ask) get a plain chat.completion. Every accepted request
+# body lands in OUTDIR/last_request.json (atomic) and OUTDIR/requests/NNN.json,
+# so two consecutive bodies diff byte for byte (prompt cache); a refused
+# request (a 429) records nothing.
 # While OUTDIR/rate_fail holds a positive count, that many requests are refused
 # with a 429 and a 300ms retry-after, the count decrementing per refusal.
 # OUTDIR/rate_limit holds "REQUESTS[:TOKENS][:WINDOW]" (e.g. "40:52000:60"): the
@@ -50,13 +51,6 @@ class H(BaseHTTPRequestHandler):
         text = c if isinstance(c, str) else " ".join(p.get("text", "") for p in c)
         m = last["role"] == "user" and re.match(r"call (\w+) (\{.*\})", text)
         n = len(os.listdir(os.path.join(OUT, "requests"))) + 1
-        data = json.dumps(body, indent=1)
-        tmp = os.path.join(OUT, "requests/.%d.json" % n)
-        open(tmp, "w").write(data)
-        os.replace(tmp, os.path.join(OUT, "requests/%03d.json" % n))
-        tmp2 = os.path.join(OUT, ".last_request.tmp")
-        open(tmp2, "w").write(data)
-        os.replace(tmp2, os.path.join(OUT, "last_request.json"))
         print("REQ %d stream=%s %s" % (n, body.get("stream"), text[:60].replace("\n", " ")), flush=True)
         try:
             parts = (open(os.path.join(OUT, "rate_limit")).read().strip() or "0").split(":")
@@ -102,6 +96,16 @@ class H(BaseHTTPRequestHandler):
             self.connection.close()
             print("REQ %d -> dropped mid-stream" % n, flush=True)
             return
+        # the body is recorded only once the fake commits to answering it: a
+        # refused request (a 429) never reaches a model, so it must not count
+        # for the lab's request counter
+        data = json.dumps(body, indent=1)
+        tmp = os.path.join(OUT, "requests/.%d.json" % n)
+        open(tmp, "w").write(data)
+        os.replace(tmp, os.path.join(OUT, "requests/%03d.json" % n))
+        tmp2 = os.path.join(OUT, ".last_request.tmp")
+        open(tmp2, "w").write(data)
+        os.replace(tmp2, os.path.join(OUT, "last_request.json"))
         # delay_ms holds the reply (turn) open, pace_ms spaces the chunks
         delay = ctl("delay_ms")
         if delay > 0:
