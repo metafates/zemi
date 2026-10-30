@@ -58,7 +58,7 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 		t.Fatalf("two in_progress: stored %d, %+v", len(stored), resp)
 	}
 	resp = call(t, todos, `{"todos":[{"content":"a","status":"cancelled"},{"content":"b","status":"pending"}]}`)
-	if resp.IsError || len(stored) != 1 || stored[0].Content != "b" || resp.Content != `updated todos: 0/1 done; dropped 1 cancelled; 1 open item left the list ("a"): put it back or mark it done` {
+	if resp.IsError || len(stored) != 1 || stored[0].Content != "b" || resp.Content != `updated todos: 0/1 done; dropped 1 cancelled` {
 		t.Fatalf("cancelled items drop: stored %+v, %+v", stored, resp)
 	}
 	if len(stored) != 1 {
@@ -82,6 +82,20 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 	resp = call(t, todos, `{"todos":[{"content":"c","status":"done"}]}`)
 	if resp.IsError || strings.Contains(resp.Content, "left the list") {
 		t.Fatalf("a list that keeps its open items stays quiet: %+v", resp)
+	}
+
+	// a same-length write that rewords an item in place is a rename, not a drop
+	resp = call(t, todos, `{"todos":[{"content":"c","status":"done"},{"content":"x","status":"pending"}]}`)
+	if resp.IsError || strings.Contains(resp.Content, "left the list") {
+		t.Fatalf("a reworded item is not a drop: %+v", resp)
+	}
+	resp = call(t, todos, `{"todos":[{"content":"y","status":"pending"}]}`)
+	if resp.IsError || !strings.Contains(resp.Content, `1 open item left the list ("x"): put it back or mark it done`) {
+		t.Fatalf("a shortened list still names what vanished: %+v", resp)
+	}
+	resp = call(t, todos, `{"todos":[{"content":"y","status":"pending"},{"content":"z","status":"cancelled"}]}`)
+	if resp.IsError || !strings.Contains(resp.Content, "dropped 1 cancelled") || strings.Contains(resp.Content, "left the list") {
+		t.Fatalf("an explicit cancel is not a drop: %+v", resp)
 	}
 
 	for _, bad := range []struct{ in, want string }{

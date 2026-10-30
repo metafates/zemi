@@ -39,7 +39,7 @@ type todoItem struct {
 }
 
 func runTodos(ctx context.Context, p *Pipeline, in todosArgs) (fantasy.ToolResponse, error) {
-	out, cancelled, ok, err := parseTodos(in.Todos)
+	out, dropped, ok, err := parseTodos(in.Todos)
 	// a run whose host wired no todo hook has no list to write or read
 	if p.TodosRead == nil || ok && p.TodosWrite == nil {
 		return fantasy.NewTextErrorResponse("there is no todo list in this run: keep the steps in your reply instead"), nil
@@ -49,16 +49,36 @@ func runTodos(ctx context.Context, p *Pipeline, in todosArgs) (fantasy.ToolRespo
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 		// a write that quietly drops open items is how a long session loses
-		// track of work: name what vanished, so the list stays the record
+		// track of work: name what vanished, so the list stays the record.
+		// One open item reworded in place — same length, every other content
+		// standing — is a rename, not a drop; an explicit cancel is the
+		// write's own accounting.
 		vanished := []string{}
 		if old, err := p.TodosRead(); err == nil {
+			var missing []string
+			for _, td := range old {
+				if td.Status != store.TodoDone && !slices.ContainsFunc(out, func(n store.Todo) bool { return n.Content == td.Content }) {
+					missing = append(missing, td.Content)
+				}
+			}
+			fresh := 0
+			for _, n := range out {
+				if !slices.ContainsFunc(old, func(td store.Todo) bool { return td.Content == n.Content }) {
+					fresh++
+				}
+			}
+			renamed := len(old) == len(out) && len(missing) == 1 && fresh == 1
 			for _, td := range old {
 				if td.Status == store.TodoDone {
 					continue
 				}
-				if !slices.ContainsFunc(out, func(n store.Todo) bool { return n.Content == td.Content }) {
-					vanished = append(vanished, td.Content)
+				if slices.ContainsFunc(out, func(n store.Todo) bool { return n.Content == td.Content }) {
+					continue
 				}
+				if renamed || slices.Contains(dropped, td.Content) {
+					continue
+				}
+				vanished = append(vanished, td.Content)
 			}
 		}
 		if err := p.TodosWrite(out); err != nil {
@@ -77,8 +97,8 @@ func runTodos(ctx context.Context, p *Pipeline, in todosArgs) (fantasy.ToolRespo
 			}
 		}
 		note := ""
-		if cancelled > 0 {
-			note = fmt.Sprintf("; dropped %d cancelled", cancelled)
+		if len(dropped) > 0 {
+			note = fmt.Sprintf("; dropped %d cancelled", len(dropped))
 		}
 		if len(vanished) > 0 {
 			shown, more := vanished, ""
@@ -112,9 +132,9 @@ func runTodos(ctx context.Context, p *Pipeline, in todosArgs) (fantasy.ToolRespo
 	return fantasy.NewTextResponse(TodoList(rows)), nil
 }
 
-// parseTodos reads the list a todos call sets, dropping the cancelled items it
-// counts; ok is false for a call that only reads the list.
-func parseTodos(items []todoItem) (out []store.Todo, cancelled int, ok bool, err error) {
+// parseTodos reads the list a todos call sets, returning the contents it
+// dropped as cancelled; ok is false for a call that only reads the list.
+func parseTodos(items []todoItem) (out []store.Todo, dropped []string, ok bool, err error) {
 	ok = items != nil
 	for i, td := range items {
 		status := td.Status
@@ -123,18 +143,18 @@ func parseTodos(items []todoItem) (out []store.Todo, cancelled int, ok bool, err
 			status = store.TodoDone
 		}
 		if status == "cancelled" {
-			cancelled++
+			dropped = append(dropped, td.Content)
 			continue
 		}
 		if td.Content == "" {
-			return nil, 0, true, fmt.Errorf("todo %d: content is required", i+1)
+			return nil, nil, true, fmt.Errorf("todo %d: content is required", i+1)
 		}
 		if !slices.Contains(store.TodoStatuses, status) {
-			return nil, 0, true, fmt.Errorf("todo %d: status must be pending, in_progress or done", i+1)
+			return nil, nil, true, fmt.Errorf("todo %d: status must be pending, in_progress or done", i+1)
 		}
 		out = append(out, store.Todo{Content: td.Content, Status: status, ActiveForm: td.ActiveForm})
 	}
-	return out, cancelled, ok, nil
+	return out, dropped, ok, nil
 }
 
 // ParseTodos reads a todos call's input the run does.
@@ -152,8 +172,8 @@ func ParseTodos(in map[string]any) ([]store.Todo, int, bool, error) {
 		}
 		items = append(items, td)
 	}
-	out, cancelled, _, err := parseTodos(items)
-	return out, cancelled, ok, err
+	out, dropped, _, err := parseTodos(items)
+	return out, len(dropped), ok, err
 }
 
 // TodoList is the list as the todos tool reports it.

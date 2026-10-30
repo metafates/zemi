@@ -1193,7 +1193,7 @@ func (h *Host) deliverSteering() []string {
 		}
 		msgs = append(msgs, agent.Note(fmt.Sprintf(
 			"Work arrived mid-turn: if it belongs on the todo list, add it with the todos tool. %d %s still open: keep the list current as you take the new work on.",
-			open, Plural(open, "item is", "items are"),
+			open, Plural(open, "todo is", "todos are"),
 		)))
 	}
 	if ag.todoNag != "" {

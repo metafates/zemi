@@ -1096,7 +1096,7 @@ func TestTodoNag(t *testing.T) {
 		h.agents.steering = []string{"one more thing"}
 		h.agents.mu.Unlock()
 		msgs := h.deliverSteering()
-		if len(msgs) != 2 || !strings.Contains(msgs[1], "1 item is still open") {
+		if len(msgs) != 2 || !strings.Contains(msgs[1], "1 todo is still open") {
 			t.Fatalf("steer notes = %q", msgs)
 		}
 	})
