@@ -668,26 +668,22 @@ func (h *Host) skillItems() []OverlayItem {
 		if base, by := h.skillBase(s); base != s.Name {
 			item.Text = base + "@" + by
 		}
-		var keys []ItemKey
 		state := "on"
 		switch {
 		case !s.Source.Stored(): // no state to toggle
 			item.Locked = new(true)
 		case h.skillsReg.isEnabled(s.Name):
 			item.On, item.Run = new(true), toggle
-			keys = append(keys, ItemKey{Key: "d", Desc: "disable", Run: toggle})
 		default:
 			state, item.On, item.Run = "off", new(false), toggle
-			keys = append(keys, ItemKey{Key: "e", Desc: "enable", Run: toggle})
 		}
 		body, err := s.Body()
 		if err != nil {
 			body = "could not read it: " + err.Error()
 		}
 		if s.Source != skill.Builtin { // zemi rewrites its own on every start
-			keys = append(keys, ItemKey{Key: "o", Desc: openInEditorLabel, Run: "skills open " + s.Name})
+			item.Keys = append(item.Keys, ItemKey{Key: "o", Desc: openInEditorLabel, Run: "skills open " + s.Name})
 		}
-		item.Keys = keys
 		if s.Source == skill.Recipe {
 			item.Keys = append(item.Keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "skills delete " + s.Name})
 		}
