@@ -2415,7 +2415,8 @@ func modelDesc(id string, m agent.Model) string {
 		parts = append(parts, strconv.FormatInt(w/1000, 10)+"k")
 	}
 	if m.CostPer1MIn > 0 || m.CostPer1MOut > 0 {
-		parts = append(parts, "$"+strconv.FormatFloat(m.CostPer1MIn, 'g', 3, 64)+"/$"+strconv.FormatFloat(m.CostPer1MOut, 'g', 3, 64))
+		// both sides to the cent: a mixed precision reads as two scales
+		parts = append(parts, "$"+strconv.FormatFloat(m.CostPer1MIn, 'f', 2, 64)+"/$"+strconv.FormatFloat(m.CostPer1MOut, 'f', 2, 64))
 	}
 	return strings.Join(parts, " · ")
 }

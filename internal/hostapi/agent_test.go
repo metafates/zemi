@@ -1943,8 +1943,8 @@ func TestModelDesc(t *testing.T) {
 	}{
 		{agent.Model{ID: "m", Display: "p/m"}, ""},
 		{agent.Model{ID: "m", Display: "m"}, ""},
-		{agent.Model{ID: "m", Display: "Big", ContextWindow: 200_000, CostPer1MIn: 3, CostPer1MOut: 15}, "Big · 200k · $3/$15"},
-		{agent.Model{ID: "m", ContextWindow: 1_048_576, CostPer1MOut: 0.4}, "1.05M · $0/$0.4"},
+		{agent.Model{ID: "m", Display: "Big", ContextWindow: 200_000, CostPer1MIn: 3, CostPer1MOut: 15}, "Big · 200k · $3.00/$15.00"},
+		{agent.Model{ID: "m", ContextWindow: 1_048_576, CostPer1MOut: 0.4}, "1.05M · $0.00/$0.40"},
 	} {
 		if got := modelDesc("p/m", c.m); got != c.want {
 			t.Errorf("modelDesc(%+v) = %q, want %q", c.m, got, c.want)
