@@ -209,6 +209,7 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 		a.refreshDetail(i)
 		a.byRow = false
 		a.syncRail()
+		a.armOverlayConfirm(o)
 		return
 	}
 	if o.Refresh {
@@ -258,6 +259,13 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 	}
 	a.overlays = append(a.overlays, st)
 	a.syncRail()
+	a.armOverlayConfirm(o)
+}
+
+// armOverlayConfirm presets a danger key the overlay's Confirm names, on a
+// fresh open or a replaced one alike: a re-open that skipped it left the box
+// asking for two presses where one was agreed.
+func (a *App) armOverlayConfirm(o hostapi.Overlay) {
 	if o.Confirm == "" {
 		return
 	}
@@ -1753,12 +1761,43 @@ func fieldRows(fields []hostapi.Field, mark hostapi.MarkKind, w int) [][]hostapi
 }
 
 // field sets a value beside its name in a column kw wide, or as a "name:
-// value" line when w leaves the value under 20 cells.
+// value" line when w leaves the value under 20 cells. A value with newlines
+// (a multiline command) splits into rows, so its continuation lines keep the
+// name column instead of floating at the box's left edge.
 func field(name string, kw int, val []hostapi.Segment, w int) [][]hostapi.Segment {
 	if w-kw < 20 {
 		return fieldLine(name, val, w)
 	}
-	return fieldRow(name, kw, hostapi.WrapSegs(val, w-kw))
+	var rows [][]hostapi.Segment
+	for _, line := range splitSegLines(val) {
+		rows = append(rows, hostapi.WrapSegs(line, w-kw)...)
+	}
+	return fieldRow(name, kw, rows)
+}
+
+// splitSegLines cuts a value's segments at their newlines, keeping each
+// part's style; a trailing newline does not make an empty row.
+func splitSegLines(val []hostapi.Segment) [][]hostapi.Segment {
+	var lines [][]hostapi.Segment
+	var cur []hostapi.Segment
+	for _, s := range val {
+		parts := strings.Split(s.Text, "\n")
+		for j, p := range parts {
+			if j > 0 {
+				lines = append(lines, cur)
+				cur = nil
+			}
+			if p != "" || j == 0 {
+				c := s
+				c.Text = p
+				cur = append(cur, c)
+			}
+		}
+	}
+	if len(cur) > 0 || len(lines) == 0 {
+		lines = append(lines, cur)
+	}
+	return lines
 }
 
 // fieldRow sets a field's value rows beside its name in a column kw wide;
