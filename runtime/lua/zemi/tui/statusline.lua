@@ -49,7 +49,8 @@ zemi.ui.widget.add({
 	---@return zemi.Line[]
 	render = function(ctx)
 		if not ctx.goal then return {} end
-		return { fmt.hint("⚑ goal", "/goal") }
+		-- the condition is the pill's value; the command is the way to change it
+		return { fmt.hint("⚑ " .. ctx.goal.condition, "/goal") }
 	end,
 })
 

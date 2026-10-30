@@ -101,7 +101,7 @@ func (h *Host) openReset(confirm string) error {
 		ID: "reset", Title: "Reset", Origin: lua.OriginBuiltin, Confirm: confirm,
 		Items: []OverlayItem{{
 			Text:   "Wipe this chat and start it over",
-			Detail: "Every message, summary and view line is deleted from the store, the store file shrinks back, and the next message is the first again. A reset touches no file.",
+			Detail: "Every message, summary and view line is deleted from the store, the todo list with it, the store file shrinks back, and the next message is the first again. A reset touches no file.",
 			Keys:   []ItemKey{{Key: "x", Desc: "reset", Danger: true, Run: "reset"}},
 		}},
 	})

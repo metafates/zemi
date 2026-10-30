@@ -396,8 +396,13 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 				name := string(tools.ToolName(t.Name))
 				if t.Label != "" {
 					// the label reads as what the call was, not its name:
-					// "while the shell call "second" ran", not "shell: second"
-					row.Text = clipRunes(row.Text+"\nwhile the "+name+" call \""+t.Label+"\" ran", 400)
+					// "while the shell call "second" ran", not "shell: second";
+					// a call the user denied never ran, and "waited" says so
+					verb := "ran"
+					if t.Status == CallStopped || t.Status == CallWait {
+						verb = "waited"
+					}
+					row.Text = clipRunes(row.Text+"\nwhile the "+name+" call \""+t.Label+"\" "+verb, 400)
 					continue
 				}
 				row.Text = clipRunes(row.Text+"\nwhile the "+name+" call ran", 400)

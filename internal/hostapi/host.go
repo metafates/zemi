@@ -2121,7 +2121,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	}
 	if g, ok := h.Goal(); ok {
 		gt := L.CreateTable(0, 3)
-		gt.RawSetString("condition", glua.LString(sanitize.String(g.Condition)))
+		gt.RawSetString("condition", glua.LString(clipLine(g.Condition, 48)))
 		gt.RawSetString("turns", glua.LNumber(g.Turns))
 		gt.RawSetString("reason", glua.LString(sanitize.String(g.Reason)))
 		tb.RawSetString("goal", gt)
