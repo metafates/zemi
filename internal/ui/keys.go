@@ -118,7 +118,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			// typing that started with esc does not lose its first letter.
 			// The fold adds shift for a capital — plain shift alone is just
 			// typing, and the key's own text carries its case
-			if msg.Mod&tea.ModAlt != 0 && msg.Code < utf8.RuneSelf && unicode.IsPrint(rune(msg.Code)) {
+			if msg.Mod&tea.ModAlt != 0 && msg.Code < utf8.RuneSelf && unicode.IsPrint(msg.Code) {
 				esc := tea.KeyPressMsg{Code: tea.KeyEscape}
 				mod := msg.Mod &^ tea.ModAlt
 				text := msg.Text
@@ -127,7 +127,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 					// would read as the plain letter and lose the ctrl binding
 					text = ""
 				} else if text == "" {
-					text = string(rune(msg.Code))
+					text = string(msg.Code)
 					if mod&tea.ModShift != 0 {
 						text = strings.ToUpper(text)
 					}

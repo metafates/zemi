@@ -65,8 +65,10 @@ func (h *Host) clearCrashedTurn(r any) {
 	ag.mu.Unlock()
 	// the tail must terminate: a panic left unlogged reads as a turn the
 	// window closed on, with the reply the user read gone
-	row := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError,
-		Text: "the turn died with an internal error", Status: CallCancelled}
+	row := ChatMessage{
+		Role: fantasy.MessageRoleAssistant, Kind: RowError,
+		Text: "the turn died with an internal error", Status: CallCancelled,
+	}
 	if h.chat != nil {
 		if err := h.chat.Error(row.Text, true); err != nil {
 			h.logAppendFailed(err)

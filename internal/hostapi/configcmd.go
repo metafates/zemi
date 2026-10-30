@@ -201,7 +201,7 @@ func (h *Host) SetConfig(path config.Key, val any) error {
 	if role, ok := config.ModelRole(path); ok {
 		return h.SetTargetModel(role, cmp.Or(s, defaultRole))
 	}
-	//nolint:exhaustive // a model target's key is no builtin constant
+	// a model target's key is no builtin constant, so exhaustive has nothing to check
 	switch path {
 	case config.KeyUITheme:
 		if err := h.checkTheme(s); err != nil {
@@ -306,7 +306,7 @@ func configPicker(path config.Key) string {
 // settingGhost is what an empty input means for the setting, shown dim in
 // the prompt: a bare enter sets exactly that.
 func settingGhost(s config.Setting) string {
-	//nolint:exhaustive // a bool edits on a switch, a list has no prompt
+	// a bool edits on a switch, a list has no prompt, so exhaustive has nothing to check
 	switch s.Kind {
 	case config.KindDuration:
 		if d, _ := s.Default.(string); d != "" {
@@ -325,7 +325,7 @@ func settingGhost(s config.Setting) string {
 
 // configChoices is what /config edit offers for path; "" is the default.
 func (h *Host) configChoices(path config.Key) []string {
-	//nolint:exhaustive // a model target's key is no builtin constant
+	// a model target's key is no builtin constant, so exhaustive has nothing to check
 	switch path {
 	case config.KeyUITheme:
 		var names []string

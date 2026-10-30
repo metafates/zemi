@@ -150,7 +150,7 @@ func runShell(ctx context.Context, p *Pipeline, in shellArgs) (fantasy.ToolRespo
 	case err = <-wait:
 	case <-ctx.Done():
 		proc.Kill(c)
-		<-wait
+		_ = <-wait //nolint:staticcheck // the kill's exit error is the kill's, not ours
 		err = ctx.Err()
 	case <-time.After(timeout):
 		timedOut = true
@@ -172,7 +172,7 @@ func runShell(ctx context.Context, p *Pipeline, in shellArgs) (fantasy.ToolRespo
 			return changed(fantasy.NewTextResponse(b.String()))
 		}
 		proc.Kill(c)
-		<-wait
+		_ = <-wait //nolint:staticcheck // the kill's exit error is the kill's, not ours
 		b.WriteString("timed out after " + timeout.String() + " and was stopped. Servers, watch modes and other commands that do not exit belong in job_start.")
 		return changed(fantasy.ToolResponse{Type: "text", Content: b.String(), IsError: true})
 	}

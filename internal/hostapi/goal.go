@@ -222,8 +222,10 @@ func (h *Host) openGoal() error {
 	g, ok := h.Goal()
 	if !ok {
 		// the answer lands where it can be re-read: a toast is gone in seconds
-		ui.OpenOverlay(Overlay{ID: "goal", Title: "Goal", Origin: lua.OriginBuiltin,
-			Empty: "No goal; /goal <condition> sets one."})
+		ui.OpenOverlay(Overlay{
+			ID: "goal", Title: "Goal", Origin: lua.OriginBuiltin,
+			Empty: "No goal; /goal <condition> sets one.",
+		})
 		return nil
 	}
 	running := fmtDuration(time.Since(g.Since))

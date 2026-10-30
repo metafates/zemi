@@ -258,8 +258,10 @@ func (h *Host) openLoop() error {
 	l, ok := h.Loop()
 	if !ok {
 		// the answer lands where it can be re-read: a toast is gone in seconds
-		ui.OpenOverlay(Overlay{ID: "loop", Title: "Loop", Origin: lua.OriginBuiltin,
-			Empty: "No loop; /loop 5m <prompt> or /loop <prompt> starts one."})
+		ui.OpenOverlay(Overlay{
+			ID: "loop", Title: "Loop", Origin: lua.OriginBuiltin,
+			Empty: "No loop; /loop 5m <prompt> or /loop <prompt> starts one.",
+		})
 		return nil
 	}
 	pace := "every " + fmtEvery(l.Every)

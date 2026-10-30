@@ -929,8 +929,8 @@ func turnStart(row ChatMessage) bool {
 func (h *Host) markDeadTail() {
 	tr := h.session.Transcript
 	start := -1
-	for i := len(tr) - 1; i >= 0; i-- {
-		if turnStart(tr[i]) {
+	for i, m := range slices.Backward(tr) {
+		if turnStart(m) {
 			start = i
 			break
 		}
