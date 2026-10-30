@@ -29,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/metafates/zemi/internal/filelock"
 	"github.com/metafates/zemi/internal/keyring"
 )
 
@@ -71,6 +72,11 @@ type Auth struct {
 }
 
 var oauthHTTP = &http.Client{Timeout: 30 * time.Second}
+
+// tokenLockWait bounds one process's wait for the grant's refresh lock: the
+// holder is a refresh call, bounded by tokenHTTP's own timeout, so a wait
+// past it means a wedged holder and the caller refreshes unlocked.
+const tokenLockWait = 35 * time.Second
 
 // tokenHTTP never follows a redirect: a token endpoint answers, and a 307
 // would re-send the grant and the client secret wherever it points.
@@ -133,9 +139,15 @@ func (a *Auth) bearer(ctx context.Context) (string, error) {
 		return t.AccessToken, nil
 	}
 	// another window may have refreshed already, and a server that rotates
-	// refresh tokens refuses the one it used.
-	// NOTE: two processes refreshing at the same moment still race; an flock
-	// on the grant file around the refresh would close that.
+	// refresh tokens refuses the one it used: the refresh runs under a lock
+	// on the grant, so one process refreshes and the rest re-read its grant.
+	// A lock that cannot be taken leaves the old race, and the refusal names
+	// itself.
+	if a.Path != "" {
+		if unlock, err := filelock.Lock(a.Path+".lock", tokenLockWait); err == nil {
+			defer unlock()
+		}
+	}
 	a.loaded = false
 	switch ft := a.load(); {
 	case ft.AccessToken == t.AccessToken:
