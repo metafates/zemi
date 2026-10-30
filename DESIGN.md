@@ -2458,7 +2458,7 @@ view; a reset's wipe drops the row with the chat.
   Lua tool runs (`plugin:<name>`) and the queue ("1 of 3"), in what the
   title leaves. Under the title a facts table,
   dim names beside their values like a detail view's fields: the target (`command`,
-  `file`, `workflow`, else `arg`), `why` zemi asked, and `says`, the
+  `file`, `workflow`, else `arg`), `why` zemi asked, and `about`, the
   model's own description, quoted and last since nothing checked it.
   Then the command, diff or input, then the choices, a vertical list with their
   keys: `Yes` (`y`, or `o`), `No` (`n` or `esc`), and `No, and tell zemi`

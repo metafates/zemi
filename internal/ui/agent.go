@@ -1005,7 +1005,7 @@ func permTitle(req hostapi.PermRequest) string {
 func permFacts(req hostapi.PermRequest, root string, w, h int) (target, why, says [][]hostapi.Segment) {
 	name, val := permTarget(req, root)
 	kw := 0
-	for n, on := range map[string]bool{name: val != nil, "why": req.Reason != "", "says": req.Description != ""} {
+	for n, on := range map[string]bool{name: val != nil, "why": req.Reason != "", "about": req.Description != ""} {
 		if on {
 			kw = max(kw, ansi.StringWidth(n)+2)
 		}
@@ -1021,7 +1021,7 @@ func permFacts(req hostapi.PermRequest, root string, w, h int) (target, why, say
 		why = capRows(field("why", kw, []hostapi.Segment{{Text: sanitize.Line(req.Reason), HL: hostapi.ChromeValue}}, w), 2, w)
 	}
 	if req.Description != "" {
-		says = capRows(field("says", kw, []hostapi.Segment{{Text: `"` + sanitize.Line(req.Description) + `"`, HL: hostapi.ChromeHint}}, w), 2, w)
+		says = capRows(field("about", kw, []hostapi.Segment{{Text: `"` + sanitize.Line(req.Description) + `"`, HL: hostapi.ChromeHint}}, w), 2, w)
 	}
 	return target, why, says
 }

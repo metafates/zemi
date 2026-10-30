@@ -1722,6 +1722,26 @@ func TestPermissionProseTypesUnderTheAsk(t *testing.T) {
 	}
 }
 
+// TestFoldedKeyKeepsItsCase: a folded esc+capital replays both keys with the
+// capital's case, and a plain capital types itself — no esc rides it, no
+// case is lost.
+func TestFoldedKeyKeepsItsCase(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 80, 20)
+	app.Update(tea.KeyPressMsg{Code: 'd', Mod: tea.ModShift, Text: "D"})
+	if got := app.composer.text; got != "D" {
+		t.Fatalf("a plain capital must type itself: %q", got)
+	}
+	app.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModAlt | tea.ModShift, Text: "P"})
+	if got := app.composer.text; got != "DP" {
+		t.Fatalf("a folded esc+capital replays the key's case: %q", got)
+	}
+	app.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModAlt, Text: "p"})
+	if got := app.composer.text; got != "DPp" {
+		t.Fatalf("a folded esc+lower replays it: %q", got)
+	}
+}
+
 // TestNoopKeysBumpNothing: a key or a wheel that moves nothing under the
 // chrome leaves the frame generation alone, so it never re-renders widgets;
 // ones that move something still bump.
