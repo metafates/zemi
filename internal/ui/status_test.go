@@ -88,7 +88,7 @@ func TestProgramStatus(t *testing.T) {
 		answered <- struct{}{}
 	}()
 	app.Update(<-app.testQueue)
-	if got := statusFrame(app); got != report(status.Blocked, status.KindPermission, "Run this command?: run the check") {
+	if got := statusFrame(app); got != report(status.Blocked, status.KindPermission, "Run this command? · run the check") {
 		t.Fatalf("ask: sent %q", got)
 	}
 	app.answerPerm(true, "user:once")
@@ -97,10 +97,21 @@ func TestProgramStatus(t *testing.T) {
 		t.Fatalf("answered: sent %q", got)
 	}
 
-	// a question blocks with its first line
+	// the trust ask names the root the way the window spells it
+	app.trust = &trustPrompt{root: "/proj"}
+	if got := statusFrame(app); got != report(status.Blocked, status.KindPermission, "Trust this project? · /proj") {
+		t.Fatalf("trust: sent %q", got)
+	}
+	app.trust = nil
+
+	// a question blocks with its first line, and a batch says how many wait
 	app.question = &questionPrompt{qs: []tools.Question{{Question: "which database?"}}, answer: make(chan qAnswer, 1)}
 	if got := statusFrame(app); got != report(status.Blocked, status.KindQuestion, "which database?") {
 		t.Fatalf("question: sent %q", got)
+	}
+	app.question = &questionPrompt{qs: []tools.Question{{Question: "which database?"}, {Question: "which driver?"}}, answer: make(chan qAnswer, 1)}
+	if got := statusFrame(app); got != report(status.Blocked, status.KindQuestion, "which database? (1 of 2)") {
+		t.Fatalf("question batch: sent %q", got)
 	}
 	app.finishQuestion(false)
 
@@ -128,5 +139,21 @@ func TestProgramStatus(t *testing.T) {
 	app.Update(turnDoneMsg{stopped: true})
 	if got := statusFrame(app); got != idle {
 		t.Fatalf("interrupted: sent %q", got)
+	}
+}
+
+// TestPlanStatus: the record and the alert name the plan's opening line,
+// its heading marker off, and fall back to the bare label without one.
+func TestPlanStatus(t *testing.T) {
+	for _, c := range []struct{ plan, want string }{
+		{"add retry to the deploy step", "A plan to review · add retry to the deploy step"},
+		{"# Migration plan\nthen move the config", "A plan to review · Migration plan"},
+		{"```go\npackage main", "A plan to review"},
+		{"  \nsecond line first", "A plan to review"},
+		{strings.Repeat("x", 300), "A plan to review · " + strings.Repeat("x", 199) + "…"},
+	} {
+		if got := planStatus(c.plan); got != c.want {
+			t.Errorf("planStatus(%q) = %q, want %q", c.plan, got, c.want)
+		}
 	}
 }

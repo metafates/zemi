@@ -232,18 +232,18 @@ func TestWaitMCP(t *testing.T) {
 // is missing, and the others stand as set.
 func TestNotifyStyle(t *testing.T) {
 	for _, c := range []struct {
-		name, setting, goos, tools, want string
-		missing                          bool
+		name, setting, goos, tools, want, wantWhy string
+		missing                                   bool
 	}{
-		{"osc is the default", "osc", "darwin", "osascript", "osc", false},
-		{"bell", "bell", "darwin", "osascript", "bell", false},
-		{"native with a notifier", "native", "darwin", "osascript", "native", false},
-		{"native without a notifier", "native", "linux", "", "bell", true},
+		{"osc is the default", "osc", "darwin", "osascript", "osc", "", false},
+		{"bell", "bell", "darwin", "osascript", "bell", "set in config", false},
+		{"native with a notifier", "native", "darwin", "osascript", "native", "via osascript", false},
+		{"native without a notifier", "native", "linux", "", "bell", "notify-send not found", true},
 	} {
 		has := func(name string) bool { return name == c.tools }
 		got, why, missing := notifyStyle(c.setting, c.goos, has)
-		if got != c.want || missing != c.missing {
-			t.Errorf("%s: %s missing=%v (%s), want %s missing=%v", c.name, got, missing, why, c.want, c.missing)
+		if got != c.want || missing != c.missing || why != c.wantWhy {
+			t.Errorf("%s: %s missing=%v (%s), want %s missing=%v why %q", c.name, got, missing, why, c.want, c.missing, c.wantWhy)
 		}
 	}
 }

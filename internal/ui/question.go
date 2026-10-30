@@ -70,7 +70,14 @@ func (a *App) AskQuestion(qs []tools.Question) ([]tools.Answer, bool) {
 	ch := make(chan qAnswer, 1)
 	a.await(func() tea.Cmd {
 		a.question = &questionPrompt{qs: clean, states: states, answer: ch, opened: a.now()}
-		return a.notifyIfAway("zemi: a question: " + clean[0].Question)
+		q := "zemi: a question"
+		if len(clean) > 1 {
+			q += fmt.Sprintf(" (1 of %d)", len(clean))
+		}
+		if line := ansi.Truncate(sanitize.Line(clean[0].Question), 200, "…"); line != "" {
+			q += ": " + line
+		}
+		return a.notifyIfAway(q)
 	})
 	ans := <-ch
 	return ans.answers, ans.ok

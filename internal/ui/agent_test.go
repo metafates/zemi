@@ -2949,6 +2949,27 @@ func TestWidgetErrorRecordedOnce(t *testing.T) {
 	run(`local n = #zemi.errors.list(); assert(n == 1, "errors: " .. n)`)
 }
 
+// TestPermAlert: the ask pings with its label lowercased into the "zemi: "
+// label and the target it acts on, the line the status record states.
+func TestPermAlert(t *testing.T) {
+	for _, c := range []struct {
+		req  hostapi.PermRequest
+		want string
+	}{
+		{hostapi.PermRequest{Subject: "tool.shell", Arg: "make check", Description: "run the check"}, "zemi: run this command? · run the check"},
+		{hostapi.PermRequest{Tool: "read", Subject: "fs.read", Arg: "/etc/hosts\nand more"}, "zemi: read this file? · /etc/hosts"},
+		{hostapi.PermRequest{Subject: "tool.workflow", Arg: "review"}, "zemi: run this workflow? · review"},
+		{hostapi.PermRequest{Tool: "mcp_github_create_issue", Subject: "mcp.github", Arg: "create_issue"}, "zemi: use create_issue from github?"},
+		{hostapi.PermRequest{Subject: "tool.shell", Arg: "make", Description: "run the check\n\twith coverage"}, "zemi: run this command? · run the check with coverage"},
+		{hostapi.PermRequest{Subject: "tool.shell", Arg: "make", Description: strings.Repeat("x", 300)}, "zemi: run this command? · " + strings.Repeat("x", 179) + "…"},
+		{hostapi.PermRequest{Subject: "tool.shell", Arg: "  ", Description: "  "}, "zemi: run this command?"},
+	} {
+		if got := permAlert(c.req); got != c.want {
+			t.Errorf("permAlert(%v) = %q, want %q", c.req, got, c.want)
+		}
+	}
+}
+
 // TestPermTitle: the prompt asks in words, from the request's typed fields,
 // and its first fact names what the request acts on.
 func TestPermTitle(t *testing.T) {

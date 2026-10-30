@@ -1215,9 +1215,9 @@ func ToastTitle(level slog.Level, title string) string {
 
 // Notify shows a toast; before the UI attaches, a warning or an error goes
 // to Stderr instead, so an early failure is never swallowed. The title says
-// what happened, in sentence case with no period: "<Kind> <past participle>"
-// with the name in the body, "Could not <verb> <object>" with the cause in
-// the body, "Nothing to <verb> [yet]" with a reason only when it is not obvious.
+// what happened, in sentence case with no period: "<Kind> <past participle>
+// [object]", "Could not <verb> <object>" with the cause in the body,
+// "Nothing to <verb> [yet]" with a reason only when it is not obvious.
 func (h *Host) Notify(level slog.Level, title, body string) {
 	h.recordNotify(level, title, body)
 	if ui := h.hooks(); ui != nil {

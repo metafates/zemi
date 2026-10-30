@@ -56,6 +56,15 @@ func (h *Host) Loop() (Loop, bool) {
 	return *ag.loop, true
 }
 
+// LoopEndedWhy is the why of the stop that ended the last loop, "" while a
+// loop runs: the UI's end-of-loop alert names it.
+func (h *Host) LoopEndedWhy() string {
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	return ag.loopEnded
+}
+
 // SetLoop runs /loop: alone it shows the loop, "stop" stops it, and
 // "[interval] <prompt>" starts one, replacing any, with a first run now.
 func (h *Host) SetLoop(args string) error {
@@ -99,6 +108,7 @@ func (h *Host) SetLoop(args string) error {
 	if ag.loopStop != nil {
 		ag.loopStop()
 	}
+	ag.loopEnded = ""
 	ag.loop, ag.loopStop = l, nil
 	ag.mu.Unlock()
 	if old != nil {
@@ -166,7 +176,10 @@ func (h *Host) fireLoop(l *Loop) {
 		err = h.sendClaimed(scope, note, nil)
 	}
 	if err != nil {
-		_ = h.stopLoop(l, "Loop stopped: "+h.friendlyError(err))
+		// the stop names the cause only: the advice is written for a turn
+		// the user watches, and the loop's remedy is re-arming
+		cause, _ := h.explain(err)
+		_ = h.stopLoop(l, fmt.Sprintf("Loop stopped: %s (%d %s)", cause, l.Runs, Plural(l.Runs, "run", "runs")))
 	}
 }
 
@@ -201,7 +214,8 @@ func (h *Host) loopTurnEnded(runner *agent.Runner, text string, err error, cance
 	runs := fmt.Sprintf("%d %s", l.Runs, Plural(l.Runs, "run", "runs"))
 	switch {
 	case err != nil:
-		_ = h.stopLoop(l, "Loop stopped: "+h.friendlyError(err)+" ("+runs+")")
+		cause, _ := h.explain(err)
+		_ = h.stopLoop(l, "Loop stopped: "+cause+" ("+runs+")")
 	case l.Every == 0:
 		d, done, ok := parseNext(plainTextEnd(runner))
 		if done {
@@ -244,6 +258,7 @@ func (h *Host) stopLoop(l *Loop, why string) error {
 	if ag.loopStop != nil {
 		ag.loopStop()
 	}
+	ag.loopEnded = why
 	ag.loop, ag.loopStop = nil, nil
 	ag.mu.Unlock()
 	h.notice(why, "")

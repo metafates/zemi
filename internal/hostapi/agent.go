@@ -217,11 +217,14 @@ type agentHost struct {
 	checkingGoal bool
 	// loop is the session's loop (/loop), nil for none; loopStop stops its
 	// armed timer, loopRun is the loop whose run was sent last, and byLoop
-	// says the running or last chain of turns began with a loop run
-	loop     *Loop
-	loopStop func() bool
-	loopRun  *Loop
-	byLoop   bool
+	// says the running or last chain of turns began with a loop run.
+	// loopEnded holds the why of the stop that cleared loop, for the UI's
+	// end-of-loop alert.
+	loop      *Loop
+	loopStop  func() bool
+	loopRun   *Loop
+	loopEnded string
+	byLoop    bool
 
 	env string // pinned environment section (environmentPrompt)
 }

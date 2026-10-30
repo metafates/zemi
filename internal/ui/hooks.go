@@ -42,7 +42,7 @@ func (a *App) AskTrust(root, cwd, state string) string {
 	}
 	a.await(func() tea.Cmd {
 		a.trust = &trustPrompt{root: root, cwd: cwd, state: state, answer: ch, opened: a.now(), sel: len(trustAnswers) - 1}
-		return a.notifyIfAway("zemi: trust this " + what + "?")
+		return a.notifyIfAway("zemi: trust this " + what + "? · " + ansi.Truncate(perm.TildePath(root), 200, "…"))
 	})
 	return <-ch
 }
@@ -165,7 +165,7 @@ func (a *App) Notify(level slog.Level, title, body string) {
 func (a *App) Alert(level slog.Level, title, body string) {
 	a.Notify(level, title, body)
 	a.await(func() tea.Cmd {
-		text := "zemi: " + hostapi.ToastTitle(level, title)
+		text := "zemi: " + lowerFirst(hostapi.ToastTitle(level, title))
 		if line := ansi.Truncate(sanitize.Line(body), 200, "…"); line != "" {
 			text += ": " + line
 		}

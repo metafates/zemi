@@ -206,9 +206,10 @@ func notifyStyle(setting, goos string, has func(string) bool) (style, why string
 		return config.NotifyBell, cmp.Or(tool, "a notifier") + " not found", true
 	case config.NotifyBell:
 		return config.NotifyBell, "set in config", false
-	default:
-		return config.NotifyOSC, "set in config", false
 	}
+	// osc is the default: an untouched install made no config decision, so
+	// the health row names no why
+	return config.NotifyOSC, "", false
 }
 
 // NotifyStyle is notifyStyle for this process.
@@ -341,9 +342,13 @@ func (h *Host) goHealthRows() []HealthRow {
 
 	switch style, why, missing := h.NotifyStyle(); {
 	case missing:
-		add(HealthWarn, "notify", "native wanted, bell used: "+why)
+		add(HealthWarn, "notify", "native wanted, bell used: "+why+"; only while zemi is unfocused")
 	default:
-		add(HealthOK, "notify", style+", "+why+"; only while zemi is unfocused")
+		detail := style
+		if why != "" {
+			detail += ", " + why
+		}
+		add(HealthOK, "notify", detail+"; only while zemi is unfocused")
 	}
 
 	// the builder row: what the summary tree has and owes, so a dead builder

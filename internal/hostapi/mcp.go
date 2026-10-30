@@ -1345,7 +1345,7 @@ func (h *Host) signedInMCP(name string) {
 	if s, err := h.mcpServerNamed(name); err == nil && !s.enabledFlag() {
 		return
 	}
-	h.Alert(slog.LevelInfo, "Signed in", name)
+	h.Alert(slog.LevelInfo, "Signed in to "+name, "")
 	if err := h.restartMCP(name); err != nil {
 		h.Alert(slog.LevelError, "Could not restart "+name, err.Error())
 	}

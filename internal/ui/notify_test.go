@@ -13,6 +13,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/tools"
 )
 
 // notifyApp is a bare zemi for the tests that drive ticks and turn ends
@@ -45,18 +46,31 @@ func TestNotifyWhenAway(t *testing.T) {
 	for _, c := range []struct {
 		name, style string
 		focus       tea.Msg
-		chain       bool   // the agent still reads active on the first frame
-		loop        bool   // a loop run began the chain
-		looped      bool   // a loop was on, and is no more
-		want        string // the raw bytes sent, "" for no notification
+		chain       bool                // the agent still reads active on the first frame
+		loop        bool                // a loop run began the chain
+		looped      bool                // a loop was on, and is no more
+		done        turnDoneMsg         // how the turn ended
+		seed        func(*hostapi.Host) // chat rows the turn left behind
+		want        string              // the raw bytes sent, "" for no notification
 	}{
-		{"focused", "osc", nil, false, false, false, ""},
-		{"away", "osc", tea.BlurMsg{}, false, false, false, "\x1b]9;zemi finished\x07"},
-		{"away as a chain goes on", "osc", nil, true, false, false, "\x1b]9;zemi finished\x07"},
-		{"away after a loop's run", "osc", nil, false, true, false, ""},
-		{"away as the loop ends", "osc", nil, false, true, true, "\x1b]9;zemi: the loop ended\x07"},
-		{"away with a bell", "bell", nil, false, false, false, "\a"},
-		{"back", "osc", tea.FocusMsg{}, false, false, false, ""},
+		{"focused", "osc", nil, false, false, false, turnDoneMsg{}, nil, ""},
+		{"away", "osc", tea.BlurMsg{}, false, false, false, turnDoneMsg{}, nil, "\x1b]9;zemi finished\x07"},
+		{"away as a chain goes on", "osc", nil, true, false, false, turnDoneMsg{}, nil, "\x1b]9;zemi finished\x07"},
+		{"away after a loop's run", "osc", nil, false, true, false, turnDoneMsg{}, nil, ""},
+		{"away as the loop ends", "osc", nil, false, true, true, turnDoneMsg{}, nil, "\x1b]9;zemi: the loop ended\x07"},
+		{"away with a failing turn", "osc", tea.BlurMsg{}, false, false, false, turnDoneMsg{err: "provider refused\n\tand again"}, nil, "\x1b]9;zemi failed: provider refused and again\x07"},
+		{"away with a long failure", "osc", tea.BlurMsg{}, false, false, false, turnDoneMsg{err: strings.Repeat("x", 300)}, nil, "\x1b]9;zemi failed: " + strings.Repeat("x", 79) + "…\x07"},
+		{"away with a reply", "osc", tea.BlurMsg{}, false, false, false, turnDoneMsg{}, func(h *hostapi.Host) {
+			h.AppendChat(hostapi.ChatMessage{Role: "assistant", Text: "all 9 tests pass"})
+		}, "\x1b]9;zemi finished: all 9 tests pass\x07"},
+		{"away with a long reply", "osc", tea.BlurMsg{}, false, false, false, turnDoneMsg{}, func(h *hostapi.Host) {
+			h.AppendChat(hostapi.ChatMessage{Role: "assistant", Text: strings.Repeat("x", 300)})
+		}, "\x1b]9;zemi finished: " + strings.Repeat("x", 199) + "…\x07"},
+		{"away with a headed reply", "osc", tea.BlurMsg{}, false, false, false, turnDoneMsg{}, func(h *hostapi.Host) {
+			h.AppendChat(hostapi.ChatMessage{Role: "assistant", Text: "# Deploy notes\nall green"})
+		}, "\x1b]9;zemi finished: Deploy notes all green\x07"},
+		{"away with a bell", "bell", nil, false, false, false, turnDoneMsg{}, nil, "\a"},
+		{"back", "osc", tea.FocusMsg{}, false, false, false, turnDoneMsg{}, nil, ""},
 	} {
 		if _, err := host.Settings.SetQuiet("ui.notify", c.style); err != nil {
 			t.Fatal(err)
@@ -64,7 +78,7 @@ func TestNotifyWhenAway(t *testing.T) {
 		if c.focus != nil {
 			app.Update(c.focus)
 		}
-		app.Update(turnDoneMsg{})
+		app.Update(c.done)
 		if c.chain {
 			host.SeedStream(hostapi.StreamSnapshot{Active: true})
 			if got := frame(); got != "" {
@@ -73,6 +87,9 @@ func TestNotifyWhenAway(t *testing.T) {
 		}
 		host.SeedStream(hostapi.StreamSnapshot{ByLoop: c.loop})
 		app.looping = c.looped
+		if c.seed != nil {
+			c.seed(host)
+		}
 		if got := frame(); got != c.want {
 			t.Errorf("%s: sent %q, want %q", c.name, got, c.want)
 		}
@@ -87,11 +104,15 @@ func TestAlertWhenAway(t *testing.T) {
 	for _, c := range []struct {
 		name, style string
 		focus       tea.Msg
+		ping        func(*App)
 		want        string // the raw bytes sent, "" for no notification
 	}{
-		{"away", "osc", tea.BlurMsg{}, "\x1b]9;zemi: Signed in: github\x07"},
-		{"focused", "osc", nil, ""},
-		{"away with a bell", "bell", tea.BlurMsg{}, "\a"},
+		{"away", "osc", tea.BlurMsg{}, func(a *App) { a.Alert(slog.LevelInfo, "Signed in to github", "") }, "\x1b]9;zemi: signed in to github\x07"},
+		{"away, an error with a body", "osc", tea.BlurMsg{}, func(a *App) {
+			a.Alert(slog.LevelError, "Turn crashed", "zemi kept running; the cause is in /errors")
+		}, "\x1b]9;zemi: turn crashed: zemi kept running; the cause is in /errors\x07"},
+		{"focused", "osc", nil, func(a *App) { a.Alert(slog.LevelInfo, "Signed in to github", "") }, ""},
+		{"away with a bell", "bell", tea.BlurMsg{}, func(a *App) { a.Alert(slog.LevelInfo, "Signed in to github", "") }, "\a"},
 	} {
 		app, host := notifyApp(t)
 		if _, err := host.Settings.SetQuiet("ui.notify", c.style); err != nil {
@@ -101,7 +122,7 @@ func TestAlertWhenAway(t *testing.T) {
 			app.Update(c.focus)
 		}
 		app.testQueue = make(chan tea.Msg, 2) // the toast and the alert post apart
-		app.Alert(slog.LevelInfo, "Signed in", "github")
+		c.ping(app)
 		var sent string
 		for range 2 {
 			if _, cmd := app.Update(<-app.testQueue); cmd != nil {
@@ -118,6 +139,38 @@ func TestAlertWhenAway(t *testing.T) {
 		if len(app.toasts) == 0 {
 			t.Errorf("%s: no toast", c.name)
 		}
+	}
+}
+
+// TestAskQuestionNotifiesWhenAway: the question ask alerts an unfocused
+// terminal with its batch count and its first line.
+func TestAskQuestionNotifiesWhenAway(t *testing.T) {
+	t.Parallel()
+	app, host := notifyApp(t)
+	if _, err := host.Settings.SetQuiet("ui.notify", "osc"); err != nil {
+		t.Fatal(err)
+	}
+	app.Update(tea.BlurMsg{})
+	app.testQueue = make(chan tea.Msg, 1)
+	done := make(chan bool, 1)
+	go func() {
+		_, ok := app.AskQuestion([]tools.Question{{Question: "which database?"}, {Question: "which driver?"}})
+		done <- ok
+	}()
+	var sent string
+	if _, cmd := app.Update(<-app.testQueue); cmd != nil {
+		for _, m := range runCmd(cmd) {
+			if raw, ok := m.(tea.RawMsg); ok {
+				sent = fmt.Sprint(raw.Msg)
+			}
+		}
+	}
+	if sent != "\x1b]9;zemi: a question (1 of 2): which database?\x07" {
+		t.Fatalf("sent %q", sent)
+	}
+	app.finishQuestion(false)
+	if got := <-done; got {
+		t.Fatal("a dismissed batch answered true")
 	}
 }
 
@@ -141,7 +194,7 @@ func TestAskTrustNotifiesWhenAway(t *testing.T) {
 			}
 		}
 	}
-	if sent != "\x1b]9;zemi: trust this project?\x07" {
+	if sent != "\x1b]9;zemi: trust this project? · /proj\x07" {
 		t.Fatalf("sent %q", sent)
 	}
 	app.answerTrust("later")

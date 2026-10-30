@@ -601,7 +601,9 @@ func (a *App) notifyAs(style, text string) tea.Cmd {
 	case config.NotifyBell:
 		return tea.Raw("\a")
 	case config.NotifyNative:
-		args := hostapi.NotifyArgv(text)
+		// the native channels title the banner "zemi" themselves; the
+		// prefix is for the bare OSC 9 line
+		args := hostapi.NotifyArgv(strings.TrimPrefix(text, "zemi: "))
 		return func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
@@ -723,10 +725,16 @@ func (a *App) onFrame() tea.Cmd {
 		ended = a.endTurn(*a.turnDone)
 		a.turnDone = nil
 	}
-	// a loop's runs end quietly (endTurn); the loop's end is worth an alert
+	// a loop's runs end quietly (endTurn); the loop's end is worth an alert,
+	// naming the why the host stopped it with
 	if _, on := a.host.Loop(); on != a.looping {
 		if a.looping {
-			ended = tea.Batch(ended, a.notifyIfAway("zemi: the loop ended"))
+			if why := a.host.LoopEndedWhy(); why != "" {
+				text := ansi.Truncate(sanitize.Line(why), 200, "…")
+				ended = tea.Batch(ended, a.notifyIfAway("zemi: "+lowerFirst(text)))
+			} else {
+				ended = tea.Batch(ended, a.notifyIfAway("zemi: the loop ended"))
+			}
 		}
 		a.looping = on
 	}
@@ -770,7 +778,7 @@ func (a *App) endTurn(msg turnDoneMsg) tea.Cmd {
 		a.turnEnded, a.recapAt = hostapi.TurnError, time.Time{}
 		a.turnErr = ansi.Truncate(sanitize.Line(msg.err), 200, "…")
 	} else {
-		a.turnReply = ansi.Truncate(sanitize.Line(a.host.LastReply()), 200, "…")
+		a.turnReply = ansi.Truncate(sanitize.Line(strings.TrimLeft(a.host.LastReply(), "# \t")), 200, "…")
 	}
 	a.unseen = ""
 	if !a.focused {
@@ -781,7 +789,13 @@ func (a *App) endTurn(msg turnDoneMsg) tea.Cmd {
 	case msg.stopped:
 		text = "zemi stopped"
 	case msg.err != "":
-		text = "zemi failed: " + ansi.Truncate(msg.err, 80, "…")
+		if line := ansi.Truncate(sanitize.Line(msg.err), 80, "…"); line != "" {
+			text = "zemi failed: " + line
+		} else {
+			text = "zemi failed"
+		}
+	case a.turnReply != "":
+		text = "zemi finished: " + a.turnReply
 	}
 	if byLoop {
 		return nil

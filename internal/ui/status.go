@@ -8,11 +8,14 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
+	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/status"
 )
 
@@ -45,13 +48,17 @@ func (a *App) statusReport() status.Report {
 		if hostapi.TrustUnsaved(a.trust.root) {
 			what = "directory"
 		}
-		r.State, r.Kind, r.Msg = status.Blocked, status.KindPermission, "Trust this "+what+"?"
+		r.State, r.Kind, r.Msg = status.Blocked, status.KindPermission, "Trust this "+what+"? · "+perm.TildePath(a.trust.root)
 	case a.permAsk != nil:
 		r.State, r.Kind, r.Msg = status.Blocked, status.KindPermission, askStatus(a.permAsk.req)
 	case a.planAsk != nil:
-		r.State, r.Kind, r.Msg = status.Blocked, status.KindPermission, "a plan to review"
+		r.State, r.Kind, r.Msg = status.Blocked, status.KindPermission, planStatus(a.planAsk.plan)
 	case a.question != nil:
-		r.State, r.Kind, r.Msg = status.Blocked, status.KindQuestion, a.question.qs[0].Question
+		msg := ansi.Truncate(a.question.qs[0].Question, 200, "…")
+		if n := len(a.question.qs); n > 1 {
+			msg = fmt.Sprintf("%s (%d of %d)", msg, 1, n)
+		}
+		r.State, r.Kind, r.Msg = status.Blocked, status.KindQuestion, msg
 	case a.turnActive:
 		r.State, r.Msg = status.Working, a.host.AgentStream().Task
 	case a.turnEnded == hostapi.TurnOK:
@@ -74,11 +81,24 @@ func (a *App) statusReport() status.Report {
 // the command or file it is about.
 func askStatus(req hostapi.PermRequest) string {
 	title := permTitle(req)
-	if req.Description != "" {
-		return title + ": " + req.Description
+	if d := strings.TrimSpace(req.Description); d != "" {
+		return title + " · " + d
 	}
-	if arg, _, _ := strings.Cut(req.Arg, "\n"); arg != "" {
-		return title + ": " + arg
+	// an MCP ask's arg is the tool name the title already names
+	if arg, _, _ := strings.Cut(req.Arg, "\n"); strings.TrimSpace(arg) != "" && !strings.HasPrefix(req.Subject, "mcp.") {
+		return title + " · " + strings.TrimSpace(arg)
 	}
 	return title
+}
+
+// planStatus is the one line a plan ask reports: the label, then the plan's
+// opening line, its heading marker off and a leading code fence naming
+// nothing.
+func planStatus(plan string) string {
+	head, _, _ := strings.Cut(plan, "\n")
+	head = strings.TrimSpace(strings.TrimLeft(head, "#"))
+	if head == "" || strings.HasPrefix(head, "```") {
+		return "A plan to review"
+	}
+	return "A plan to review · " + ansi.Truncate(head, 200, "…")
 }

@@ -34,6 +34,7 @@ func TestLoop(t *testing.T) {
 		reply   string // every loop run's reply; "fail" fails it, "hang" waits for an interrupt
 		steps   []step
 		notices []string
+		ended   string // what LoopEndedWhy reads once the loop stopped
 	}{
 		{name: "fixed runs now and on its interval", args: "5m check the deploy", reply: "rolling", steps: []step{
 			{runs: 1, next: 5 * time.Minute}, {after: 5 * time.Minute, runs: 2, next: 10 * time.Minute}, {after: 5 * time.Minute, runs: 3, next: 15 * time.Minute},
@@ -46,19 +47,27 @@ func TestLoop(t *testing.T) {
 		{
 			name: "next: done ends it", args: "check it", reply: "all good\nnext: done", steps: []step{{runs: 1}},
 			notices: []string{"loop · Run 1 of: check it", "Loop done after 1 run"},
+			ended:   "Loop done after 1 run",
 		},
 		{
 			name: "a failed run stops it", args: "5m check it", reply: "fail", steps: []step{{runs: 1}},
 			notices: []string{"loop · Run 1 of: check it", "Loop stopped: boom (1 run)"},
+			ended:   "Loop stopped: boom (1 run)",
 		},
-		{name: "an interrupted run stops it", args: "5m check it", reply: "hang", steps: []step{{runs: 1, next: 5 * time.Minute, held: true}, {do: func(h *Host) {
-			h.AgentCancel()
-		}, runs: 1}}, notices: []string{"loop · Run 1 of: check it", "Loop stopped: interrupted (1 run)"}},
+		{
+			name: "an interrupted run stops it", args: "5m check it", reply: "hang", steps: []step{{runs: 1, next: 5 * time.Minute, held: true}, {do: func(h *Host) {
+				h.AgentCancel()
+			}, runs: 1}}, notices: []string{"loop · Run 1 of: check it", "Loop stopped: interrupted (1 run)"},
+			ended: "Loop stopped: interrupted (1 run)",
+		},
 		{name: "an interrupt stops the loop that replaced the run's", args: "5m check a", reply: "hang", steps: []step{
 			{runs: 1, next: 5 * time.Minute, held: true},
 			{do: func(h *Host) {
 				if err := h.SetLoop("5m check b"); err != nil {
 					panic(err)
+				}
+				if got := h.LoopEndedWhy(); got != "" {
+					panic("the replaced loop kept the old why: " + got)
 				}
 				waitFor(t, func() error {
 					if h.RT.Clock().(*fakeClock).armed() == 0 {
@@ -189,6 +198,14 @@ func TestLoop(t *testing.T) {
 					}
 					if !slices.Equal(notices, c.notices) {
 						return fmt.Errorf("notices = %q, want %q", notices, c.notices)
+					}
+					return nil
+				})
+			}
+			if c.ended != "" {
+				waitFor(t, func() error {
+					if got := h.LoopEndedWhy(); got != c.ended {
+						return fmt.Errorf("loop ended why = %q, want %q", got, c.ended)
 					}
 					return nil
 				})

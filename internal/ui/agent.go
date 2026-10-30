@@ -129,7 +129,7 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 			p.size = a.permAsk.size
 		}
 		a.permAsk = p
-		return a.notifyIfAway("zemi: " + permTitle(req))
+		return a.notifyIfAway(permAlert(req))
 	})
 	ans := <-ch
 	return ans.ok, ans.by
@@ -995,6 +995,22 @@ func permTitle(req hostapi.PermRequest) string {
 		return "Use the " + req.Tool + " tool?"
 	}
 	return "Allow " + req.Subject + "?"
+}
+
+// permAlert is the one line a permission ask pings with: the ask's label and
+// the target it acts on, as the status record states it.
+func permAlert(req hostapi.PermRequest) string {
+	return "zemi: " + lowerFirst(ansi.Truncate(sanitize.Line(askStatus(req)), 200, "…"))
+}
+
+// lowerFirst reads s inside the "zemi: " label, where the asks read
+// lowercase; permTitle stays capitalized as the overlay box title.
+func lowerFirst(s string) string {
+	r, size := utf8.DecodeRuneInString(s)
+	if size == 0 {
+		return s
+	}
+	return string(unicode.ToLower(r)) + s[size:]
 }
 
 // permFacts is the facts table under the prompt's title, three blocks
