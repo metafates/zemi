@@ -1939,6 +1939,17 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { { keys = { { key = 
 		t.Fatalf("a danger row's second enter: ran %q", ran)
 	}
 
+	// the burst after a danger fire is the confirm's echo: a repeat of the
+	// firing key eats once, any other key types
+	ran = ""
+	app.openOverlay(hostapi.Overlay{ID: "d", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "current"}, {Text: "wipe", Danger: true, Run: "del w"}}})
+	pressKeys(app, "j", "enter", "enter", "enter", "x")
+	for app.Pump() {
+	}
+	if ran != "del w" || app.composer.text != "x" {
+		t.Fatalf("danger fire then burst: ran %q, composer %q", ran, app.composer.text)
+	}
+
 	// l arms a danger row like enter's first press does: the run stays
 	// enter's to confirm, and l again leaves the arm alone
 	ran = ""

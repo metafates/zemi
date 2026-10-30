@@ -64,6 +64,16 @@ func (a *App) KeyHelp() (keys, lists [][2]string) { return goKeys, listKeys }
 func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
 	a.mouse = mouseSel{}
+	// a danger key's fire closed onto a fresh surface: one burst key is the
+	// confirm's echo, not input
+	if !a.burstSwallow.IsZero() {
+		echo := a.now().Sub(a.burstSwallow) < permGrace && key == a.burstKey
+		a.burstSwallow, a.burstKey = time.Time{}, ""
+		if echo {
+			a.bump()
+			return nil
+		}
+	}
 	a.dropAnsweredPerm() // a lost Refresh must not leave an inert box holding the keys
 	top := a.topChrome()
 	// an armed key acts only when pressed again right away on the bare

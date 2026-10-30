@@ -165,32 +165,34 @@ type App struct {
 	workOnce sync.Once
 	editing  string // the editor handoff in progress, shown in the working row
 
-	prefixes   map[string]string  // styled segment prefixes, rebuilt each frame
-	fadeKeys   map[float64]string // a fade's key text, rebuilt each frame
-	caches     map[string]*widgetCache
-	pending    map[string]renderKey // widget id -> the render in flight
-	renderSeq  int64                // counts render dispatches, so the latest one wins
-	frameGen   int64
-	spun       bool // the last frame drew a spinner, so the tick keeps stepping it
-	timeStr    string
-	turnActive bool             // what onFrame last saw of the agent
-	turnDone   *turnDoneMsg     // the last turn's end, waiting for a frame that reads the agent idle
-	turnEnd    time.Time        // when the agent went idle after a turn, so the mascot can bow
-	turnEnded  hostapi.TurnEnd  // how it ended
-	looping    bool             // what onFrame last saw of the session's /loop
-	unseen     hostapi.TurnEnd  // how the last turn ended while the window was away, "" once seen
-	lastState  hostapi.UIState  // what the widgets last rendered with, the tick aside
-	regions    *set.Set[string] // the regions the last solve drew (ctx.regions)
-	now        func() time.Time // animation clock; tests pin it
-	cancelling bool             // interrupt sent, turn not finished yet
-	progress   bool             // the view reports a running turn (OSC 9;4)
-	progressAt time.Time        // when beat last flipped (progressInterval)
-	beat       int              // the report's value, flipped so the renderer resends it
-	focused    bool             // terminal focus (true until the terminal reports a blur)
-	keySeq     []string         // keys of a bound sequence typed so far
-	keySeqAt   time.Time
-	armed      armed                // a key whose second press acts (ctrl+c quit, esc interrupt)
-	colors     colorprofile.Profile // what the terminal can show: segStyle quantizes cells to it, never OSC 11
+	prefixes     map[string]string  // styled segment prefixes, rebuilt each frame
+	fadeKeys     map[float64]string // a fade's key text, rebuilt each frame
+	caches       map[string]*widgetCache
+	pending      map[string]renderKey // widget id -> the render in flight
+	renderSeq    int64                // counts render dispatches, so the latest one wins
+	frameGen     int64
+	spun         bool // the last frame drew a spinner, so the tick keeps stepping it
+	timeStr      string
+	turnActive   bool             // what onFrame last saw of the agent
+	turnDone     *turnDoneMsg     // the last turn's end, waiting for a frame that reads the agent idle
+	turnEnd      time.Time        // when the agent went idle after a turn, so the mascot can bow
+	turnEnded    hostapi.TurnEnd  // how it ended
+	looping      bool             // what onFrame last saw of the session's /loop
+	unseen       hostapi.TurnEnd  // how the last turn ended while the window was away, "" once seen
+	lastState    hostapi.UIState  // what the widgets last rendered with, the tick aside
+	regions      *set.Set[string] // the regions the last solve drew (ctx.regions)
+	now          func() time.Time // animation clock; tests pin it
+	cancelling   bool             // interrupt sent, turn not finished yet
+	progress     bool             // the view reports a running turn (OSC 9;4)
+	progressAt   time.Time        // when beat last flipped (progressInterval)
+	beat         int              // the report's value, flipped so the renderer resends it
+	focused      bool             // terminal focus (true until the terminal reports a blur)
+	keySeq       []string         // keys of a bound sequence typed so far
+	keySeqAt     time.Time
+	armed        armed                // a key whose second press acts (ctrl+c quit, esc interrupt)
+	burstSwallow time.Time            // a danger key's fire: one burst key eats, the echo of the confirm
+	burstKey     string               // the key whose echo the swallow waits for
+	colors       colorprofile.Profile // what the terminal can show: segStyle quantizes cells to it, never OSC 11
 
 	// an idle recap: when it is due (zero for none), and the stop of one in
 	// flight

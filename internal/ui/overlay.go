@@ -680,7 +680,12 @@ func (a *App) pressRowKey(st *overlayState, k hostapi.ItemKey) {
 		return
 	}
 	// a view's keys act on the row from its list, so they close the list the
-	// same way the key does from it; the view's id is the list's plus #detail
+	// same way the key does from it; the view's id is the list's plus #detail.
+	// A danger fire closed onto the surface under the box: the confirm's echo
+	// must not type there
+	if k.Danger {
+		a.burstSwallow, a.burstKey = a.now(), k.Key
+	}
 	a.closeOverlayByID(strings.TrimSuffix(o.ID, detailSuffix))
 }
 
@@ -915,7 +920,13 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			}
 			// the screen the key opens takes over, as the same key on a row
 			// does; the close waits behind it, so a burst's next key lands in
-			// the screen, never in the draft under a closed box
+			// the screen, never in the draft under a closed box. A danger
+			// fire closes onto a fresh surface (a reset's splash), where the
+			// burst's next key would type: one swallow keeps the confirm's
+			// echo out of it
+			if o.Keys[i].Danger {
+				a.burstSwallow = a.now()
+			}
 			a.do(func() { a.closeOverlayByID(o.ID) })
 			return nil
 		}
@@ -993,6 +1004,11 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 				a.background(sel)
 			} else {
 				cmd = a.runOverlayRow(r)
+			}
+			if r.Danger {
+				// the fire closed onto the surface under the box: the
+				// confirm's echo must not type there
+				a.burstSwallow = a.now()
 			}
 			a.closeOverlayByID(o.ID)
 			return cmd
