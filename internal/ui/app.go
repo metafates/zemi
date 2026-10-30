@@ -858,9 +858,13 @@ func (a *App) uiState() hostapi.UIState {
 	return st
 }
 
-// waiting is the prompt holding the turn, "" for none.
+// waiting is the prompt holding the turn, "" for none. The trust overlay is
+// a permission ask: it holds the keys before any turn, and the title mark is
+// what a tmux-side observer reads (the OSC report already carries it).
 func (a *App) waiting() hostapi.Waiting {
 	switch {
+	case a.trust != nil:
+		return hostapi.WaitApproval
 	case a.permAsk != nil:
 		return hostapi.WaitApproval
 	case a.planAsk != nil:

@@ -323,6 +323,7 @@ func TestWindowTitle(t *testing.T) {
 		{"running", running, nil, 0, "zemi"},
 		{"running 200 ms on", running, nil, 200 * time.Millisecond, "zemi"},
 		{"asking", func(app *App) { running(app); app.permAsk = &permAskPrompt{} }, nil, 0, "? zemi"},
+		{"asking trust", func(app *App) { app.trust = &trustPrompt{root: "/proj"} }, nil, 0, "? zemi"},
 		{"done away", nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{}, frameTickMsg{}}, 0, "✓ zemi"},
 		{"failed away", nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{err: "x"}, frameTickMsg{}}, 0, "✗ zemi"},
 		{"seen once focused", nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{}, frameTickMsg{}, tea.FocusMsg{}}, 0, "zemi"},
