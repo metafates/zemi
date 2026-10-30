@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -953,10 +954,54 @@ func (h *Host) markDeadTail() {
 	if len(tr) == 0 {
 		return
 	}
+	if h.siblingWorking() {
+		// a sibling is running this turn: its rows only look dangling because
+		// its reply has not landed here yet
+		return
+	}
 	h.session.Transcript = append(tr, ChatMessage{
 		Role: fantasy.MessageRoleAssistant, Kind: RowError,
 		Text: "the window closed mid-turn", Status: CallCancelled, Seq: NoSeq,
 	})
+	// the turn died without a release: the item it took up goes back to pending
+	h.GoSafe("settle todos", h.settleTodos)
+}
+
+// siblingWorking reports a heartbeat whose window says it runs a turn and
+// whose socket answers: a boot beside a live writer must not mourn its turn.
+func (h *Host) siblingWorking() bool {
+	if h.DB == nil || h.Dirs.StateHome == "" {
+		return false
+	}
+	dir := filepath.Join(h.Dirs.StateHome, "peers", filepath.Base(filepath.Dir(h.DB.Path())))
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) != ".json" {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || time.Since(info.ModTime()) > peersTTL {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		var hb struct {
+			Working bool   `json:"working"`
+			Sock    string `json:"sock"`
+		}
+		if json.Unmarshal(raw, &hb) != nil || !hb.Working || hb.Sock == "" {
+			continue
+		}
+		if peerAlive(hb.Sock) {
+			return true
+		}
+	}
+	return false
 }
 
 // NewHost wires the registries and opens the stores (best effort:
@@ -2136,16 +2181,21 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		"transcript": func(L *glua.LState) glua.LValue { return h.transcriptTable(L, epoch, edit, rev, transcript, cut) },
 		"log_count": func(L *glua.LState) glua.LValue {
 			// log rows the window's head cut off: the oldest stamped row's
-			// seq, which is also their count, the log's seqs dense from 0 -
-			// the same head /messages pages back from. A run's transcript is
-			// no cut of the log.
+			// seq, the log's seqs dense from 0 - the same head /messages
+			// pages back from. Live rows of kinds that pair with nothing (a
+			// report, a thought) draw log rows of their own below the first
+			// stamped one: they are on screen, not earlier. A row whose log
+			// write failed counts as earlier it is not - rare, and the
+			// honest direction to miss.
 			if run != nil {
 				return glua.LNumber(0)
 			}
+			shown := int64(0)
 			for i := range transcript {
 				if transcript[i].Seq != NoSeq {
-					return glua.LNumber(transcript[i].Seq)
+					return glua.LNumber(max(transcript[i].Seq-shown, 0))
 				}
+				shown++
 			}
 			return glua.LNumber(0)
 		},

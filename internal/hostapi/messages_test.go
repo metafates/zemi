@@ -631,10 +631,12 @@ func TestLogRowsPairsParallelCalls(t *testing.T) {
 // TestLogRowsBrowseKeepsUnpairedEchoes: the transcript folds an attachment's
 // echo and a !command's full output into the row they belong to; the
 // browser, where the log's whole truth lives, draws what nothing consumed.
+// The logged block opens with the newline its writer joined it with - the
+// shape that drew blank rows before firstLine skipped it.
 func TestLogRowsBrowseKeepsUnpairedEchoes(t *testing.T) {
 	t.Parallel()
 	rows := []store.LogEntry{
-		{Seq: 0, Kind: store.KindEcho, Text: "<file path=\"task.txt\">\nwords\n</file>", MetaJSON: `{"tool":"attach","ok":true}`},
+		{Seq: 0, Kind: store.KindEcho, Text: "\n<file path=\"task.txt\">\nwords\n</file>", MetaJSON: `{"tool":"attach","ok":true}`},
 		{Seq: 1, Kind: store.KindUser, Text: "read @task.txt"},
 	}
 	tr := logRows(rows)
@@ -642,7 +644,7 @@ func TestLogRowsBrowseKeepsUnpairedEchoes(t *testing.T) {
 		t.Fatalf("the transcript folds the attach echo: %+v", tr)
 	}
 	browse := logRowsFor(rows, true)
-	if len(browse) != 2 || browse[0].Kind != RowNotice || browse[0].Seq != 0 || browse[0].Detail != rows[0].Text || browse[1].Seq != 1 {
+	if len(browse) != 2 || browse[0].Kind != RowNotice || browse[0].Text != `<file path="task.txt">` || browse[0].Detail != rows[0].Text || browse[1].Seq != 1 {
 		t.Fatalf("the browser draws the unpaired echo in place: %+v", browse)
 	}
 }

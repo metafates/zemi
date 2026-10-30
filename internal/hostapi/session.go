@@ -618,7 +618,9 @@ func logRowsFor(rows []store.LogEntry, browse bool) []ChatMessage {
 }
 
 func firstLine(s string) string {
-	line, _, _ := strings.Cut(s, "\n")
+	// a logged block opens with the newline its writer joined it with: the
+	// first line is the first non-empty one, or every notice on it draws blank
+	line, _, _ := strings.Cut(strings.TrimLeft(s, "\n"), "\n")
 	return line
 }
 
