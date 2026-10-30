@@ -504,12 +504,18 @@ func (h *Host) AgentSend(text string) error {
 // A literal marker in the user's words is defused: a paste carries it, and it
 // must not cut the user's own words out of their message.
 func (h *Host) AgentSendUser(text string) error {
+	_, err := h.agentSendUser(text)
+	return err
+}
+
+// agentSendUser is AgentSendUser, reporting whether the message joined a
+// running turn.
+func (h *Host) agentSendUser(text string) (queued bool, err error) {
 	text = agent.Defuse(text)
-	queued, err := h.agentSend(text)
-	if queued {
+	if queued, err = h.agentSend(text); queued {
 		h.UserSpoke()
 	}
-	return err
+	return queued, err
 }
 
 // maxMessageChars caps one sent message's typed text: a paste beyond it
@@ -727,6 +733,8 @@ func (h *Host) claim() *turnScope {
 	h.agents.active = true
 	h.agents.spoke = nil // a new turn: the last one's spoken signal is spent
 	h.turn.Store(t)
+	// the working flag moved: tell the siblings now, not at their next beat
+	h.GoSafe("peer poke", h.peerPoke)
 	return t
 }
 
@@ -791,6 +799,7 @@ func (h *Host) release() {
 	// on its own goroutine: this runs under ag.mu, which no store call may
 	// wait on while it holds the one connection
 	h.GoSafe("settle todos", h.settleTodos)
+	h.GoSafe("peer poke", h.peerPoke)
 }
 
 // settleTodos closes the list the claim leaves behind: in_progress means a

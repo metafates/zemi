@@ -3,8 +3,12 @@ package hostapi
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
+
+	"github.com/metafates/zemi/internal/ipc"
+	"github.com/metafates/zemi/internal/store"
 )
 
 // TestPeersBeat: a beat counts the sibling heartbeats that are still fresh,
@@ -96,4 +100,60 @@ func TestPeersBeatRebuildsTheDir(t *testing.T) {
 	if got := h.peerView(); got.n != 1 || got.working != 1 {
 		t.Fatalf("beat read %d peers, %d working, want 1 and 1", got.n, got.working)
 	}
+}
+
+// TestPeerDelivery: a second zemi delivers a prompt over the window's socket.
+// Idle, the message starts a turn; mid-turn, it joins the steering queue; the
+// reply tells the sender which happened.
+func TestPeerDelivery(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a, _ := newWindow(t, state, proj)
+	a.peersPath = filepath.Join(state, "peers", filepath.Base(filepath.Dir(a.DB.Path())), a.origin+".json")
+	a.listenPeers()
+	a.beat() // the heartbeat advertises the socket
+
+	// idle: the delivered message starts a turn on the stub
+	conn, err := ipc.Dial(a.sockPath, time.Second)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	reply, err := ipc.RoundTrip(conn, &ipc.Request{Text: "delivered idle"}, time.Second)
+	conn.Close()
+	if err != nil {
+		t.Fatalf("round trip: %v", err)
+	}
+	if !reply.OK || reply.Queued {
+		t.Fatalf("idle reply = %+v, want ok and not queued", reply)
+	}
+	waitIdle(t, a)
+	rows, err := a.DB.LogTail(5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(rows, func(e store.LogEntry) bool {
+		return e.Kind == store.KindUser && e.Text == "delivered idle"
+	}) {
+		t.Fatalf("the log holds no delivered row: %+v", rows)
+	}
+
+	// mid-turn: the delivered message joins the steering queue
+	a.agents.mu.Lock()
+	a.claim()
+	a.agents.mu.Unlock()
+	conn, err = ipc.Dial(a.sockPath, time.Second)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	reply, err = ipc.RoundTrip(conn, &ipc.Request{Text: "steer me"}, time.Second)
+	conn.Close()
+	if err != nil {
+		t.Fatalf("round trip: %v", err)
+	}
+	if !reply.OK || !reply.Queued {
+		t.Fatalf("steer reply = %+v, want ok and queued", reply)
+	}
+	if q := a.AgentTakeQueue(); len(q) != 1 || q[0] != "steer me" {
+		t.Fatalf("queue = %q, want the delivered message", q)
+	}
+	a.AgentCancel()
 }

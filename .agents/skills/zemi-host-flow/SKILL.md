@@ -12,7 +12,7 @@ The command line is a cobra tree (`execute`): `zemi` opens the TUI, and
 stores read through `store.OpenRead`, which creates, migrates and
 sweeps nothing, runs `query_only` so even a write through it fails, and takes no lock a running zemi waits on;
 one line each, the absolute root at column 36 for `cut -c36-`), `models` (and `models update`),
-`db` (one read-only query against the project's store, its first argument whole and the rest bound to `?1`, `?2`, ..., `--global` the global one), `plugin` (bare, it lists), `health`, cobra's `completion` and `help` are subcommands, each declaring its
+`db` (one read-only query against the project's store, its first argument whole and the rest bound to `?1`, `?2`, ..., `--global` the global one), `send` (deliver a prompt to a zemi window already running in this project, over its presence socket; exits 1 when none is live), `plugin` (bare, it lists), `health`, cobra's `completion` and `help` are subcommands, each declaring its
 `Args` (cobra checks positionals only on the root). The listing ones (`projects`,
 `plugin`, `health`, `plugin marketplace list`) take `--json` (`jsonFlag`): JSON Lines through `writeJSON`, the one writer
 every listing shares. Their plain lines share one `table` renderer (aligned columns,
@@ -346,7 +346,13 @@ applied one. A store made before goose only gains its version table: the baselin
   not log-shaped: `presence.go` writes `<state>/peers/<store key>/<origin>.json` on a 2s beat
   (working = `AgentActive`) and reads the siblings fresh within 6s into the ctx's `peers` and
   `peers_working` (presence.go is started by the boot, after the config watch; `ClosePeers`
-  follows `p.Run()`, which is not `Host.Close`'s path). A reset leaves one note row, "the chat
+  follows `p.Run()`, which is not `Host.Close`'s path). The heartbeat advertises the window's
+  socket (`internal/ipc`, bound in a private temp dir), and a window whose presence moved -
+  booted, closed, started or ended a turn - pokes every sibling it can dial (`peerPoke`), so
+  their next beat reads the change at once; the beat stays as the crash backstop. `zemi send
+  <text>` (internal/cli/send.go) dials a sibling's socket and delivers a prompt the way the
+  composer would: a command runs, a message starts a turn or joins the steering queue, and
+  the reply frame says which (`servePeer` in presence.go). A reset leaves one note row, "the chat
   was reset", which the transcript draws nothing of, so the splash a fresh chat opens with
   survives the wipe.
 - **Live equals settled.** The live turn holds one stretch in stream order (reasoning, calls,

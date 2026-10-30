@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"maps"
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -581,6 +582,9 @@ type Host struct {
 	origin      string
 	peersPath   string                    // this window's heartbeat file, "" without a store
 	peers       atomic.Pointer[peersView] // the sibling windows the last beat read
+	sockLn      net.Listener              // the delivered-prompt socket, nil when not bound
+	sockDir     string                    // its private temp dir, removed on close
+	sockPath    string                    // the socket's path, advertised in the heartbeat
 	foreignPend []store.LogEntry
 
 	// agentRows caches ctx.agent's tool subtables between renders: a finished

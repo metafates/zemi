@@ -1885,6 +1885,15 @@ window's presence rides heartbeat files under `<state>/peers/<store
 key>/` (one per origin, a two-second beat, fresh for six seconds), so the
 statusline names the windows sharing the chat and which of them run a
 turn - liveness the log cannot tell, whose origins outlive their windows.
+The heartbeat advertises the window's socket (`internal/ipc`: a unix
+socket on every platform zemi builds for, Windows 10 1803+ included,
+bound in a private temp dir, since a state path can outgrow a sun_path),
+and the moves that matter travel it: a second zemi delivers a prompt to a
+peer the way the composer would (`zemi send`), and a window whose
+presence moved - booted, closed, started or ended a turn - pokes every
+sibling it can dial, whose beat then reads the change at once instead of
+at its next tick. The beat and the freshness window stay as the backstop
+for a window that died before it could say so.
 
 Indexes: `messages(session_id)`,
 `tool_calls(message_id, created_at)`, `sessions(parent_id)`,
