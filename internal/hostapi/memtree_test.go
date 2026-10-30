@@ -471,6 +471,50 @@ func TestBuilderWaitsForConfig(t *testing.T) {
 	})
 }
 
+// TestBuilderHealsAnotherWindowsOrphan: a window that died between landing
+// its nodes and dispatching their merges leaves whole pairs built and the
+// parents missing - and a half that adopts adopts without queueing the
+// parent, so no queue of this window ever holds the work. A dry builder
+// re-derives its queues from the store, so the orphans build without a
+// relaunch.
+func TestBuilderHealsAnotherWindowsOrphan(t *testing.T) {
+	t.Parallel()
+	h, cl, m := newTree(t, "ok")
+	if _, err := cl.User(strings.Repeat("a", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if _, err := h.DB.NodeAt(0, 0); err != nil {
+			return errors.New("the first leaf did not build")
+		}
+		return nil
+	})
+	// three rows whose leaf calls hang until the dead window's nodes are
+	// planted, so all three halves land here as adoptions and queue
+	// nothing: both parents stay missing with every queue dry
+	m.mu.Lock()
+	m.gate, m.gateAfter = make(chan struct{}), 1
+	m.mu.Unlock()
+	for _, s := range []string{"b", "c", "d"} {
+		if _, err := cl.User(strings.Repeat(s, 600), ""); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.DB.InsertNode(0, int64(len(s)), strings.Repeat(s, 600)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	close(m.gate)
+	waitFor(t, func() error {
+		if _, err := h.DB.NodeAt(1, 0); err != nil {
+			return errors.New("the first adopted pair's parent never built")
+		}
+		if _, err := h.DB.NodeAt(1, 1); err != nil {
+			return errors.New("the second adopted pair's parent never built")
+		}
+		return nil
+	})
+}
+
 // TestBuilderCloseQuiet: Close returns once the builder's goroutines exited,
 // a call still hanging on the model included, and a wake afterwards neither
 // blocks nor panics.

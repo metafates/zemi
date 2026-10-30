@@ -237,6 +237,7 @@ type memTree struct {
 	callMu     sync.Mutex
 	flight     int             // model calls in flight
 	leafFlight int             // leaf calls in flight: the unbuilt lines a leaf waits behind
+	pending    int             // calls dispatched whose result has not applied yet
 	held       bool            // dispatch paused (a reset quiesces); guarded by callMu
 	burst      chan struct{}   // closed when the burst's first response starts
 	force      chan compactReq // the overflow guard's one batch, acked when it ran
@@ -257,6 +258,7 @@ type memTree struct {
 	cvBytes    int
 	cool       <-chan time.Time // a rate-limit cooldown's timer, nil when none
 	streak     int              // consecutive rate-limited rounds
+	scanned    bool             // the dry-spell rescan already ran for this episode of work
 
 	// health is what /health reads of the queues; the worker rewrites it
 	// each round, so a reader never takes the worker's state.
@@ -438,6 +440,18 @@ func (b *memTree) run() {
 		}
 		b.dispatch()
 		b.batch(false)
+		// queues drift from the store: a window that died between landing
+		// a node and dispatching its merge, a result lost to a crash. A
+		// dry builder re-derives them from the store the way a boot does
+		// - once per dry spell, so an idle chat heals its holes without
+		// a relaunch.
+		if b.drained() && !b.scanned {
+			if err := b.rebuild(); err != nil {
+				b.h.Log.Error("memtree rebuild failed", "origin", "agent", "error", err)
+			}
+			b.scanned = true
+			b.dispatch()
+		}
 		select {
 		case <-b.ctx.Done():
 			return
@@ -599,6 +613,7 @@ func (b *memTree) syncNew() error {
 		}
 		if len(rows) < syncBatch {
 			if fresh {
+				b.scanned = false
 				b.requeue()
 			}
 			return nil
@@ -664,6 +679,16 @@ func (b *memTree) heldNow() bool {
 	b.callMu.Lock()
 	defer b.callMu.Unlock()
 	return b.held
+}
+
+// drained says the builder has nothing: no call in flight, no result still
+// to apply, no queue, no retry. Worker only; the counters read under the
+// call lock, the queues are the worker's own.
+func (b *memTree) drained() bool {
+	b.callMu.Lock()
+	defer b.callMu.Unlock()
+	return b.flight == 0 && b.pending == 0 && len(b.leaves) == 0 &&
+		len(b.merges) == 0 && len(b.leafRetry) == 0 && len(b.mergeRetry) == 0
 }
 
 func (b *memTree) slots() int {
@@ -780,6 +805,10 @@ func (b *memTree) apply(r buildResult) {
 	if r == (buildResult{}) {
 		return // the quiesce fence's zero result
 	}
+	b.callMu.Lock()
+	b.pending--
+	b.callMu.Unlock()
+	b.scanned = false
 	id := nodeID{0, r.seq}
 	if !r.leaf {
 		id = r.parent
@@ -1232,6 +1261,7 @@ func (b *memTree) takeSlot() (first bool, wait chan struct{}, ok bool) {
 	}
 	b.calls.Add(1) // the fence counts the call from here, before the spawn
 	b.flight++
+	b.pending++
 	if b.flight == 1 {
 		b.burst = make(chan struct{})
 		first = true
