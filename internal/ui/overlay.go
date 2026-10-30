@@ -39,6 +39,9 @@ type overlayState struct {
 	armed bool
 	// the danger list key that waits for its second press, "" for none
 	keyArmed string
+	// keyArmed came from the typed confirm, not a press: the typed command
+	// was the first ask, so the footer says the key completes it
+	keyArmedPreset bool
 	// followed is the anchor this following list last moved the region to,
 	// so a frame that moved nothing moves it again
 	followed int
@@ -266,6 +269,7 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 			if k.Run == o.Confirm || k.Run == strings.TrimSuffix(o.Confirm, " --yes") {
 				top.selected = max(slices.Index(top.visible, idx), 0)
 				top.keyArmed = k.Key
+				top.keyArmedPreset = true
 				return
 			}
 		}
@@ -1513,10 +1517,16 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 		}
 		foot := hint(footW-statW, hints...)
 		if st.armed {
-			foot = armedHint(footW, "enter", st.items[st.visible[st.selected]].label)
+			foot = armedHint(footW, "enter", st.items[st.visible[st.selected]].label, "again to ")
 		}
 		if d := st.keyDesc(st.keyArmed); d != "" {
-			foot = armedHint(footW, st.keyArmed, d)
+			// the typed confirm's arm completes the command the user typed:
+			// no press happened yet, so the footer never says "again"
+			if st.keyArmedPreset {
+				foot = armedHint(footW, st.keyArmed, d, "to ")
+			} else {
+				foot = armedHint(footW, st.keyArmed, d, "again to ")
+			}
 		}
 		if s := st.o.Foot; s != "" {
 			foot = append([]hostapi.Segment{{Text: s, HL: hostapi.ChromeHint}, {Text: " · ", HL: hostapi.ChromeHint}}, foot...)
@@ -1675,11 +1685,12 @@ func pressArmed(armed *bool, key string) (confirmed, swallowed bool) {
 
 // armedHint is the footer of a press that waits for a second one: what the
 // next press does, in the danger color, with the keys drawn as keys. The
-// label reads on after "again to", so its first letter drops and an
-// acronym's word stays whole (hostapi.lowerFirst).
-func armedHint(w int, key, label string) []hostapi.Segment {
+// label reads on after lead ("again to " — dropped for the typed confirm's
+// arm, whose command the user already typed), so its first letter drops and
+// an acronym's word stays whole (hostapi.lowerFirst).
+func armedHint(w int, key, label, lead string) []hostapi.Segment {
 	label = hostapi.LowerFirst(label)
-	foot := hint(w, hintPair{key: key, verb: "again to " + label}, hintPair{key: "esc", verb: "cancel"})
+	foot := hint(w, hintPair{key: key, verb: lead + label}, hintPair{key: "esc", verb: "cancel"})
 	foot[1].HL = hostapi.ChromeDanger
 	return foot
 }

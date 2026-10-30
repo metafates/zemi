@@ -1915,6 +1915,11 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { { keys = { { key = 
 	if !top.back && top.selected != 1 || top.keyArmed != "r" {
 		t.Fatalf("typed resume: selected %d, armed %q", top.selected, top.keyArmed)
 	}
+	// the typed command was the first ask: the footer completes it, it never
+	// coaches a second press of the key
+	if foot := footer(); !strings.Contains(foot, "r to resume") || strings.Contains(foot, "again") {
+		t.Fatalf("the typed confirm's footer: %q", foot)
+	}
 	pressKeys(app, "r")
 	for app.Pump() {
 	}
