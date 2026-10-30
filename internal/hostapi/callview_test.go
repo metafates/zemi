@@ -310,6 +310,28 @@ func TestCallViewFollowsItsCall(t *testing.T) {
 	}
 }
 
+// TestCallViewWaitingHasNoClock: a call waiting on its gate has not started,
+// so its view names no time instead of one measured off a zero start.
+func TestCallViewWaitingHasNoClock(t *testing.T) {
+	t.Parallel()
+	h, _ := newLoopHost(t)
+	ui := h.hooks().(*fakeUI)
+	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{
+		{ID: "call_1", Name: "edit", Input: "a.go", Status: CallWait},
+	}})
+	if err := h.openCall(-1); err != nil {
+		t.Fatal(err)
+	}
+	opened := ui.overlays()
+	if len(opened) == 0 {
+		t.Fatal("the call view did not open")
+	}
+	got := opened[len(opened)-1]
+	if got.Title != "Edit" || fieldOf(got, "time") != "" {
+		t.Fatalf("a waiting call's view reads %+v, want no time field", got.Fields)
+	}
+}
+
 // TestSkillBody: a skill's view reads the whole file, not the cut rows a
 // transcript keeps, so the procedure is there to read.
 func TestSkillBody(t *testing.T) {

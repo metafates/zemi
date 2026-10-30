@@ -115,7 +115,12 @@ func (h *Host) settledRow(n int) int {
 }
 
 // streamRow is a live call as the chat draws it, with how long it has run.
-func streamRow(t StreamTool, took time.Duration) (ChatMessage, time.Duration) {
+// A waiting call has not started: it gets no time, not an epoch.
+func streamRow(t StreamTool) (ChatMessage, time.Duration) {
+	var took time.Duration
+	if !t.Started.IsZero() {
+		took = time.Since(t.Started)
+	}
 	return ChatMessage{
 		Kind: RowTool, CallID: t.ID, Tool: tools.ToolName(t.Name), Text: t.Input, Label: t.Label,
 		Status: t.Status, Detail: t.Detail, Tail: t.Tail, Run: t.Run, Diff: t.Diff, Output: t.Output,
@@ -133,7 +138,7 @@ func (h *Host) chatRow(n int) (row ChatMessage, took time.Duration, ok bool) {
 			return ChatMessage{}, 0, false
 		}
 		t := s.Tools[i]
-		row, took := streamRow(t, time.Since(t.Started))
+		row, took := streamRow(t)
 		return row, took, true
 	}
 	tr := h.Session().Transcript
@@ -198,7 +203,7 @@ func (h *Host) callViewRow(n int) (row ChatMessage, took time.Duration, ok bool)
 	}
 	s := h.AgentStream()
 	if i := slices.IndexFunc(s.Tools, func(t StreamTool) bool { return t.ID == id }); i >= 0 {
-		row, took = streamRow(s.Tools[i], time.Since(s.Tools[i].Started))
+		row, took = streamRow(s.Tools[i])
 		return row, took, true
 	}
 	if m := h.settledRow(n); m > 0 {
