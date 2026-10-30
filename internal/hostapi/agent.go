@@ -125,6 +125,8 @@ type agentHost struct {
 	// override (tests); 0 resolves via contextWindow.
 	sessIn  int64
 	sessOut int64
+	// tallyLoaded: the store row seeded the fields above at the first read
+	tallyLoaded bool
 	// cache reads and the input billed with them, for the /usage share
 	cacheRead   int64
 	cacheBilled int64

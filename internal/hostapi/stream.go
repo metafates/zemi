@@ -495,6 +495,19 @@ func (h *Host) liveView() (Session, StreamSnapshot) {
 // streamLocked is AgentStream with ag.mu held.
 func (h *Host) streamLocked() StreamSnapshot {
 	ag := h.agents
+	// a resumed session's bill lives in the store row: seed the tally once,
+	// so the statusline reads the conversation's cost before the next turn
+	if !ag.tallyLoaded {
+		ag.tallyLoaded = true
+		if h.DB != nil {
+			if s, err := h.DB.GetSession(store.MainSessionID); err == nil && s != nil {
+				ag.sessIn, ag.sessOut = s.PromptTokens, s.CompletionTokens
+				ag.sessCost = s.Cost
+				ag.cacheRead, ag.cacheBilled = s.CacheRead, s.CacheBilled
+				ag.lastIn = s.LastIn
+			}
+		}
+	}
 	// the host's clock, never time.Now: a seeded stream, a golden included,
 	// must read the same seconds however loaded the machine is
 	now := h.now()
@@ -541,6 +554,7 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
+	ag.tallyLoaded = true // an explicit seed wins over the store row
 	ag.active = s.Active
 	ag.byLoop = s.ByLoop
 	ag.textBuf = s.Text
