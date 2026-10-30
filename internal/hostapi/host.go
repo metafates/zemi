@@ -1239,7 +1239,7 @@ func (h *Host) OpenHelp() error {
 	var items []OverlayItem
 	keys, lists := ui.KeyHelp()
 	for _, k := range keys {
-		items = append(items, OverlayItem{Text: k[0], Desc: k[1], Section: "Keys"})
+		items = append(items, OverlayItem{Text: k[0], Desc: k[1], Section: "Keymaps"})
 	}
 	var aliases []OverlayItem
 	for _, b := range h.Keymaps.List() {
@@ -1254,7 +1254,7 @@ func (h *Host) OpenHelp() error {
 			aliases = append(aliases, OverlayItem{Text: b.Key, Desc: cmp.Or(b.Desc, "same as "+b.RHS.Move), Section: "Lists"})
 			continue
 		}
-		items = append(items, OverlayItem{Text: b.Key, Desc: desc, Section: "Keys"})
+		items = append(items, OverlayItem{Text: b.Key, Desc: desc, Section: "Keymaps"})
 	}
 	for _, k := range lists {
 		items = append(items, OverlayItem{Text: k[0], Desc: k[1], Section: "Lists"})
