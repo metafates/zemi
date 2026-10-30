@@ -104,6 +104,63 @@ func (h *Host) pickerTranscript() pickTr {
 	return h.pickerTranscriptLocked()
 }
 
+// withBrowseEchoes merges the log's never-consumed echoes inside the
+// transcript's own span into the picker's rows: the transcript folds an
+// attachment's content or a !command's output into the row it belongs to,
+// and the browser is where the log's whole truth lives. The paged-back
+// pages get theirs from logRowsFor; these would wait for a thousand-row cut.
+func (h *Host) withBrowseEchoes(p pickTr) pickTr {
+	if h.DB == nil || len(p.tr) == 0 {
+		return p
+	}
+	first, last := int64(-1), int64(-1)
+	for _, m := range p.tr {
+		if m.Seq == NoSeq {
+			continue
+		}
+		if first < 0 {
+			first = m.Seq
+		}
+		last = m.Seq
+	}
+	if first < 0 || last < first {
+		return p
+	}
+	rows, err := h.DB.LogFrom(first, int(last-first+1))
+	if err != nil || len(rows) == 0 {
+		return p
+	}
+	full := logRowsFor(rows, true)
+	plain := logRows(rows)
+	if len(full) == len(plain) {
+		return p // nothing unpaired inside the span
+	}
+	seen := make(map[int64]bool, len(plain))
+	for _, m := range plain {
+		seen[m.Seq] = true
+	}
+	var extra []ChatMessage
+	for _, m := range full {
+		if !seen[m.Seq] {
+			extra = append(extra, m)
+		}
+	}
+	if len(extra) == 0 {
+		return p
+	}
+	merged := make([]ChatMessage, 0, len(p.tr)+len(extra))
+	ei := 0
+	for _, m := range p.tr {
+		for ei < len(extra) && (m.Seq == NoSeq || extra[ei].Seq < m.Seq) {
+			merged = append(merged, extra[ei])
+			ei++
+		}
+		merged = append(merged, m)
+	}
+	merged = append(merged, extra[ei:]...)
+	return pickTr{tr: merged}
+}
+
 // pickerTranscriptLocked is pickerTranscript for a caller that holds ag.mu
 // (a flush): the session snapshot and the stream state it already guards.
 func (h *Host) pickerTranscriptLocked() pickTr {
@@ -136,7 +193,7 @@ func (h *Host) OpenMessages() error {
 	if err != nil {
 		return err
 	}
-	p := h.pickerTranscript()
+	p := h.withBrowseEchoes(h.pickerTranscript())
 	row := ui.ChatRow()
 	list := h.messagesList(p, row)
 	list.OpenAt = row
