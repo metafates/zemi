@@ -40,7 +40,8 @@ $S/zemi-lab type 'partial text'    # literal text into the composer; returns onc
 $S/zemi-lab ask y                  # answer a permission ask (y|n|t); refuses when none is up
 $S/zemi-lab up -x 60 -y 15         # narrow layouts are baked into up
 $S/zemi-lab size 60 15             # resize after the fact; rex fails loudly when it did not stick
-$S/zemi-lab peer                   # a second zemi on the same tree and store
+$S/zemi-lab peer                   # a second zemi on the same tree and store,
+                                   # its own fake model and request stream (req-peer)
 $S/zemi-lab -s peer prompt 'name one river'   # drive the peer; -s main|peer aims every command
 $S/zemi-lab snap && $S/zemi-lab diff          # row-shift check: mask volatile spans,
                                    # exit 1 when rows moved (raw captures kept beside)
@@ -61,10 +62,13 @@ accepted - a 429 refusal never reached a model - because the screen cannot prove
 started), that a request carries the prompt's text with its marker (each `prompt` appends
 a unique `[zl:PID]` to the text and the match wants marker and full text together: the
 marker alone is the caller's pid, readable off the composer and typeable by another
-window, so only a delivery of this very text - as a verbatim user message, or inside a
-later `<chat>` fold built from delivered messages - can put the pair in a request; neither
-a count alone (fires on any request landing after the baseline) nor a duplicate text (a
-re-sent older turn reads as delivered) nor a planted marker can pass for it, and an
+window - which is why every window boots its own fake model writing under its own dir
+(`req-<window>`; `-s peer last` reads the peer's), so another window's words, planted or
+not, land outside the stream this prompt's match reads. Within one window only a
+delivery of this very text - as a verbatim user message, or inside a later `<chat>` fold
+built from delivered messages - can put the pair in a request: neither a count alone
+(fires on any request landing after the baseline) nor a duplicate text (a re-sent older
+turn reads as delivered) can pass for it, and an
 interrupt-restored draft leaves no trace) and for the screen to settle (the 10s window is
 matched-poll time; under load the same loop stretches to ~25s wall). Prompts serialize on
 a per-tree lock: concurrent prompts share one composer and one Enter would submit both
@@ -89,7 +93,8 @@ gate plugin whose `permission.request` handler returns
 `{decision = "ask"}`, since zemi never asks by design - DESIGN §9), `--rex` (the Rex
 backend below). A running lab can be made to ask without a reboot: drop the same two files
 into `$TREE/data/plugins/local/askgate/.zemi/` (plugin.json + init.lua; their contents are
-the `write_config()` block in the zemi-lab script) and the next action asks. `zemi-lab attach` sits at the
+the `write_config()` block in the zemi-lab script) and the action after the next asks: the
+first one starts before the plugin re-loads, the one after it asks. `zemi-lab attach` sits at the
 lab in a real terminal (tmux) or prints how to open it (Rex). `zemi-lab health [args...]`
 runs `zemi-safe health` against the lab tree.
 
@@ -115,14 +120,19 @@ streamed chunks.
   ask (a draft under it is kept), which is why `ask` resends until the box is gone.
 - Compare captures for row shifts: the same state change must not add or remove a row
   (house rule). `zemi-lab snap` saves a masked capture, `zemi-lab diff` diffs a fresh one
-  against it and exits 1 on a shift; the mask blanks what moves on its own (spinner,
-  elapsed seconds, token counts, cost, the clock) and the raw captures are kept beside
+  against it and exits 1 on a shift; the mask blanks what moves on its own - the
+  statusline's figures (elapsed, token counts, cost, the clock), the braille spinner, the
+  snail's eyes, a row's trailing `· Ns` - and never the user's own words in the rows, so
+  a diff shows text as written. The raw captures are kept beside
   the masked ones for re-checking (`snap m1.txt` keeps `m1.raw` - the suffix replaces
-  `.txt`).
+  `.txt`; a relative name lands in `$TREE/snap/`).
 - The pane title marks state: `? ` while an ask is up, plain otherwise -
   `zemi-lab title` prints it on either backend (a rex lab also streams each change as a
   `title_changed` event, so the count of title writes is assertable). `wait ask` and
-  `ask` read this state (rex: the blocked record's kind; tmux: the mark, which cannot
+  `ask` read this state (rex: the blocked record's kind - Rex's parser keeps
+  permission/question/auth; zemi's plan kind rides the wire but Rex drops that record,
+  so a plan ask reads as kindless `blocked`, which the guards cover with the Escape
+  remedy; tmux: the mark, which cannot
   tell a permission ask from a question or plan overlay - it answers whatever holds it,
   and a plan or question overlay eats every y|n, so a stuck `ask` on tmux dies naming
   Escape; use a rex lab when the distinction matters).
@@ -142,7 +152,9 @@ streamed chunks.
 - send-keys cannot inject a positioned mouse click: a click path is Go-test only, with
   findCell and clickAt in internal/ui/mouse_test.go.
 - `zemi.ui.screenshot()` from the Lua tool or a keymap returns the same text without styling.
-- Idle CPU: `ps -o %cpu -p $(pgrep -f "zemi --trust")` over 30 s must stay near 0.
+- Idle CPU: `ps -o %cpu -p "$pid"` over 30 s must stay near 0, with the pid from the
+  backend, not a bare `pgrep -f "zemi --trust"`, which hits every lab's zemi: tmux's
+  pane pid IS zemi (`zemi-safe` execs it), rex's is the block's foreground pid.
 - `db` prints the path to this project's zemi.db (SQLite) - session rows, tool telemetry
   and usage live there; reading them is your own sqlite3 one-liner.
 

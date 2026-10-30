@@ -1,7 +1,8 @@
 #!/bin/sh
 # usage: zemi-safe <tree-dir> [zemi args...]
 # Runs $ZEMI_BIN (default bin/zemi) with all four ZEMI_*_HOME dirs under <tree-dir>,
-# so nothing can reach the real ~/.config/zemi. Works from any shell, inside tmux too.
+# so nothing can reach the real ~/.config/zemi. ZEMI_LAB_CONFIG moves config
+# elsewhere (a peer window's own copy, pointing at its own fake model). Works from any shell, inside tmux too.
 # Provider keys (*_API_KEY, *_TOKEN) are dropped so a builtin provider cannot reach a
 # real API; ZEMI_SAFE_KEEP="DEEPSEEK_API_KEY ..." keeps the named ones (for a fake value).
 [ -n "$1" ] || { echo "usage: zemi-safe <tree-dir> [args]" >&2; exit 2; }
@@ -10,5 +11,5 @@ T=$(cd -- "$T" && pwd) || exit 1
 for v in $(env | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p'); do
 	case "$v" in *_API_KEY|*_TOKEN) case " $ZEMI_SAFE_KEEP " in *" $v "*) ;; *) unset "$v" ;; esac ;; esac
 done
-export ZEMI_CONFIG_HOME="$T/config" ZEMI_DATA_HOME="$T/data" ZEMI_STATE_HOME="$T/state" ZEMI_CACHE_HOME="$T/cache"
+export ZEMI_CONFIG_HOME="${ZEMI_LAB_CONFIG:-$T/config}" ZEMI_DATA_HOME="$T/data" ZEMI_STATE_HOME="$T/state" ZEMI_CACHE_HOME="$T/cache"
 exec "${ZEMI_BIN:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/bin/zemi}" "$@"

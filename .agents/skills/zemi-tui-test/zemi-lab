@@ -17,7 +17,9 @@ usage: zemi-lab [-n name] [-s main|peer] command [args]
   peer [-x W -y H] [NAME]
                      another zemi on the same tree and store: what windows on
                      one project see, for sync and presence work; a third
-                     window takes a name (default peer)
+                     window takes a name (default peer). The store is shared,
+                     the model traffic is not: the peer gets its own fake
+                     model writing under req-NAME
   -s main|peer       which window the drive commands act on
   prompt TEXT        clear a leftover draft, type TEXT plus a per-call marker,
                      Enter, wait for that marker to reach the model and the
@@ -41,7 +43,7 @@ usage: zemi-lab [-n name] [-s main|peer] command [args]
                      title_changed, child_exited; exit 1 on no match
   records            the OSC 7501 records the terminal holds (rex lab)
   title              the pane title
-  last               the fake model's last request body
+  last               the selected window's last request body
   db | logs | status | health [args...]
   attach             how to watch this lab
   down [--keep]      quit zemi, kill the sessions and server, delete the
@@ -81,6 +83,14 @@ die() { printf 'zemi-lab: %s\n' "$*" >&2; exit 1; }
 # block_id NAME: the Rex block id a lab window maps to (from .lab.blocks,
 # "name id" lines written at up/peer).
 block_id() { awk -v n="$1" '$1 == n {print $2}' "$BLOCKS" 2>/dev/null; }
+
+# req_base: the selected window's own model traffic. Every window boots its
+# own fake writing under its own dir, so one window's requests never carry
+# another window's words - a peer planting a prompt's marker-and-text pair in
+# its own request must not certify a prompt its window never delivered
+req_base() {
+	[ "$SESSION" = main ] && printf '%s' "$TREE" || printf '%s/req-%s' "$TREE" "$SESSION"
+}
 
 # rex_sessions_by_label: every lab session is labeled zemi-lab-$NAME, so the
 # up guard and down find a session even when the tree (and with it the env
@@ -196,7 +206,7 @@ for f in sorted(glob.glob(os.path.join(tree, "requests", "[0-9]*.json"))):
                 if needle in t:
                     sys.exit(0)
 sys.exit(1)
-' "$TREE/last_request.json" "$1"
+' "$(req_base)/last_request.json" "$1"
 }
 
 # overlay_kind: what overlay waits on the user right now, read from terminal
@@ -278,19 +288,33 @@ type_text() {
 # snail's eyes - so a diff shows only real row shifts. Raw captures are kept
 # beside the masked ones (snap saves both), so any diff is re-checkable
 # unmasked.
+# the regexes' $ and $@ are python's, not the shell's
+# shellcheck disable=SC2016
 mask_volatile() {
 	python3 -c '
 import re, sys
-for line in sys.stdin:
-    line = re.sub(r"[\u2800-\u28ff]+", "@", line)  # the spinner animates
-    line = re.sub(r"(┌ )@[.·?><^]{2}", r"\1@··", line)  # the eyes decay to idle
-    line = re.sub(r"\b\d+m\b", "@m", line)         # elapsed minutes
-    line = re.sub(r"\d+\.\d+s", "@s", line)        # elapsed seconds
-    line = re.sub(r"(?<=in )\d+[ms]\b", "@s", line)  # a retry countdown ticks
-    line = re.sub(r"\d+ (out|tok)", r"@ \1", line)  # token counts
-    line = re.sub(r"\$\d+(\.\d+)?", "$@", line)     # cost figures
-    line = re.sub(r"\d{1,2}:\d{2}", "@", line)      # the clock
-    sys.stdout.write(line)
+out = []
+for line in sys.stdin.read().splitlines():
+    # the spinner animates wherever it runs; the eyes decay in the border
+    line = re.sub(r"[\u2800-\u28ff]+", "@", line)
+    line = re.sub(r"(┌ )@[.·?><^]{2}", r"\1@··", line)
+    out.append(line)
+# elapsed/cost/clock figures live in the statusline (the last non-empty
+# line); the user words in the rows above keep theirs. A row still masks a
+# trailing `· Ns` - a running tool ticks it every second
+for i in range(len(out) - 1, -1, -1):
+    if out[i].strip():
+        line = out[i]
+        line = re.sub(r"\b\d+m\b", "@m", line)         # elapsed minutes
+        line = re.sub(r"\d+\.\d+s", "@s", line)        # elapsed seconds
+        line = re.sub(r"(?<=in )\d+[ms]\b", "@s", line)  # a retry countdown ticks
+        line = re.sub(r"\d+ (out|tok)", r"@ \1", line)  # token counts
+        line = re.sub(r"\$\d+(\.\d+)?", "$@", line)     # cost figures
+        line = re.sub(r"\d{1,2}:\d{2}", "@", line)      # the clock
+        out[i] = line
+        break
+out = [re.sub(r"(· )\d+(\.\d+)?[smh]\s*$", r"\1@", line) for line in out]
+sys.stdout.write("\n".join(out) + "\n")
 '
 }
 
@@ -321,9 +345,10 @@ free_port() { python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1
 # wait_port: the fake model is ready when it listens, not when its block
 # merely exists - a bind failure or a slow start reads the same way here.
 wait_port() {
+	p=${1:-$PORT}
 	i=0
 	while [ "$i" -lt 40 ]; do
-		python3 -c "import socket; s = socket.socket(); s.settimeout(0.5); s.connect(('127.0.0.1', $PORT)); s.close()" 2>/dev/null && return 0
+		python3 -c "import socket; s = socket.socket(); s.settimeout(0.5); s.connect(('127.0.0.1', $p)); s.close()" 2>/dev/null && return 0
 		i=$((i + 1))
 		sleep 0.25
 	done
@@ -332,16 +357,19 @@ wait_port() {
 
 # write_config: the generated init.lua and the askgate plugin, shared by both
 # backends.
+# write_config [DIR] [PORT]: init.lua pointing at a fake model; a peer
+# window passes its own dir and its own fake's port
 write_config() {
+	dir=${1:-$TREE/config} port=${2:-$PORT}
 	{
 		echo 'zemi.provider.add({ id = "fake", kind = "openai_compat",'
-		echo "	api_key = \"x\", base_url = \"http://127.0.0.1:$PORT/v1\","
+		echo "	api_key = \"x\", base_url = \"http://127.0.0.1:$port/v1\","
 		echo '	models = { { id = "m", context_window = 128000, pricing = { input = 0.27, output = 1.1 } } } })'
 		echo 'zemi.config.set("models.default", "fake/m")'
-		[ -n "$THEME" ] && echo "zemi.config.set(\"ui.theme\", \"$THEME\")"
-	} >"$TREE/config/init.lua"
+		[ -n "${THEME:-}" ] && echo "zemi.config.set(\"ui.theme\", \"$THEME\")"
+	} >"$dir/init.lua"
 
-	if [ -n "$ASKS" ]; then
+	[ -n "${ASKS:-}" ] || return 0
 		mkdir -p "$TREE/data/plugins/local/askgate/.zemi"
 		{
 			echo '{"version":"0.1.0","description":"force the ask overlay on every action","uses":["perm"]}'
@@ -350,7 +378,6 @@ write_config() {
 			echo "-- force the ask overlay on every action"
 			echo 'zemi.event.on("permission.request", function() return { decision = "ask" } end)'
 		} >"$TREE/data/plugins/local/askgate/.zemi/init.lua"
-	fi
 }
 
 # wait_boot: poll captures until the composer shows, or fail loudly.
@@ -433,7 +460,7 @@ cmd_up() {
 	# marker's uniqueness) and bodies would poison diff, last and this
 	# boot's first prompt, and a stale stale-stream or kept mark would
 	# refuse a healthy teardown
-	rm -rf "$TREE/snap" "$TREE/requests"
+	rm -rf "$TREE/snap" "$TREE/requests" "$TREE"/req-*
 	rm -f "$TREE/.lab.turn" "$TREE/last_request.json" "$TREE/.lab.stale-stream" "$TREE/.lab.kept"
 	[ -d "$TREE/proj/.git" ] || (cd "$TREE/proj" && git init -q) || die "git init failed"
 	echo hello >"$TREE/proj/a.txt"
@@ -537,32 +564,40 @@ EOF
 # each composer_has check passes on the glued draft and one Enter submits
 # both texts as a single message nobody typed
 prompt_lock() {
-	if mkdir "$TREE/.lab.prompt" 2>/dev/null; then
-		echo $$ >"$TREE/.lab.prompt/pid"
-		trap 'rm -rf "$TREE/.lab.prompt"' EXIT
-		return 0
-	fi
-	# held: retry until the holder releases, stealing it once its pid is gone
 	i=0
 	while [ "$i" -lt 150 ]; do
-		mkdir "$TREE/.lab.prompt" 2>/dev/null && {
+		if mkdir "$TREE/.lab.prompt" 2>/dev/null; then
 			echo $$ >"$TREE/.lab.prompt/pid"
-			trap 'rm -rf "$TREE/.lab.prompt"' EXIT
-			return 0
-		}
-		pid=$(cat "$TREE/.lab.prompt/pid" 2>/dev/null)
-		if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+			# a releaser's delayed rm can land after this mkdir: hold the lock
+			# only if it is still ours. NOTE: the release's check-then-rm and
+			# this check leave a microsecond window a stealer can still win -
+			# the shell has no atomic check-and-delete; the retry is the recovery
+			if [ "$(cat "$TREE/.lab.prompt/pid" 2>/dev/null)" = "$$" ]; then
+				trap release_prompt_lock EXIT
+				return 0
+			fi
+			rm -rf "$TREE/.lab.prompt"
+		elif pid=$(cat "$TREE/.lab.prompt/pid" 2>/dev/null) && [ -n "$pid" ] &&
+			! kill -0 "$pid" 2>/dev/null; then
 			rm -rf "$TREE/.lab.prompt"
 		fi
 		sleep 0.2
 		i=$((i + 1))
 	done
-	die "another prompt holds this lab (waited 30s; a stale lock: rm -rf $TREE/.lab.prompt)"
+	die "another prompt/type/send holds this lab (waited 30s; a stale lock: rm -rf $TREE/.lab.prompt)"
+}
+
+# release_prompt_lock: remove only what we still own - a stealer may have
+# replaced the lock after our pid died
+release_prompt_lock() {
+	[ "$(cat "$TREE/.lab.prompt/pid" 2>/dev/null)" = "$$" ] && rm -rf "$TREE/.lab.prompt"
+	return 0
 }
 
 cmd_prompt() {
 	[ $# -ge 1 ] || die "prompt: text"
 	prompt_lock
+	req=$(req_base)
 	kind=$(overlay_kind)
 	case "$kind" in
 		permission) die "a permission ask is up (the prompt's keys would answer it - ask y|n first)" ;;
@@ -575,7 +610,7 @@ cmd_prompt() {
 	# the request count before Enter: last refuses to serve a body older than
 	# the last prompt, so a turn that died before the model cannot silently
 	# serve the previous body to a prompt-cache diff
-	find "$TREE/requests" -type f 2>/dev/null | wc -l >"$TREE/.lab.turn"
+	find "$req/requests" -type f 2>/dev/null | wc -l >"$TREE/.lab.turn"
 	# a leftover draft glues onto the text; one C-c clears it (a second, on an
 	# empty composer, quits) - but the C-c can be eaten by an overlay still
 	# closing (send Escape; prompt right after), so verify the composer box
@@ -612,7 +647,7 @@ cmd_prompt() {
 		# the request must carry this text: the count alone fires on any
 		# request landing after the baseline - a queued steer's turn-start,
 		# work predating the prompt - while this text sits undelivered
-		if [ "$(find "$TREE/requests" -type f 2>/dev/null | wc -l)" -gt "$at" ] &&
+		if [ "$(find "$req/requests" -type f 2>/dev/null | wc -l)" -gt "$at" ] &&
 			request_carries "$msg"; then
 			break
 		fi
@@ -627,8 +662,8 @@ cmd_prompt() {
 			permission) die "the prompt was delivered but a permission ask rose over it - the turn starts once it is answered (ask y, then wait again)" ;;
 			prompt) die "the prompt was delivered but an overlay rose over it (tmux cannot name it; 'cap' shows which) - settle it (ask y|n or send Escape), then wait again" ;;
 			"")
-				if [ "$(find "$TREE/requests" -type f 2>/dev/null | wc -l)" -gt "$at" ]; then
-					die "a turn ran but this prompt's marker never reached the model - the draft was likely eaten or restored by an interrupt (zemi-lab logs)"
+				if [ "$(find "$req/requests" -type f 2>/dev/null | wc -l)" -gt "$at" ]; then
+					die "a turn ran but this prompt's marker never reached the model - the draft was eaten, or an interrupt restored it to the composer (a fresh prompt resubmits; zemi-lab logs)"
 				fi
 				die "no request arrived within 10s (queued behind a running turn? zemi-lab logs)"
 				;;
@@ -640,6 +675,7 @@ cmd_prompt() {
 
 cmd_type() {
 	[ $# -ge 1 ] || die "type: text"
+	prompt_lock
 	kind=$(overlay_kind)
 	case "$kind" in
 		permission) die "type: a permission ask is up (ask y|n first)" ;;
@@ -649,8 +685,9 @@ cmd_type() {
 	esac
 	# an empty composer shows the placeholder, so typing exactly it could
 	# not be told apart from an untouched composer - the verify would be
-	# vacuous
-	[ "$*" = "Ask anything" ] &&
+	# vacuous. The verify compares space-stripped text, so any spacing of the
+	# placeholder is as unverifiable as the exact one
+	[ "$(printf '%s' "$*" | tr -d ' ')" = "Askanything" ] &&
 		die "type: 'Ask anything' is what an empty composer already shows - type other text (the verify could not tell them apart)"
 	type_text "$@"
 	# tmux delivers the burst late: an immediate capture false-negatives, so
@@ -666,6 +703,7 @@ cmd_type() {
 
 cmd_send() {
 	[ $# -ge 1 ] || die "send: key names"
+	prompt_lock
 	send_keys "$@"
 }
 
@@ -761,6 +799,7 @@ cmd_cap() {
 cmd_snap() {
 	load
 	out=${1:-$TREE/snap/prev.txt}
+	case "$out" in /*) ;; *) out=$TREE/snap/$out ;; esac
 	mkdir -p "$(dirname "$out")"
 	cap >"${out%.txt}.raw"
 	[ -s "${out%.txt}.raw" ] || die "capture failed (the pane is gone?)"
@@ -779,9 +818,11 @@ cmd_diff() {
 		2) A=$1 B=$2 ;;
 		*) die "diff: [FILE-A] [FILE-B]" ;;
 	esac
+	case "$A" in /*) ;; *) A=$TREE/snap/$A ;; esac
 	[ -f "$A" ] || die "no snapshot at $A (zemi-lab snap first)"
 	mkdir -p "$TREE/snap"
 	if [ -n "$B" ]; then
+		case "$B" in /*) ;; *) B=$TREE/snap/$B ;; esac
 		[ -f "$B" ] || die "no capture at $B"
 	else
 		B=$TREE/snap/now.txt
@@ -839,21 +880,46 @@ cmd_peer() {
 	BIN=${ZEMI_BIN:-$REPO/bin/zemi}
 	case $BIN in /*) ;; *) BIN=$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN") ;; esac
 	[ -x "$BIN" ] || die "no zemi binary at $BIN"
+	# the peer gets its own fake model writing under req-$WIN: two windows
+	# share the store, never the request stream, so words typed in one window
+	# cannot certify a prompt another window never delivered
+	PFAKE=$TREE/req-$WIN
+	PPORT=$(free_port) || die "python3 is needed"
+	rm -rf "$PFAKE" "$TREE/config-$WIN"
+	mkdir -p "$PFAKE" "$TREE/config-$WIN"
+	write_config "$TREE/config-$WIN" "$PPORT"
 	if [ "$BACKEND" = rex ]; then
 		[ -n "$(block_id "$WIN")" ] && die "window '$WIN' is already up (zemi-lab down reboots all)"
+		FB2=$(rex run -s "$RSESSION" --label "fake-$WIN" --keep-open --focus=false --json -- \
+			python3 "$DIR/fake_openai.py" "$PPORT" "$PFAKE" |
+			python3 -c 'import json,sys;print(json.load(sys.stdin)["block_ids"][0])') ||
+			die "the $WIN fake model block failed to start"
+		wait_port "$PPORT" || {
+			rex capture -s "$RSESSION" -b "$FB2" 2>/dev/null | grep -v '^ *$' | tail -5 >&2
+			die "the $WIN fake model died (port taken?)"
+		}
 		RB=$(rex run -s "$RSESSION" -c "$TREE/proj" --label "$WIN" --keep-open --focus=false --json -- \
-			env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN="$BIN" "$DIR/zemi-safe" "$TREE" ${LAB_TRUST:+"$LAB_TRUST"} |
+			env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN="$BIN" ZEMI_LAB_CONFIG="$TREE/config-$WIN" "$DIR/zemi-safe" "$TREE" ${LAB_TRUST:+"$LAB_TRUST"} |
 			python3 -c 'import json,sys;print(json.load(sys.stdin)["block_ids"][0])') ||
 			die "the $WIN block failed to start"
 		rex block call -s "$RSESSION" -b "$RB" resize "{\"columns\":$W,\"rows\":$H}" >/dev/null ||
 			die "resize to $W x $H failed"
 		check_size "$RSESSION" "$RB" "$W" "$H"
-		printf '%s %s\n' "$WIN" "$RB" >>"$BLOCKS"
+		{
+			printf '%s %s\n' "$WIN" "$RB"
+			printf 'fake-%s %s\n' "$WIN" "$FB2"
+		} >>"$BLOCKS"
 		RBLK=$RB
 	else
 		tmux -L "$SERVER" has-session -t "$WIN" 2>/dev/null && die "window '$WIN' is already up (zemi-lab down reboots all)"
+		tmux -L "$SERVER" new-session -d -s "fake-$WIN" -c "$PFAKE" \
+			"python3 '$DIR/fake_openai.py' $PPORT '$PFAKE'" || die "the $WIN fake model failed to start"
+		wait_port "$PPORT" || {
+			tmux -L "$SERVER" capture-pane -t "fake-$WIN" -p 2>/dev/null | grep -v '^ *$' | tail -5 >&2
+			die "the $WIN fake model died (port taken?)"
+		}
 		tmux -L "$SERVER" new-session -d -s "$WIN" -x "$W" -y "$H" -c "$TREE/proj" \
-			"env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' '$DIR/zemi-safe' '$TREE'${LAB_TRUST:+ $LAB_TRUST}" ||
+			"env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' ZEMI_LAB_CONFIG='$TREE/config-$WIN' '$DIR/zemi-safe' '$TREE'${LAB_TRUST:+ $LAB_TRUST}" ||
 			die "tmux new-session failed"
 	fi
 	i=0
@@ -867,18 +933,19 @@ cmd_peer() {
 		sleep 0.25
 	done
 	[ "$i" -lt 120 ] || die "window '$WIN' did not boot in 30s"
-	say "window $WIN up on the same store: drive it with zemi-lab -s $WIN prompt|cap|wait"
+	say "window $WIN up on the same store, its own fake model on 127.0.0.1:$PPORT: drive it with zemi-lab -s $WIN prompt|cap|wait"
 }
 
 cmd_last() {
-	[ -f "$TREE/last_request.json" ] || die "no request yet (last_request.json is missing)"
+	req=$(req_base)
+	[ -f "$req/last_request.json" ] || die "no request yet (last_request.json is missing)"
 	if [ -f "$TREE/.lab.turn" ]; then
 		at_prompt=$(cat "$TREE/.lab.turn")
-		now_count=$(find "$TREE/requests" -type f 2>/dev/null | wc -l)
+		now_count=$(find "$req/requests" -type f 2>/dev/null | wc -l)
 		[ "$now_count" -gt "$at_prompt" ] ||
 			die "no request arrived after the last prompt (the turn died before the model? check zemi-lab logs)"
 	fi
-	cat "$TREE/last_request.json"
+	cat "$req/last_request.json"
 }
 
 cmd_db() {
@@ -995,7 +1062,7 @@ STALE
 		[ -n "$late" ] &&
 			printf 'zemi-lab: warning: %s was written after the stream ended; the recorder died early and absence assertions on this kept stream can false-pass\n' "$late" >&2
 	fi
-	BLOCK_LIST=$(awk '{print $2}' "$BLOCKS" 2>/dev/null)
+	BLOCK_LIST=$(awk '$1 !~ /^fake/ && $1 != "recorder" {print $2}' "$BLOCKS" 2>/dev/null)
 	BLOCKS="$RBLK $BLOCK_LIST" ZEMI_LAB_EVENTS="$TREE/events.jsonl" python3 - "$@" <<'PYEOF'
 import json, os, sys
 
@@ -1108,7 +1175,7 @@ cmd_down() {
 			# (rex kill would otherwise strand the last record). A corpse skips
 			# the dance: its keys land nowhere and the 4s wait buys nothing.
 			if [ -n "$live" ] && [ -f "$BLOCKS" ]; then
-				zblocks=$(awk '$1 != "fake" && $1 != "recorder" {print $2}' "$BLOCKS")
+				zblocks=$(awk '$1 !~ /^fake/ && $1 != "recorder" {print $2}' "$BLOCKS")
 				for bid in $zblocks; do
 					rex send-key -s "$LAB_RSESSION" -b "$bid" -- escape 2>/dev/null || true
 				done
