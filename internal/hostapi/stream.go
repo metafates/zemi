@@ -378,7 +378,6 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	ui := h.hooks()
 	if ui != nil {
 		stopped := errors.Is(err, context.Canceled) || text == "" && slices.ContainsFunc(live, func(t StreamTool) bool { return t.Status == CallStopped })
-		ag.turnReplied = !stopped // a stop the user asked for is not a reply that may leave todos stale
 		ui.TurnDone(h.friendlyError(err), stopped)
 	}
 	if err != nil {

@@ -991,11 +991,11 @@ func TestTodoNag(t *testing.T) {
 		h.agents.mu.Lock()
 		defer h.agents.mu.Unlock()
 		nag := h.agents.todoNag
-		h.agents.todoNag = ""
+		h.agents.todoNag, h.agents.todoPending = "", false
 		return nag
 	}
 
-	t.Run("nags once past the threshold, not again without an update", func(t *testing.T) {
+	t.Run("nags past the threshold, again each period, not without an update", func(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
 		set(h, both)
@@ -1007,9 +1007,13 @@ func TestTodoNag(t *testing.T) {
 		if got := takeNag(h); !strings.Contains(got, "in_progress") {
 			t.Fatalf("post-threshold nag = %q", got)
 		}
-		engage(h, 5)
+		engage(h, todoNagAfter-1)
 		if got := takeNag(h); got != "" {
-			t.Fatalf("nag must not repeat without an update: %q", got)
+			t.Fatalf("within the period: %q", got)
+		}
+		engage(h, 1)
+		if got := takeNag(h); got == "" {
+			t.Fatal("a stale list is nagged again each period")
 		}
 	})
 
@@ -1051,47 +1055,22 @@ func TestTodoNag(t *testing.T) {
 		if got := takeNag(h); got != "" {
 			t.Fatalf("the next turn's first step would carry the stale nag: %q", got)
 		}
-		engage(h, 1)
+		engage(h, todoNagAfter) // the tracker restarted at the turn boundary
 		if got := takeNag(h); got == "" {
 			t.Fatal("a dropped nag must re-arm, the model never saw it")
 		}
 	})
 
-	t.Run("a finished turn with open items starts one reconciling turn, not two", func(t *testing.T) {
+	t.Run("a steering message carries the open count", func(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
 		set(h, both)
 		h.agents.mu.Lock()
-		h.agents.turnReplied = true
-		scope := h.claim()
+		h.agents.steering = []string{"one more thing"}
 		h.agents.mu.Unlock()
-		next, text := h.nextTurn(scope, nil)
-		if next == nil || !strings.Contains(text, "1 todo is open") || !strings.Contains(text, "in_progress: b") {
-			t.Fatalf("no reconciling turn: %q", text)
-		}
-		h.agents.mu.Lock()
-		scope2 := h.claim()
-		h.agents.mu.Unlock()
-		if next2, text2 := h.nextTurn(scope2, nil); next2 != nil || text2 != "" {
-			t.Fatalf("the reconciler repeated: %q", text2)
-		}
-	})
-
-	t.Run("a stopped or interrupted turn starts no reconciler", func(t *testing.T) {
-		t.Parallel()
-		h, _ := newTestHostDB(t)
-		set(h, both)
-		h.agents.mu.Lock()
-		scope := h.claim() // no reply ended: the user stopped the turn
-		h.agents.mu.Unlock()
-		if next, text := h.nextTurn(scope, nil); next != nil || text != "" {
-			t.Fatalf("a stopped turn started the reconciler: %q", text)
-		}
-		h.agents.mu.Lock()
-		scope2 := h.claim()
-		h.agents.mu.Unlock()
-		if next, text := h.nextTurn(scope2, context.Canceled); next != nil || text != "" {
-			t.Fatalf("an interrupt started the reconciler: %q", text)
+		msgs := h.deliverSteering()
+		if len(msgs) != 2 || !strings.Contains(msgs[1], "1 item is still open") {
+			t.Fatalf("steer notes = %q", msgs)
 		}
 	})
 

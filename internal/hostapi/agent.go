@@ -200,18 +200,12 @@ type agentHost struct {
 	// Any todos write resets it, so an update (or a tick) stops it.
 	todoList    []store.Todo // the list as the last todos write left it
 	todoSteps   int          // main-runner steps since the last todos write
+	todoNagAt   int          // the step count the last nag fired at
 	todoTouched bool         // a todos call ran this step
 	todoPending bool
 	// todoNag waits for the next step boundary of the running turn, outside
 	// steering: a turn that ends first drops it instead of starting another.
 	todoNag string
-	// todoChecks counts the reconciling turns a stale list has started since
-	// the user last spoke; todoEndTurn marks the turn that opens on one.
-	todoChecks  int
-	todoEndTurn bool
-	// turnReplied says the last turn ended with the model's own final text,
-	// not a stop the user asked for; only such a turn may be nudged back.
-	turnReplied bool
 
 	// goal is the session's goal (/goal), nil for none; goalPending the
 	// condition of a /goal sent and not yet stored; goalRuns counts the turns
@@ -677,7 +671,6 @@ func (h *Host) sendClaimed(scope *turnScope, text string, held *heldPrompt) (err
 	// the UI's first working report names what the turn is on
 	ag.mu.Lock()
 	ag.task = clipLine(text, 200)
-	ag.todoChecks = 0 // the user spoke: a stale list may push back once again
 	ag.mu.Unlock()
 	fail := func(err error) error {
 		h.endScope(scope)
@@ -1030,10 +1023,12 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 		text = joinQueue(ag.steering)
 		ag.steering = nil
 		ag.steeredTurn = text != "" // the queue's words open the next turn
-		ag.todoChecks = 0
 	}
 	if ag.todoNag != "" {
+		// the turn ended without a step boundary to deliver it: the model
+		// never saw it, so the tracker restarts rather than nagging at once
 		ag.todoNag, ag.todoPending = "", false
+		ag.todoSteps, ag.todoNagAt = 0, 0
 	}
 	// a background run's report starts its own turn, which is checked after
 	goal := ag.goal
@@ -1045,16 +1040,6 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 	}
 	if text != "" {
 		ag.goalRuns, ag.byLoop = 0, false
-	}
-	// a clean end with open items is how a long session goes stale: the work
-	// stopped but the list says otherwise. One reconciling turn pushes back —
-	// finish the items or rewrite the list to match what happened. A turn the
-	// user stopped, or one whose work a background run carries, ends for real.
-	if text == "" && goal == nil && err == nil && done.ctx.Err() == nil && ag.turnReplied &&
-		h.tasks.runningFor(store.MainSessionID) == 0 {
-		if note := h.todoEndNote(ag); note != "" {
-			text, ag.todoEndTurn = note, true
-		}
 	}
 	var next *turnScope
 	if text == "" && goal == nil {
@@ -1129,9 +1114,16 @@ func (h *Host) deliverSteering() []string {
 	if len(msgs) > 0 && len(ag.todoList) > 0 {
 		// new work arrived while the model works: without this it does the
 		// work first and adds it to the list afterwards, done already
-		msgs = append(msgs, agent.Note(
-			"Work arrived mid-turn: if it belongs on the todo list, add it with the todos tool.",
-		))
+		open := 0
+		for _, td := range ag.todoList {
+			if td.Status != store.TodoDone {
+				open++
+			}
+		}
+		msgs = append(msgs, agent.Note(fmt.Sprintf(
+			"Work arrived mid-turn: if it belongs on the todo list, add it with the todos tool. %d %s still open: keep the list current as you take the new work on.",
+			open, Plural(open, "item is", "items are"),
+		)))
 	}
 	if ag.todoNag != "" {
 		msgs = append(msgs, ag.todoNag)
@@ -1140,7 +1132,7 @@ func (h *Host) deliverSteering() []string {
 		ag.mu.Unlock()
 		return nil
 	}
-	ag.steering, ag.todoNag = nil, ""
+	ag.steering, ag.todoNag, ag.todoPending = nil, "", false
 	ag.spoke = nil // the message is read: a later call is not detached by it
 	h.flushOutput(TurnStat{})
 	ag.mu.Unlock()
@@ -1293,7 +1285,6 @@ func (ag *agentHost) beginTurn() {
 	ag.stretchMS = nil
 	ag.turnStart = ag.clock.Now()
 	ag.turnThought = 0
-	ag.turnReplied = false
 	ag.thinkStart, ag.thinking, ag.thought = time.Time{}, false, 0
 	ag.retryAt, ag.retries, ag.retryWhy = time.Time{}, 0, ""
 }
@@ -1899,10 +1890,6 @@ func (h *Host) armTodoTurnNote() {
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	if ag.todoEndTurn { // this turn opens on the end note already
-		ag.todoEndTurn = false
-		return
-	}
 	if ag.todoNag != "" || len(ag.todoList) == 0 {
 		return
 	}
@@ -1922,11 +1909,11 @@ func (h *Host) armTodoTurnNote() {
 }
 
 // maybeNagTodos counts a main-runner step against a stale todo list and
-// nudges once per todos write: the model is free to forget, and the next
-// write re-arms the remind. It rides the model-only steering channel
-// (agent.AttachMarker), so it never reads as the user's own message. Only
-// the main agent's steps during its turn count: a subagent's would arm the
-// nag while nobody can be nudged.
+// nudges once per period while the list stays stale: the model is free to
+// forget, and a todos write re-arms the tracker. It rides the model-only
+// steering channel (agent.AttachMarker), so it never reads as the user's own
+// message. Only the main agent's steps during its turn count: a subagent's
+// would arm the nag while nobody can be nudged.
 func (h *Host) maybeNagTodos() {
 	// a call esc ended arms nothing: PrepareStep would persist the nag for
 	// a step that never runs, ahead of the user's next message
@@ -1952,9 +1939,10 @@ func (h *Host) maybeNagTodos() {
 		return // nothing open: nothing to nudge about
 	}
 	ag.todoSteps++
-	if ag.todoSteps < todoNagAfter {
+	if ag.todoSteps-ag.todoNagAt < todoNagAfter {
 		return
 	}
+	ag.todoNagAt = ag.todoSteps
 	ag.todoPending = true
 	if current != "" {
 		ag.todoNag = agent.Note(fmt.Sprintf(
@@ -1969,26 +1957,6 @@ func (h *Host) maybeNagTodos() {
 	))
 }
 
-// todoEndNote is the note a clean end leaves behind while the list holds
-// open items: the model must finish them or rewrite the list to match what
-// happened. One per stretch of user-driven turns; the next send re-arms it.
-func (h *Host) todoEndNote(ag *agentHost) string {
-	if ag.todoChecks > 0 || len(ag.todoList) == 0 {
-		return ""
-	}
-	var parts []string
-	for _, td := range ag.todoList {
-		if td.Status != store.TodoDone {
-			parts = append(parts, string(td.Status)+": "+clipLine(td.Content, 80))
-		}
-	}
-	ag.todoChecks++
-	return agent.Note(fmt.Sprintf(
-		"%d %s open as the turn ends (%s): finish them, or update the list with the todos tool to match what happened — mark the finished ones done and say what holds the rest. Do not leave stale items.",
-		len(parts), Plural(len(parts), "todo is", "todos are"), strings.Join(parts, "; "),
-	))
-}
-
 // resetTodoNag re-arms the staleness tracker from a fresh todo write. A
 // next turn's first todos write is what started counting, so this also stops
 // the nag whenever the model engages at all.
@@ -1999,7 +1967,7 @@ func (h *Host) resetTodoNag(todos []store.Todo) {
 	// the armed note dies with the list: a write makes it stale, a wipe
 	// must not let it ride into the chat that replaced the old one
 	ag.todoNag = ""
-	ag.todoSteps, ag.todoPending = 0, false
+	ag.todoSteps, ag.todoNagAt, ag.todoPending = 0, 0, false
 	if len(todos) < 2 {
 		ag.todoList = nil // a single item is a trivial task: it never nags
 		return
