@@ -52,12 +52,14 @@ $S/zemi-lab status                 # the tree, port, session and every block id
 $S/zemi-lab down                   # quit zemi, kill sessions and server, delete the tree
 ```
 
-`prompt` clears a leftover draft first (one ctrl+c; a second would quit), types, sends
-Enter, and waits for the screen to settle - never a blind sleep. It refuses while a
-permission ask is up (past the ask's key grace its first letters answer the ask and the
-rest lands as a mangled draft - `ask y|n` first) and dies loudly when the text never
-reached the composer (an overlay is open - `send Escape` first). It returns when the
-screen settles (a settle heuristic), which can be mid-turn - not a turn-end guarantee.
+`prompt` clears a leftover draft first (ctrl+c until the composer box empties - verified
+against the box's own rows, never the whole screen, which transcript rows echo), types,
+sends Enter, then waits for the request to reach the model (the fake's request counter -
+the screen cannot prove a turn started) and for the screen to settle. It refuses while
+any overlay waits on the user: a permission ask (`ask y|n` first) or a question/plan
+overlay (`send Escape` first) - past one, its first letters answer the overlay and the
+rest lands as a mangled draft. It returns when the screen settles (a settle heuristic),
+which can be mid-turn - not a turn-end guarantee.
 `up` flags: `-x W -y H`
 (default 140x40), `--theme whorl-light`, `--untrusted` (drops `--trust`, for the trust
 prompt), `--asks` (installs a gate plugin whose `permission.request` handler returns
@@ -148,6 +150,8 @@ the sequences tmux eats:
 ```sh
 $S/zemi-lab -n ps up --rex --asks
 $S/zemi-lab -n ps prompt 'call shell {"command":"ls","about":"list"}'
+$S/zemi-lab -n ps wait ask
+$S/zemi-lab -n ps ask y
 $S/zemi-lab -n ps events program_status_changed
 program_status_changed	state=idle
 program_status_changed	state=working msg=call shell {"command":"ls","about":"list"}
@@ -165,7 +169,8 @@ $S/zemi-lab -n ps down                          # quits zemi first, so the exit 
   `working` record can be swallowed entirely, and a turn whose reply repeats the previous
   one can leave no trace at all - not even a fresh `updated_at`; `delay_ms` or a varied
   reply makes a turn show). Also in the
-  stream, unfiltered noise: `process_changed`, `pwd_changed`, client-driven
+  stream, unfiltered noise: `process_changed`, `pwd_changed`,
+  `progress_report`, client-driven
   `size_changed`. A `state=clear` on quit arrives as `program_status_removed`; `records`
   prints what the terminal holds right now. The recorder is a block of its own (id in
   `status`); `events` checks a live stream has a writer - the kernel's list of files held
@@ -187,11 +192,16 @@ $S/zemi-lab -n ps down                          # quits zemi first, so the exit 
   `events program_status_removed` shows `reason=clear` - the session is gone by
   then, which is why `events` falls back to the kept tree's final stream (and warns
   when that stream ends before the tree's last write: a recorder killed mid-lab makes
-  absence assertions false-pass).
+  absence assertions false-pass). A recorder already dead at teardown marks the tree,
+  and `events` on that kept tree refuses - absence assertions on a stream that stopped
+  early false-pass; read `events.jsonl` directly when you only want what did arrive.
+- `down` on a lab whose zemi is already dead refuses: the quit dance would burn 4s and
+  land no exit clear anyone could assert - `down --force` reaps without it.
 - `zemi-lab status` prints the session and every block id (zemi is `main`); kill a wedged
   lab zemi by the exact pid from `rex block call -b BLOCK process` (never a broad
   `ps | grep`). `rex kill` takes sessions only. A drive command after such a kill dies
-  loudly instead of serving the corpse's stale screen - a block outlives its process.
+  loudly instead of serving the corpse's stale screen - a block outlives its process -
+  and `down` refuses too (`down --force` reaps without the exit clear).
 
 ## The chaos driver
 

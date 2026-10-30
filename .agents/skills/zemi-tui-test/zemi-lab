@@ -20,9 +20,10 @@ usage: zemi-lab [-n name] [-s main|peer] command [args]
                      window takes a name (default peer)
   -s main|peer       which window the drive commands act on
   prompt TEXT        clear a leftover draft, type TEXT, Enter, wait for the
-                     screen to settle; refuses while a permission ask is up
+                     request to reach the model and the screen to settle;
+                     refuses while any overlay waits on the user
   type TEXT          literal text into the composer, no Enter; returns once
-                     the text shows
+                     the text shows in the composer; refuses under an overlay
   send KEYS...       key names as tmux spells them (Enter, Escape, C-c, DC)
   wait [PATTERN]     until the screen stops changing, and PATTERN shows;
                      `wait ask` waits for a permission ask
@@ -44,6 +45,7 @@ usage: zemi-lab [-n name] [-s main|peer] command [args]
   db | logs | status | health [args...]
   attach             how to watch this lab
   down [--keep]      quit zemi, kill the sessions and server, delete the tree
+  down --force       reap a lab whose zemi is already dead (no exit clear)
 U
 	exit 2
 }
@@ -122,6 +124,45 @@ cap() {
 	case $BACKEND in
 		rex) rex capture -s "$RSESSION" -b "$RBLK" 2>/dev/null || true ;;
 		*) tmux -L "$SERVER" capture-pane -t "$SESSION" -p 2>/dev/null || true ;;
+	esac
+}
+
+# composer_has TEXT: whether the composer box's rows carry TEXT. The box at
+# the bottom is read by its border rows, never the whole screen: a transcript
+# row echoing the same words must not pass for the composer, and a narrow
+# pane folds the text across rows, so the box's rows are joined and unspaced.
+composer_has() {
+	cap | tail -8 | python3 -c '
+import sys
+text = sys.argv[1].replace(" ", "")
+rows = [l for l in sys.stdin.read().splitlines() if l.lstrip().startswith("│")]
+joined = "".join(r.replace("│", "").replace(" ", "") for r in rows)
+sys.exit(0 if text in joined else 1)
+' "$1"
+}
+
+# overlay_kind: what overlay waits on the user right now, read from terminal
+# state - never from screen text, which transcript rows echo. A rex lab
+# reads the OSC 7501 blocked record (permission, question); tmux swallows
+# those sequences, so its title mark (? while any prompt waits) stands in.
+overlay_kind() {
+	if [ "$BACKEND" = rex ]; then
+		rex block call -s "$RSESSION" -b "$RBLK" program_status 2>/dev/null |
+			python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except ValueError:
+    raise SystemExit
+for r in d.get("records", []):
+    if r.get("state") == "blocked":
+        print(r.get("kind") or "blocked")
+        break
+'
+		return 0
+	fi
+	case "$(tmux -L "$SERVER" display -p -t "$SESSION" '#{pane_title}' 2>/dev/null)" in
+		"? "*) printf 'prompt' ;;
 	esac
 }
 
@@ -390,54 +431,72 @@ EOF
 
 cmd_prompt() {
 	[ $# -ge 1 ] || die "prompt: text"
-	screen=$(cap)
-	case "$screen" in
-		*"No, and tell"*)
-			# past the ask's key grace the prompt's first letters answer the
-			# ask and the rest lands as a mangled draft - refusing is the only
-			# honest move
-			die "a permission ask is up (the prompt's first letters would answer it - ask y|n first)"
-			;;
-	esac
-	case "$screen" in
-		*"Ask anything"*) ;;
-		*)
-			# a leftover draft glues onto the text; one C-c clears it (a second quits)
-			send_keys C-c
-			sleep 0.3
-			case "$(cap)" in *"Ask anything"*) ;; *) die "the composer will not empty (an overlay is open?)" ;; esac
-			;;
+	kind=$(overlay_kind)
+	case "$kind" in
+		permission) die "a permission ask is up (the prompt's keys would answer it - ask y|n first)" ;;
+		"") ;;
+		*) die "an overlay is up ($kind) - the prompt's keys would land in it; send Escape first" ;;
 	esac
 	# the request count before Enter: last refuses to serve a body older than
 	# the last prompt, so a turn that died before the model cannot silently
 	# serve the previous body to a prompt-cache diff
 	ls "$TREE"/requests 2>/dev/null | wc -l >"$TREE/.lab.turn"
+	# a leftover draft glues onto the text; one C-c clears it (a second, on an
+	# empty composer, quits) - but the C-c can be eaten by an overlay still
+	# closing (send Escape; prompt right after), so verify the composer box
+	# emptied and retry, bounded
+	i=0
+	while [ "$i" -lt 4 ]; do
+		composer_has "Ask anything" && break
+		send_keys C-c
+		sleep 0.4
+		i=$((i + 1))
+	done
+	composer_has "Ask anything" ||
+		die "the composer will not empty (a draft survived 4 ctrl+c - an overlay may still be open)"
 	type_text "$*"
 	# the text must sit in the composer before Enter: with an overlay up the
 	# keys go to the overlay and the composer silently keeps its draft
 	i=0
 	while [ "$i" -lt 8 ]; do
-		cap | grep -qF -- "$*" && break
+		composer_has "$*" && break
 		i=$((i + 1))
 		sleep 0.25
 	done
-	[ "$i" -lt 8 ] || die "the text never reached the composer (an overlay is open? send Escape first)"
+	[ "$i" -lt 8 ] || die "the text never reached the composer (an overlay is open? zemi stopped? send Escape first)"
 	send_keys Enter
+	# the request counter is the source of truth that the turn started: the
+	# screen cannot prove it - a stopped zemi holds the previous turn's rows
+	# and every whole-screen grep matches them
+	at=$(cat "$TREE/.lab.turn")
+	i=0
+	while [ "$i" -lt 40 ]; do
+		[ "$(ls "$TREE"/requests 2>/dev/null | wc -l)" -gt "$at" ] && break
+		i=$((i + 1))
+		sleep 0.25
+	done
+	[ "$i" -lt 40 ] || die "no model request arrived within 10s of the prompt (zemi stuck or stopped? zemi-lab logs)"
 	wait_stable "" 30 || die "the screen never settled after the prompt"
 }
 
 cmd_type() {
 	[ $# -ge 1 ] || die "type: text"
+	kind=$(overlay_kind)
+	case "$kind" in
+		permission) die "type: a permission ask is up (ask y|n first)" ;;
+		"") ;;
+		*) die "type: an overlay is up ($kind) - the text would land in it; send Escape first" ;;
+	esac
 	type_text "$@"
 	# tmux delivers the burst late: an immediate capture false-negatives, so
-	# return only once the text shows
+	# return only once the text shows in the composer box (wrap-joined)
 	i=0
 	while [ "$i" -lt 8 ]; do
-		cap | grep -qF -- "$*" && exit 0
+		composer_has "$*" && exit 0
 		i=$((i + 1))
 		sleep 0.25
 	done
-	die "type: '$*' never became visible (an overlay ate it? the pane died?)"
+	die "type: '$*' never reached the composer (the pane died?)"
 }
 
 cmd_send() {
@@ -458,16 +517,25 @@ cmd_wait() {
 cmd_ask() {
 	case "${1:-}" in y | n | t) ;; *) die "ask: y, n or t" ;; esac
 	# there must be an ask to answer: with none up, "box gone" is trivially
-	# true and the command would lie
-	wait_stable "No, and tell" 5 ||
-		die "no permission ask is up (wait ask first - the ask may have been answered already)"
+	# true and the command would lie. The rex lab reads the terminal's
+	# blocked record; tmux falls back to the box's No row on the screen
+	# (a transcript row echoing that literal can still fool it there).
+	if [ "$BACKEND" = rex ]; then
+		[ "$(overlay_kind)" = permission ] ||
+			die "no permission ask is up (wait ask first - the ask may have been answered already)"
+	else
+		wait_stable "No, and tell" 5 ||
+			die "no permission ask is up (wait ask first - the ask may have been answered already)"
+	fi
 	# the first key can land in the grace; resend until the box is gone
 	i=0
 	while [ "$i" -lt 10 ]; do
-		case "$(cap)" in
-			*"No, and tell"*) send_keys "$1"; sleep 0.5 ;;
-			*) exit 0 ;;
-		esac
+		if [ "$BACKEND" = rex ]; then
+			[ "$(overlay_kind)" != permission ] && exit 0
+		else
+			case "$(cap)" in *"No, and tell"*) ;; *) exit 0 ;; esac
+		fi
+		send_keys "$1"; sleep 0.5
 		i=$((i + 1))
 	done
 	die "the ask is still up after 10 tries"
@@ -693,6 +761,9 @@ cmd_events() {
 	# no load: a downed session (down --keep) is exactly the state events must
 	# still serve - its kept tree holds the final stream, the only read left
 	# that can assert the exit clear
+	case "$SESSION" in
+		fake | recorder) die "'$SESSION' is lab plumbing, not a window (-s main|peer)" ;;
+	esac
 	[ -f "$ENVF" ] || die "no lab '$NAME' at $TREE (zemi-lab up first)"
 	# shellcheck disable=SC1090
 	. "$ENVF"
@@ -710,7 +781,11 @@ cmd_events() {
 	else
 		# a kept stream can be short: a recorder killed mid-lab froze the file
 		# while zemi kept writing, so an absence assertion on it can pass on a
-		# stream that stopped early - warn when the tree outlived the stream
+		# stream that stopped early. down marks a tree whose recorder was
+		# already dead at teardown - refuse on the mark, warn when the tree
+		# outlived the stream some other way
+		[ -f "$TREE/.lab.stale-stream" ] &&
+			die "the stream was already stale when the lab was kept (the recorder died early) - absence assertions on it false-pass; read $TREE/events.jsonl directly"
 		late=$(python3 - "$TREE" <<'STALE'
 import os, sys
 
@@ -808,12 +883,30 @@ cmd_attach() {
 }
 
 cmd_down() {
-	keep=""
-	[ "${1:-}" = --keep ] && keep=1
+	keep="" force=""
+	for a do
+		case "$a" in
+			--keep) keep=1 ;;
+			--force) force=1 ;;
+			*) die "down: --keep or --force" ;;
+		esac
+	done
 	if [ -f "$ENVF" ]; then
 		# shellcheck disable=SC1090
 		. "$ENVF"
 		if [ "${LAB_BACKEND:-tmux}" = rex ] && [ -n "${LAB_RSESSION:-}" ]; then
+			# a dead zemi turns the quit dance into a 4s wait that silently
+			# lands no exit clear: refuse, and let --force reap without it
+			if [ -f "$BLOCKS" ] && [ -z "$force" ]; then
+				fgp=$(rex block call -s "$LAB_RSESSION" -b "$(awk '$1 == "main" {print $2}' "$BLOCKS")" process 2>/dev/null |
+					python3 -c 'import json,sys;f=(json.load(sys.stdin).get("foreground") or {});print(f.get("pid",""))')
+				{ [ -n "$fgp" ] && kill -0 "$fgp" 2>/dev/null; } ||
+					die "zemi is already dead (${fgp:-no live process}); down --force reaps without the exit clear"
+			fi
+			# a recorder that died before the quit leaves a stream that ends
+			# early: mark it, so kept-tree events refuses absence assertions
+			lsof -t "$TREE/events.jsonl" >/dev/null 2>&1 ||
+				touch "$TREE/.lab.stale-stream"
 			# quit zemi first so the exit clear reaches the terminal. Keys go to
 			# the zemi blocks only: a ctrl+c to the recorder's block would kill
 			# the stream mid-write. An ask or overlay is dismissed first, and a
