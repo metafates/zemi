@@ -63,8 +63,11 @@ started), that a request carries the prompt's text with its marker (each `prompt
 a unique `[zl:PID]` to the text and the match wants marker and full text together: the
 marker alone is the caller's pid, readable off the composer and typeable by another
 window - which is why every window boots its own fake model writing under its own dir
-(`req-<window>`; `-s peer last` reads the peer's), so another window's words, planted or
-not, land outside the stream this prompt's match reads. Within one window only a
+(`req-<window>`; `-s peer last` reads the peer's), so a pair typed into a peer can only
+land in the peer's stream. The store is still shared: every window's DELIVERED words ride
+each later request's `<chat>` fold in every window, which is why the match reads only
+requests past the prompt's baseline, and the per-tree lock - no window delivers while a
+prompt polls - plus the marker are what hold that fold route. Within one window only a
 delivery of this very text - as a verbatim user message, or inside a later `<chat>` fold
 built from delivered messages - can put the pair in a request: neither a count alone
 (fires on any request landing after the baseline) nor a duplicate text (a re-sent older
@@ -122,20 +125,27 @@ streamed chunks.
   (house rule). `zemi-lab snap` saves a masked capture, `zemi-lab diff` diffs a fresh one
   against it and exits 1 on a shift; the mask blanks what moves on its own - the
   statusline's figures (elapsed, token counts, cost, the clock), the braille spinner, the
-  snail's eyes, a row's trailing `· Ns` - and never the user's own words in the rows, so
-  a diff shows text as written. The raw captures are kept beside
+  snail's eyes, the right rail's thumb cell, a working border's figures (elapsed clock,
+  retry countdown), a finished turn's `model · Ns · N out · clock` telemetry, a row's
+  trailing `· Ns` and a running tool's right-aligned seconds - and never the user's own
+  words in the rows, so
+  a diff shows text as written. With a peer up, one window's diff conflates the peer's
+  rows (its queued `· other window` row, its error rows): diff a single-window lab, or
+  with the peer idle. The raw captures are kept beside
   the masked ones for re-checking (`snap m1.txt` keeps `m1.raw` - the suffix replaces
   `.txt`; a relative name lands in `$TREE/snap/`).
 - The pane title marks state: `? ` while an ask is up, plain otherwise -
   `zemi-lab title` prints it on either backend (a rex lab also streams each change as a
-  `title_changed` event, so the count of title writes is assertable). `wait ask` and
+  `title_changed` event, so the count of title writes is assertable - count from a
+  marker event onward, boot writes two identical titles back to back). `wait ask` and
   `ask` read this state (rex: the blocked record's kind - Rex's parser keeps
   permission/question/auth; zemi's plan kind rides the wire but Rex drops that record,
   so a plan ask reads as kindless `blocked`, which the guards cover with the Escape
   remedy; tmux: the mark, which cannot
   tell a permission ask from a question or plan overlay - it answers whatever holds it,
   and a plan or question overlay eats every y|n, so a stuck `ask` on tmux dies naming
-  Escape; use a rex lab when the distinction matters).
+  Escape (send it twice: the y's may have opened the plan's editor under the overlay);
+  use a rex lab when the distinction matters).
 - Capture the WHOLE pane, not row ranges: popups sit mid-screen and the composer is 3 rows;
   row-range captures made a working app look hung three separate times.
 - A burst of send-keys can wedge a pane's input (an unterminated bracketed paste swallows
@@ -145,7 +155,9 @@ streamed chunks.
   command.
 - SIGSTOP is a tmux trap, not a lab one: stopping the lab's zemi collapses the pane in
   ~1s (the wrapper exits on its stopped child while zemi survives), so a STOP experiment
-  on tmux becomes a dead-pane experiment - run those on the rex backend.
+  on tmux becomes a dead-pane experiment - run those on the rex backend. A stopped
+  zemi's frozen screen reads as settled to a compare, so `wait` refuses one
+  (`kill -CONT` to resume).
 - Direct `tmux -L zl-<name>` probes need the lab's socket dir: the lab exports
   `TMUX_TMPDIR=$TMPDIR`, so set it the same way or tmux looks in `/tmp/tmux-*`
   and finds no server.

@@ -80,14 +80,20 @@ RSESSION="" RBLK=""
 say() { printf '%s\n' "$*"; }
 die() { printf 'zemi-lab: %s\n' "$*" >&2; exit 1; }
 
+[ "$CMD" = up ] && [ "$SESSION" != main ] &&
+	die "up takes no -s (a lab's first window is always 'main'; peers come from peer)"
+
 # block_id NAME: the Rex block id a lab window maps to (from .lab.blocks,
 # "name id" lines written at up/peer).
 block_id() { awk -v n="$1" '$1 == n {print $2}' "$BLOCKS" 2>/dev/null; }
 
 # req_base: the selected window's own model traffic. Every window boots its
-# own fake writing under its own dir, so one window's requests never carry
-# another window's words - a peer planting a prompt's marker-and-text pair in
-# its own request must not certify a prompt its window never delivered
+# own fake writing under its own dir, so a pair typed into a peer can only
+# land in the peer's stream - the direct route is closed. The store is still
+# shared: every window's DELIVERED words ride each later request's <chat>
+# fold in every window, so the match reads only requests past the prompt's
+# baseline and the per-tree lock (no window delivers while a prompt polls)
+# plus the per-prompt marker hold the fold route
 req_base() {
 	[ "$SESSION" = main ] && printf '%s' "$TREE" || printf '%s/req-%s' "$TREE" "$SESSION"
 }
@@ -162,7 +168,7 @@ cap() {
 composer_has() {
 	cap | python3 -c '
 import sys
-text = sys.argv[1].replace(" ", "")
+text = sys.argv[1].replace(" ", "").replace("\t", "")
 run = []
 for l in reversed(sys.stdin.read().splitlines()):
     s = l.strip()
@@ -170,26 +176,28 @@ for l in reversed(sys.stdin.read().splitlines()):
         run.append(l)
     elif run:
         break
-joined = "".join(r.replace("│", "").replace(" ", "") for r in reversed(run))
+joined = "".join(r.replace("│", "").replace(" ", "").replace("\t", "") for r in reversed(run))
 ok = text in joined or (len(text) > 40 and joined.endswith(text[-40:]))
 sys.exit(0 if ok else 1)
 ' "$1"
 }
 
-# request_carries MSG: whether any request the fake holds carries MSG - a
-# prompt's full text and its [zl:PID] marker matched together. The marker
-# alone proves nothing: it is the caller's pid, readable off the composer
-# and typeable by any window, so only a delivery of this very text (a
-# verbatim user message, or inside a later <chat> fold or compaction block,
-# both built from delivered messages) can put the pair in a request. An
-# erased draft (an interrupt restores it to the composer) leaves no trace,
-# and no older turn can impersonate it the way a duplicate text could a
-# content match.
+# request_carries MSG AT: whether a request newer than AT (the prompt's
+# baseline count) carries MSG - a prompt's full text and its [zl:PID] marker
+# matched together. The marker alone proves nothing: it is the caller's pid,
+# readable off the composer and typeable by any window, so only a delivery
+# of this very text (a verbatim user message, or inside a later <chat> fold
+# or compaction block, both built from delivered messages) can put the pair
+# in a request, and pre-baseline requests cannot vouch for this prompt at
+# all. An erased draft (an interrupt restores it to the composer) leaves no
+# trace, and no older turn can impersonate it the way a duplicate text could
+# a content match.
 request_carries() {
 	python3 -c '
 import glob, json, os, sys
 tree = os.path.dirname(sys.argv[1])
 needle = sys.argv[2]
+at = int(sys.argv[3]) if len(sys.argv) > 3 else 0
 def texts(m):
     c = m.get("content")
     if isinstance(c, list):
@@ -197,6 +205,8 @@ def texts(m):
     return [c] if isinstance(c, str) else []
 for f in sorted(glob.glob(os.path.join(tree, "requests", "[0-9]*.json"))):
     try:
+        if int(os.path.basename(f).split(".")[0]) <= at:
+            continue
         d = json.load(open(f))
     except (ValueError, OSError):
         continue
@@ -298,10 +308,19 @@ for line in sys.stdin.read().splitlines():
     # the spinner animates wherever it runs; the eyes decay in the border
     line = re.sub(r"[\u2800-\u28ff]+", "@", line)
     line = re.sub(r"(┌ )@[.·?><^]{2}", r"\1@··", line)
+    # a finished turn telemetry rides mid-screen once a later turn scrolls
+    # it up: model · seconds · N out · clock
+    line = re.sub(r"· \d+(?:\.\d+)?s · \d+ out · \d{1,2}:\d{2}", "· @ · @ out · @", line)
+    # the right rail thumb cell travels as rows scroll
+    line = re.sub(r"[█▌│]$", "@", line)
+    # a working border ticks its elapsed clock and retry countdown; it is
+    # ui chrome, so every figure on it is volatile
+    if line.lstrip()[:1] in ("┌", "└"):
+        line = re.sub(r"\b\d+m \d+s\b", "@ @", line)
+        line = re.sub(r"\b\d+(?:\.\d+)?[smh]\b", "@", line)
     out.append(line)
 # elapsed/cost/clock figures live in the statusline (the last non-empty
-# line); the user words in the rows above keep theirs. A row still masks a
-# trailing `· Ns` - a running tool ticks it every second
+# line); the user words in the rows above keep theirs
 for i in range(len(out) - 1, -1, -1):
     if out[i].strip():
         line = out[i]
@@ -313,7 +332,13 @@ for i in range(len(out) - 1, -1, -1):
         line = re.sub(r"\d{1,2}:\d{2}", "@", line)      # the clock
         out[i] = line
         break
-out = [re.sub(r"(· )\d+(\.\d+)?[smh]\s*$", r"\1@", line) for line in out]
+for i, line in enumerate(out):
+    # a running tool ticks its right-aligned duration every second; the two
+    # spaces of its gap keep a user row ending in its own `in 5m` (one
+    # space) intact, and a trailing rail cell may ride either
+    line = re.sub(r"(· )\d+(?:\.\d+)?[smh](\s+@)?\s*$", r"\1@\2", line)
+    line = re.sub(r"(\s{2,})\d+(?:\.\d+)?[smh](\s+@)?\s*$", r"\1@\2", line)
+    out[i] = line
 sys.stdout.write("\n".join(out) + "\n")
 '
 }
@@ -461,7 +486,7 @@ cmd_up() {
 	# boot's first prompt, and a stale stale-stream or kept mark would
 	# refuse a healthy teardown
 	rm -rf "$TREE/snap" "$TREE/requests" "$TREE"/req-*
-	rm -f "$TREE/.lab.turn" "$TREE/last_request.json" "$TREE/.lab.stale-stream" "$TREE/.lab.kept"
+	rm -f "$TREE"/.lab.turn "$TREE"/.lab.turn-* "$TREE/last_request.json" "$TREE/.lab.stale-stream" "$TREE/.lab.kept"
 	[ -d "$TREE/proj/.git" ] || (cd "$TREE/proj" && git init -q) || die "git init failed"
 	echo hello >"$TREE/proj/a.txt"
 
@@ -540,8 +565,10 @@ EOF
 		die "the fake model died (port taken?)"
 	}
 
+	# exec: the login shell wrapping the boot line must not keep the pane
+	# pid (fish never exec-optimizes a single command)
 	tmux -L "$SERVER" new-session -d -s "$SESSION" -x "$W" -y "$H" -c "$TREE/proj" \
-		"env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' '$DIR/zemi-safe' '$TREE' $TRUST" ||
+		"exec env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' '$DIR/zemi-safe' '$TREE' $TRUST" ||
 		die "tmux new-session failed"
 	wait_boot
 	trust_note
@@ -594,6 +621,31 @@ release_prompt_lock() {
 	return 0
 }
 
+# stopped: whether the selected window's zemi is SIGSTOP'd - a frozen screen
+# reads as settled to a compare, so wait must refuse one (the boot line execs
+# down to zemi, so the pane/block pid is zemi's own)
+stopped() {
+	case $BACKEND in
+		rex) pid=$(fgpid "$RSESSION" "$RBLK") ;;
+		*) pid=$(tmux -L "$SERVER" display -p -t "$SESSION" '#{pane_pid}' 2>/dev/null) ;;
+	esac
+	[ -n "$pid" ] || return 1
+	# macOS appends flags to the state letter (Ts+ )
+	case "$(ps -o state= -p "$pid" 2>/dev/null)" in T*) return 0 ;; esac
+	return 1
+}
+
+# fake_dead: whether the selected window's fake model stopped - a dead model
+# burns the whole poll window on connection errors the window shows as its
+# own rows, so the die names it instead of a queue
+fake_dead() {
+	if [ "$SESSION" = main ]; then b=fake; else b="fake-$SESSION"; fi
+	case $BACKEND in
+		rex) [ -z "$(fgpid "$RSESSION" "$(block_id "$b")")" ] ;;
+		*) ! tmux -L "$SERVER" has-session -t "$b" 2>/dev/null ;;
+	esac
+}
+
 cmd_prompt() {
 	[ $# -ge 1 ] || die "prompt: text"
 	prompt_lock
@@ -607,10 +659,13 @@ cmd_prompt() {
 		prompt) die "an overlay is up (tmux cannot name it; 'cap' shows which) - the prompt's keys would land in it: ask y|n answers a permission ask, send Escape dismisses the rest" ;;
 		*) die "a $kind overlay is up (the prompt's keys would land in it - send Escape first)" ;;
 	esac
+	fake_dead &&
+		die "this window's model is dead (its fake stopped answering - zemi-lab logs have the connection errors; down/up reboots it)"
 	# the request count before Enter: last refuses to serve a body older than
 	# the last prompt, so a turn that died before the model cannot silently
-	# serve the previous body to a prompt-cache diff
-	find "$req/requests" -type f 2>/dev/null | wc -l >"$TREE/.lab.turn"
+	# serve the previous body to a prompt-cache diff (per window: a peer's
+	# prompt must not move this window's freshness mark)
+	find "$req/requests" -type f 2>/dev/null | wc -l >"$TREE/.lab.turn-$SESSION"
 	# a leftover draft glues onto the text; one C-c clears it (a second, on an
 	# empty composer, quits) - but the C-c can be eaten by an overlay still
 	# closing (send Escape; prompt right after), so verify the composer box
@@ -641,14 +696,14 @@ cmd_prompt() {
 	# the request counter is the source of truth that the turn started: the
 	# screen cannot prove it - a stopped zemi holds the previous turn's rows
 	# and every whole-screen grep matches them
-	at=$(cat "$TREE/.lab.turn")
+	at=$(cat "$TREE/.lab.turn-$SESSION")
 	i=0
 	while [ "$i" -lt 40 ]; do
 		# the request must carry this text: the count alone fires on any
 		# request landing after the baseline - a queued steer's turn-start,
 		# work predating the prompt - while this text sits undelivered
 		if [ "$(find "$req/requests" -type f 2>/dev/null | wc -l)" -gt "$at" ] &&
-			request_carries "$msg"; then
+			request_carries "$msg" "$at"; then
 			break
 		fi
 		i=$((i + 1))
@@ -664,6 +719,9 @@ cmd_prompt() {
 			"")
 				if [ "$(find "$req/requests" -type f 2>/dev/null | wc -l)" -gt "$at" ]; then
 					die "a turn ran but this prompt's marker never reached the model - the draft was eaten, or an interrupt restored it to the composer (a fresh prompt resubmits; zemi-lab logs)"
+				fi
+				if fake_dead; then
+					die "no request arrived: this window's model is dead (its fake stopped answering; zemi-lab logs have the connection errors)"
 				fi
 				die "no request arrived within 10s (queued behind a running turn? zemi-lab logs)"
 				;;
@@ -685,9 +743,9 @@ cmd_type() {
 	esac
 	# an empty composer shows the placeholder, so typing exactly it could
 	# not be told apart from an untouched composer - the verify would be
-	# vacuous. The verify compares space-stripped text, so any spacing of the
-	# placeholder is as unverifiable as the exact one
-	[ "$(printf '%s' "$*" | tr -d ' ')" = "Askanything" ] &&
+	# vacuous. The verify compares space-and-tab-stripped text, so any
+	# spacing of the placeholder is as unverifiable as the exact one
+	[ "$(printf '%s' "$*" | tr -d ' \t')" = "Askanything" ] &&
 		die "type: 'Ask anything' is what an empty composer already shows - type other text (the verify could not tell them apart)"
 	type_text "$@"
 	# tmux delivers the burst late: an immediate capture false-negatives, so
@@ -708,6 +766,8 @@ cmd_send() {
 }
 
 cmd_wait() {
+	stopped &&
+		die "wait: zemi is stopped (kill -CONT the pid first - a frozen screen reads as settled)"
 	case "${1:-}" in
 		ask)
 			wait_ask && exit 0
@@ -757,7 +817,7 @@ cmd_ask() {
 		fi
 		# tmux's mark cannot tell the kinds apart, so the y's may have keyed
 		# into a plan's changes box or a question's answer - name the escape
-		die "the ask is still up after 10 tries (tmux's ? mark hides the kind: a plan or question overlay eats y|n - 'cap' shows which, send Escape dismisses it)"
+		die "the ask is still up after 10 tries (tmux's ? mark hides the kind: a plan or question overlay eats y|n - 'cap' shows which; send Escape, twice if the first only opened the plan's editor)"
 	}
 }
 
@@ -919,7 +979,7 @@ cmd_peer() {
 			die "the $WIN fake model died (port taken?)"
 		}
 		tmux -L "$SERVER" new-session -d -s "$WIN" -x "$W" -y "$H" -c "$TREE/proj" \
-			"env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' ZEMI_LAB_CONFIG='$TREE/config-$WIN' '$DIR/zemi-safe' '$TREE'${LAB_TRUST:+ $LAB_TRUST}" ||
+			"exec env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' ZEMI_LAB_CONFIG='$TREE/config-$WIN' '$DIR/zemi-safe' '$TREE'${LAB_TRUST:+ $LAB_TRUST}" ||
 			die "tmux new-session failed"
 	fi
 	i=0
@@ -939,8 +999,8 @@ cmd_peer() {
 cmd_last() {
 	req=$(req_base)
 	[ -f "$req/last_request.json" ] || die "no request yet (last_request.json is missing)"
-	if [ -f "$TREE/.lab.turn" ]; then
-		at_prompt=$(cat "$TREE/.lab.turn")
+	if [ -f "$TREE/.lab.turn-$SESSION" ]; then
+		at_prompt=$(cat "$TREE/.lab.turn-$SESSION")
 		now_count=$(find "$req/requests" -type f 2>/dev/null | wc -l)
 		[ "$now_count" -gt "$at_prompt" ] ||
 			die "no request arrived after the last prompt (the turn died before the model? check zemi-lab logs)"
@@ -1062,7 +1122,7 @@ STALE
 		[ -n "$late" ] &&
 			printf 'zemi-lab: warning: %s was written after the stream ended; the recorder died early and absence assertions on this kept stream can false-pass\n' "$late" >&2
 	fi
-	BLOCK_LIST=$(awk '$1 !~ /^fake/ && $1 != "recorder" {print $2}' "$BLOCKS" 2>/dev/null)
+	BLOCK_LIST=$(awk '$1 == "fake" || $1 ~ /^fake-/ {print $2}' "$BLOCKS" 2>/dev/null)
 	BLOCKS="$RBLK $BLOCK_LIST" ZEMI_LAB_EVENTS="$TREE/events.jsonl" python3 - "$@" <<'PYEOF'
 import json, os, sys
 
@@ -1175,7 +1235,7 @@ cmd_down() {
 			# (rex kill would otherwise strand the last record). A corpse skips
 			# the dance: its keys land nowhere and the 4s wait buys nothing.
 			if [ -n "$live" ] && [ -f "$BLOCKS" ]; then
-				zblocks=$(awk '$1 !~ /^fake/ && $1 != "recorder" {print $2}' "$BLOCKS")
+				zblocks=$(awk '$1 == "fake" || $1 ~ /^fake-/ {print $2}' "$BLOCKS")
 				for bid in $zblocks; do
 					rex send-key -s "$LAB_RSESSION" -b "$bid" -- escape 2>/dev/null || true
 				done
