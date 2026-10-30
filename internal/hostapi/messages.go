@@ -348,8 +348,9 @@ func (h *Host) messagesList(p pickTr, at int) Overlay {
 		item.Section = "Earlier"
 		o.Items = append(o.Items, item)
 	}
+	var prevDay string
 	for _, t := range messagesTurns(p) {
-		section := turnSection(p, t)
+		section := turnSection(p, t, &prevDay)
 		for _, e := range turnElements(p, t.rows) {
 			var item OverlayItem
 			if e.run != nil {
@@ -451,11 +452,17 @@ func (h *Host) messagesOlder() (Overlay, bool) {
 }
 
 // turnSection is the header a turn's rows sit under: its number, the clock
-// of its prompt, and what it held after the prompt.
-func turnSection(p pickTr, t msgTurn) string {
+// of its prompt — dated when the day turns, so a days-later resume reads —
+// and what it held after the prompt.
+func turnSection(p pickTr, t msgTurn, prevDay *string) string {
 	var desc []string
 	if m := p.at(t.first); m.SentAt > 0 {
-		desc = append(desc, time.UnixMilli(m.SentAt).Format(ClockLayout))
+		at := time.UnixMilli(m.SentAt)
+		if day := at.Format("Jan 02"); day != *prevDay {
+			desc = append(desc, day)
+			*prevDay = day
+		}
+		desc = append(desc, at.Format(ClockLayout))
 	}
 	replies := 0
 	for _, idx := range t.rows[1:] {

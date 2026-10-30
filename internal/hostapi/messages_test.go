@@ -56,6 +56,8 @@ func TestMessagesList(t *testing.T) {
 		t.Fatalf("list: %s %q follow=%v anchor=%q", o.ID, o.Title, o.Follow, o.Anchor)
 	}
 	clock := sent.Format(ClockLayout)
+	// both turns ran the same day, so the date prefixes the first section only
+	day := sent.Format("Jan 02")
 	type row struct {
 		text, section, mark, run string
 		anchor                   int
@@ -64,7 +66,7 @@ func TestMessagesList(t *testing.T) {
 	for _, it := range o.Items {
 		got = append(got, row{it.Text, it.Section, string(it.Mark), it.Run, it.Anchor})
 	}
-	turn1, turn2 := "Turn 1 · "+clock+" · 1 reply", "Turn 2 · "+clock+" · 1 reply"
+	turn1, turn2 := "Turn 1 · "+day+" · "+clock+" · 1 reply", "Turn 2 · "+clock+" · 1 reply"
 	want := []row{
 		{"ping", turn1, "", "messages view 1", 1},
 		{"2 steps", turn1, "", "messages rail 2", 2},
