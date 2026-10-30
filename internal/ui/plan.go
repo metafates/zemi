@@ -6,6 +6,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -76,6 +77,14 @@ func (a *App) planKey(key, text string) {
 	defer a.bump()
 	if !(p.typing && lineKey(key)) && scrollKey(&p.view, key, false) || !p.typing && moveSel(&p.sel, len(choices), len(choices), key) {
 		return
+	}
+	// the changes input is the plan's own text path (DESIGN §8): a printable
+	// that is no button's key opens it, and a kept draft holds the buttons —
+	// the words are the verdict being written; esc dismisses the plan whole
+	drafted := strings.TrimSpace(p.input.text) != ""
+	button := slices.ContainsFunc(choices, func(c promptChoice) bool { return c.key == key })
+	if !p.typing && key != "esc" && (drafted || text != "" && !button) {
+		p.typing = true
 	}
 	if p.typing {
 		switch key {

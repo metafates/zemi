@@ -53,6 +53,7 @@ func TestPlanApproval(t *testing.T) {
 		{"down down enter opens the changes input", []string{"j", "j", "enter", "x", "enter"}, tools.PlanVerdict{Feedback: "x"}, true},
 		{"typing requests changes", []string{"e", "u", "s", "e", " ", "s", "q", "l", "enter"}, tools.PlanVerdict{Feedback: "use sql"}, true},
 		{"esc dismisses", []string{"esc"}, tools.PlanVerdict{}, false},
+		{"a stray burst's letters draft instead of approving", []string{"x", "r", "a", "enter"}, tools.PlanVerdict{Feedback: "xra"}, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -118,7 +119,8 @@ func TestPlanScroll(t *testing.T) {
 		{"j moves the button, not the text", []string{"j"}, 0, 0, 1, ""},
 		{"ctrl+u while typing changes scrolls the text", []string{"e", "xy", "ctrl+d", "ctrl+d", "ctrl+u", "z"}, 0, 1, 0, "xyz"},
 		{"ctrl+d while typing changes scrolls the text", []string{"e", "x", "ctrl+d"}, 0, 1, 0, "x"},
-		{"esc then e keeps the draft", []string{"e", "x", "esc", "e", "y"}, 0, 0, 0, "xy"},
+		{"esc then typing keeps the draft", []string{"e", "x", "esc", "w", "y"}, 0, 0, 0, "xwy"},
+		{"a kept draft holds the buttons", []string{"e", "x", "esc", "a", "y"}, 0, 0, 0, "xay"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
