@@ -434,11 +434,13 @@ write_config() {
 		} >"$TREE/data/plugins/local/askgate/.zemi/init.lua"
 }
 
-# wait_boot: poll captures until the composer shows, or fail loudly.
+# wait_boot: poll captures until the composer shows, or fail loudly. The
+# placeholder can also read "tell zemi what to do instead…" - a [t] answer
+# points the draft at itself until the first key.
 wait_boot() {
 	i=0
 	while [ "$i" -lt 120 ]; do
-		case "$(cap)" in *"Ask anything"*) return 0 ;; esac
+		case "$(cap)" in *"Ask anything"* | *"what to do instead"*) return 0 ;; esac
 		i=$((i + 1))
 		sleep 0.25
 	done
@@ -710,15 +712,16 @@ cmd_prompt() {
 	# a leftover draft glues onto the text; one C-c clears it (a second, on an
 	# empty composer, quits) - but the C-c can be eaten by an overlay still
 	# closing (send Escape; prompt right after), so verify the composer box
-	# emptied and retry, bounded
+	# emptied and retry, bounded. The placeholder can also read "tell zemi
+	# what to do instead…" after a [t] answer.
 	i=0
 	while [ "$i" -lt 4 ]; do
-		composer_has "Ask anything" && break
+		composer_has "Ask anything" || composer_has "what to do instead" && break
 		send_keys C-c
 		sleep 0.4
 		i=$((i + 1))
 	done
-	composer_has "Ask anything" ||
+	composer_has "Ask anything" || composer_has "what to do instead" ||
 		die "the composer will not empty (a draft survived 4 ctrl+c - an overlay may still be open)"
 	# a per-call marker rides the text, so delivery is attributable to it
 	# alone (request_carries); the composer check must match what was typed
