@@ -1333,7 +1333,9 @@ zemi.ui.widget.add({
 			local done = #todos - left
 			local filled = math.ceil(done * cells / #todos)
 			for n = 1, cells do
-				local lo, hi = math.floor((n - 1) * #todos / cells), math.floor(n * #todos / cells)
+				-- the items cell n's share spans, its top bound rounded up:
+				-- an item two cells wide lights both of them
+				local lo, hi = math.floor((n - 1) * #todos / cells), math.ceil(n * #todos / cells)
 				local live = false
 				for i = lo + 1, hi do
 					if todos[i].status == "in_progress" then live = true end

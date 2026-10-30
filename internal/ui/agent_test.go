@@ -2711,6 +2711,17 @@ func TestTodosMeterWithinTheWindow(t *testing.T) {
 		if !strings.Contains(r, "1/3  ━━━━━━") {
 			t.Fatalf("three items must draw six cells, two per item: %q", r)
 		}
+		// an item's both cells take its hue: the done pair, the live pair,
+		// the dim rest
+		var hue []string
+		for _, s := range l {
+			if s.Text == "━" {
+				hue = append(hue, s.HL)
+			}
+		}
+		if want := []string{"TodoDone", "TodoDone", "TodoMark", "TodoMark", "Rule", "Rule"}; !slices.Equal(hue, want) {
+			t.Fatalf("the meter's hues read %v, want %v", hue, want)
+		}
 		return
 	}
 	t.Fatal("no todos header")
