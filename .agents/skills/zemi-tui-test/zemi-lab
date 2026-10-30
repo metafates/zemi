@@ -512,7 +512,7 @@ cmd_up() {
 	# boot's first prompt, and a stale stale-stream or kept mark would
 	# refuse a healthy teardown
 	rm -rf "$TREE/snap" "$TREE/requests" "$TREE"/req-*
-	rm -f "$TREE"/.lab.turn "$TREE"/.lab.turn-* "$TREE/last_request.json" "$TREE/.lab.stale-stream" "$TREE/.lab.kept"
+	rm -f "$TREE"/.lab.turn "$TREE"/.lab.turn-* "$TREE/last_request.json" "$TREE/.lab.stale-stream" "$TREE/.lab.kept" "$TREE/.accepts"
 	[ -d "$TREE/proj/.git" ] || (cd "$TREE/proj" && git init -q) || die "git init failed"
 	echo hello >"$TREE/proj/a.txt"
 

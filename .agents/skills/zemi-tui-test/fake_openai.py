@@ -4,8 +4,10 @@
 # classify, zemi.model.ask) get a plain chat.completion. Every accepted request
 # body lands in OUTDIR/last_request.json (atomic) and OUTDIR/requests/NNN.json,
 # so two consecutive bodies diff byte for byte (prompt cache); a refused
-# request (a 429) records nothing. Each recorded body's number is
-# countersigned in OUTDIR/.accepts, which the lab's delivery counter reads.
+# request (a 429) records nothing. Each recorded body's number is one past
+# the last countersigned one, and the number is countersigned in
+# OUTDIR/.accepts, which the lab's delivery counter reads - a planted
+# requests/NNN.json cannot shift the sequence or count as delivered.
 # While OUTDIR/rate_fail holds a positive count, that many requests are refused
 # with a 429 and a 300ms retry-after, the count decrementing per refusal.
 # OUTDIR/rate_limit holds "REQUESTS[:TOKENS][:WINDOW]" (e.g. "40:52000:60"): the
@@ -67,7 +69,7 @@ class H(BaseHTTPRequestHandler):
         elif not text:
             c = body["messages"][-1].get("content") or ""
             text = c if isinstance(c, str) else " ".join(p.get("text", "") for p in c)
-        n = len(os.listdir(os.path.join(OUT, "requests"))) + 1
+        n = ctl(".accepts") + 1
         print("REQ %d stream=%s %s" % (n, body.get("stream"), text[:60].replace("\n", " ")), flush=True)
         try:
             parts = (open(os.path.join(OUT, "rate_limit")).read().strip() or "0").split(":")

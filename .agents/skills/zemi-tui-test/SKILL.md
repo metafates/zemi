@@ -117,8 +117,9 @@ completion. Every accepted request body lands in `last_request.json` and
 `requests/NNN.json` under
 the tree, so two consecutive bodies diff byte for byte (prompt cache); `zemi-lab last`
 prints the latest. A refused request (a 429) writes nothing - that is what makes the
-counter a reached-the-model check, and the fake countersigns each accepted body's number
-in `.accepts`, which the counter reads - a planted `requests/NNN.json` fools nothing.
+counter a reached-the-model check, and the fake numbers each body one past the
+last countersigned one and signs the number in `.accepts`, which the counter
+reads - a planted `requests/NNN.json` cannot shift the sequence and fools nothing.
 The generated init.lua adds no second model, so nothing
 else writes a
 request between yours. Control files in the tree, read per request like `drop` and
