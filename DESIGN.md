@@ -2464,7 +2464,9 @@ view; a reset's wipe drops the row with the chat.
   keys: `Yes` (`y`, or `o`), `No` (`n` or `esc`), and `No, and tell zemi`
   (`t`, which denies it and every waiting ask, stops the turn and hands the composer back); up and
   down move, enter picks the highlighted one, and the box opens on `No`, the
-  answer a stray enter picks. While any blocking prompt waits
+  answer a stray enter picks. The plan opens the same posture one step milder:
+  it opens on `Save, don't start`, so a stray enter keeps the plan and starts
+  no work. While any blocking prompt waits
   (permission, plan, question, trust) it owns every key: keys still in flight
   as the box opened are swallowed by the grace, past it the ask's keys answer
   while the draft under the box is empty, printable keys type into that draft

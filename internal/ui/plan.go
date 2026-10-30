@@ -20,7 +20,7 @@ import (
 type planAskPrompt struct {
 	plan   string
 	view   viewport
-	sel    int // the highlighted button: approve, then request changes
+	sel    int // the highlighted button: save, don't start; a stray enter never starts work
 	typing bool
 	input  composerState
 	opened time.Time // keys typed as the box opened are still in flight (permGrace)
@@ -53,6 +53,7 @@ func (a *App) AskPlan(plan string) (tools.PlanVerdict, bool) {
 			plan:   sanitize.String(plan),
 			answer: ch,
 			opened: a.now(),
+			sel:    1, // the ask opens on No; the plan's stray-enter-safe twin is save
 		}
 		return a.notifyIfAway("zemi: a plan to review")
 	})

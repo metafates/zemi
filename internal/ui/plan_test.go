@@ -47,7 +47,7 @@ func TestPlanApproval(t *testing.T) {
 		wantV tools.PlanVerdict
 		want  bool
 	}{
-		{"enter approves", []string{"enter"}, tools.PlanVerdict{Approved: true}, true},
+		{"enter saves without starting it", []string{"enter"}, tools.PlanVerdict{Approved: true, Hold: true}, true},
 		{"a approves", []string{"a"}, tools.PlanVerdict{Approved: true}, true},
 		{"s saves without starting it", []string{"s"}, tools.PlanVerdict{Approved: true, Hold: true}, true},
 		{"down down enter opens the changes input", []string{"j", "j", "enter", "x", "enter"}, tools.PlanVerdict{Feedback: "x"}, true},
@@ -113,14 +113,14 @@ func TestPlanScroll(t *testing.T) {
 		lines, halves, sel int
 		input              string
 	}{
-		{"shift+down scrolls a line", []string{"shift+down"}, 1, 0, 0, ""},
-		{"ctrl+d scrolls half the view", []string{"ctrl+d"}, 0, 1, 0, ""},
-		{"ctrl+u goes back", []string{"ctrl+d", "ctrl+d", "ctrl+u"}, 0, 1, 0, ""},
-		{"j moves the button, not the text", []string{"j"}, 0, 0, 1, ""},
-		{"ctrl+u while typing changes scrolls the text", []string{"e", "xy", "ctrl+d", "ctrl+d", "ctrl+u", "z"}, 0, 1, 0, "xyz"},
-		{"ctrl+d while typing changes scrolls the text", []string{"e", "x", "ctrl+d"}, 0, 1, 0, "x"},
-		{"esc then typing keeps the draft", []string{"e", "x", "esc", "w", "y"}, 0, 0, 0, "xwy"},
-		{"a kept draft holds the buttons", []string{"e", "x", "esc", "a", "y"}, 0, 0, 0, "xay"},
+		{"shift+down scrolls a line", []string{"shift+down"}, 1, 0, 1, ""},
+		{"ctrl+d scrolls half the view", []string{"ctrl+d"}, 0, 1, 1, ""},
+		{"ctrl+u goes back", []string{"ctrl+d", "ctrl+d", "ctrl+u"}, 0, 1, 1, ""},
+		{"j moves the button, not the text", []string{"j"}, 0, 0, 2, ""},
+		{"ctrl+u while typing changes scrolls the text", []string{"e", "xy", "ctrl+d", "ctrl+d", "ctrl+u", "z"}, 0, 1, 1, "xyz"},
+		{"ctrl+d while typing changes scrolls the text", []string{"e", "x", "ctrl+d"}, 0, 1, 1, "x"},
+		{"esc then typing keeps the draft", []string{"e", "x", "esc", "w", "y"}, 0, 0, 1, "xwy"},
+		{"a kept draft holds the buttons", []string{"e", "x", "esc", "a", "y"}, 0, 0, 1, "xay"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
