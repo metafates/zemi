@@ -94,7 +94,7 @@ zemi.ui.widget.add({
 			-- minutes pad, so "0m 48s" next to a bare "3s" window keeps the
 			-- two apart
 			local clock = function(s) return string.format("%dm %02ds", math.floor(s / 60), math.floor(s) % 60) end
-			---@type { [1]: zemi.Line, [2]: integer }[]
+			---@type { [1]: zemi.Line, [2]: integer }[]?
 			local ticks = { { plain(clock(ag.elapsed)), 5 } }
 			if ctx.interrupt_armed then
 				-- the number by the armed key is the window it still waits; the
