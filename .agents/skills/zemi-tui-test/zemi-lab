@@ -7,7 +7,7 @@ set -u
 
 usage() {
 	cat <<'U'
-usage: zemi-lab [-n name] command [args]
+usage: zemi-lab [-n name] [-s main|peer] command [args]
 
   up [-x W -y H] [--theme T] [--asks] [--untrusted] [--rex]
                      build, throwaway tree, fake model, TUI, wait for boot.
@@ -20,12 +20,13 @@ usage: zemi-lab [-n name] command [args]
                      window takes a name (default peer)
   -s main|peer       which window the drive commands act on
   prompt TEXT        clear a leftover draft, type TEXT, Enter, wait for the
-                     screen to settle (a permission ask may still be up)
-  type TEXT          literal text into the composer, no Enter
+                     screen to settle; refuses while a permission ask is up
+  type TEXT          literal text into the composer, no Enter; returns once
+                     the text shows
   send KEYS...       key names as tmux spells them (Enter, Escape, C-c, DC)
   wait [PATTERN]     until the screen stops changing, and PATTERN shows;
                      `wait ask` waits for a permission ask
-  ask y|n|t          answer a permission ask until the box is gone
+  ask y|n|t          answer a permission ask; refuses when none is up
   cap [-e] [FILE]    capture the whole pane (-e keeps colors)
   size W H           resize the window; a rex lab fails loudly when the
                      resize did not stick (a client owning the block keeps
@@ -50,8 +51,13 @@ U
 [ $# -ge 1 ] || usage
 NAME=zt
 SESSION=main
-while [ $# -ge 3 ] && [ "$1" = "-n" ]; do NAME=$2; shift 2; done
-while [ $# -ge 2 ] && [ "$1" = "-s" ]; do SESSION=$2; shift 2; done
+while [ $# -ge 2 ]; do
+	case "$1" in
+		-n) NAME=$2; shift 2 ;;
+		-s) SESSION=$2; shift 2 ;;
+		*) break ;;
+	esac
+done
 [ $# -ge 1 ] || usage
 CMD=$1; shift
 
@@ -99,6 +105,13 @@ load() {
 		[ -n "$RBLK" ] || die "no window '$SESSION' (zemi-lab peer first)"
 		rex block ls -s "$RSESSION" --json >/dev/null 2>&1 ||
 			die "the Rex session is gone (zemi-lab up first)"
+		# a block outlives its process: after a wedged-zemi kill every drive
+		# command would serve the corpse's last screen, so check the block's
+		# foreground pid with the kernel before serving anything
+		fgp=$(rex block call -s "$RSESSION" -b "$RBLK" process 2>/dev/null |
+			python3 -c 'import json,sys;f=(json.load(sys.stdin).get("foreground") or {});print(f.get("pid",""))')
+		[ -n "$fgp" ] && kill -0 "$fgp" 2>/dev/null ||
+			die "the '$SESSION' block has no live process (zemi died? zemi-lab down and up again)"
 	elif [ "$SESSION" != "$LAB_SESSION" ]; then
 		tmux -L "$SERVER" has-session -t "$SESSION" 2>/dev/null ||
 			die "no window '$SESSION' (zemi-lab peer first)"
@@ -275,6 +288,10 @@ cmd_up() {
 	[ -x "$BIN" ] || die "no zemi binary at $BIN"
 
 	mkdir -p "$TREE/config" "$TREE/data" "$TREE/state" "$TREE/cache" "$TREE/proj"
+	# a kept tree reboots clean: the last incarnation's snapshots, request
+	# marker and body would poison diff, last and this boot's first prompt
+	rm -rf "$TREE/snap"
+	rm -f "$TREE/.lab.turn" "$TREE/last_request.json"
 	[ -d "$TREE/proj/.git" ] || (cd "$TREE/proj" && git init -q) || die "git init failed"
 	echo hello >"$TREE/proj/a.txt"
 
@@ -300,7 +317,7 @@ EOF
 		# the events recorder is a block, so it survives this shell: its stream
 		# is the assertion surface for everything the terminal saw. Its id is
 		# recorded so events can check the stream is still alive.
-		EV=$(rex run -s "$RS" --label events --keep-open --focus=false --json -- \
+		EV=$(rex run -s "$RS" --label recorder --keep-open --focus=false --json -- \
 			sh -c "rex events -s '$RS' --json > '$TREE/events.jsonl' 2> '$TREE/events.err'" |
 			python3 -c 'import json,sys;print(json.load(sys.stdin)["block_ids"][0])') ||
 			die "the events recorder failed to start"
@@ -373,7 +390,16 @@ EOF
 
 cmd_prompt() {
 	[ $# -ge 1 ] || die "prompt: text"
-	case "$(cap)" in
+	screen=$(cap)
+	case "$screen" in
+		*"No, and tell"*)
+			# past the ask's key grace the prompt's first letters answer the
+			# ask and the rest lands as a mangled draft - refusing is the only
+			# honest move
+			die "a permission ask is up (the prompt's first letters would answer it - ask y|n first)"
+			;;
+	esac
+	case "$screen" in
 		*"Ask anything"*) ;;
 		*)
 			# a leftover draft glues onto the text; one C-c clears it (a second quits)
@@ -387,6 +413,15 @@ cmd_prompt() {
 	# serve the previous body to a prompt-cache diff
 	ls "$TREE"/requests 2>/dev/null | wc -l >"$TREE/.lab.turn"
 	type_text "$*"
+	# the text must sit in the composer before Enter: with an overlay up the
+	# keys go to the overlay and the composer silently keeps its draft
+	i=0
+	while [ "$i" -lt 8 ]; do
+		cap | grep -qF -- "$*" && break
+		i=$((i + 1))
+		sleep 0.25
+	done
+	[ "$i" -lt 8 ] || die "the text never reached the composer (an overlay is open? send Escape first)"
 	send_keys Enter
 	wait_stable "" 30 || die "the screen never settled after the prompt"
 }
@@ -394,6 +429,15 @@ cmd_prompt() {
 cmd_type() {
 	[ $# -ge 1 ] || die "type: text"
 	type_text "$@"
+	# tmux delivers the burst late: an immediate capture false-negatives, so
+	# return only once the text shows
+	i=0
+	while [ "$i" -lt 8 ]; do
+		cap | grep -qF -- "$*" && exit 0
+		i=$((i + 1))
+		sleep 0.25
+	done
+	die "type: '$*' never became visible (an overlay ate it? the pane died?)"
 }
 
 cmd_send() {
@@ -413,6 +457,10 @@ cmd_wait() {
 
 cmd_ask() {
 	case "${1:-}" in y | n | t) ;; *) die "ask: y, n or t" ;; esac
+	# there must be an ask to answer: with none up, "box gone" is trivially
+	# true and the command would lie
+	wait_stable "No, and tell" 5 ||
+		die "no permission ask is up (wait ask first - the ask may have been answered already)"
 	# the first key can land in the grace; resend until the box is gone
 	i=0
 	while [ "$i" -lt 10 ]; do
@@ -659,6 +707,32 @@ cmd_events() {
 	if rex block ls -s "$RSESSION" --json >/dev/null 2>&1; then
 		lsof -t "$TREE/events.jsonl" >/dev/null 2>&1 ||
 			die "nothing is writing $TREE/events.jsonl; the stream is stale (zemi-lab up again)"
+	else
+		# a kept stream can be short: a recorder killed mid-lab froze the file
+		# while zemi kept writing, so an absence assertion on it can pass on a
+		# stream that stopped early - warn when the tree outlived the stream
+		late=$(python3 - "$TREE" <<'STALE'
+import os, sys
+
+tree = sys.argv[1]
+stream = os.path.getmtime(os.path.join(tree, "events.jsonl"))
+late = ""
+for root, dirs, files in os.walk(tree):
+    dirs[:] = [d for d in dirs if d != "snap"]
+    for f in files:
+        if f.startswith("events") or f.startswith(".lab"):
+            continue
+        p = os.path.join(root, f)
+        if os.path.getmtime(p) - stream > 2:
+            late = p
+            break
+    if late:
+        break
+print(late)
+STALE
+		)
+		[ -n "$late" ] &&
+			printf 'zemi-lab: warning: %s was written after the stream ended; the recorder died early and absence assertions on this kept stream can false-pass\n' "$late" >&2
 	fi
 	BLOCK_LIST=$(awk '{print $2}' "$BLOCKS" 2>/dev/null)
 	BLOCKS="$RBLK $BLOCK_LIST" ZEMI_LAB_EVENTS="$TREE/events.jsonl" python3 - "$@" <<'PYEOF'
@@ -740,17 +814,27 @@ cmd_down() {
 		# shellcheck disable=SC1090
 		. "$ENVF"
 		if [ "${LAB_BACKEND:-tmux}" = rex ] && [ -n "${LAB_RSESSION:-}" ]; then
-			# quit zemi first so the exit clear reaches the terminal; the two
-			# ctrl+c ride zemi's armed quit (rex kill would leave stale records)
+			# quit zemi first so the exit clear reaches the terminal. Keys go to
+			# the zemi blocks only: a ctrl+c to the recorder's block would kill
+			# the stream mid-write. An ask or overlay is dismissed first, and a
+			# mid-turn zemi eats the first ctrl+c as an interrupt (a drafted one
+			# as a draft-clear), so send until the terminal reports the status
+			# removed - bounded, then a plain kill takes whatever is left
+			# (rex kill would otherwise strand the last record).
 			if [ -f "$BLOCKS" ]; then
-				while read -r _ bid; do
-					# an open ask or overlay swallows ctrl+c, so one escape
-					# dismisses it before the armed quit is sent
+				zblocks=$(awk '$1 != "fake" && $1 != "recorder" {print $2}' "$BLOCKS")
+				for bid in $zblocks; do
 					rex send-key -s "$LAB_RSESSION" -b "$bid" -- escape 2>/dev/null || true
-					rex send-key -s "$LAB_RSESSION" -b "$bid" -- ctrl+c 2>/dev/null || true
-					rex send-key -s "$LAB_RSESSION" -b "$bid" -- ctrl+c 2>/dev/null || true
-				done <"$BLOCKS"
-				sleep 1.5
+				done
+				i=0
+				while [ "$i" -lt 8 ]; do
+					for bid in $zblocks; do
+						rex send-key -s "$LAB_RSESSION" -b "$bid" -- ctrl+c 2>/dev/null || true
+					done
+					grep -q program_status_removed "$TREE/events.jsonl" 2>/dev/null && break
+					sleep 0.5
+					i=$((i + 1))
+				done
 			fi
 			rex kill "$LAB_RSESSION" 2>/dev/null || true
 		fi

@@ -21,8 +21,9 @@ only there.
 at `proj/`), starts `fake_openai.py` and a TUI, and waits for the composer (the input box) instead of
 sleeping. The pane gets truecolor with `NO_COLOR` unset; the fake server's files land in the
 tree, never in a repo. Every lab is name-scoped (tree, tmux server or Rex session, port), so
-parallel testers take `-n <name>`. The backend is recorded in the tree's `.lab.env`; the
-drive commands aim at whichever one booted. `up` refuses while a lab of that name is still
+parallel testers take `-n <name>` (the default name is `zt`; two bare `up`s collide). The
+backend is recorded in the tree's `.lab.env`; the drive commands aim at whichever one
+booted. `up` refuses while a lab of that name is still
 up — `down` reboots, and it reaps every session labeled `zemi-lab-<name>`, even one a moved
 tree left behind.
 
@@ -34,8 +35,8 @@ $S/zemi-lab cap | grep -v '^ *$'   # whole pane, plain text; cap -e keeps colors
 $S/zemi-lab wait '1 command'       # screen stopped changing and the row shows
 $S/zemi-lab wait ask               # wait for a permission ask (the box's No row)
 $S/zemi-lab send Escape            # key names, as tmux spells them (C-c, Escape)
-$S/zemi-lab type 'partial text'    # literal text into the composer, no Enter
-$S/zemi-lab ask y                  # answer a permission ask (y|n|t), past the grace
+$S/zemi-lab type 'partial text'    # literal text into the composer; returns once it shows
+$S/zemi-lab ask y                  # answer a permission ask (y|n|t); refuses when none is up
 $S/zemi-lab up -x 60 -y 15         # narrow layouts are baked into up
 $S/zemi-lab size 60 15             # resize after the fact; rex fails loudly when it did not stick
 $S/zemi-lab peer                   # a second zemi on the same tree and store
@@ -52,9 +53,11 @@ $S/zemi-lab down                   # quit zemi, kill sessions and server, delete
 ```
 
 `prompt` clears a leftover draft first (one ctrl+c; a second would quit), types, sends
-Enter, and waits for the screen to settle - never a blind sleep. It returns when the
-screen settles (a settle heuristic), which can be mid-turn or with a permission ask still
-up (a prompt typed during an ask queues a turn behind it) - not a turn-end guarantee.
+Enter, and waits for the screen to settle - never a blind sleep. It refuses while a
+permission ask is up (past the ask's key grace its first letters answer the ask and the
+rest lands as a mangled draft - `ask y|n` first) and dies loudly when the text never
+reached the composer (an overlay is open - `send Escape` first). It returns when the
+screen settles (a settle heuristic), which can be mid-turn - not a turn-end guarantee.
 `up` flags: `-x W -y H`
 (default 140x40), `--theme whorl-light`, `--untrusted` (drops `--trust`, for the trust
 prompt), `--asks` (installs a gate plugin whose `permission.request` handler returns
@@ -173,15 +176,22 @@ $S/zemi-lab -n ps down                          # quits zemi first, so the exit 
   for the other side of that branch.
 - A block takes focus at creation and no blur arrives on its own: open a second block (or
   `peer`) to steal focus before asserting on unfocused behavior.
-- `down` dismisses an open ask or overlay (one escape) and then sends zemi's armed
-  ctrl+c quit before killing the session - a plain kill would strand the last record on
-  the dead block, and with an ask up even a bare ctrl+c is swallowed. The exit clear is
-  assertable only with `down --keep` (a plain `down` deletes the tree with the stream):
-  then `events program_status_removed` shows `reason=clear` - the session is gone by
-  then, which is why `events` falls back to the kept tree's final stream.
+- `down` dismisses an open ask or overlay (one escape) and then quits zemi by its armed
+  ctrl+c - a plain kill would strand the last record on the dead block, and with an ask
+  up even a bare ctrl+c is swallowed. Keys go to the zemi blocks only (a ctrl+c to the
+  recorder's block would kill the stream mid-write), and `down` waits for the terminal
+  to report `program_status_removed` before killing the session: a mid-turn zemi eats
+  the first ctrl+c as an interrupt and a drafted one as a draft-clear, so it keeps
+  sending (bounded) until the clear lands. The exit clear is assertable only with
+  `down --keep` (a plain `down` deletes the tree with the stream): then
+  `events program_status_removed` shows `reason=clear` - the session is gone by
+  then, which is why `events` falls back to the kept tree's final stream (and warns
+  when that stream ends before the tree's last write: a recorder killed mid-lab makes
+  absence assertions false-pass).
 - `zemi-lab status` prints the session and every block id (zemi is `main`); kill a wedged
   lab zemi by the exact pid from `rex block call -b BLOCK process` (never a broad
-  `ps | grep`). `rex kill` takes sessions only.
+  `ps | grep`). `rex kill` takes sessions only. A drive command after such a kill dies
+  loudly instead of serving the corpse's stale screen - a block outlives its process.
 
 ## The chaos driver
 
