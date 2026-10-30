@@ -2645,6 +2645,34 @@ func TestTodosMeterSpansTheList(t *testing.T) {
 	}())
 }
 
+// TestTodosMeterFillsTheFraction: a scaled meter fills ceil(done×cells/total)
+// cells, so a part-done list never reads emptier than its count (1 of 6 over
+// three cells lights the first).
+func TestTodosMeterFillsTheFraction(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 100, 24)
+	todos := []store.Todo{{Content: "one", Status: "done"}}
+	for i := range 5 {
+		todos = append(todos, store.Todo{Content: fmt.Sprintf("item %d", i), Status: "pending"})
+	}
+	seedTodos(t, host, todos)
+	// cap at height 9 is 3: three cells over six items
+	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 80, 9, app.uiState())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range lines {
+		r := strings.TrimRight(hostapi.SegsText(l), " ")
+		if strings.HasPrefix(r, "Todos ") {
+			if !strings.Contains(r, "1/6  █░░") {
+				t.Fatalf("the meter read emptier than the count: %q", r)
+			}
+			return
+		}
+	}
+	t.Fatal("no todos header in the render")
+}
+
 // TestTodosMeterWithinTheWindow: a list at or under the shown window draws
 // one cell per item with each cell its own state: the scaled path above
 // never draws the all-done lie a wrong divisor gives.

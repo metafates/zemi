@@ -1326,16 +1326,21 @@ zemi.ui.widget.add({
 				{ text = (#todos - left) .. "/" .. #todos .. "  ", hl = "Dim" },
 			}
 			local cells = math.min(#todos, cap)
+			-- a cell fills at the done fraction, rounded up: a part-done list
+			-- lights its first cells even when no cell's whole range is done,
+			-- so the meter never reads emptier than the count; hue keeps the
+			-- in-flight cell
+			local done = #todos - left
+			local filled = math.ceil(done * cells / #todos)
 			for n = 1, cells do
 				local lo, hi = math.floor((n - 1) * #todos / cells), math.floor(n * #todos / cells)
-				local live, all = false, true
+				local live = false
 				for i = lo + 1, hi do
 					if todos[i].status == "in_progress" then live = true end
-					if todos[i].status ~= "done" then all = false end
 				end
 				head[#head + 1] = {
-					text = all and "█" or "░",
-					hl = all and "TodoDone" or live and "TodoMark" or "Rule",
+					text = n <= filled and "█" or "░",
+					hl = live and "TodoMark" or n <= filled and "TodoDone" or "Rule",
 					copy = false,
 				}
 			end
