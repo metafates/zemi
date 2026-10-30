@@ -98,11 +98,12 @@ zemi.ui.widget.add({
 			local tick = { plain(clock(ag.elapsed)), 5, 7 }
 			if ctx.interrupt_armed then
 				-- the number by the armed key is the window it still waits; the
-				-- turn's clock keeps its place beside it, as a retry's does
+				-- turn's clock keeps its place beside it, labeled as the
+				-- retry's is, so the two durations never read alike
 				tick = {
-					plain(fmt.duration(math.ceil(ctx.interrupt_in or 0), true) .. " · " .. clock(ag.elapsed)),
+					plain(fmt.duration(math.ceil(ctx.interrupt_in or 0), true) .. " · elapsed " .. clock(ag.elapsed)),
 					5,
-					7,
+					8,
 				}
 			end
 			if ag.retry then

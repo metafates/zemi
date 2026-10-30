@@ -105,8 +105,9 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if !ok {
 			// a fast esc+key arrives as one alt-combo the terminal folded
 			// (the ESC wait): run the two keys it was, esc then the key, so
-			// typing that started with esc does not lose its first letter
-			if msg.Mod == tea.ModAlt && msg.Code < utf8.RuneSelf && unicode.IsPrint(rune(msg.Code)) {
+			// typing that started with esc does not lose its first letter.
+			// A capital rides ModShift beside the alt the fold adds
+			if msg.Mod&(tea.ModAlt|tea.ModShift) != 0 && msg.Code < utf8.RuneSelf && unicode.IsPrint(rune(msg.Code)) {
 				esc := tea.KeyPressMsg{Code: tea.KeyEscape}
 				plain := tea.KeyPressMsg{Code: msg.Code, Text: string(rune(msg.Code))}
 				return tea.Batch(replay, a.handleKey(esc), a.handleKey(plain))
