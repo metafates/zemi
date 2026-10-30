@@ -166,6 +166,27 @@ sys.exit(0 if ok else 1)
 ' "$1"
 }
 
+# request_is_ours TEXT: whether the fake's latest request carries TEXT as its
+# final user message. The request count alone cannot attribute a request: a
+# queued steer's turn-start or any work predating the prompt fires the same
+# counter while this text sits undelivered.
+request_is_ours() {
+	python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except (ValueError, OSError):
+    raise SystemExit(1)
+msgs = [m for m in d.get("messages", []) if m.get("role") == "user"]
+if not msgs:
+    raise SystemExit(1)
+c = msgs[-1].get("content")
+if isinstance(c, list):
+    c = " ".join(p.get("text", "") for p in c if isinstance(p, dict))
+sys.exit(0 if isinstance(c, str) and sys.argv[2] in c else 1)
+' "$TREE/last_request.json" "$1"
+}
+
 # overlay_kind: what overlay waits on the user right now, read from terminal
 # state - never from screen text, which transcript rows echo. A rex lab
 # reads the OSC 7501 blocked record (permission, question); tmux swallows
@@ -331,19 +352,15 @@ wait_boot() {
 
 # trust_note: an untrusted boot stops at the trust overlay, which holds the
 # keys - say so instead of a bare success the first prompt would die behind.
-# Bounded poll: the overlay renders a beat after the composer does. Rex sees
-# it as a blocked permission record (ask y works); tmux's title mark does not
-# cover it, so there the y key goes straight to the overlay.
+# Bounded poll: the overlay renders a beat after the composer does. Both
+# backends see it as a permission ask (rex: the blocked record; tmux: the ?
+# title mark), so ask y answers it on either.
 trust_note() {
 	i=0
 	while [ "$i" -lt 12 ]; do
 		case "$(cap)" in
 			*"Trust this"*)
-				if [ "$BACKEND" = rex ]; then
-					say "  the trust overlay is up: 'zemi-lab ask y' answers it (or boot trusted, the default)"
-				else
-					say "  the trust overlay is up: 'zemi-lab send y' answers it (or boot trusted, the default; resend once - the first key can land in the grace)"
-				fi
+				say "  the trust overlay is up: 'zemi-lab ask y' answers it (or boot trusted, the default)"
 				return
 				;;
 		esac
@@ -378,7 +395,11 @@ cmd_up() {
 	# reap everything
 	[ -n "$(rex_sessions_by_label)" ] &&
 		die "lab '$NAME' already has a rex session up (zemi-lab down reboots all)"
-	tmux -L "$SERVER" has-session 2>/dev/null &&
+	# the has-session probe creates the tmux socket file even when it fails,
+	# so it only runs where a tmux server can exist: a rex lab must not leave
+	# one behind
+	[ "$BACKEND" = tmux ] &&
+		tmux -L "$SERVER" has-session 2>/dev/null &&
 		die "lab '$NAME' is already up (zemi-lab down reboots all)"
 
 	BIN=${ZEMI_BIN:-$REPO/bin/zemi}
@@ -499,7 +520,10 @@ cmd_prompt() {
 	case "$kind" in
 		permission) die "a permission ask is up (the prompt's keys would answer it - ask y|n first)" ;;
 		"") ;;
-		*) die "an overlay is up ($kind) - the prompt's keys would land in it; send Escape first" ;;
+		# tmux's mark cannot tell the kinds apart: advice must not name a key
+		# that would answer the wrong overlay
+		prompt) die "an overlay is up (tmux cannot name it; 'cap' shows which) - the prompt's keys would land in it: ask y|n answers a permission ask, send Escape dismisses the rest" ;;
+		*) die "a $kind overlay is up (the prompt's keys would land in it - send Escape first)" ;;
 	esac
 	# the request count before Enter: last refuses to serve a body older than
 	# the last prompt, so a turn that died before the model cannot silently
@@ -535,7 +559,13 @@ cmd_prompt() {
 	at=$(cat "$TREE/.lab.turn")
 	i=0
 	while [ "$i" -lt 40 ]; do
-		[ "$(find "$TREE/requests" -type f 2>/dev/null | wc -l)" -gt "$at" ] && break
+		# the request must carry this text: the count alone fires on any
+		# request landing after the baseline - a queued steer's turn-start,
+		# work predating the prompt - while this text sits undelivered
+		if [ "$(find "$TREE/requests" -type f 2>/dev/null | wc -l)" -gt "$at" ] &&
+			request_is_ours "$*"; then
+			break
+		fi
 		i=$((i + 1))
 		sleep 0.25
 	done
@@ -544,9 +574,12 @@ cmd_prompt() {
 		# the turn - and any ask that rose over it - settles: name that
 		# instead of blaming a stuck zemi
 		kind=$(overlay_kind)
-		[ -n "$kind" ] &&
-			die "the prompt was delivered but a $kind overlay rose over it - the turn starts once it is answered (ask y, then wait again)"
-		die "no model request arrived within 10s of the prompt (zemi stuck or stopped? zemi-lab logs)"
+		case "$kind" in
+			permission) die "the prompt was delivered but a permission ask rose over it - the turn starts once it is answered (ask y, then wait again)" ;;
+			prompt) die "the prompt was delivered but an overlay rose over it (tmux cannot name it; 'cap' shows which) - settle it (ask y|n or send Escape), then wait again" ;;
+			"") die "no request carrying this text arrived within 10s (queued behind a running turn? zemi-lab logs)" ;;
+			*) die "the prompt was delivered but a $kind overlay rose over it - the turn starts once it is dismissed (send Escape, then wait again)" ;;
+		esac
 	}
 	wait_stable "" 30 || die "the screen never settled after the prompt"
 }
@@ -557,7 +590,8 @@ cmd_type() {
 	case "$kind" in
 		permission) die "type: a permission ask is up (ask y|n first)" ;;
 		"") ;;
-		*) die "type: an overlay is up ($kind) - the text would land in it; send Escape first" ;;
+		prompt) die "type: an overlay is up (tmux cannot name it; 'cap' shows which): ask y|n answers a permission ask, send Escape dismisses the rest" ;;
+		*) die "type: a $kind overlay is up (the text would land in it - send Escape first)" ;;
 	esac
 	type_text "$@"
 	# tmux delivers the burst late: an immediate capture false-negatives, so
@@ -983,7 +1017,7 @@ cmd_down() {
 			# lands no exit clear: refuse - unless the tree was kept (the
 			# documented cleanup is a plain down) or --force reaps without it
 			[ -n "$live" ] || [ -n "$force" ] || [ -f "$TREE/.lab.kept" ] ||
-				die "zemi is already dead (${fgp:-no live process}); down --force reaps without the exit clear"
+				die "zemi's main window is dead (${fgp:-no live process}); down --force reaps the lab, a live peer included"
 			# a recorder that died before the quit leaves a stream that ends
 			# early: mark it, so kept-tree events refuses absence assertions.
 			# A teardown of an already-kept tree must not re-mark: its stream
@@ -1023,7 +1057,9 @@ cmd_down() {
 	# session named for this lab dies here
 	# shellcheck disable=SC2046
 	rex kill $(rex_sessions_by_label) 2>/dev/null || true
-	tmux -L "$SERVER" kill-server 2>/dev/null || true
+	# a rex lab never had a tmux server; probing its socket would create the
+	# dead socket file this teardown is supposed to leave nothing of
+	[ "${LAB_BACKEND:-tmux}" = rex ] || tmux -L "$SERVER" kill-server 2>/dev/null || true
 	# the kept mark tells a later plain down this tree is a kept one, so the
 	# documented cleanup (a plain down re-tears it) skips the corpse refusal
 	if [ -n "$keep" ]; then

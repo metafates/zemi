@@ -58,10 +58,14 @@ against the composer box's own rows, however tall a narrow pane folds them, neve
 whole screen, which transcript rows echo), types, sends Enter, then waits for the request
 to reach the model (the fake's request counter, which counts only requests the fake
 accepted - a 429 refusal never reached a model - because the screen cannot prove a turn
-started) and for the screen to settle. It refuses while
+started), that the request carries the typed text (a count alone fires on any request
+landing after the baseline - a queued steer's turn-start, work predating the prompt - while
+the text sits undelivered) and for the screen to settle. It refuses while
 any overlay waits on the user: a permission ask (`ask y|n` first) or a question/plan
 overlay (`send Escape` first) - past one, its first letters answer the overlay and the
-rest lands as a mangled draft. A steer sent while a turn runs can have an ask rise over
+rest lands as a mangled draft. On tmux the mark cannot name the kind, so the refusal
+names both remedies instead of a key that would answer the wrong one. A steer sent while
+a turn runs can have an ask rise over
 it: `prompt` then names the overlay instead of blaming a stuck zemi - answer it (`ask y`)
 and wait again. It returns when the screen settles (a settle heuristic),
 which can be mid-turn - not a turn-end guarantee - and `wait PATTERN` can match the
@@ -70,9 +74,8 @@ shows turn N-1's rows, so `wait 'done, here is the reply.'` exits 0 on the old r
 the turn via the request counter (`last`) or the events, never `wait` alone.
 `up` flags: `-x W -y H`
 (default 140x40), `--theme whorl-light`, `--untrusted` (drops `--trust`; the boot then
-stops at the trust overlay, which `up` reports; rex answers it with `ask y`, tmux with
-`send y` (the mark does not cover it there, and the first key can land in the grace -
-resend once)), `--asks` (installs a
+stops at the trust overlay, which `up` reports and both backends see as a permission
+ask, so `ask y` answers it on either), `--asks` (installs a
 gate plugin whose `permission.request` handler returns
 `{decision = "ask"}`, since zemi never asks by design - DESIGN §9), `--rex` (the Rex
 backend below). A running lab can be made to ask without a reboot: drop the same two files
