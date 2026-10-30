@@ -229,8 +229,9 @@ func argAt(lead, line string) ([]string, int) {
 
 // usageToastBytes is the body length past which a usage refusal cannot fit
 // the toast's three rows on a common terminal: cut there, its payload would
-// name no place to read on.
-const usageToastBytes = 160
+// name no place to read on. A wide terminal could have shown more; the body
+// is readable in /errors either way.
+const usageToastBytes = 100
 
 // CommandFailed reports a command's error: one of how it was asked
 // (ErrUsage) is a warn, anything else did not happen and is recorded. A
