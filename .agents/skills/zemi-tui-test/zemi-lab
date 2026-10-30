@@ -19,14 +19,17 @@ usage: zemi-lab [-n name] command [args]
                      one project see, for sync and presence work; a third
                      window takes a name (default peer)
   -s main|peer       which window the drive commands act on
-  prompt TEXT        clear a leftover draft, type TEXT, Enter, wait for idle
+  prompt TEXT        clear a leftover draft, type TEXT, Enter, wait for the
+                     screen to settle (a permission ask may still be up)
   type TEXT          literal text into the composer, no Enter
-  send KEYS...       key names as tmux spells them (Enter, Escape, C-c)
+  send KEYS...       key names as tmux spells them (Enter, Escape, C-c, DC)
   wait [PATTERN]     until the screen stops changing, and PATTERN shows;
                      `wait ask` waits for a permission ask
   ask y|n|t          answer a permission ask until the box is gone
   cap [-e] [FILE]    capture the whole pane (-e keeps colors)
-  size W H           resize the window
+  size W H           resize the window; a rex lab fails loudly when the
+                     resize did not stick (a client owning the block keeps
+                     its size - bake layouts into up -x W -y H)
   snap [FILE]        capture, mask the volatile spans, save (default
                      $TREE/snap/prev.txt; the raw capture is kept beside it)
   diff [A] [B]       diff two masked captures - a fresh one against A, or
@@ -49,6 +52,7 @@ NAME=zt
 SESSION=main
 while [ $# -ge 3 ] && [ "$1" = "-n" ]; do NAME=$2; shift 2; done
 while [ $# -ge 2 ] && [ "$1" = "-s" ]; do SESSION=$2; shift 2; done
+[ $# -ge 1 ] || usage
 CMD=$1; shift
 
 DIR=$(cd "$(dirname "$0")" && pwd)
@@ -68,6 +72,18 @@ die() { printf 'zemi-lab: %s\n' "$*" >&2; exit 1; }
 # block_id NAME: the Rex block id a lab window maps to (from .lab.blocks,
 # "name id" lines written at up/peer).
 block_id() { awk -v n="$1" '$1 == n {print $2}' "$BLOCKS" 2>/dev/null; }
+
+# rex_sessions_by_label: every lab session is labeled zemi-lab-$NAME, so the
+# up guard and down find a session even when the tree (and with it the env
+# file that named it) is gone.
+rex_sessions_by_label() {
+	rex ls --json 2>/dev/null | python3 -c '
+import json, sys
+for s in json.load(sys.stdin).get("sessions", []):
+    if s.get("label") == "zemi-lab-'"$NAME"'":
+        print(s["session_id"])
+'
+}
 
 load() {
 	[ -f "$ENVF" ] || die "no lab '$NAME' at $TREE (zemi-lab up first)"
@@ -93,15 +109,17 @@ cap() {
 	esac
 }
 
-# key_rex: tmux key spelling (C-c, Escape, BTab) into Rex's (ctrl+c, escape,
-# shift+tab); unknown names pass through and rex rejects them loudly.
+# key_rex: tmux key spelling (C-c, Escape, BTab, DC) into Rex's (ctrl+c,
+# escape, shift+tab, delete); unknown names pass through and rex rejects
+# them loudly.
 key_rex() {
 	case "$1" in
 		C-*) printf 'ctrl+%s' "${1#C-}" ;;
 		M-*) printf 'alt+%s' "${1#M-}" ;;
-		Escape | Enter | Space | Tab | Backspace | Del | Up | Down | Left | Right | Home | End | PageUp | PageDown | Insert)
+		Escape | Enter | Space | Tab | Backspace | Up | Down | Left | Right | Home | End | PageUp | PageDown | Insert)
 			printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
 			;;
+		Del | DC) printf 'delete' ;; # tmux spells delete DC; rex rejects del
 		BSpace) printf 'backspace' ;;
 		BTab) printf 'shift+tab' ;;
 		*) printf '%s' "$1" ;;
@@ -217,9 +235,15 @@ cmd_up() {
 	BACKEND=tmux
 	while [ $# -gt 0 ]; do
 		case "$1" in
-			-x) W=$2; shift 2 ;;
-			-y) H=$2; shift 2 ;;
-			--theme) THEME=$2; shift 2 ;;
+			-x | -y | --theme)
+				[ $# -ge 2 ] || die "up: $1 needs a value"
+				case "$1" in
+					-x) W=$2 ;;
+					-y) H=$2 ;;
+					--theme) THEME=$2 ;;
+				esac
+				shift 2
+				;;
 			--asks) ASKS=1; shift ;;
 			--untrusted) TRUST=""; shift ;;
 			--rex) BACKEND=rex; shift ;;
@@ -227,6 +251,13 @@ cmd_up() {
 		esac
 	done
 	[ -n "$REPO" ] || die "not inside the zemi repository; set ZEMI_BIN"
+	# a lab of this name still up: refusing (never silently rebooting or
+	# switching backends behind a live session) is what keeps down able to
+	# reap everything
+	[ -n "$(rex_sessions_by_label)" ] &&
+		die "lab '$NAME' already has a rex session up (zemi-lab down reboots all)"
+	tmux -L "$SERVER" has-session 2>/dev/null &&
+		die "lab '$NAME' is already up (zemi-lab down reboots all)"
 
 	BIN=${ZEMI_BIN:-$REPO/bin/zemi}
 	if [ -z "${ZEMI_BIN:-}" ]; then
@@ -236,9 +267,6 @@ cmd_up() {
 	case $BIN in /*) ;; *) BIN=$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN") ;; esac
 	[ -x "$BIN" ] || die "no zemi binary at $BIN"
 
-	# a previous run of this lab: kill its tmux server up front (the rex side
-	# of a backend switch is torn down below from the env file)
-	tmux -L "$SERVER" kill-server 2>/dev/null || true
 	mkdir -p "$TREE/config" "$TREE/data" "$TREE/state" "$TREE/cache" "$TREE/proj"
 	[ -d "$TREE/proj/.git" ] || (cd "$TREE/proj" && git init -q) || die "git init failed"
 	echo hello >"$TREE/proj/a.txt"
@@ -248,12 +276,6 @@ cmd_up() {
 
 	if [ "$BACKEND" = rex ]; then
 		command -v rex >/dev/null 2>&1 || die "rex is not on PATH (up without --rex for the tmux lab)"
-		# a previous run of this lab: its session still holds the blocks
-		if [ -f "$ENVF" ]; then
-			# shellcheck disable=SC1090
-			. "$ENVF"
-			[ -n "${LAB_RSESSION:-}" ] && rex kill "$LAB_RSESSION" 2>/dev/null
-		fi
 		rm -f "$BLOCKS"
 
 		RS=$(rex new "zemi-lab-$NAME" --json | python3 -c 'import json,sys;print(json.load(sys.stdin)["session_id"])') ||
@@ -267,12 +289,13 @@ LAB_TREE="$TREE"
 LAB_BACKEND="rex"
 LAB_RSESSION="$RS"
 LAB_SESSION="main"
-LAB_PEER="peer"
 EOF
 		# the events recorder is a block, so it survives this shell: its stream
-		# is the assertion surface for everything the terminal saw
-		rex run -s "$RS" --label events --keep-open --focus=false --json -- \
-			sh -c "rex events -s '$RS' --json > '$TREE/events.jsonl' 2> '$TREE/events.err'" >/dev/null ||
+		# is the assertion surface for everything the terminal saw. Its id is
+		# recorded so events can check the stream is still alive.
+		EV=$(rex run -s "$RS" --label events --keep-open --focus=false --json -- \
+			sh -c "rex events -s '$RS' --json > '$TREE/events.jsonl' 2> '$TREE/events.err'" |
+			python3 -c 'import json,sys;print(json.load(sys.stdin)["block_ids"][0])') ||
 			die "the events recorder failed to start"
 		FB=$(rex run -s "$RS" --label fake --keep-open --focus=false --json -- \
 			python3 "$DIR/fake_openai.py" "$PORT" "$TREE" |
@@ -288,9 +311,11 @@ EOF
 			die "the zemi block failed to start"
 		rex block call -s "$RS" -b "$RB" resize "{\"columns\":$W,\"rows\":$H}" >/dev/null ||
 			die "resize to $W x $H failed"
+		check_size "$RS" "$RB" "$W" "$H"
 		{
 			printf 'main %s\n' "$RB"
 			printf 'fake %s\n' "$FB"
+			printf 'recorder %s\n' "$EV"
 		} >"$BLOCKS"
 		RBLK=$RB
 		wait_boot
@@ -303,7 +328,6 @@ LAB_RSESSION="$RS"
 LAB_PORT="$PORT"
 LAB_TRUST="$TRUST"
 LAB_SESSION="main"
-LAB_PEER="peer"
 EOF
 		say "lab $NAME up (rex): $TREE, fake model 127.0.0.1:$PORT, session $RS ($W x $H)"
 		say "  zemi-lab events | records | title          what the terminal saw"
@@ -334,7 +358,6 @@ LAB_SERVER="$SERVER"
 LAB_SESSION="$SESSION"
 LAB_PORT="$PORT"
 LAB_TRUST="$TRUST"
-LAB_PEER="peer"
 EOF
 	say "lab $NAME up: $TREE, fake model 127.0.0.1:$PORT, tmux server $SERVER ($W x $H)"
 	say "  zemi-lab prompt 'call shell {\"command\":\"ls\",\"about\":\"list\"}'"
@@ -352,6 +375,10 @@ cmd_prompt() {
 			case "$(cap)" in *"Ask anything"*) ;; *) die "the composer will not empty (an overlay is open?)" ;; esac
 			;;
 	esac
+	# the request count before Enter: last refuses to serve a body older than
+	# the last prompt, so a turn that died before the model cannot silently
+	# serve the previous body to a prompt-cache diff
+	ls "$TREE"/requests 2>/dev/null | wc -l >"$TREE/.lab.turn"
 	type_text "$*"
 	send_keys Enter
 	wait_stable "" 30 || die "the screen never settled after the prompt"
@@ -464,12 +491,25 @@ cmd_diff() {
 	fi
 }
 
+# check_size SESSION BLOCK W H: Rex applies a resize at once only when no
+# client owns the block, and the call exits 0 either way - read the size
+# back so a silently ignored resize (a false-positive layout test) dies.
+check_size() {
+	got=$(rex block call -s "$1" -b "$2" size 2>/dev/null |
+		python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get("columns"), d.get("rows"))')
+	[ "$got" = "$3 $4" ] ||
+		die "resize to $3 x $4 did not stick (the terminal reports ${got:-?}; a client owning the block keeps its size - bake layouts into up -x W -y H)"
+}
+
 cmd_size() {
 	[ $# -eq 2 ] || die "size: W H"
 	load
 	case $BACKEND in
-		rex) rex block call -s "$RSESSION" -b "$RBLK" resize "{\"columns\":$1,\"rows\":$2}" >/dev/null ||
-			die "resize failed" ;;
+		rex)
+			rex block call -s "$RSESSION" -b "$RBLK" resize "{\"columns\":$1,\"rows\":$2}" >/dev/null ||
+				die "resize failed"
+			check_size "$RSESSION" "$RBLK" "$1" "$2"
+			;;
 		*) tmux -L "$SERVER" resize-window -t "$SESSION" -x "$1" -y "$2" ;;
 	esac
 }
@@ -481,8 +521,11 @@ cmd_peer() {
 	W=140 H=40 WIN=peer
 	while [ $# -gt 0 ]; do
 		case "$1" in
-			-x) W=$2; shift 2 ;;
-			-y) H=$2; shift 2 ;;
+			-x | -y)
+				[ $# -ge 2 ] || die "peer: $1 needs a value"
+				if [ "$1" = -x ]; then W=$2; else H=$2; fi
+				shift 2
+				;;
 			-*) die "peer: unknown flag $1" ;;
 			*) WIN=$1; shift ;;
 		esac
@@ -499,6 +542,7 @@ cmd_peer() {
 			die "the $WIN block failed to start"
 		rex block call -s "$RSESSION" -b "$RB" resize "{\"columns\":$W,\"rows\":$H}" >/dev/null ||
 			die "resize to $W x $H failed"
+		check_size "$RSESSION" "$RB" "$W" "$H"
 		printf '%s %s\n' "$WIN" "$RB" >>"$BLOCKS"
 		RBLK=$RB
 	else
@@ -523,6 +567,12 @@ cmd_peer() {
 
 cmd_last() {
 	[ -f "$TREE/last_request.json" ] || die "no request yet (last_request.json is missing)"
+	if [ -f "$TREE/.lab.turn" ]; then
+		at_prompt=$(cat "$TREE/.lab.turn")
+		now_count=$(ls "$TREE"/requests 2>/dev/null | wc -l)
+		[ "$now_count" -gt "$at_prompt" ] ||
+			die "no request arrived after the last prompt (the turn died before the model? check zemi-lab logs)"
+	fi
 	cat "$TREE/last_request.json"
 }
 
@@ -557,8 +607,8 @@ for b in (d["blocks"] if isinstance(d, dict) else d):
 	esac
 }
 
-# cmd_title: the pane title - a spinner while a turn runs, `? ` while an ask
-# is up (rex lab: whatever the last title_changed carried).
+# cmd_title: the pane title - `? ` while an ask is up, plain otherwise
+# (rex lab: whatever the last title_changed carried).
 cmd_title() {
 	load
 	case $BACKEND in
@@ -583,6 +633,13 @@ cmd_events() {
 	load
 	[ "$BACKEND" = rex ] || die "events: a rex lab only (tmux swallows those sequences)"
 	[ -f "$TREE/events.jsonl" ] || die "no events stream at $TREE/events.jsonl"
+	# the recorder is a block; a dead one freezes the stream and a frozen
+	# stream passes every grep - check it is alive before the stream is read
+	REC=$(block_id recorder)
+	if [ -n "$REC" ]; then
+		rex block call -s "$RSESSION" -b "$REC" size >/dev/null 2>&1 ||
+			die "the events recorder is gone; the stream at $TREE/events.jsonl is stale (zemi-lab up again)"
+	fi
 	BLOCK_LIST=$(awk '{print $2}' "$BLOCKS" 2>/dev/null)
 	BLOCKS="$RBLK $BLOCK_LIST" ZEMI_LAB_EVENTS="$TREE/events.jsonl" python3 - "$@" <<'PYEOF'
 import json, os, sys
@@ -670,6 +727,11 @@ cmd_down() {
 			rex kill "$LAB_RSESSION" 2>/dev/null || true
 		fi
 	fi
+	# the label, not the env file, is what down trusts: a tree moved
+	# (ZEMI_LAB_TREE) or deleted, a backend switch - whatever diverged, every
+	# session named for this lab dies here
+	# shellcheck disable=SC2046
+	rex kill $(rex_sessions_by_label) 2>/dev/null || true
 	tmux -L "$SERVER" kill-server 2>/dev/null || true
 	if [ -z "$keep" ]; then
 		case "$TREE" in
