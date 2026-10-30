@@ -120,14 +120,19 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			// typing, and the key's own text carries its case
 			if msg.Mod&tea.ModAlt != 0 && msg.Code < utf8.RuneSelf && unicode.IsPrint(rune(msg.Code)) {
 				esc := tea.KeyPressMsg{Code: tea.KeyEscape}
+				mod := msg.Mod &^ tea.ModAlt
 				text := msg.Text
-				if text == "" {
+				if mod&tea.ModCtrl != 0 {
+					// the combo routes by its modifiers: a synthesized text
+					// would read as the plain letter and lose the ctrl binding
+					text = ""
+				} else if text == "" {
 					text = string(rune(msg.Code))
-					if msg.Mod&tea.ModShift != 0 {
+					if mod&tea.ModShift != 0 {
 						text = strings.ToUpper(text)
 					}
 				}
-				plain := tea.KeyPressMsg{Code: msg.Code, Text: text}
+				plain := tea.KeyPressMsg{Code: msg.Code, Mod: mod, Text: text}
 				return tea.Batch(replay, a.handleKey(esc), a.handleKey(plain))
 			}
 			return tea.Batch(replay, a.composerKey(key, msg))

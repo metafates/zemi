@@ -1740,6 +1740,15 @@ func TestFoldedKeyKeepsItsCase(t *testing.T) {
 	if got := app.composer.text; got != "DPp" {
 		t.Fatalf("a folded esc+lower replays it: %q", got)
 	}
+	app.composer.text, app.composer.cursor = "word one two", len("word one two")
+	app.Update(tea.KeyPressMsg{Code: 'w', Mod: tea.ModAlt | tea.ModCtrl})
+	if got := app.composer.text; got != "word one " {
+		t.Fatalf("a folded esc+ctrl+w keeps the ctrl binding: %q", got)
+	}
+	app.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModAlt | tea.ModCtrl})
+	if got := app.composer.text; strings.HasSuffix(got, "c") {
+		t.Fatalf("a folded esc+ctrl+c must not type its letter: %q", got)
+	}
 }
 
 // TestNoopKeysBumpNothing: a key or a wheel that moves nothing under the
