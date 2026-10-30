@@ -264,6 +264,42 @@ func TestSetLoopRefuses(t *testing.T) {
 	}
 }
 
+// TestLoopEveryAlias: "/loop every 5m x" is "/loop 5m x"; an interval under
+// the floor still refuses instead of silently model-pacing the line.
+func TestLoopEveryAlias(t *testing.T) {
+	t.Parallel()
+	h, _ := newLoopHost(t)
+	if err := h.SetLoop("every 5m count rivers"); err != nil {
+		t.Fatal(err)
+	}
+	l, on := h.Loop()
+	if !on || l.Every != 5*time.Minute || l.Prompt != "count rivers" {
+		t.Fatalf("every 5m armed %+v", l)
+	}
+	if err := h.SetLoop("every 30s check"); err == nil || !strings.Contains(err.Error(), "every 1m to 24h") {
+		t.Errorf("/loop every 30s: %v, want the floor refusal", err)
+	}
+}
+
+// TestLoopStopNamesItsRuns: the manual stop's notice counts runs, like
+// every other stop path.
+func TestLoopStopNamesItsRuns(t *testing.T) {
+	t.Parallel()
+	h, _ := newLoopHost(t)
+	if err := h.SetLoop("5m count rivers"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.SetLoop("stop"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if got := h.LoopEndedWhy(); got != "Loop stopped (0 runs)" {
+			return fmt.Errorf("ended why = %q", got)
+		}
+		return nil
+	})
+}
+
 func TestParseNext(t *testing.T) {
 	for _, c := range []struct {
 		reply    string

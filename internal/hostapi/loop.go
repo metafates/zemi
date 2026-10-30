@@ -74,6 +74,13 @@ func (h *Host) SetLoop(args string) error {
 	typed, _ := agent.CutAttached(args)
 	prompt := strings.TrimSpace(typed)
 	first, rest, _ := strings.Cut(prompt, " ")
+	// "/loop every 5m x" is "/loop 5m x": the cadence named the natural way,
+	// bounds and all; "every morning check" stays a prompt
+	if first == "every" {
+		if second, r2, _ := strings.Cut(rest, " "); second != "" {
+			first, rest = second, r2
+		}
+	}
 	if n, ok := strings.CutSuffix(first, "d"); ok {
 		if days, err := strconv.Atoi(n); err == nil {
 			first = strconv.Itoa(days*24) + "h"
@@ -94,7 +101,11 @@ func (h *Host) SetLoop(args string) error {
 	case prompt == "" && every == 0:
 		return h.openLoop()
 	case prompt == "stop" && every == 0:
-		return h.stopLoop(nil, "Loop stopped")
+		why := "Loop stopped"
+		if l, ok := h.Loop(); ok {
+			why = fmt.Sprintf("Loop stopped (%d %s)", l.Runs, Plural(l.Runs, "run", "runs"))
+		}
+		return h.stopLoop(nil, why)
 	case prompt == "":
 		return Usagef("/loop 5m <prompt> runs it every 5m; /loop <prompt> lets the model pace it")
 	case strings.HasPrefix(prompt, "/") && (name == "loop" || name == "goal"):
