@@ -307,7 +307,7 @@ function M.thought(secs) return secs >= 0.05 and "thought " .. M.duration(secs) 
 ---@return string
 function M.digest(rows, first, last, cwd, home)
 	---@type zemi.TranscriptRow[]
-	local calls, failed = {}, {}
+	local calls, failed, works = {}, {}, {}
 	local secs, reasoned = 0, false
 	for i = first, last do
 		local m = rows[i]
@@ -320,6 +320,8 @@ function M.digest(rows, first, last, cwd, home)
 			-- a failed call leaves no count, so the digest says it did: the
 			-- model's reply repeating the error is otherwise the only trace
 			failed[#failed + 1] = m
+		elseif (m.kind or "") == "notice" then
+			works[#works + 1] = m
 		end
 	end
 	-- the turn's thought, when the run drew no thought rows: logs written
@@ -359,6 +361,13 @@ function M.digest(rows, first, last, cwd, home)
 			end
 		end
 		parts[#parts + 1] = M.counts(named, #commands > 0 and commands or nil)
+	end
+	-- a report the turn waited on exists nowhere else: its body rides the
+	-- lone agent run's fold row, the way a failed call's digest carries its
+	-- refusal
+	if #works == 1 and #calls == 1 and M.family(M.tool(calls[1])) == "agent" then
+		local body = (works[1].text or ""):match("^.- · (.*)$") or ""
+		if body ~= "" then parts[#parts + 1] = body end
 	end
 	if #failed > 0 then
 		if #failed == 1 and #calls == 0 then
