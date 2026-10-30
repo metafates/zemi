@@ -169,7 +169,9 @@ sys.exit(0 if ok else 1)
 # request_is_ours TEXT: whether the fake's latest request carries TEXT as its
 # final user message. The request count alone cannot attribute a request: a
 # queued steer's turn-start or any work predating the prompt fires the same
-# counter while this text sits undelivered.
+# counter while this text sits undelivered. Both sides space-strip, as the
+# composer check does: zemi trims the text at submit, so an edge space must
+# not fork the match.
 request_is_ours() {
 	python3 -c '
 import json, sys
@@ -183,7 +185,8 @@ if not msgs:
 c = msgs[-1].get("content")
 if isinstance(c, list):
     c = " ".join(p.get("text", "") for p in c if isinstance(p, dict))
-sys.exit(0 if isinstance(c, str) and sys.argv[2] in c else 1)
+needle = sys.argv[2].replace(" ", "")
+sys.exit(0 if isinstance(c, str) and needle in c.replace(" ", "") else 1)
 ' "$TREE/last_request.json" "$1"
 }
 
@@ -395,12 +398,14 @@ cmd_up() {
 	# reap everything
 	[ -n "$(rex_sessions_by_label)" ] &&
 		die "lab '$NAME' already has a rex session up (zemi-lab down reboots all)"
-	# the has-session probe creates the tmux socket file even when it fails,
-	# so it only runs where a tmux server can exist: a rex lab must not leave
-	# one behind
-	[ "$BACKEND" = tmux ] &&
-		tmux -L "$SERVER" has-session 2>/dev/null &&
+	# the probe runs whatever this up's backend is: a tmux lab of this name
+	# must refuse a rex up too, or two zemis share one tree and down reaps
+	# the tree under the survivor
+	tmux -L "$SERVER" has-session 2>/dev/null &&
 		die "lab '$NAME' is already up (zemi-lab down reboots all)"
+	# the failed probe still creates the tmux socket file; a rex up leaves
+	# none behind (a tmux up's new-session needs it)
+	[ "$BACKEND" = rex ] && rm -f "${TMPDIR:-/tmp}"/tmux-*/"$SERVER"
 
 	BIN=${ZEMI_BIN:-$REPO/bin/zemi}
 	if [ -z "${ZEMI_BIN:-}" ]; then
@@ -570,14 +575,13 @@ cmd_prompt() {
 		sleep 0.25
 	done
 	[ "$i" -lt 40 ] || {
-		# a steer sent while a turn runs starts its own model call only after
-		# the turn - and any ask that rose over it - settles: name that
-		# instead of blaming a stuck zemi
+		# an overlay that rose over the prompt names itself; with none up the
+		# cause is not knowable from here - zemi-lab logs tell them apart
 		kind=$(overlay_kind)
 		case "$kind" in
 			permission) die "the prompt was delivered but a permission ask rose over it - the turn starts once it is answered (ask y, then wait again)" ;;
 			prompt) die "the prompt was delivered but an overlay rose over it (tmux cannot name it; 'cap' shows which) - settle it (ask y|n or send Escape), then wait again" ;;
-			"") die "no request carrying this text arrived within 10s (queued behind a running turn? zemi-lab logs)" ;;
+			"") die "no request carrying this text arrived within 10s (check zemi-lab logs)" ;;
 			*) die "the prompt was delivered but a $kind overlay rose over it - the turn starts once it is dismissed (send Escape, then wait again)" ;;
 		esac
 	}
@@ -630,8 +634,13 @@ cmd_ask() {
 	# terminal's blocked record (kind=permission); tmux's ? title mark cannot
 	# tell the overlay kinds apart, so it answers whatever holds the mark.
 	if [ "$BACKEND" = rex ]; then
-		[ "$(overlay_kind)" = permission ] ||
-			die "no permission ask is up (wait ask first - the ask may have been answered already)"
+		kind=$(overlay_kind)
+		case "$kind" in
+			permission) ;;
+			"") die "no permission ask is up (wait ask first - the ask may have been answered already)" ;;
+			# a plan ask wedges under y|n (its keys type into its changes box)
+			*) die "a $kind ask is up (ask answers y|n - send Escape dismisses it)" ;;
+		esac
 	else
 		wait_ask 5 ||
 			die "no overlay is up (wait ask first - the ask may have been answered already)"

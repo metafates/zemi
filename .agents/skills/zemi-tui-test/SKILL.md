@@ -66,7 +66,8 @@ overlay (`send Escape` first) - past one, its first letters answer the overlay a
 rest lands as a mangled draft. On tmux the mark cannot name the kind, so the refusal
 names both remedies instead of a key that would answer the wrong one. A steer sent while
 a turn runs can have an ask rise over
-it: `prompt` then names the overlay instead of blaming a stuck zemi - answer it (`ask y`)
+it: `prompt` then names the overlay instead of blaming a stuck zemi - settle it
+(`ask y` answers a permission ask, `send Escape` dismisses a plan/question one)
 and wait again. It returns when the screen settles (a settle heuristic),
 which can be mid-turn - not a turn-end guarantee - and `wait PATTERN` can match the
 PREVIOUS turn's reply: after an errored turn (a mid-stream drop) the settled screen still
