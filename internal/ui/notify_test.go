@@ -306,9 +306,9 @@ func TestRecapWhenIdle(t *testing.T) {
 }
 
 // TestStopWording keeps its own file; the next test starts here.
-// TestWindowTitle: the tab title leads with a spinner stepping every 200 ms
-// while a turn runs, ? while a prompt waits, and how a turn ended while the
-// window was away until it is focused again.
+// TestWindowTitle: the tab title asks with ? and marks how a turn ended
+// while the window was away, until it is focused again; a running turn
+// leaves the title alone — the program status reports it.
 func TestWindowTitle(t *testing.T) {
 	t.Parallel()
 	running := func(app *App) { app.turnActive = true }
@@ -320,9 +320,8 @@ func TestWindowTitle(t *testing.T) {
 		want string
 	}{
 		{"idle", nil, nil, 0, "zemi"},
-		{"running", running, nil, 0, "⠋ zemi"},
-		{"running 100 ms on", running, nil, 100 * time.Millisecond, "⠋ zemi"},
-		{"running 200 ms on", running, nil, 200 * time.Millisecond, "⠙ zemi"},
+		{"running", running, nil, 0, "zemi"},
+		{"running 200 ms on", running, nil, 200 * time.Millisecond, "zemi"},
 		{"asking", func(app *App) { running(app); app.permAsk = &permAskPrompt{} }, nil, 0, "? zemi"},
 		{"done away", nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{}, frameTickMsg{}}, 0, "✓ zemi"},
 		{"failed away", nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{err: "x"}, frameTickMsg{}}, 0, "✗ zemi"},

@@ -1605,10 +1605,11 @@ UI extensibility contract:
   `zemi.ui.title(text)` from
   user config replaces it until `title(nil)` or a
   reload that does not set it again. Go strips escapes from it, so it cannot
-  smuggle a sequence into the terminal. Either way a mark leads it: a braille
-  spinner stepping every 200 ms while a turn runs, `?` while a prompt waits on
+  smuggle a sequence into the terminal. Either way a mark leads it:
+  `?` while a prompt waits on
   the user, `✓` or `✗` after a turn that ended while the window was unfocused,
-  until it is focused again.
+  until it is focused again; a running turn leaves the title alone, since the
+  program status reports it.
 - Program status: zemi reports what it is doing to its own terminal through
   the Program Status Protocol (OSC 7501), so tabs and session pickers that
   draw it show a live state without heuristics: `idle` at the prompt, `working`

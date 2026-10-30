@@ -871,19 +871,14 @@ func (a *App) waiting() hostapi.Waiting {
 	return ""
 }
 
-// titleFrames is how many frames each spinner glyph of the tab title holds:
-// 200 ms, so a turn writes the title 5 times a second, not 20.
-const titleFrames = 4
-
-// windowTitle is the tab title: the host's, behind a mark for a turn that
-// runs, waits on the user, or ended while the window was away.
+// windowTitle is the tab title: the host's, behind a mark for a prompt that
+// waits on the user or a turn that ended while the window was away. A
+// running turn leaves the title alone — the program status reports it.
 func (a *App) windowTitle() string {
 	t := a.host.TerminalTitle()
 	switch {
 	case a.waiting() != "":
 		return "? " + t
-	case a.turnActive:
-		return hostapi.Spinner[a.frame()/titleFrames%len(hostapi.Spinner)] + " " + t
 	case a.unseen == hostapi.TurnOK:
 		return "✓ " + t
 	case a.unseen == hostapi.TurnError:
