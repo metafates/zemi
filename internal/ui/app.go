@@ -187,6 +187,7 @@ type App struct {
 	progress     bool             // the view reports a running turn (OSC 9;4)
 	statusSent   status.Report    // the last OSC 7501 report the terminal holds
 	turnErr      string           // the last failed turn's one-line cause, for the status report
+	turnReply    string           // the last clean turn's reply, for the status report
 	progressAt   time.Time        // when beat last flipped (progressInterval)
 	beat         int              // the report's value, flipped so the renderer resends it
 	focused      bool             // terminal focus (true until the terminal reports a blur)
@@ -761,6 +762,8 @@ func (a *App) endTurn(msg turnDoneMsg) tea.Cmd {
 	} else if msg.err != "" {
 		a.turnEnded, a.recapAt = hostapi.TurnError, time.Time{}
 		a.turnErr = ansi.Truncate(sanitize.Line(msg.err), 200, "…")
+	} else {
+		a.turnReply = ansi.Truncate(sanitize.Line(a.host.LastReply()), 200, "…")
 	}
 	a.unseen = ""
 	if !a.focused {

@@ -1614,7 +1614,7 @@ UI extensibility contract:
   draw it show a live state without heuristics: `idle` at the prompt, `working`
   with the turn's own words, `blocked` with a `kind` — `permission` for the
   trust, permission and plan prompts, `question` for a question prompt —
-  `done` with the finished task, `error` with the cause's one line, and `idle`
+  `done` with the reply it left, `error` with the cause's one line, and `idle`
   again after a user's interrupt. `app=zemi` and the tab title ride every
   report; a report is sent only when the state changed, and the terminal
   keeps the record without heartbeats. Detection is skipped: the protocol

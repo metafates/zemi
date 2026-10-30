@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -103,12 +104,20 @@ func TestProgramStatus(t *testing.T) {
 	}
 	app.finishQuestion(false)
 
-	// the turn ends: done names the task, error its one-line cause, and a
-	// user's interrupt reports idle
+	// the turn ends: done carries the reply it left, error its one-line
+	// cause, and a user's interrupt reports idle
+	host.AppendChat(hostapi.ChatMessage{Role: fantasy.MessageRoleAssistant, Text: "migrated, tests green"})
 	host.SeedStream(hostapi.StreamSnapshot{Task: task})
 	app.Update(turnDoneMsg{})
-	if got := statusFrame(app); got != report(status.Done, 0, task) {
+	if got := statusFrame(app); got != report(status.Done, 0, "migrated, tests green") {
 		t.Fatalf("done: sent %q", got)
+	}
+	// a turn that only ran tools says nothing of itself
+	host.AppendChat(hostapi.ChatMessage{Role: fantasy.MessageRoleUser, Text: task})
+	host.SeedStream(hostapi.StreamSnapshot{Task: task})
+	app.Update(turnDoneMsg{})
+	if got := statusFrame(app); got != report(status.Done, 0, "") {
+		t.Fatalf("a wordless turn: sent %q", got)
 	}
 	host.SeedStream(hostapi.StreamSnapshot{Task: task})
 	app.Update(turnDoneMsg{err: "provider refused\n\tand again"})

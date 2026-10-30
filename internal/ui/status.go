@@ -55,7 +55,7 @@ func (a *App) statusReport() status.Report {
 	case a.turnActive:
 		r.State, r.Msg = status.Working, a.host.AgentStream().Task
 	case a.turnEnded == hostapi.TurnOK:
-		r.State, r.Msg = status.Done, a.host.AgentStream().Task
+		r.State, r.Msg = status.Done, a.turnReply
 	case a.turnEnded == hostapi.TurnError:
 		r.State, r.Msg = status.Error, a.turnErr
 	case a.turnEnded == hostapi.TurnCancelled:

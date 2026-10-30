@@ -46,6 +46,27 @@ func (h *Host) InputHistory(limit int) []string {
 	return out
 }
 
+// LastReply reads the turn's own words off the chat window's tail: the last
+// plain reply above the user's prompt, "" when the turn said nothing.
+func (h *Host) LastReply() string {
+	h.tMu.RLock()
+	defer h.tMu.RUnlock()
+	for _, m := range slices.Backward(h.session.Transcript) {
+		if m.Kind != RowMessage {
+			continue
+		}
+		switch m.Role {
+		case fantasy.MessageRoleUser:
+			return ""
+		case fantasy.MessageRoleAssistant:
+			if s := strings.TrimSpace(m.Text); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
 // setTranscriptFromLog replaces the chat window with the log's tail (a
 // reset), which opens at its tail: a place scrolled to in the old one means
 // nothing in the new.
