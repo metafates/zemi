@@ -274,7 +274,7 @@ local function builder(ctx, width)
 				-- the row is provisional: it is the queue's until the turn reads
 				-- it, and settles elsewhere without the tag. The dot keeps the
 				-- tag apart from content that itself starts with "queued"
-				row[#row + 1] = { text = " queued · ", hl = "Queued", copy = false }
+				row[#row + 1] = { text = "queued · ", hl = "Queued", copy = false }
 			end
 			for _, sg in ipairs(segs) do
 				sg.hl = waiting and "Dim" or "Normal"

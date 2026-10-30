@@ -134,8 +134,8 @@ func (h *Host) memoriesOverlay() Overlay {
 		o.Items = append(o.Items, h.memoriesRow(nodeID{ln.L, ln.I}, ln.Text, lo))
 	}
 	if n > 0 {
-		o.Foot = fmt.Sprintf("%s · %s · %s · %s unbuilt · tags read first+span", fmtBytes(int64(b)), pluralCount(n, "line", "lines"),
-			pluralCount(levels, "level", "levels"), strconv.Itoa(unbuilt))
+		o.Foot = fmt.Sprintf("%s · %s · %s · %d not summarized yet", fmtBytes(int64(b)), pluralCount(n, "line", "lines"),
+			pluralCount(levels, "level", "levels"), unbuilt)
 	}
 	return o
 }

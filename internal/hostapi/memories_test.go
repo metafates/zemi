@@ -289,7 +289,7 @@ func TestMemoriesFoot(t *testing.T) {
 	o := h.memoriesOverlay()
 	// three built lines ("msgs 0-1", "msgs 2-3", "msg 4") at 8+8+5 bytes,
 	// one placeholder at its own length, across levels 0 and 1
-	if !strings.Contains(o.Foot, "4 lines") || !strings.Contains(o.Foot, "2 levels") || !strings.Contains(o.Foot, "1 unbuilt") {
+	if !strings.Contains(o.Foot, "4 lines") || !strings.Contains(o.Foot, "2 levels") || !strings.Contains(o.Foot, "1 not summarized yet") {
 		t.Errorf("foot = %q", o.Foot)
 	}
 	if !strings.Contains(o.Foot, "B") {
