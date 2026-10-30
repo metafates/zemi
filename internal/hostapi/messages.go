@@ -440,7 +440,7 @@ func (h *Host) messagesOlder() (Overlay, bool) {
 	if err != nil || len(rows) == 0 {
 		return Overlay{}, false
 	}
-	page := logRows(rows)
+	page := logRowsFor(rows, true)
 	h.msgMu.Lock()
 	// a reset wiped the log under the loaded pages: nothing survives it
 	if head >= 0 {

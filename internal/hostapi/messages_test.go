@@ -628,6 +628,25 @@ func TestLogRowsPairsParallelCalls(t *testing.T) {
 	}
 }
 
+// TestLogRowsBrowseKeepsUnpairedEchoes: the transcript folds an attachment's
+// echo and a !command's full output into the row they belong to; the
+// browser, where the log's whole truth lives, draws what nothing consumed.
+func TestLogRowsBrowseKeepsUnpairedEchoes(t *testing.T) {
+	t.Parallel()
+	rows := []store.LogEntry{
+		{Seq: 0, Kind: store.KindEcho, Text: "<file path=\"task.txt\">\nwords\n</file>", MetaJSON: `{"tool":"attach","ok":true}`},
+		{Seq: 1, Kind: store.KindUser, Text: "read @task.txt"},
+	}
+	tr := logRows(rows)
+	if len(tr) != 1 {
+		t.Fatalf("the transcript folds the attach echo: %+v", tr)
+	}
+	browse := logRowsFor(rows, true)
+	if len(browse) != 2 || browse[0].Kind != RowNotice || browse[0].Seq != 0 || browse[0].Detail != rows[0].Text || browse[1].Seq != 1 {
+		t.Fatalf("the browser draws the unpaired echo in place: %+v", browse)
+	}
+}
+
 // TestMessagesPagesFromBoot: a boot over a log longer than the window fills
 // the chat straight from the log, past SetTranscript, so the pager's "no
 // pages loaded" has to be the host's starting value and not the field's

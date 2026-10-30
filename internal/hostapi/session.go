@@ -444,6 +444,14 @@ func stampable(m ChatMessage) bool {
 // a notice naming the run, a thought, an error or a !command its own row.
 // Notes draw nothing: zoom reaches them.
 func logRows(rows []store.LogEntry) []ChatMessage {
+	return logRowsFor(rows, false)
+}
+
+// logRowsFor builds the transcript rows a log range draws. browse adds the
+// echoes nothing consumed — an attachment's content, a !command's full
+// output — as dim rows: the transcript folds them into the row they belong
+// to, the browser is where the log's whole truth lives.
+func logRowsFor(rows []store.LogEntry, browse bool) []ChatMessage {
 	// the echo each tool row answers: by the call id both metas carry, else
 	// the oldest unconsumed echo of the same name, the order parallel calls
 	// of one tool answer in; a repeated id answers in log order, so the
@@ -576,6 +584,34 @@ func logRows(rows []store.LogEntry) []ChatMessage {
 			}
 			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
 			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(row.Text), Detail: meta.Detail, Seq: row.Seq})
+		}
+	}
+	if browse {
+		var left []int
+		for _, q := range echo {
+			left = append(left, q...)
+		}
+		for _, q := range fifo {
+			left = append(left, q...)
+		}
+		slices.Sort(left)
+		if len(left) > 0 {
+			notice := func(i int) ChatMessage {
+				return ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(rows[i].Text), Detail: rows[i].Text, Seq: rows[i].Seq}
+			}
+			merged := make([]ChatMessage, 0, len(tr)+len(left))
+			li := 0
+			for _, m := range tr {
+				for li < len(left) && rows[left[li]].Seq < m.Seq {
+					merged = append(merged, notice(left[li]))
+					li++
+				}
+				merged = append(merged, m)
+			}
+			for ; li < len(left); li++ {
+				merged = append(merged, notice(left[li]))
+			}
+			tr = merged
 		}
 	}
 	return tr
