@@ -94,44 +94,43 @@ zemi.ui.widget.add({
 			-- minutes pad, so "0m 48s" next to a bare "3s" window keeps the
 			-- two apart
 			local clock = function(s) return string.format("%dm %02ds", math.floor(s / 60), math.floor(s) % 60) end
-			---@type { [1]: zemi.Line, [2]: integer, [3]: integer }?
-			local tick = { plain(clock(ag.elapsed)), 5, 7 }
+			---@type { [1]: zemi.Line, [2]: integer }[]
+			local ticks = { { plain(clock(ag.elapsed)), 5 } }
 			if ctx.interrupt_armed then
 				-- the number by the armed key is the window it still waits; the
-				-- turn's clock keeps its place beside it, labeled as the
-				-- retry's is, so the two durations never read alike
-				tick = {
-					plain(fmt.duration(math.ceil(ctx.interrupt_in or 0), true) .. " · elapsed " .. clock(ag.elapsed)),
-					5,
-					8,
+				-- turn's clock trails at a weight the narrow rule drops first
+				ticks = {
+					{ plain(fmt.duration(math.ceil(ctx.interrupt_in or 0), true)), 7 },
+					{ plain("elapsed " .. clock(ag.elapsed)), 5 },
 				}
 			end
 			if ag.retry then
 				state = "error"
 				local why = ag.retry.why ~= "" and " · " .. fmt.clip(ag.retry.why, 60) or ""
-				tick = {
-					plain(
-						(
-							ag.retry.next_in > 0
-								and "next try in " .. fmt.duration(math.ceil(ag.retry.next_in), true)
-							or "retrying now"
-						)
-							.. why
-							.. " · elapsed "
-							.. clock(ag.elapsed)
-					),
-					5,
-					18,
+				-- the reason and countdown outlast the key hint and the clock:
+				-- a narrow rule keeps the state the eyes alone cannot name
+				ticks = {
+					{
+						plain(
+							(
+								ag.retry.next_in > 0
+									and "next try in " .. fmt.duration(math.ceil(ag.retry.next_in), true)
+								or "retrying now"
+							) .. why
+						),
+						7,
+					},
+					{ plain("elapsed " .. clock(ag.elapsed)), 5 },
 				}
 			end
 			if ctx.editing ~= "" then
-				state, tick = "idle", nil
+				state, parts, ticks = "idle", {}, nil
 				parts = { { plain("save and close the editor to continue"), 5 } }
 			end
 			-- the open prompt names what answers it and esc answers it, so the
 			-- rule shrinks to the mascot alone rather than repeating a key
 			if ctx.waiting ~= "" then
-				state, parts, tick = "asking", {}, nil
+				state, parts, ticks = "asking", {}, nil
 			elseif ctx.cancelling then
 				parts[#parts + 1] = { fmt.hint("ctrl+c", "quit"), 6, 13 }
 			elseif not ctx.view then
@@ -139,7 +138,11 @@ zemi.ui.widget.add({
 			end
 			-- last: the block ends on the clock, its digits eating the rule on
 			-- the left
-			if tick then parts[#parts + 1] = tick end
+			if ticks then
+				for _, t in ipairs(ticks) do
+					parts[#parts + 1] = t
+				end
+			end
 		end
 		local span = ctx.width
 		-- the row holds the snail, the block and the part it centres, a cell of

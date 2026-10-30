@@ -1973,6 +1973,23 @@ func TestWorkingRowRetry(t *testing.T) {
 	}
 }
 
+// TestWorkingRowRetryNarrow: a rule too narrow for everything keeps the
+// retry's reason and countdown before the key hint and the clock — the eyes
+// alone cannot name the state.
+func TestWorkingRowRetryNarrow(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 60, 16)
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 14 * time.Second, Retrying: true, RetryIn: 45 * time.Second, Retries: 1, RetryWhy: "rate limited by the provider"})
+	app.renderSync(t)
+	row := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 60))
+	if !strings.Contains(row, "next try in 45s · rate limited by the provider") {
+		t.Fatalf("the narrow rule lost the reason: %q", row)
+	}
+	if strings.Contains(row, "esc interrupt") {
+		t.Fatalf("the narrow rule kept the key hint over the reason: %q", row)
+	}
+}
+
 // TestWorkingRowMascot: the snail stays in the left corner on a plain rule
 // and the turn shows in its eyes alone.
 func TestWorkingRowMascot(t *testing.T) {
