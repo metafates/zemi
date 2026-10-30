@@ -55,7 +55,7 @@ func (a *App) AskPlan(plan string) (tools.PlanVerdict, bool) {
 			opened: a.now(),
 			sel:    1, // the ask opens on No; the plan's stray-enter-safe twin is save
 		}
-		return a.notifyIfAway("zemi: " + lowerFirst(planStatus(a.planAsk.plan)))
+		return a.notifyUnlessReported("zemi: " + lowerFirst(planStatus(a.planAsk.plan)))
 	})
 	ans := <-ch
 	return ans.v, ans.ok

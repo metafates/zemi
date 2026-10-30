@@ -1617,9 +1617,13 @@ UI extensibility contract:
   `done` with the reply it left, `error` with the cause's one line, and `idle`
   again after a user's interrupt. `app=zemi` and the tab title ride every
   report; a report is sent only when the state changed, and the terminal
-  keeps the record without heartbeats. Detection is skipped: the protocol
-  lets a program report without querying, since a terminal ignores unknown
-  OSCs. A turn's own words (`Task` on the stream snapshot) come from the
+  keeps the record without heartbeats. At boot zemi asks the terminal
+  whether it follows the protocol (the feature-detection query); a terminal
+  that answers takes its ask and turn-end news from the records, so zemi
+  sends no `ui.notify` alert for those — the alert would double what the
+  terminal already shows — and clears its record on the way out. A terminal
+  that never answers keeps the alerts. A turn's own words (`Task` on the
+  stream snapshot) come from the
   send that opened it — the user's message, a loop's note, a queued
   follow-up — one line, 200 characters. One-time completions no record
   carries — an MCP sign-in finishing or failing, a turn that crashed —

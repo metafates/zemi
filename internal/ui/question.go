@@ -77,7 +77,7 @@ func (a *App) AskQuestion(qs []tools.Question) ([]tools.Answer, bool) {
 		if line := ansi.Truncate(sanitize.Line(clean[0].Question), 200, "…"); line != "" {
 			q += ": " + line
 		}
-		return a.notifyIfAway(q)
+		return a.notifyUnlessReported(q)
 	})
 	ans := <-ch
 	return ans.answers, ans.ok

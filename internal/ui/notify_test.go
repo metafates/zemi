@@ -49,32 +49,37 @@ func TestNotifyWhenAway(t *testing.T) {
 		chain       bool                // the agent still reads active on the first frame
 		loop        bool                // a loop run began the chain
 		looped      bool                // a loop was on, and is no more
+		support     bool                // the terminal answered the OSC 7501 feature query
 		done        turnDoneMsg         // how the turn ended
 		seed        func(*hostapi.Host) // chat rows the turn left behind
 		want        string              // the raw bytes sent, "" for no notification
 	}{
-		{"focused", "osc", nil, false, false, false, turnDoneMsg{}, nil, ""},
-		{"away", "osc", tea.BlurMsg{}, false, false, false, turnDoneMsg{}, nil, "\x1b]9;zemi finished\x07"},
-		{"away as a chain goes on", "osc", nil, true, false, false, turnDoneMsg{}, nil, "\x1b]9;zemi finished\x07"},
-		{"away after a loop's run", "osc", nil, false, true, false, turnDoneMsg{}, nil, ""},
-		{"away as the loop ends", "osc", nil, false, true, true, turnDoneMsg{}, nil, "\x1b]9;zemi: the loop ended\x07"},
-		{"away with a failing turn", "osc", tea.BlurMsg{}, false, false, false, turnDoneMsg{err: "provider refused\n\tand again"}, nil, "\x1b]9;zemi failed: provider refused and again\x07"},
-		{"away with a long failure", "osc", tea.BlurMsg{}, false, false, false, turnDoneMsg{err: strings.Repeat("x", 300)}, nil, "\x1b]9;zemi failed: " + strings.Repeat("x", 79) + "…\x07"},
-		{"away with a reply", "osc", tea.BlurMsg{}, false, false, false, turnDoneMsg{}, func(h *hostapi.Host) {
+		{"focused", "osc", nil, false, false, false, false, turnDoneMsg{}, nil, ""},
+		{"away", "osc", tea.BlurMsg{}, false, false, false, false, turnDoneMsg{}, nil, "\x1b]9;zemi finished\x07"},
+		{"away with support", "osc", tea.BlurMsg{}, false, false, false, true, turnDoneMsg{}, nil, ""},
+		{"away as a chain goes on", "osc", nil, true, false, false, false, turnDoneMsg{}, nil, "\x1b]9;zemi finished\x07"},
+		{"away after a loop's run", "osc", nil, false, true, false, false, turnDoneMsg{}, nil, ""},
+		{"away as the loop ends", "osc", nil, false, true, true, false, turnDoneMsg{}, nil, "\x1b]9;zemi: the loop ended\x07"},
+		{"away as the loop ends with support", "osc", nil, false, true, true, true, turnDoneMsg{}, nil, ""},
+		{"away with a failing turn", "osc", tea.BlurMsg{}, false, false, false, false, turnDoneMsg{err: "provider refused\n\tand again"}, nil, "\x1b]9;zemi failed: provider refused and again\x07"},
+		{"away with a failing turn and support", "osc", tea.BlurMsg{}, false, false, false, true, turnDoneMsg{err: "provider refused"}, nil, ""},
+		{"away with a long failure", "osc", tea.BlurMsg{}, false, false, false, false, turnDoneMsg{err: strings.Repeat("x", 300)}, nil, "\x1b]9;zemi failed: " + strings.Repeat("x", 79) + "…\x07"},
+		{"away with a reply", "osc", tea.BlurMsg{}, false, false, false, false, turnDoneMsg{}, func(h *hostapi.Host) {
 			h.AppendChat(hostapi.ChatMessage{Role: "assistant", Text: "all 9 tests pass"})
 		}, "\x1b]9;zemi finished: all 9 tests pass\x07"},
-		{"away with a long reply", "osc", tea.BlurMsg{}, false, false, false, turnDoneMsg{}, func(h *hostapi.Host) {
+		{"away with a long reply", "osc", tea.BlurMsg{}, false, false, false, false, turnDoneMsg{}, func(h *hostapi.Host) {
 			h.AppendChat(hostapi.ChatMessage{Role: "assistant", Text: strings.Repeat("x", 300)})
 		}, "\x1b]9;zemi finished: " + strings.Repeat("x", 199) + "…\x07"},
-		{"away with a headed reply", "osc", tea.BlurMsg{}, false, false, false, turnDoneMsg{}, func(h *hostapi.Host) {
+		{"away with a headed reply", "osc", tea.BlurMsg{}, false, false, false, false, turnDoneMsg{}, func(h *hostapi.Host) {
 			h.AppendChat(hostapi.ChatMessage{Role: "assistant", Text: "# Deploy notes\nall green"})
 		}, "\x1b]9;zemi finished: Deploy notes all green\x07"},
-		{"away with a bell", "bell", nil, false, false, false, turnDoneMsg{}, nil, "\a"},
-		{"back", "osc", tea.FocusMsg{}, false, false, false, turnDoneMsg{}, nil, ""},
+		{"away with a bell", "bell", nil, false, false, false, false, turnDoneMsg{}, nil, "\a"},
+		{"back", "osc", tea.FocusMsg{}, false, false, false, false, turnDoneMsg{}, nil, ""},
 	} {
 		if _, err := host.Settings.SetQuiet("ui.notify", c.style); err != nil {
 			t.Fatal(err)
 		}
+		app.statusSupport = c.support
 		if c.focus != nil {
 			app.Update(c.focus)
 		}
@@ -93,6 +98,45 @@ func TestNotifyWhenAway(t *testing.T) {
 		if got := frame(); got != c.want {
 			t.Errorf("%s: sent %q, want %q", c.name, got, c.want)
 		}
+	}
+}
+
+// TestAskNotifyRidesTheRecord: an ask alerts an unfocused terminal only
+// where the program-status record does not already carry it — a terminal
+// that answered the OSC 7501 feature query shows the record itself.
+func TestAskNotifyRidesTheRecord(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name    string
+		support bool
+		want    string
+	}{
+		{"without support", false, "\x1b]9;zemi: a question: which database?\x07"},
+		{"with support", true, ""},
+	} {
+		app, _ := notifyApp(t)
+		app.Update(tea.BlurMsg{})
+		app.statusSupport = c.support
+		app.testQueue = make(chan tea.Msg, 1)
+		answered := make(chan struct{}, 1)
+		go func() {
+			app.AskQuestion([]tools.Question{{Question: "which database?"}})
+			answered <- struct{}{}
+		}()
+		_, cmd := app.Update(<-app.testQueue)
+		var got string
+		for _, m := range runCmd(cmd) {
+			if raw, ok := m.(tea.RawMsg); ok {
+				if s := fmt.Sprint(raw.Msg); strings.Contains(s, "\x1b]9;") {
+					got = s
+				}
+			}
+		}
+		if got != c.want {
+			t.Errorf("%s: sent %q, want %q", c.name, got, c.want)
+		}
+		app.finishQuestion(false)
+		<-answered
 	}
 }
 

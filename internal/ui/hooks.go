@@ -42,7 +42,7 @@ func (a *App) AskTrust(root, cwd, state string) string {
 	}
 	a.await(func() tea.Cmd {
 		a.trust = &trustPrompt{root: root, cwd: cwd, state: state, answer: ch, opened: a.now(), sel: len(trustAnswers) - 1}
-		return a.notifyIfAway("zemi: trust this " + what + "? · " + ansi.Truncate(perm.TildePath(root), 200, "…"))
+		return a.notifyUnlessReported("zemi: trust this " + what + "? · " + ansi.Truncate(perm.TildePath(root), 200, "…"))
 	})
 	return <-ch
 }

@@ -129,7 +129,7 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 			p.size = a.permAsk.size
 		}
 		a.permAsk = p
-		return a.notifyIfAway(permAlert(req))
+		return a.notifyUnlessReported(permAlert(req))
 	})
 	ans := <-ch
 	return ans.ok, ans.by
