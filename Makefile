@@ -1,10 +1,11 @@
 GO_FILES = $(shell git ls-files -co --exclude-standard '*.go')
 
-.PHONY: all build run site first-run mcp-auth test race flake cover vet lint fmt golden luals stylua gofmt check install clean
+.PHONY: all build run site first-run mcp-auth test race flake cover vet lint fmt golden luals stylua gofmt shellcheck check install clean
 
 LUALS ?= lua-language-server
 STYLUA ?= stylua
 GOLANGCI ?= golangci-lint
+SHELLCHECK ?= shellcheck
 
 all: check build
 
@@ -98,12 +99,19 @@ stylua:
 	@if command -v $(STYLUA) >/dev/null; then $(STYLUA) --check runtime testdata; \
 	else echo "stylua: $(STYLUA) not installed, skipped (STYLUA=/path/to/stylua to point at one)"; fi
 
+# shellcheck -S warning over the tracked scripts with a sh shebang; skipped without the binary
+shellcheck:
+	@if command -v $(SHELLCHECK) >/dev/null; then \
+		scripts=$$(git ls-files -co --exclude-standard | xargs grep -Il -m1 '^#!.*sh' 2>/dev/null); \
+		if [ -n "$$scripts" ]; then $(SHELLCHECK) -S warning $$scripts; fi; \
+	else echo "shellcheck: $(SHELLCHECK) not installed, skipped (SHELLCHECK=/path/to/shellcheck to point at one)"; fi
+
 # gofmt check over the tracked Go files
 gofmt:
 	@out=$$(gofmt -l $(GO_FILES)); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 
 # the quick failures first, the tests last
-check: gofmt stylua vet luals lint test
+check: gofmt stylua shellcheck vet luals lint test
 
 install:
 	go install .

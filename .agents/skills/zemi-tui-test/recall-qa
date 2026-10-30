@@ -73,7 +73,7 @@ plant() {
 	i=$COUNT
 	while [ "$i" -lt $((COUNT + N)) ]; do
 		i=$((i + 1))
-		case $((i % 2)) in 0) pos=head ;; *) pos=tail ;; esac
+		case $((i % 2)) in 0) pos="head" ;; *) pos="tail" ;; esac
 		printf 'NONCE%d-%s %s\n' "$i" "$(nonce_word "$i")" "$pos" >>"$NONCES"
 		"$LAB" -n "$NAME" prompt "$(nonce_msg "$i")" ||
 			die "the lab refused nonce prompt $i (zemi-lab up first?)"

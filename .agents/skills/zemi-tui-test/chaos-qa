@@ -84,7 +84,8 @@ checks() {
 }
 
 act() {
-    local i=$1 r=$(( (SEED * 9301 + i * 49297) % 233280 ))
+    local i=$1
+    local r=$(( (SEED * 9301 + i * 49297) % 233280 ))
     local pick=$(( r % 12 ))
     case $pick in
     0 | 1 | 2 | 3) # a turn, sometimes tool-shaped, some long enough for a leaf build
