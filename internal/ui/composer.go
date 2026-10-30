@@ -445,6 +445,9 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 		var segs []hostapi.Segment
 		switch {
 		case a.composer.text == "" && placeholder != "":
+			if a.composerNote != "" {
+				placeholder = a.composerNote
+			}
 			hint := []hostapi.Segment{{Text: placeholder, HL: "Dim"}}
 			if !focused {
 				hint = cursorSegs([]rune(placeholder), 0, "Dim")

@@ -294,6 +294,9 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	// nothing marks nothing - a flood of refused keys must not recompose the
 	// screen a key.
 	c := &a.composer
+	if t := keyText(msg); t != "" {
+		a.composerNote = "" // the note rode the placeholder until the first key
+	}
 	if key == "ctrl+z" {
 		c.undoLast()
 		return a.updateCompletion()

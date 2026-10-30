@@ -203,8 +203,11 @@ type App struct {
 
 	// an idle recap: when it is due (zero for none), and the stop of one in
 	// flight
-	recapAt   time.Time
-	recapStop context.CancelFunc
+	recapAt time.Time
+	// composerNote rides the placeholder after a "tell me instead" answer,
+	// until the first printable key
+	composerNote string
+	recapStop    context.CancelFunc
 
 	bootErr        error
 	bootView       viewport          // the boot-failure box's error text
