@@ -239,6 +239,8 @@ func TestNotifyStyle(t *testing.T) {
 		{"ghostty without a notifier", "auto", "darwin", "TERM_PROGRAM=ghostty", "", "osc", false},
 		{"kitty over ssh", "auto", "linux", "TERM=xterm-kitty SSH_TTY=/dev/pts/1", "notify-send", "osc", false},
 		{"kitty on linux", "auto", "linux", "TERM=xterm-kitty", "notify-send", "osc", false},
+		{"rex reports status itself", "auto", "darwin", "TERM_PROGRAM=rex", "osascript", "off", false},
+		{"rex in tmux", "auto", "darwin", "TERM_PROGRAM=rex TMUX=x", "osascript", "native", false},
 		{"tmux on a mac", "auto", "darwin", "TERM_PROGRAM=tmux TERM=xterm-ghostty TMUX=x", "osascript", "native", false},
 		{"screen on a mac", "auto", "darwin", "TERM_PROGRAM=ghostty TERM=screen STY=1.pts-0", "osascript", "native", false},
 		{"Apple Terminal without a notifier", "auto", "darwin", "TERM_PROGRAM=Apple_Terminal", "", "bell", false},

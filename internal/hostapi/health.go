@@ -194,6 +194,11 @@ func healthResult(v any) (HealthLevel, string, error) {
 // as a desktop notification. TERM survives ssh, TERM_PROGRAM does not.
 var oscTerms = []string{"iTerm.app", "ghostty", "WezTerm", "xterm-ghostty", "xterm-kitty", "wezterm"}
 
+// statusTerms name terminals that follow the program status protocol
+// (OSC 7501) and surface a record change themselves; auto leaves the
+// notifying to such a terminal instead of doubling it.
+var statusTerms = []string{"rex"}
+
 // notifiers name the native notifier per GOOS.
 var notifiers = map[string]string{"darwin": "osascript", "linux": "notify-send"}
 
@@ -219,8 +224,12 @@ func notifyStyle(setting string, env func(string) string, goos string, has func(
 	muxed := slices.ContainsFunc([]string{"TMUX", "STY", "ZELLIJ"}, func(k string) bool { return env(k) != "" })
 	if !muxed {
 		for _, k := range []string{"TERM_PROGRAM", "TERM"} {
-			if v := env(k); slices.Contains(oscTerms, v) {
+			v := env(k)
+			if slices.Contains(oscTerms, v) {
 				return config.NotifyOSC, "auto: " + k + "=" + v, false
+			}
+			if slices.Contains(statusTerms, v) {
+				return config.NotifyOff, "auto: " + k + "=" + v + " follows program status (OSC 7501) itself", false
 			}
 		}
 	}
