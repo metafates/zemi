@@ -1915,6 +1915,7 @@ type UIState struct {
 	InterruptIn    float64 // seconds the interrupt arm still waits, when armed
 	KeySeq         string  // keys of a bound sequence typed so far
 	RowsBelow      int     // transcript rows under a scrolled-up viewport
+	RowsAbove      int     // transcript rows the tail-following viewport hides above it
 	Cancelling     bool    // interrupt sent, turn not finished yet
 	Editing        string  // title of the file open in the editor
 	Waiting        Waiting // while a prompt holds the turn
@@ -1972,6 +1973,7 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("interrupt_in", glua.LNumber(state.InterruptIn))
 	tb.RawSetString("key_seq", glua.LString(state.KeySeq))
 	tb.RawSetString("rows_below", glua.LNumber(state.RowsBelow))
+	tb.RawSetString("rows_above", glua.LNumber(state.RowsAbove))
 	tb.RawSetString("cancelling", glua.LBool(state.Cancelling))
 	tb.RawSetString("editing", glua.LString(state.Editing))
 	tb.RawSetString("waiting", glua.LString(state.Waiting))
@@ -2509,7 +2511,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.152.0"))
+	api.RawSetString("version", glua.LString("0.153.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

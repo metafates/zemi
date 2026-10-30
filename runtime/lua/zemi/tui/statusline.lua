@@ -143,9 +143,10 @@ zemi.ui.widget.add({
 })
 
 -- While the chat is scrolled up, how many rows are below and the key that
--- goes back: the bar shows only where the reader is, not what a running turn
--- added under them or how a keyboard gets back. A click goes back too: its id
--- is the scroll target, not a command's name.
+-- goes back; at the tail, how many rows it hides above. The bar shows only
+-- where the reader is, not what a running turn added under them or how a
+-- keyboard gets back. A click goes back too: its id is the scroll target,
+-- not a command's name.
 zemi.ui.widget.add({
 	id = "statusline.scroll",
 	region = "statusline.left",
@@ -154,8 +155,9 @@ zemi.ui.widget.add({
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
 	render = function(ctx)
-		if (ctx.rows_below or 0) == 0 then return {} end
-		return { fmt.hint("↓ " .. ctx.rows_below, "ctrl+b", "bottom") }
+		if (ctx.rows_below or 0) > 0 then return { fmt.hint("↓ " .. ctx.rows_below, "ctrl+b", "bottom") } end
+		if (ctx.rows_above or 0) > 0 then return { fmt.hint("↑ " .. ctx.rows_above, "pgup", "up") } end
+		return {}
 	end,
 })
 
