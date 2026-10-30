@@ -60,6 +60,7 @@ type Kind uint8
 const (
 	_ Kind = iota
 	KindPermission
+	KindPlan
 	KindQuestion
 	KindAuth
 )
@@ -69,6 +70,8 @@ func (k Kind) String() string {
 	switch k {
 	case KindPermission:
 		return "permission"
+	case KindPlan:
+		return "plan"
 	case KindQuestion:
 		return "question"
 	case KindAuth:

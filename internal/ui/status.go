@@ -52,7 +52,9 @@ func (a *App) statusReport() status.Report {
 	case a.permAsk != nil:
 		r.State, r.Kind, r.Msg = status.Blocked, status.KindPermission, askStatus(a.permAsk.req)
 	case a.planAsk != nil:
-		r.State, r.Kind, r.Msg = status.Blocked, status.KindPermission, planStatus(a.planAsk.plan)
+		// its own kind: the plan answers a/s/e/esc, so a terminal must not
+		// offer a permission ask's y|n remedy for it
+		r.State, r.Kind, r.Msg = status.Blocked, status.KindPlan, planStatus(a.planAsk.plan)
 	case a.question != nil:
 		msg := ansi.Truncate(a.question.qs[0].Question, 200, "…")
 		if n := len(a.question.qs); n > 1 {

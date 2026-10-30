@@ -104,6 +104,13 @@ func TestProgramStatus(t *testing.T) {
 	}
 	app.trust = nil
 
+	// a plan review blocks as its own kind: it answers a/s/e/esc, not y|n
+	app.planAsk = &planAskPrompt{plan: "1. do it"}
+	if got := statusFrame(app); got != report(status.Blocked, status.KindPlan, "A plan to review · 1. do it") {
+		t.Fatalf("plan: sent %q", got)
+	}
+	app.planAsk = nil
+
 	// a question blocks with its first line, and a batch says how many wait
 	app.question = &questionPrompt{qs: []tools.Question{{Question: "which database?"}}, answer: make(chan qAnswer, 1)}
 	if got := statusFrame(app); got != report(status.Blocked, status.KindQuestion, "which database?") {

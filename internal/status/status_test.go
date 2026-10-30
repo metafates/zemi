@@ -38,7 +38,7 @@ func TestSequence(t *testing.T) {
 		},
 		{
 			"a kind that is no kind is absent",
-			Report{State: Blocked, Kind: Kind(4), App: "zemi"},
+			Report{State: Blocked, Kind: Kind(9), App: "zemi"},
 			"\x1b]7501;state=blocked:app=zemi\x1b\\",
 		},
 		{
