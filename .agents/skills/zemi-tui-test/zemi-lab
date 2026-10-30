@@ -166,13 +166,15 @@ sys.exit(0 if ok else 1)
 ' "$1"
 }
 
-# request_carries NONCE: whether any request the fake holds carries NONCE.
-# The nonce rides a prompt's text and is unique to that call - it exists
-# nowhere before its typing - so only the draft's delivery can put it in a
-# request: as a verbatim user message, or inside a later <chat> fold or
-# compaction block, both built from delivered messages. An erased draft (an
-# interrupt restores it to the composer) leaves no trace, and no older turn
-# can impersonate it the way a duplicate text could a content match.
+# request_carries MSG: whether any request the fake holds carries MSG - a
+# prompt's full text and its [zl:PID] marker matched together. The marker
+# alone proves nothing: it is the caller's pid, readable off the composer
+# and typeable by any window, so only a delivery of this very text (a
+# verbatim user message, or inside a later <chat> fold or compaction block,
+# both built from delivered messages) can put the pair in a request. An
+# erased draft (an interrupt restores it to the composer) leaves no trace,
+# and no older turn can impersonate it the way a duplicate text could a
+# content match.
 request_carries() {
 	python3 -c '
 import glob, json, os, sys
@@ -426,10 +428,12 @@ cmd_up() {
 	[ -x "$BIN" ] || die "no zemi binary at $BIN"
 
 	mkdir -p "$TREE/config" "$TREE/data" "$TREE/state" "$TREE/cache" "$TREE/proj"
-	# a kept tree reboots clean: the last incarnation's snapshots, request
-	# marker and body would poison diff, last and this boot's first prompt,
-	# and a stale stale-stream or kept mark would refuse a healthy teardown
-	rm -rf "$TREE/snap"
+	# a kept tree reboots clean: the last incarnation's snapshots, requests
+	# (old [zl:PID] markers stay searchable across a reboot and weaken the
+	# marker's uniqueness) and bodies would poison diff, last and this
+	# boot's first prompt, and a stale stale-stream or kept mark would
+	# refuse a healthy teardown
+	rm -rf "$TREE/snap" "$TREE/requests"
 	rm -f "$TREE/.lab.turn" "$TREE/last_request.json" "$TREE/.lab.stale-stream" "$TREE/.lab.kept"
 	[ -d "$TREE/proj/.git" ] || (cd "$TREE/proj" && git init -q) || die "git init failed"
 	echo hello >"$TREE/proj/a.txt"
@@ -529,8 +533,36 @@ EOF
 	say "  zemi-lab cap | wait PATTERN | send Escape | ask y | db | logs | last | down"
 }
 
+# one prompt at a time per tree: two concurrent prompts share one composer,
+# each composer_has check passes on the glued draft and one Enter submits
+# both texts as a single message nobody typed
+prompt_lock() {
+	if mkdir "$TREE/.lab.prompt" 2>/dev/null; then
+		echo $$ >"$TREE/.lab.prompt/pid"
+		trap 'rm -rf "$TREE/.lab.prompt"' EXIT
+		return 0
+	fi
+	# held: retry until the holder releases, stealing it once its pid is gone
+	i=0
+	while [ "$i" -lt 150 ]; do
+		mkdir "$TREE/.lab.prompt" 2>/dev/null && {
+			echo $$ >"$TREE/.lab.prompt/pid"
+			trap 'rm -rf "$TREE/.lab.prompt"' EXIT
+			return 0
+		}
+		pid=$(cat "$TREE/.lab.prompt/pid" 2>/dev/null)
+		if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+			rm -rf "$TREE/.lab.prompt"
+		fi
+		sleep 0.2
+		i=$((i + 1))
+	done
+	die "another prompt holds this lab (waited 30s; a stale lock: rm -rf $TREE/.lab.prompt)"
+}
+
 cmd_prompt() {
 	[ $# -ge 1 ] || die "prompt: text"
+	prompt_lock
 	kind=$(overlay_kind)
 	case "$kind" in
 		permission) die "a permission ask is up (the prompt's keys would answer it - ask y|n first)" ;;
@@ -581,7 +613,7 @@ cmd_prompt() {
 		# request landing after the baseline - a queued steer's turn-start,
 		# work predating the prompt - while this text sits undelivered
 		if [ "$(find "$TREE/requests" -type f 2>/dev/null | wc -l)" -gt "$at" ] &&
-			request_carries "[zl:$$]"; then
+			request_carries "$msg"; then
 			break
 		fi
 		i=$((i + 1))
@@ -615,6 +647,11 @@ cmd_type() {
 		prompt) die "type: an overlay is up (tmux cannot name it; 'cap' shows which): ask y|n answers a permission ask, send Escape dismisses the rest" ;;
 		*) die "type: a $kind overlay is up (the text would land in it - send Escape first)" ;;
 	esac
+	# an empty composer shows the placeholder, so typing exactly it could
+	# not be told apart from an untouched composer - the verify would be
+	# vacuous
+	[ "$*" = "Ask anything" ] &&
+		die "type: 'Ask anything' is what an empty composer already shows - type other text (the verify could not tell them apart)"
 	type_text "$@"
 	# tmux delivers the burst late: an immediate capture false-negatives, so
 	# return only once the text shows in the composer box (wrap-joined)

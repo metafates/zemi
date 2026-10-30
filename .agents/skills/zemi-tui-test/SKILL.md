@@ -58,12 +58,17 @@ against the composer box's own rows, however tall a narrow pane folds them, neve
 whole screen, which transcript rows echo), types, sends Enter, then waits for the request
 to reach the model (the fake's request counter, which counts only requests the fake
 accepted - a 429 refusal never reached a model - because the screen cannot prove a turn
-started), that a request carries the prompt's marker (each `prompt` appends a unique
-`[zl:PID]` to the text before typing: only the draft's delivery - as a verbatim user
-message, or inside a later `<chat>` fold built from delivered messages - can put it in a
-request, so neither a count alone (fires on any request landing after the baseline) nor a
-duplicate text (a re-sent older turn reads as delivered) can pass for it, and an
-interrupt-restored draft leaves no trace) and for the screen to settle. It refuses while
+started), that a request carries the prompt's text with its marker (each `prompt` appends
+a unique `[zl:PID]` to the text and the match wants marker and full text together: the
+marker alone is the caller's pid, readable off the composer and typeable by another
+window, so only a delivery of this very text - as a verbatim user message, or inside a
+later `<chat>` fold built from delivered messages - can put the pair in a request; neither
+a count alone (fires on any request landing after the baseline) nor a duplicate text (a
+re-sent older turn reads as delivered) nor a planted marker can pass for it, and an
+interrupt-restored draft leaves no trace) and for the screen to settle (the 10s window is
+matched-poll time; under load the same loop stretches to ~25s wall). Prompts serialize on
+a per-tree lock: concurrent prompts share one composer and one Enter would submit both
+texts glued as one message nobody typed. It refuses while
 any overlay waits on the user: a permission ask (`ask y|n` first) or a question/plan
 overlay (`send Escape` first) - past one, its first letters answer the overlay and the
 rest lands as a mangled draft. On tmux the mark cannot name the kind, so the refusal
@@ -85,7 +90,8 @@ gate plugin whose `permission.request` handler returns
 backend below). A running lab can be made to ask without a reboot: drop the same two files
 into `$TREE/data/plugins/local/askgate/.zemi/` (plugin.json + init.lua; their contents are
 the `write_config()` block in the zemi-lab script) and the next action asks. `zemi-lab attach` sits at the
-lab in a real terminal (tmux) or prints how to open it (Rex).
+lab in a real terminal (tmux) or prints how to open it (Rex). `zemi-lab health [args...]`
+runs `zemi-safe health` against the lab tree.
 
 ## The fake model
 
@@ -111,7 +117,8 @@ streamed chunks.
   (house rule). `zemi-lab snap` saves a masked capture, `zemi-lab diff` diffs a fresh one
   against it and exits 1 on a shift; the mask blanks what moves on its own (spinner,
   elapsed seconds, token counts, cost, the clock) and the raw captures are kept beside
-  the masked ones for re-checking.
+  the masked ones for re-checking (`snap m1.txt` keeps `m1.raw` - the suffix replaces
+  `.txt`).
 - The pane title marks state: `? ` while an ask is up, plain otherwise -
   `zemi-lab title` prints it on either backend (a rex lab also streams each change as a
   `title_changed` event, so the count of title writes is assertable). `wait ask` and
@@ -126,6 +133,9 @@ streamed chunks.
   `tmux send-keys -l ... $'\x1b[201~'` - a `respawn-pane` does NOT clear it (the bytes
   survive the respawn and re-wedge the fresh zemi). The lab sends one atomic call per
   command.
+- SIGSTOP is a tmux trap, not a lab one: stopping the lab's zemi collapses the pane in
+  ~1s (the wrapper exits on its stopped child while zemi survives), so a STOP experiment
+  on tmux becomes a dead-pane experiment - run those on the rex backend.
 - Direct `tmux -L zl-<name>` probes need the lab's socket dir: the lab exports
   `TMUX_TMPDIR=$TMPDIR`, so set it the same way or tmux looks in `/tmp/tmux-*`
   and finds no server.
@@ -179,7 +189,7 @@ $S/zemi-lab -n ps wait ask
 $S/zemi-lab -n ps ask y
 $S/zemi-lab -n ps events program_status_changed
 program_status_changed	state=idle
-program_status_changed	state=working msg=call shell {"command":"ls","about":"list"}
+program_status_changed	state=working msg=call shell {"command":"ls","about":"list"} [zl:PID]
 program_status_changed	state=blocked kind=permission msg=Run this command? · list
 program_status_changed	state=done msg=done, here is the reply.
 $S/zemi-lab -n ps events desktop_notification   # exit 1 = none; the count IS the "one, not two" assertion
