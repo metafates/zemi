@@ -44,7 +44,7 @@ func sendCommand(o *options) *cobra.Command {
 				sock  string
 				fresh bool
 			}
-			var peersByAge []peer
+			var heartbeats []peer
 			for _, e := range entries {
 				if filepath.Ext(e.Name()) != ".json" {
 					continue
@@ -60,7 +60,7 @@ func sendCommand(o *options) *cobra.Command {
 				if info, err := e.Info(); err == nil && time.Since(info.ModTime()) <= hostapi.PeersTTL {
 					fresh = true
 				}
-				peersByAge = append(peersByAge, peer{hb.Sock, fresh})
+				heartbeats = append(heartbeats, peer{hb.Sock, fresh})
 			}
 			// deliver prints the verdict and reports whether it happened; a
 			// window that refused names why
@@ -92,7 +92,7 @@ func sendCommand(o *options) *cobra.Command {
 			// and a corpse fails its dial in ms
 			var lastErr error
 			for _, fresh := range []bool{true, false} {
-				for _, p := range peersByAge {
+				for _, p := range heartbeats {
 					if p.fresh != fresh {
 						continue
 					}
