@@ -118,7 +118,7 @@ func (h *Host) jobsOverlay() Overlay {
 	}
 	o := Overlay{
 		ID: "jobs", Title: "Jobs", Origin: lua.OriginBuiltin, Items: slices.Concat(running, ended),
-		Empty:  "No background processes.",
+		Empty:  "No background processes; a workflow or an agent run draws its row here.",
 		Reload: func() []OverlayItem { return h.jobsOverlay().Items },
 	}
 	if h.jobs.Running() > 0 {
