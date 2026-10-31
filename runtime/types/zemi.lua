@@ -372,7 +372,7 @@ zemi.keymap = {}
 ---
 --- With `opts.list` the key moves in every list, popup and prompt, and stays
 --- what it was elsewhere: `zemi.keymap.set("ctrl+j", "down", { list = true })`
---- (ctrl+j still scrolls the chat). While a line types, an alias to
+--- (the composer takes ctrl+j for its newline). While a line types, an alias to
 --- home or end keeps the key's own meaning, since the line edits with
 --- those; a ctrl+u alias still fires, and in a prompt or filter it kills
 --- the line. enter, esc, tab, shift+tab, space and backspace raise.

@@ -358,7 +358,10 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	case "enter":
 		a.submitComposer()
 		return nil
-	case "shift+enter", "alt+enter", "ctrl+enter":
+	case "shift+enter", "alt+enter", "ctrl+enter", "ctrl+j":
+		// ctrl+j is a raw LF byte (a shift+enter variant, an unbracketed
+		// paste's line break): it types the newline it means, and the chat
+		// keeps shift+down and ctrl+k for its one-line scroll
 		if !c.insertFits("\n") {
 			a.draftCapToast()
 			return nil
