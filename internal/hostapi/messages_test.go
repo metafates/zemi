@@ -658,6 +658,18 @@ func TestStampPairsASplitMessage(t *testing.T) {
 	if from != 3 {
 		t.Fatalf("the cursor walked past the siblings: %d", from)
 	}
+	// the split's row must not read as another window's wipe: a false wipe
+	// drops the chat, the goal with it
+	h.storeGoal(&Goal{Condition: "the tests pass", SetAt: 1})
+	h.tMu.Lock()
+	wiped := h.logWipedLocked()
+	h.tMu.Unlock()
+	if wiped {
+		t.Fatal("the split message's row reads as another window's wipe")
+	}
+	if _, err := h.DB.GetKV(goalKV); err != nil {
+		t.Fatalf("the goal survives the split: %v", err)
+	}
 }
 
 // TestLogRowsBrowseKeepsUnpairedEchoes: the transcript folds an attachment's

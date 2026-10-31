@@ -399,14 +399,19 @@ func (h *Host) logWipedLocked() bool {
 }
 
 // logRowMatches reports whether the store row still is the transcript row
-// carrying its seq: the kind and text identity the pairing stamps by.
+// carrying its seq: the kind and text identity the pairing stamps by. A
+// longer message logs as sibling chunks and the transcript row holds the
+// whole, so the first chunk matches as its prefix - a reset's regrown row
+// would have to open with the same 8000 characters to pass as the same.
 func logRowMatches(row store.LogEntry, m ChatMessage) bool {
 	text := strings.TrimSpace(row.Text)
 	switch row.Kind {
 	case store.KindUser:
-		return m.Role == fantasy.MessageRoleUser && m.Kind == RowMessage && text == strings.TrimSpace(m.Text)
+		return m.Role == fantasy.MessageRoleUser && m.Kind == RowMessage &&
+			(text == strings.TrimSpace(m.Text) || firstChunkOf(text, m.Text))
 	case store.KindAgent:
-		return m.Role == fantasy.MessageRoleAssistant && m.Kind == RowMessage && text == strings.TrimSpace(m.Text)
+		return m.Role == fantasy.MessageRoleAssistant && m.Kind == RowMessage &&
+			(text == strings.TrimSpace(m.Text) || firstChunkOf(text, m.Text))
 	case store.KindTool:
 		return m.Kind == RowTool && toolSummary(rowTool(row), row.Text) == m.Text
 	case store.KindThought:
@@ -426,6 +431,13 @@ func logRowMatches(row store.LogEntry, m ChatMessage) bool {
 	default: // an echo: no transcript row carries its seq
 		return false
 	}
+}
+
+// firstChunkOf reports whether text opens a message the transcript holds
+// whole: the chat split's first sibling, shorter than the message it starts.
+func firstChunkOf(text, whole string) bool {
+	whole = strings.TrimSpace(whole)
+	return text != whole && strings.HasPrefix(whole, text)
 }
 
 // reloadChatLocked swaps the chat window for the log's tail: what a reset

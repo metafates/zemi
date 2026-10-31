@@ -1539,6 +1539,14 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 			} else {
 				foot = armedHint(footW, st.keyArmed, d, "again to ")
 			}
+			// a danger confirm's consequences live in the row's view: the arm
+			// is exactly when they should stay one key away
+			if hasView(st.items[st.visible[st.selected]].row) {
+				foot = append(foot,
+					hostapi.Segment{Text: " · ", HL: hostapi.ChromeHint},
+					hostapi.Segment{Text: "l", HL: hostapi.ChromeHintKey},
+					hostapi.Segment{Text: " details", HL: hostapi.ChromeHint})
+			}
 		}
 		if s := st.o.Foot; s != "" {
 			foot = append([]hostapi.Segment{{Text: s, HL: hostapi.ChromeHint}, {Text: " · ", HL: hostapi.ChromeHint}}, foot...)

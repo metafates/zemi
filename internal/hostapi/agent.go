@@ -829,11 +829,13 @@ func (h *Host) settleTodos() {
 		}
 	}
 	// a send may have claimed the agent while this read was in flight, and
-	// its turn writes a list of its own: that one is not a leftover to settle
+	// its turn writes a list of its own: that one is not a leftover to settle.
+	// A sibling at work may hold the item too: the same ground truth the boot
+	// path checks before mourning its turn
 	ag.mu.Lock()
 	stale := ag.active
 	ag.mu.Unlock()
-	if stale {
+	if stale || h.siblingWorking() {
 		return
 	}
 	if err := h.DB.SetTodos(sid, todos); err != nil {
