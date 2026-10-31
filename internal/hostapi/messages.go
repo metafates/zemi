@@ -908,7 +908,8 @@ func (h *Host) openLogView(seq int64) error {
 
 // messageHead is the line a message reads by: its first non-blank one, a
 // fence line passed over so a reply that opens with a block reads as its
-// code; the first non-blank line when it is all fences.
+// code, a bare <zemi-note> wrapper passed over so a system note reads as its
+// content; the first non-blank line when it is all wrappers.
 func messageHead(text string) string {
 	head := ""
 	for line := range strings.Lines(text) {
@@ -916,7 +917,7 @@ func messageHead(text string) string {
 		if line == "" {
 			continue
 		}
-		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") {
+		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") || line == "<zemi-note>" {
 			head = cmp.Or(head, line)
 			continue
 		}

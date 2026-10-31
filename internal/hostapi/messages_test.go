@@ -136,6 +136,24 @@ func TestMessagesList(t *testing.T) {
 	}
 }
 
+// TestMessageHead: a message reads by its first content line — a fence and a
+// bare <zemi-note> wrapper are passed over; a file echo's wrapper is not, its
+// path is the honest head.
+func TestMessageHead(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, text, want string }{
+		{"prose", "done, here is the reply.", "done, here is the reply."},
+		{"a reply opening with a block", "```go\nx := 1\n```", "x := 1"},
+		{"a system note", "<zemi-note>\n2 todos are open from earlier\n</zemi-note>", "2 todos are open from earlier"},
+		{"a file echo keeps its wrapper", "<file path=\"w.txt\">\nwords\n</file>", "<file path=\"w.txt\">"},
+	}
+	for _, c := range cases {
+		if got := messageHead(c.text); got != c.want {
+			t.Errorf("%s: head %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 // TestMessagesEarlierNamesItsMore: while the log holds rows above the
 // window's pages, the list leads with the row whose up-move loads them;
 // the cue goes once the pages reach the log's start.
