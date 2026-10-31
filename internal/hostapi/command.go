@@ -262,7 +262,13 @@ func (h *Host) sendPrompt(prompt string) (queued, ran bool, err error) {
 	typed, attached := agent.CutAttached(prompt)
 	if rest, ok := strings.CutPrefix(typed, "/"); ok {
 		if name, args := SplitCommand(rest); h.Commands.Lookup(name) != nil {
-			return false, true, h.RunCommand(context.Background(), name, args+attached, false)
+			err = h.RunCommand(context.Background(), name, args+attached, false)
+			if err != nil && !errors.Is(err, ErrNeedsTUI) {
+				// the sender reads the error; the window's user sees it too.
+				// A needs-the-TUI error is the surface's to name, not a failure
+				h.CommandFailed(name, err)
+			}
+			return false, true, err
 		}
 	}
 	queued, err = h.agentSendUser(prompt)
