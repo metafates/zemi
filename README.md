@@ -1,26 +1,22 @@
-# zemi @··
+<div align="center">
+	<img width="300" alt="zemi" src="https://github.com/user-attachments/assets/7eb88996-83c0-4d41-a3ed-cfaf09ddbf7e" />
+	<h1>zemi @··</h1>
+	<p>There are many agent harnesses, but this one takes <i>the best from them</i></p>
+</div>
 
-> There are many agent harnesses, but this one takes _the best from them_
-
-<img align="center" width="800" alt="zemi" src="https://github.com/user-attachments/assets/e408a167-6126-45b8-aced-64b6ae726328" />
+<div align="center">
+	<img width="800" alt="zemi chat" src="https://github.com/user-attachments/assets/e408a167-6126-45b8-aced-64b6ae726328" />
+</div>
 
 Zemi is a (coding) agent harness that...
 
-- never forgets anything because it uses a single endless chat per project.
+- never forgets _anything_ with endless chats like [UniiChat](https://gist.github.com/VictorTaelin/91837951a5ce5b38f341ec1ba1df6449).
 - fast and native like [crush](https://github.com/charmbracelet/crush)
 - extensible and cache-efficient like [pi](https://github.com/earendil-works/pi)
 - batteries included like [codex](https://github.com/openai/codex) & [claude-code](https://github.com/anthropics/claude-code)
 - has a nice TUI like [opencode](https://github.com/anomalyco/opencode)
 
 ...and can be whatever you want it to be.
-
-The memory is the chat: every project has one log that never ends and never
-resets. Zemi keeps the whole conversation on disk and sends the model a compact
-summary of it (the view), which it rebuilds in the background as the chat
-grows; the model can open any line of that summary to read the messages under
-it. Nothing is extracted into a separate memory store and nothing you said is
-ever dropped - `/reset` starts the chat over, and that is the only way to
-forget.
 
 > [!NOTE]
 > I use zemi daily exclusively and have better experience with it than with other harnesses.
@@ -53,11 +49,10 @@ Install github.com/metafates/zemi (go install github.com/metafates/zemi@latest),
 
 - Keeps prompts small, cache hit rates high
 - Knows when to shut up
+- Endless chats that remember every message
 - Does more with less steps
 - Subagents, workflows, background jobs, lsp, mcp, and more.
 - Fully scriptable with Lua and knows how to modify itself
-- Remembers everything: one eternal chat per project; `/memories` browses the
-  summary the model reads and zooms a line into the messages it covers
 - Compatible with Claude Code plugins
 
 ## API keys
