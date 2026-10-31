@@ -909,7 +909,7 @@ Event catalogue (each emitted on the interpreter thread):
 - permission: `permission.request` (vetoable), `permission.resolved`
 - ui: `ui.resize`, `composer.change`, `composer.submit` (vetoable)
 - session: `session.reset` (a /reset wiped the chat: this window's, or
-  another window's that this one reloads after)
+  the writing window's, that this one reloads after)
 - io: `job.exit`, `lsp.request`
 
 A handler vetoes by returning `{ decision = "deny", reason = "..." }`; `tool.pre`
@@ -1287,7 +1287,9 @@ during the check goes instead of the note, an interrupt or a failed turn
 ends the chain with the goal kept, and at 20 turns in a row the goal
 started itself it pauses; a loop run does not reset that count. Each verdict is a notice
 row the log holds, so a resume reads it back. A reset drops it (the chat it was set in is
-gone), and a crash keeps it, since the row lives in the store. A window takes the chain over when the one that set the goal is gone - its presence heartbeat died, and a stale one is probed at the writer's socket before the chain moves, since mtime has writers other than the window - and never judges a live writer's goal. Lua reads it
+gone), and a crash keeps it, since the row lives in the store. The chain belongs to the
+lease: promotion inherits the goal the reload read and runs it, demotion stops it, and a
+viewer never judges a writer's goal. Lua reads it
 (`ctx.goal`, `ctx.agent.checking_goal`) and does not drive it: the check
 must hold the claim.
 
@@ -1873,27 +1875,40 @@ name), the same repository identity trust uses, so a subdirectory or a
 linked worktree opens the same chat rather than a blank store. The log is
 never swept - it is the memory - and the boot reads only its last
 `chatWindowRows` (1000) rows into the live transcript. Every log row
-carries the writer window's `origin`, so the second window's live pairing
-tells its rows from the first's, and the config watch's idle tick syncs
-the other window's rows into this one's transcript at their place: two
+carries the writer window's `origin`, so the live pairing tells one
+window's rows from another's, and the config watch's idle tick splices the
+rows written elsewhere into this one's transcript at their place: two
 windows on one repository draw the one chat it keeps, in the order a
-restart reads, and a foreign reset reloads the window whole. The spliced
-rows carry the transcript row's `foreign` mark, so a row that arrived
-while this window watched reads as the other window's (a dim gutter and
-readout); rows read at boot are the log's own and carry no mark. A
-window's presence rides heartbeat files under `<state>/peers/<store
+restart reads, and the writing window's reset reloads the window whole.
+Rows carry no provenance - the chat is the chat, whichever window wrote
+it. One window writes: a one-row lease (`leader`) names it, claimed at
+boot before the first prompt, renewed on the peers tick, lost to a clean
+close or a beat gone stale past its TTL; first claim wins at boot, first
+CAS wins a takeover, and two racers serialize under SQLite's write lock.
+Every other window is a read-only viewer: its every road to a model turn
+refuses with one error, its background reports store and toast instead of
+turning the model, and promotion reloads before the write is visible, so
+its first turn answers with the previous writer's rows. Notice-class rows
+(`/note`) still write from a viewer - honest rows the seq order already
+places. A window's presence rides heartbeat files under `<state>/peers/<store
 key>/` (one per origin, a two-second beat, fresh for six seconds), so the
-statusline names the windows sharing the chat and which of them run a
-turn - liveness the log cannot tell, whose origins outlive their windows.
-The heartbeat advertises the window's socket (`internal/ipc`: a unix
+statusline names who writes and who watches - liveness the log cannot
+tell, whose origins outlive their windows. The heartbeat advertises the
+window's socket (`internal/ipc`: a unix
 socket on every platform zemi builds for, Windows 10 1803+ included,
 bound in a private temp dir, since a state path can outgrow a sun_path),
-and the moves that matter travel it: a second zemi delivers a prompt to a
-peer the way the composer would (`zemi send`), and a window whose
-presence moved - booted, closed, started or ended a turn - pokes every
+and the moves that matter travel it: a second zemi reads the lease row
+and dials the holder the way the composer would (`zemi send`), and a
+window whose presence moved - booted, closed - pokes every
 sibling it can dial, whose beat then reads the change at once instead of
 at its next tick. The beat and the freshness window stay as the backstop
-for a window that died before it could say so.
+for a window that died before it could say so. Ceilings: for up to one
+tick a GC-paused zombie may write beside the new holder - interleaved
+rows the seq-ordered splice already handles; a wedged-but-alive holder
+keeps the lease until killed, since a hung socket proves nothing - a
+clean close releases; and a binary too old to claim the row never writes
+one, so mid-rollout `zemi send` may name no writer while one runs - no
+compat shims.
 
 Indexes: `messages(session_id)`,
 `tool_calls(message_id, created_at)`, `sessions(parent_id)`,
@@ -2688,8 +2703,9 @@ merges re-compress them.
 
 One builder worker per project store (`memTree` in `hostapi/memtree.go`)
 owns the tree state; appends reach it through `Wake`, finished calls
-through its results channel, a reset through `RebuildQueues`. No lease: a
-second window races on `INSERT OR IGNORE` and on merges of children already
+through its results channel, a reset through `RebuildQueues`. The builder
+takes no lease: a second window races on `INSERT OR IGNORE` and on merges
+of children already
 gone, so a race wastes one cheap call and nothing else. A failed build
 retries at the next log row - no timer loop, the failure parks until fresh
 rows land. The exception is a rate-limited one (`429`) or an empty one that
@@ -2855,8 +2871,8 @@ was the hardest correctness surface, and the spec has none).
   turn or run, and asks through the armed screen or `--yes`. The armed
   key's press runs the wipe on its own goroutine, so the UI's worker never
   sits on the quiesce; the toast names the outcome. A window whose log
-  shrinks under it - another window's reset - toasts "Chat reset by another
-  window" and reloads whole.
+  shrinks under it - the writing window's reset - toasts "Chat reset by
+  the writable window" and reloads whole.
 
 ### 10.7 Skills
 

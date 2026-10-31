@@ -55,6 +55,13 @@ $S/zemi-lab status                 # the tree, port, session and every block id
 $S/zemi-lab down                   # quit zemi, kill sessions and server, delete the tree
 ```
 
+The lease owns the peer: the main window booted first and claimed the write, so the peer
+opens a read-only viewer - typing into it and Enter refuses with "another window writes
+this chat". A flow that needs the peer to act stops the main window first (kill its pane
+- a clean quit releases the lease, a kill costs one TTL) and lets the peer's next tick
+promote it, which its pill names ("this window writes"); `zemi send` still reaches
+whichever window writes.
+
 `prompt` clears a leftover draft first (ctrl+c until the composer box empties - verified
 against the composer box's own rows, however tall a narrow pane folds them, never the
 whole screen, which transcript rows echo), types, sends Enter, then waits for the request
