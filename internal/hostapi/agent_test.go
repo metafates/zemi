@@ -1919,8 +1919,9 @@ func TestMaxOutput(t *testing.T) {
 	runUser(t, r, `
 		zemi.provider.add({ id = "a", kind = "anthropic", models = { { id = "big" }, { id = "old", max_output = 4096, capabilities = { vision = false } } } })
 		zemi.provider.add({ id = "o", kind = "openai", models = { { id = "gpt" } } })
+		zemi.provider.add({ id = "c", kind = "openai_compat", base_url = "https://c/v1", api_key = "k", models = { { id = "local" } } })
 	`)
-	for model, want := range map[string]int64{"a/big": 32_000, "a/old": 4096, "o/gpt": 0} {
+	for model, want := range map[string]int64{"a/big": 32_000, "a/old": 4096, "o/gpt": 0, "c/local": 65_536} {
 		if got := h.maxOutput(model); got != want {
 			t.Errorf("%s: max output %d, want %d", model, got, want)
 		}

@@ -54,7 +54,7 @@ func (h *Host) explain(err error) (cause, advice string) {
 	case errors.Is(err, store.ErrSessionGone):
 		return "the run was deleted under this window", ""
 	case pe != nil && pe.IsContextTooLarge():
-		return "the conversation no longer fits the model's context", "zemi merges a view batch and retries once; if it fails again, the model's window is too small"
+		return "the conversation no longer fits the model's context", "zemi merges a view batch and retries once, then drops its own output cap and tries again; if it still fails, the model's window is too small"
 	case pe != nil && (pe.AuthError || pe.StatusCode == http.StatusUnauthorized || pe.StatusCode == http.StatusForbidden):
 		return "the provider rejected the API key", key
 	case pe != nil && pe.StatusCode == http.StatusTooManyRequests:

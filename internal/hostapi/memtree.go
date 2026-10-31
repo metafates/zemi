@@ -1197,15 +1197,29 @@ func (b *memTree) build(id nodeID, prompt string, first bool, wait chan struct{}
 	// usually already in it), or the miss named on the prompt itself.
 	resampled := false
 	for range buildTryMax {
+		// the cap rides as nil once dropped: a pointer to 0 asks the server
+		// for a 0-token reply
+		var replyCap *int64
+		if maxOut > 0 {
+			replyCap = &maxOut
+		}
 		res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(chatSystem)).Stream(b.ctx, fantasy.AgentStreamCall{
 			Messages:        convo,
-			MaxOutputTokens: &maxOut,
+			MaxOutputTokens: replyCap,
 			MaxRetries:      &buildMaxRetries,
 			StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
 			ProviderOptions: opts,
 			Headers:         b.h.Providers.SessionHeaders(agent.ModelID(ref), store.MainSessionID),
 		})
 		if err != nil {
+			// a cap the server refuses - its own wording, or a context-shaped
+			// one when the cap does not fit the window - drops once, memoized,
+			// the way a turn's does; the build goes on uncapped
+			if replyCap != nil && (maxTokensRefused(err) || contextTooLarge(err)) {
+				capRejected.Store(ref, true)
+				maxOut = 0
+				continue
+			}
 			return "", err
 		}
 		b.h.bill(store.MainSessionID, ref, res.TotalUsage)

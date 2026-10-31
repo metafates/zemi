@@ -696,9 +696,10 @@ func maxTokensRefused(err error) bool {
 	return strings.Contains(s, "max_tokens") || strings.Contains(s, "max_output_tokens")
 }
 
-// maxOutput is the reply token limit: the model spec's, else 32000 for
-// Anthropic (whose provider otherwise sends 4096 and cuts large writes)
-// unless the model refused that cap, else 0 (the provider default).
+// maxOutput is the reply token limit: the model spec's, else a kind default
+// (32000 for Anthropic, whose wire default is 4096; 65536 for an
+// openai_compat gateway, whose unset default is its own and cuts large
+// writes) unless the model refused that cap, else 0 (the provider default).
 func (h *Host) maxOutput(modelID string) int64 {
 	if m, _ := h.modelSpec(modelID); m.MaxOutput > 0 {
 		return m.MaxOutput
@@ -707,10 +708,18 @@ func (h *Host) maxOutput(modelID string) int64 {
 		return 0
 	}
 	prov := agent.ModelID(modelID).Provider()
-	if spec, ok := h.Providers.Lookup(prov); ok && spec.Kind == agent.KindAnthropic {
-		return 32_000
+	spec, ok := h.Providers.Lookup(prov)
+	if !ok {
+		return 0
 	}
-	return 0
+	switch spec.Kind {
+	case agent.KindAnthropic:
+		return 32_000
+	case agent.KindOpenAICompat:
+		return 65_536
+	default:
+		return 0
+	}
 }
 
 func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {

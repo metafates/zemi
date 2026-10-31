@@ -19,6 +19,7 @@ import (
 	"charm.land/fantasy"
 	"charm.land/fantasy/providers/openaicompat"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
@@ -31,11 +32,12 @@ var errBuildFails = errors.New("compaction failed")
 // scripted reply and the calls' conversations are kept for assertions. A gate
 // holds every call from gateAfter on until its channel closes, and fail
 // fails them all. rate fails them all with a 429, the builder's cooldown
-// trigger. finish, when set, replaces the reply's finish reason. compact,
-// when set, answers every call with a function of its own prompt instead of
-// the script - the real fake's compaction shape. think answers with the
-// script as reasoning and no text, the reasoning-only reply, until the
-// conversation holds an assistant turn - the carryover's own shape.
+// trigger; refuseCap fails that many calls from the first with a max_tokens
+// refusal, the cap-drop heal's trigger. finish, when set, replaces the reply's
+// finish reason. compact, when set, answers every call with a function of its
+// own prompt instead of the script - the real fake's compaction shape. think
+// answers with the script as reasoning and no text, the reasoning-only reply,
+// until the conversation holds an assistant turn - the carryover's own shape.
 type treeModel struct {
 	mu        sync.Mutex
 	replies   []string
@@ -46,6 +48,7 @@ type treeModel struct {
 	gateAfter int
 	fail      atomic.Bool
 	rate      atomic.Bool
+	refuseCap atomic.Int32
 	burn      atomic.Bool
 	think     atomic.Bool
 	finish    fantasy.FinishReason
@@ -70,6 +73,9 @@ func (m *treeModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Stre
 		return nil, &fantasy.RetryError{Errors: []error{&fantasy.ProviderError{
 			StatusCode: 429, Message: "Rate limit exceeded",
 		}}}
+	}
+	if m.refuseCap.Add(-1) >= 0 {
+		return nil, &fantasy.ProviderError{StatusCode: 400, Message: "max_tokens is above the model maximum"}
 	}
 	if m.fail.Load() {
 		return nil, errBuildFails
@@ -1053,6 +1059,39 @@ func TestBuilderEmptyReplyLadder(t *testing.T) {
 	coverage(t, h.DB, 3)
 }
 
+// TestBuilderDropsTheCapTheServerRefuses: a build whose model refuses the cap
+// zemi asked for drops it once, memoized, and builds uncapped - the heal a
+// turn gets - instead of failing every compaction.
+func TestBuilderDropsTheCapTheServerRefuses(t *testing.T) {
+	t.Parallel()
+	h, cl, m := newTree(t, "line")
+	if err := h.Providers.Register(agent.Spec{ID: "c", Kind: agent.KindOpenAICompat, BaseURL: "http://x", Models: []agent.Model{{ID: "leaf"}}}, "", false); err != nil {
+		t.Fatal(err)
+	}
+	h.Settings.SetQuiet("models.compact", "c/leaf") // not models.default: side calls must not resolve a model
+	t.Cleanup(func() { capRejected.Delete("c/leaf") })
+	if got := h.maxOutput("c/leaf"); got != 65_536 {
+		t.Fatalf("max output %d, want the compat kind default", got)
+	}
+	m.refuseCap.Store(1) // the first build call refuses the cap; its retry runs uncapped
+	for range 2 {
+		if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitFor(t, func() error {
+		_, err := h.DB.NodeAt(1, 0) // the pair's join built, so the leaves did too
+		return err
+	})
+	if calls := m.callCount(); calls != 3 {
+		t.Fatalf("%d calls, want the refused build, its uncapped retry and the second leaf", calls)
+	}
+	if got := h.maxOutput("c/leaf"); got != 0 {
+		t.Fatalf("max output %d after the heal, want the refusal memoized", got)
+	}
+	coverage(t, h.DB, 2)
+}
+
 // TestBuilderEmptyReplyCarriesThinking: a reasoning model that stops with no
 // line has usually written it inside the thinking, so the corrected retry
 // hands that thinking back as the assistant turn and asks for the line -
@@ -1322,6 +1361,37 @@ func TestOverflowRetrySendsAMergedView(t *testing.T) {
 	tp, ok := fantasy.AsMessagePart[fantasy.TextPart](tail.Content[0])
 	if tail.Role != fantasy.MessageRoleUser || !ok || !strings.Contains(tp.Text, "do it") {
 		t.Fatalf("the retry ends on %s %q, want the task it was refused for", tail.Role, tp.Text)
+	}
+}
+
+// TestOverflowDropsTheCapWhenTheMergeDoesNotFit: a context refusal that
+// survives the merged retry with a cap zemi set is the cap's fault: the cap
+// drops, memoized, and the turn goes on uncapped instead of failing.
+func TestOverflowDropsTheCapWhenTheMergeDoesNotFit(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	if err := h.Providers.Register(agent.Spec{ID: "c", Kind: agent.KindOpenAICompat, BaseURL: "http://x", Models: []agent.Model{{ID: "turn"}}}, "", false); err != nil {
+		t.Fatal(err)
+	}
+	h.Settings.SetQuiet("models.default", "c/turn")
+	t.Cleanup(func() { capRejected.Delete("c/turn") })
+	if got := h.maxOutput("c/turn"); got != 65_536 {
+		t.Fatalf("max output %d, want the compat kind default", got)
+	}
+	m := replyStub(t, h, "done")
+	m.overflow.Store(2) // the refused send and the merged retry; the uncapped one passes
+	h.SetUIHooks(&fakeUI{})
+	prompts := sendTurns(t, h, m, "do it")
+	if len(prompts) != 3 {
+		t.Fatalf("%d requests, want the refused one, the merged retry and the uncapped one", len(prompts))
+	}
+	if got := h.maxOutput("c/turn"); got != 0 {
+		t.Fatalf("max output %d after the heal, want the refusal memoized", got)
+	}
+	for _, row := range h.Session().Transcript {
+		if row.Kind == "error" {
+			t.Fatalf("error row shown: %+v", row)
+		}
 	}
 }
 

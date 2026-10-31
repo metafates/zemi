@@ -1556,7 +1556,7 @@ function zemi.log.list() end
 ---@field display? string
 ---@field context_window? integer Without it there is no context percent in /usage and a subagent trims its history only after the provider refuses it.
 ---@field pricing? zemi.ModelPricing
----@field max_output? integer Reply token cap; unset, anthropic models get 32000 and other kinds the provider default.
+---@field max_output? integer Reply token cap; unset, anthropic models get 32000, openai_compat ones 65536, others the provider default.
 ---@field capabilities? zemi.ModelCapabilities The model's own capabilities, the same shape the bundled catalog carries.
 ---@field api? string The wire format the model speaks, `"completions"`, `"responses"` or `"messages"`, when it differs from its provider's own - one provider can serve formats side by side.
 ---@field max_attachments? integer The @ references one message may carry.

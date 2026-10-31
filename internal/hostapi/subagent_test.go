@@ -363,6 +363,51 @@ func TestSubagentSurvivesAFullWindow(t *testing.T) {
 	}
 }
 
+// TestSubagentDropsTheCapWhenThePruneDoesNotFit: a context refusal with
+// nothing left to drop and a cap still set is the cap's fault: the run drops
+// the cap, memoized, and goes on instead of ending.
+func TestSubagentDropsTheCapWhenThePruneDoesNotFit(t *testing.T) {
+	big := agent.UserMessage(strings.Repeat("r", 120_000))
+	big.Role = fantasy.MessageRoleAssistant
+	for _, c := range []struct {
+		name      string
+		history   []fantasy.Message
+		refusals  int
+		wantSends int
+	}{
+		{"nothing to prune", []fantasy.Message{agent.UserMessage("look")}, 1, 2},
+		{"a prune that does not fit", []fantasy.Message{agent.UserMessage("look"), big, toolResult("old", 100), agent.UserMessage("more")}, 2, 3},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			h, _ := newTestHostDB(t)
+			sends := 0
+			model := &scriptModel{script: func(string, string, bool) []fantasy.StreamPart {
+				if sends++; sends <= c.refusals {
+					return []fantasy.StreamPart{{Type: fantasy.StreamPartTypeError, Error: &fantasy.ProviderError{StatusCode: 400, Message: "prompt is too long", ContextTooLargeErr: true}}}
+				}
+				return textParts("report")
+			}}
+			runner := agent.NewRunner(model, nil, "sys")
+			runner.Hooks = &subagentHooks{h: h, def: AgentDef{Name: "explore"}, run: &agentRun{status: "running", rows: map[string]int{}}}
+			runner.History = c.history
+			runner.MaxOutputTokens = 65_536
+			if _, err := h.sendPruning(t.Context(), runner, "p/healcap", "go", 0); err != nil {
+				t.Fatalf("send: %v", err)
+			}
+			if sends != c.wantSends {
+				t.Fatalf("%d streams, want %d", sends, c.wantSends)
+			}
+			if runner.MaxOutputTokens != 0 {
+				t.Fatalf("cap %d, want it dropped", runner.MaxOutputTokens)
+			}
+			if lastAssistantText(runner.History) != "report" {
+				t.Fatalf("history after the retry: %d messages, last text %q", len(runner.History), lastAssistantText(runner.History))
+			}
+		})
+	}
+}
+
 // TestSubagentAsksAsAgent: a subagent's host-checked tools ask through its
 // own pipeline, so the ask names the agent.
 func TestSubagentAsksAsAgent(t *testing.T) {

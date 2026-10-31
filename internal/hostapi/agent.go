@@ -1013,6 +1013,18 @@ func (h *Host) sendTurn(ctx context.Context, runner *agent.Runner, text string) 
 			}
 			continue
 		}
+		// a merge that still leaves the request over the window: with a cap
+		// zemi set, the cap is what does not fit - drop it, remember, and send
+		// again, as a max_tokens refusal does
+		if contextTooLarge(err) && !capDropped && runner.MaxOutputTokens > 0 {
+			capDropped = true
+			ag.mu.Lock()
+			capRejected.Store(ag.turnModel, true)
+			ag.beginTurn()
+			ag.mu.Unlock()
+			runner.MaxOutputTokens = 0
+			continue
+		}
 		return err
 	}
 }

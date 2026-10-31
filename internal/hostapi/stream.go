@@ -248,7 +248,9 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	ag.mu.Lock()
 	// a held error is resent without what the provider refused; the turn's
 	// finish, the notification and the error row wait for the resend
-	hold := ag.holdImages && imagesRefused(err) || ag.holdCap && maxTokensRefused(err) || ag.holdOverflow && contextTooLarge(err)
+	hold := ag.holdImages && imagesRefused(err) ||
+		ag.holdCap && (maxTokensRefused(err) || contextTooLarge(err)) ||
+		ag.holdOverflow && contextTooLarge(err)
 	ag.holdOverflow, ag.holdImages, ag.holdCap = false, false, false
 	now := h.now()
 	model := h.turnModelID()
