@@ -92,13 +92,20 @@ func sendCommand(o *options) *cobra.Command {
 				if !reply.OK {
 					return false, errors.New(cmp.Or(reply.Error, "the window refused this delivery"))
 				}
+				// several windows share the store: "the window" is honest only
+				// when it is named — by its live task when one runs, else by
+				// the count, since nothing on disk identifies a window
+				where := "the window"
+				if len(heartbeats) > 1 && reply.Note == "" {
+					where = fmt.Sprintf("one of the %d live windows", len(heartbeats))
+				}
 				switch {
 				case reply.Ran:
-					fmt.Fprintln(c.OutOrStdout(), "delivered: the command runs in the window")
+					fmt.Fprintf(c.OutOrStdout(), "delivered: the command runs in %s\n", where)
 				case reply.Queued:
-					fmt.Fprintln(c.OutOrStdout(), "delivered: the message joined the window's running turn")
+					fmt.Fprintf(c.OutOrStdout(), "delivered: the message joined a running turn in %s\n", where)
 				default:
-					fmt.Fprintln(c.OutOrStdout(), "delivered: a turn starts in the window")
+					fmt.Fprintf(c.OutOrStdout(), "delivered: a turn starts in %s\n", where)
 				}
 				if reply.Note != "" && len(heartbeats) > 1 {
 					// several windows share the store: name the one that took it

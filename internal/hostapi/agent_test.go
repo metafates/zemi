@@ -1535,8 +1535,8 @@ func TestTurnClockIsTheHostClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitIdle(t, h)
-	if got := h.AgentStream().Task; got != "hi" {
-		t.Fatalf("the settled turn's task reads %q", got)
+	if got := h.AgentStream().Task; got != "" {
+		t.Fatalf("a settled turn leaves the task %q where a sender would read it as live", got)
 	}
 	tr := h.Session().Transcript
 	if last := tr[len(tr)-1]; last.Stat != nil && (last.Stat.ElapsedMS < 0 || last.Stat.ElapsedMS > 60_000) {

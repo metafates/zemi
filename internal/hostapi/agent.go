@@ -798,6 +798,7 @@ func (h *Host) notKept(what string, err error) {
 // release lets the agent go idle (ag.mu held).
 func (h *Host) release() {
 	h.agents.active = false
+	h.agents.task = "" // the note a sender reads names a live turn, not the last one
 	h.turn.Store(nil)
 	// on its own goroutine: this runs under ag.mu, which no store call may
 	// wait on while it holds the one connection

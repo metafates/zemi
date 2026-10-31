@@ -117,7 +117,39 @@ func TestSendReadsPresence(t *testing.T) {
 		}()
 		writeHb("aged.json", path, false)
 		out, err := runSend(t, dirs, "aged")
-		if err != nil || out != "delivered: the message joined the window's running turn\n" {
+		// two heartbeats by now (the first case's live.json is still there),
+		// and the aged window names no live task: one of the windows
+		if err != nil || out != "delivered: the message joined a running turn in one of the 2 live windows\n" {
+			t.Fatalf("deliver = %q, %v", out, err)
+		}
+	})
+
+	t.Run("several live windows and no live task read as one of the windows", func(t *testing.T) {
+		for _, stale := range []string{"live.json", "aged.json"} {
+			if err := os.Remove(filepath.Join(peers, stale)); err != nil && !os.IsNotExist(err) {
+				t.Fatal(err)
+			}
+		}
+		a := filepath.Join(shortSockDir(t), "a.sock")
+		ln, err := ipc.Listen(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ln.Close()
+		go func() {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+			if req, err := ipc.ReadRequest(conn); err == nil && req.Text == "hello" {
+				_ = ipc.WriteReply(conn, ipc.Reply{OK: true})
+			}
+		}()
+		writeHb("one.json", a, true)
+		writeHb("two.json", filepath.Join(shortSockDir(t), "b.sock"), true) // live, but nothing answers there
+		out, err := runSend(t, dirs, "hello")
+		if err != nil || out != "delivered: a turn starts in one of the 2 live windows\n" {
 			t.Fatalf("deliver = %q, %v", out, err)
 		}
 	})
