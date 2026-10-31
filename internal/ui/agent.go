@@ -39,6 +39,10 @@ type permAskPrompt struct {
 	sel    int       // highlighted choice
 	view   viewport  // the command or preview
 	size   boxSize
+	// a draft under the box arms the answer keys: the first press arms, a
+	// second within the window answers, any other key disarms
+	answerArmed string
+	answerUntil time.Time
 }
 
 // permGrace swallows keys right after a prompt opens: someone typing a
@@ -882,6 +886,15 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 		btns = append(btns, c.promptChoice)
 	}
 	hints := []hintPair{pickHint, {key: "esc", verb: "deny"}}
+	if !a.composer.empty() {
+		// a draft under the box: enter sends the draft and the answers arm,
+		// so the footer says the dance the keys actually do
+		hints = []hintPair{
+			{key: "enter", verb: "sends the draft"},
+			{key: "y/n/t", verb: "twice answers"},
+			{key: "esc", verb: "deny"},
+		}
+	}
 	placeholder := oneRow
 	if len(content) == 0 {
 		placeholder = nil

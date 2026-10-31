@@ -1672,6 +1672,46 @@ func TestAskGuardUnderDraft(t *testing.T) {
 	}
 }
 
+// TestPermissionAnswersUnderADraft: with a draft under the ask the answer
+// keys arm — a second press answers (the affirmative is reachable from the
+// keyboard), prose letters drop the arm, and the draft rides out the answer
+// intact.
+func TestPermissionAnswersUnderADraft(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 80, 20)
+	done := make(chan struct{})
+	var allowed bool
+	go func() {
+		allowed, _ = app.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "make deploy"})
+		close(done)
+	}()
+	waitPrompt(t, app, func() bool { return app.permAsk != nil })
+	app.program = tea.NewProgram(nil)
+	opened := app.now()
+	now := opened
+	app.now = func() time.Time { return now }
+	typeKey := func(key string) {
+		now = now.Add(time.Millisecond)
+		app.Update(tea.KeyPressMsg{Code: rune(key[0]), Text: key})
+	}
+	now = opened.Add(permGrace + time.Millisecond)
+	typeKey("hold this draft")
+	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"}) // arms
+	now = now.Add(time.Second)
+	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"}) // answers
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("a second y under a draft must answer the ask")
+	}
+	if !allowed {
+		t.Fatal("the armed y approved")
+	}
+	if app.composer.text != "hold this draft" {
+		t.Fatalf("the draft must ride out the answer: %q", app.composer.text)
+	}
+}
+
 // TestPermissionProseTypesUnderTheAsk: past the grace an ask's choice keys
 // answer only while the draft is empty: prose types into the draft the box
 // keeps, a stray "y" in it does not approve, enter sends the draft and the
@@ -1696,13 +1736,13 @@ func TestPermissionProseTypesUnderTheAsk(t *testing.T) {
 		app.Update(tea.KeyPressMsg{Code: rune(key[0]), Text: key})
 	}
 	now = opened.Add(permGrace + time.Millisecond)
-	typeKey("you bet, run it")
-	if app.permAsk == nil || app.composer.text != "you bet, run it" {
+	typeKey("ou bet, run it") // the first y arms, so prose spells past it
+	if app.permAsk == nil || app.composer.text != "ou bet, run it" {
 		t.Fatalf("prose under the ask must draft: ask=%v text=%q", app.permAsk != nil, app.composer.text)
 	}
 	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	if app.permAsk == nil || app.composer.text != "you bet, run ity" {
-		t.Fatalf("a stray y in a draft must type, not approve: ask=%v text=%q", app.permAsk != nil, app.composer.text)
+	if app.permAsk == nil || app.composer.text != "ou bet, run it" {
+		t.Fatalf("a stray y in a draft arms, never types or approves: ask=%v text=%q", app.permAsk != nil, app.composer.text)
 	}
 	app.composerKey("enter", tea.KeyPressMsg{}) // no model: the send fails, the text is kept
 	if app.permAsk == nil || len(app.composer.history) != 1 {
@@ -1717,7 +1757,7 @@ func TestPermissionProseTypesUnderTheAsk(t *testing.T) {
 	if allowed {
 		t.Fatal("esc denied the ask")
 	}
-	if app.composer.text != "you bet, run ity" {
+	if app.composer.text != "ou bet, run it" {
 		t.Fatalf("the draft must survive the deny: %q", app.composer.text)
 	}
 }

@@ -236,6 +236,27 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		if !a.composer.empty() {
+			// a draft under the box: the answer keys arm first — a stray
+			// letter from the prose the user is typing arms and any other
+			// key drops it, so only a second press answers. The deny keys
+			// arm too: an accidental deny from prose loses the ask just as
+			// an accidental approve breaks it.
+			switch key {
+			case "y", "n", "t":
+				if pa.answerArmed == key && a.now().Before(pa.answerUntil) {
+					for _, c := range pa.choices() {
+						if c.key == key {
+							a.choosePerm(c)
+							return nil
+						}
+					}
+					return nil
+				}
+				pa.answerArmed, pa.answerUntil = key, a.now().Add(2*time.Second)
+				a.frameDirty = true // the footer's twice-to-answer hint draws
+				return nil
+			}
+			pa.answerArmed = ""
 			return a.composerKey(key, msg)
 		}
 		choices := pa.choices()
@@ -681,7 +702,7 @@ func (a *App) typing(top modal) bool {
 
 // askGuard is the guard the four blocking asks share (DESIGN §8): keys still
 // in flight as the box opened, and keys on an answered permission box, are
-// swallowed; past the grace every key is the ask's, draft or not.
+// swallowed; past the grace the ask's keys answer, with a draft arming them.
 func (a *App) askGuard(opened time.Time, answered bool) bool {
 	return answered || a.fresh(opened)
 }
