@@ -613,6 +613,28 @@ func TestSkillCompletion(t *testing.T) {
 	}
 }
 
+// TestCompletionCycles: the @ popup's menu wraps at its ends - up from the
+// first row lands on the last, down from the last back on the first.
+func TestCompletionCycles(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	// zz matches nothing the host offers, so only the seeded files answer
+	app.completion.setFiles([]string{"zz1.go", "zz2.go", "zz3.go"})
+	app.composerKey("@", tea.KeyPressMsg{Text: "@"})
+	app.composerKey("z", tea.KeyPressMsg{Text: "z"})
+	app.composerKey("z", tea.KeyPressMsg{Text: "z"})
+	if !app.completion.shown() || app.completion.count() != 3 {
+		t.Fatalf("popup: shown=%v rows=%d", app.completion.shown(), app.completion.count())
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+	if app.completion.selected != 2 {
+		t.Fatalf("up from the first row selected %d, want the last", app.completion.selected)
+	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	if app.completion.selected != 0 {
+		t.Fatalf("down from the last row selected %d, want the first", app.completion.selected)
+	}
+}
+
 // TestCompletionScan: the popup's own walk lists the project's files,
 // ignored ones included, and skips .git and the build directories - a
 // hidden venv with the visible one, dotfiles listed.

@@ -369,7 +369,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	if f := &a.completion; f.shown() {
-		if popupMove && moveSel(&f.selected, f.count(), f.view.viewH, key) {
+		if popupMove && cycleSel(&f.selected, f.count(), f.view.viewH, key) {
 			a.frameDirty = true
 			return nil
 		}
@@ -682,6 +682,27 @@ func listMove(key string) int {
 		return 1
 	}
 	return 0
+}
+
+// cycleSel applies a list key to a popup's selection, wrapping at the ends:
+// up from the first row lands on the last, down from the last on the first -
+// the composer's popup is a menu to walk, where a list's clamp holds a
+// reader's place. The jump keys keep moveSel's clamp: a wrapped page lands
+// nowhere the reader meant.
+func cycleSel(sel *int, n, page int, key string) bool {
+	d := listMove(key)
+	if d == 0 || n <= 0 {
+		return moveSel(sel, n, page, key)
+	}
+	if *sel <= 0 && d < 0 {
+		*sel = n - 1
+		return true
+	}
+	if *sel >= n-1 && d > 0 {
+		*sel = 0
+		return true
+	}
+	return moveSel(sel, n, page, key)
 }
 
 // lineKey reports whether a list move is a key a typed line edits with,
