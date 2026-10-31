@@ -894,7 +894,7 @@ zemi.ui.widget.add({
 				-- included: every call it walks has a row to band
 				B.rail(tr, first, last, { run = first, full = (ctx.rail or 0) == first })
 			elseif m.kind == "shell" then
-				-- a !command: the command, then its output, already cut to a head
+				-- a shell command: the command, then its output, already cut to a head
 				-- and a tail by the host; a failure's mark takes the prompt's place
 				B.gap("user")
 				B.lines[#B.lines + 1] = {

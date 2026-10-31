@@ -400,7 +400,7 @@ func (c *composerState) histNext() {
 const composerMaxRows = 8
 
 // draftWrap is the cells a draft row wraps at on w: one kept free for the
-// cursor mark, two more where a shell or slash glyph opens the gutter.
+// cursor mark, two more where the slash glyph opens the gutter.
 func draftWrap(w int, glyph string) int {
 	if glyph != "" {
 		return w - 3
@@ -411,8 +411,8 @@ func draftWrap(w int, glyph string) int {
 // composerRows renders the composer as visual rows wrapped to width w: at
 // most composerMaxRows rows, scrolled to keep the cursor row in view with a
 // row of headroom below it, the rows past either edge fading toward the
-// panel. A plain draft starts at the frame's inner edge; a shell (!) or slash
-// (/) draft keeps its glyph on the first row and the gutter it opens down the
+// panel. A plain draft starts at the frame's inner edge; a slash (/) draft
+// keeps its glyph on the first row and the gutter it opens down the
 // others. An empty draft shows placeholder dim under the cursor, where typing
 // replaces it without moving a cell.
 func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
@@ -475,13 +475,10 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 	return out
 }
 
-// draftMode is what a draft's first character turns the composer into: "!"
-// runs a shell command, "/" a slash command; neither reaches the model.
+// draftMode is what a draft's first character turns the composer into: a "/"
+// runs a slash command; it never reaches the model.
 func (a *App) draftMode() (glyph, promptHL, ruleHL string) {
-	switch {
-	case strings.HasPrefix(a.composer.text, "!"):
-		return "!", "PromptShell", "RuleShell"
-	case strings.HasPrefix(a.composer.text, "/"):
+	if strings.HasPrefix(a.composer.text, "/") {
 		return "/", "PromptCommand", "RuleCommand"
 	}
 	return "", "", ""
@@ -498,7 +495,7 @@ func frameInner(w int) int { return max(w-4, 1) }
 func (a *App) composerFrame(n *hostapi.LayoutNode, w int) [][]hostapi.Segment {
 	hl := "Rule"
 	if _, _, rule := a.draftMode(); rule != "" {
-		hl = rule // a shell or command draft tints the whole frame, not just its glyph
+		hl = rule // a command draft tints the whole frame, not just its glyph
 	}
 	inner := frameInner(w)
 	// the top region draws its rule corner to corner; its "Rule" cells take

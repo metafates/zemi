@@ -789,7 +789,7 @@ func TestResumedWindowDrawsTheZoomAndDatePreviews(t *testing.T) {
 }
 
 // TestResumedWindowKeepsTheFailuresAndCommands: a failed turn's error row and
-// a !command row land in the log, so the window a restart rebuilds from the
+// a shell command row land in the log, so the window a restart rebuilds from the
 // log draws them as the live one did.
 func TestResumedWindowKeepsTheFailuresAndCommands(t *testing.T) {
 	t.Parallel()

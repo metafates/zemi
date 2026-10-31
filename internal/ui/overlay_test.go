@@ -340,7 +340,7 @@ func TestPaletteLuaCompleterOffKeyLoop(t *testing.T) {
 	if len(app.palette.args) != 1 || app.palette.args[0].label != "bob" {
 		t.Fatalf("palette args %v", app.palette.args)
 	}
-	// the next key keeps the popup and its size until the completer answers
+	// the next key keeps the popup and its rows until the completer answers
 	app.renderSync(t)
 	size := app.palette.size
 	app.Update(tea.KeyPressMsg{Code: 'o', Text: "o"})

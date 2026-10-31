@@ -279,7 +279,7 @@ func TestComposerRowMoves(t *testing.T) {
 		{"down from a row's end", "ab\ncd", "down", "ab\ncd", 2, 5},
 		{"down clamps to the row below", "abcdefghij\nx", "down", "abcdefghij\nx", 5, 10},
 		{"up clamps to the row above", "abcdefghij\nx", "up", "abcdefghij\nx", 10, 1},
-		{"a shell draft wraps two cells short", "!" + nine + nine, "up", "!" + nine + nine, 11, 4},
+		{"a slash draft wraps two cells short", "/" + nine + nine, "up", "/" + nine + nine, 11, 4},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			app.composerRows(10, "")
@@ -439,7 +439,7 @@ func TestComposerPlaceholder(t *testing.T) {
 }
 
 // TestComposerGutter: a plain draft starts at the frame's inner edge with no
-// gutter down its rows; a shell draft says so with its own glyph on the first
+// gutter down its rows; a slash draft says so with its own glyph on the first
 // row and holds the cells it opens on the ones after it.
 func TestComposerGutter(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
@@ -453,22 +453,22 @@ func TestComposerGutter(t *testing.T) {
 			t.Fatalf("row %d is %q over %d cells, want %q in 3: no gutter", i, got, hostapi.SegsWidth(rows[i]), want)
 		}
 	}
-	app.composer.text = "!ls\ntwo"
+	app.composer.text = "/ls\ntwo"
 	rows = app.composerRows(40, "")
-	if got := rows[0][0]; got.Text != "! " || got.HL != "PromptShell" || hostapi.SegsText(rows[0]) != "! ls" {
-		t.Fatalf("shell prompt %+v", rows[0])
+	if got := rows[0][0]; got.Text != "/ " || got.HL != "PromptCommand" || hostapi.SegsText(rows[0]) != "/ ls" {
+		t.Fatalf("command prompt %+v", rows[0])
 	}
 	if got := rows[1][0]; got.Text != "  " || got.HL != "" || hostapi.SegsText(rows[1]) != "  two" {
-		t.Fatalf("shell gutter %+v", rows[1])
+		t.Fatalf("command gutter %+v", rows[1])
 	}
-	// a full row ends at the cell the cursor mark keeps free, and a shell row
+	// a full row ends at the cell the cursor mark keeps free, and a glyphed row
 	// a cell short of that, its glyph standing in for the draft's own first one
 	for _, c := range []struct {
 		name, text string
 		want       int
 	}{
 		{"plain", strings.Repeat("a", 60), 39},
-		{"shell", "!" + strings.Repeat("a", 60), 38},
+		{"slash", "/" + strings.Repeat("a", 60), 38},
 	} {
 		app.composer.text = c.text
 		if got := hostapi.SegsWidth(app.composerRows(40, "")[0]); got != c.want {
@@ -1328,6 +1328,34 @@ func TestPaletteComplete(t *testing.T) {
 	}
 }
 
+// TestPaletteRefitsAsItNarrows: the popup's box follows its list, so a query
+// that drops rows shrinks the box back, the way the @ popup's does.
+func TestPaletteRefitsAsItNarrows(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 14)
+	for _, c := range []struct{ name, desc string }{
+		{"alpha", strings.Repeat("long ", 16)},
+		{"beta", "b"},
+	} {
+		if _, err := app.host.Commands.Add(&hostapi.Command{Name: c.name, Desc: c.desc, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	keys := func(s string) {
+		for _, r := range s {
+			app.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+		}
+		app.renderSync(t)
+		app.Frame()
+	}
+	keys("/")
+	full := app.palette.size
+	keys("beta")
+	narrow := app.palette.size
+	if !app.palette.open || len(app.palette.matches) != 1 || narrow.w >= full.w || narrow.h >= full.h {
+		t.Fatalf("the palette did not refit: full %+v narrow %+v open=%v matches=%d", full, narrow, app.palette.open, len(app.palette.matches))
+	}
+}
+
 func TestPaletteDispatch(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
@@ -1399,8 +1427,6 @@ func TestSubmitFailed(t *testing.T) {
 	}
 }
 
-// TestSubmitEmptyShellDraft: a "!" with no command is an empty draft, not a
-// message for the model.
 // TestRestoreQueue: an interrupt hands the queue back as one draft that
 // history keeps, with the popups a slash draft held closed.
 func TestRestoreQueue(t *testing.T) {
@@ -1427,16 +1453,6 @@ func TestRestoreQueue(t *testing.T) {
 	app.composerKey("ctrl+p", tea.KeyPressMsg{})
 	if app.composer.text != "queued" {
 		t.Fatalf("history does not hold the restored text: %q", app.composer.text)
-	}
-}
-
-func TestSubmitEmptyShellDraft(t *testing.T) {
-	t.Parallel()
-	app := newTestApp(t, t.TempDir())
-	app.composer.text = "!"
-	app.submitComposer()
-	if app.composer.text != "!" || len(app.composer.history) != 0 {
-		t.Fatalf("a bare ! submitted: draft %q, history %v", app.composer.text, app.composer.history)
 	}
 }
 

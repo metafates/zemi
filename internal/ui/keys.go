@@ -37,7 +37,6 @@ var goKeys = [][2]string{
 	{"/", "command palette"},
 	{"@", "attach files, dirs and skills"},
 	{"ctrl+space", "reopen the @ or / popup at the word"},
-	{"!cmd", "run a shell command now; its output rides your next message"},
 }
 
 // listKeys are the keys every list and box takes.

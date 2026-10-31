@@ -47,7 +47,7 @@ var imageTypes = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".
 // composeUserMessage is the runner's Compose hook: the typed text with its
 // attachments, then any images as file parts. A text-only model gets a
 // note in their place instead of a refused request. What the model reads
-// beyond the user's words - attached files, the !commands' output - lands in
+// beyond the user's words - attached files, the shell commands' output - lands in
 // the log as echo rows, so the tree can summarize what it saw; a report's
 // body is already a work row of its own.
 func (h *Host) composeUserMessage(text string, images bool) fantasy.Message {
@@ -80,7 +80,7 @@ func overLimit(limit int64) string {
 }
 
 // expandAttachments also carries instruction files edited since the prompt
-// was pinned and output of the user's !commands since the last message,
+// was pinned and output of the user's shell commands since the last message,
 // behind the same marker, and returns referenced images. images is whether
 // the model takes them at all: it gets a note in their place when not.
 func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.FilePart) {

@@ -198,7 +198,7 @@ type agentHost struct {
 	// hookCtx is what the plugins' SessionStart hooks captured for the chat.
 	hookCtx string
 
-	// shellNotes holds !command output waiting for the next message.
+	// shellNotes holds shell command output waiting for the next message.
 	shellNotes []string
 
 	// todoNag nudges a stale todo list: the items it holds, how many steps

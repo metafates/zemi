@@ -2246,7 +2246,7 @@ view; a reset's wipe drops the row with the chat.
   redraws the rows under the reader's place, never
   scrolling them away. The chat keeps a scroll state per view: a run's
   transcript opens at its tail and leaves the session's place parked, so esc
-  lands where the session was left. Sending a message (or a `!command`) snaps back to the
+  lands where the session was left. Sending a message snaps back to the
   tail, a slash command does not. While a turn's prompt is above the view its first row
   stays pinned over the chat's top row (a segment's `sticky`) as chrome,
   dimmed (`Pinned`) on the panel, ending in `…` when the prompt has more rows,
@@ -2417,7 +2417,7 @@ view; a reset's wipe drops the row with the chat.
   bubbles textarea; `enter` sends, `shift+enter`, `alt+enter` and `ctrl+enter` newline
   (configurable); a large paste folds into a token that expands on submit.
   An input-mode draft starts at the frame's inner edge and runs the width of
-  it, so a multi-line draft reads as one block; a `!` shell or `/` command
+  it, so a multi-line draft reads as one block; a `/` command
   draft keeps its glyph on the first row, the rows under it holding the two
   cells it took. A draft taller than the window keeps the cursor row in view
   with a row of headroom below it, and the rows past either edge fade, so

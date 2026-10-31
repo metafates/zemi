@@ -752,7 +752,7 @@ function zemi.event.stats() end
 ---| ""           # a plain message
 ---| "reasoning"  # a finished thinking block
 ---| "tool"
----| "shell"      # a !command and its output
+---| "shell"      # a shell command row and its output
 ---| "notice"
 ---| "error"
 

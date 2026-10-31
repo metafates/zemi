@@ -147,7 +147,8 @@ func (c *chatLog) Error(text string, cancelled bool) error {
 	return err
 }
 
-// Shell logs a !command row: the command, its output head and its outcome.
+// Shell logs a shell command's row: the command, its output head and its
+// outcome.
 func (c *chatLog) Shell(cmd, out string, ok bool) error {
 	meta, err := json.Marshal(struct {
 		OK  bool   `json:"ok"`

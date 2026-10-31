@@ -25,7 +25,7 @@ type cmdPalette struct {
 	moved    bool   // the user moved the highlight in this list
 	query    string // what the list was narrowed by; a new one selects its first row
 	view     viewport
-	size     boxSize // typing never narrows or shortens the popup
+	size     boxSize // the last drawn size, kept for a frame with no matches to show
 }
 
 func (p *cmdPalette) count() int {
@@ -68,7 +68,7 @@ func (a *App) updatePalette() {
 	show := func(cands []listItem, narrow bool) {
 		p := &a.palette
 		if p.args == nil || p.argStart != start { // a new list: the name's gave way, or another argument's
-			p.selected, p.moved, p.view, p.size = 0, false, viewport{}, boxSize{}
+			p.selected, p.moved, p.view = 0, false, viewport{}
 		} else if p.query != typed {
 			p.selected, p.moved = 0, false
 		}
@@ -202,17 +202,6 @@ func (a *App) submitComposer() {
 		return
 	}
 	a.followStage()
-	// !command runs in the user's shell; the output joins the next message.
-	// A "!" with no command is an empty draft: the model never sees the glyph
-	if cmd, ok := strings.CutPrefix(text, "!"); ok {
-		if strings.TrimSpace(cmd) == "" {
-			return
-		}
-		a.composer.pushHistory(text)
-		a.clearComposer()
-		a.host.RunShell(cmd)
-		return
-	}
 	a.sendMessage(text)
 }
 

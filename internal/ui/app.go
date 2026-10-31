@@ -1387,8 +1387,8 @@ func (a *App) fadeRows(rows [][]hostapi.Segment) [][]hostapi.Segment {
 // anchored overlay (anchorBottom) in the draft's rule tint, in the bottom
 // rows of the stage when the stage is above the composer, else beside the
 // composer on the side with more rows. It covers only its own cells and ends
-// in its hint row; the palette keeps its size while it stays open, the
-// completion refits its list. It returns the cells it covers.
+// in its hint row; each list refits every frame it has rows. It returns the
+// cells it covers.
 func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.Rectangle {
 	h := len(rows)
 	var render func(maxW, room, minW int) [][]hostapi.Segment
@@ -1397,6 +1397,9 @@ func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.R
 	var title string
 	switch {
 	case a.palette.open:
+		if a.palette.count() > 0 {
+			a.palette.size = boxSize{} // the list refits every frame: erasing a letter narrows the popup back
+		}
 		render, size, hints, title = a.paletteRows, &a.palette.size, []hintPair{{key: "enter", verb: "run"}, {key: "tab", verb: "complete"}, {key: "esc", verb: "close"}}, "Commands"
 		if a.palette.count() == 0 { // enter still runs the typed line
 			hints = slices.Delete(hints, 1, 2)

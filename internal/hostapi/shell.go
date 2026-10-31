@@ -1,6 +1,6 @@
-// shell.go runs `!command` lines from the composer: the user's own shell
-// command in the project directory, shown in the transcript and handed to
-// the model with the next message so it can use the output.
+// shell.go runs a shell command in the project directory, shown in the
+// transcript and handed to the model with the next message so it can use the
+// output.
 
 package hostapi
 
@@ -23,9 +23,9 @@ import (
 
 const shellTimeout = 2 * time.Minute
 
-// RunShell runs cmd (typed by the user, so no permission gate) without
-// blocking the caller. The model reads its output, so the child starts from
-// zemi's own environment.
+// RunShell runs cmd (no permission gate: it is zemi's own shell path, not a
+// model tool's) without blocking the caller. The model reads its output, so
+// the child starts from zemi's own environment.
 func (h *Host) RunShell(cmd string) {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {
@@ -40,7 +40,7 @@ func (h *Host) RunShell(cmd string) {
 		defer cancel()
 		// the working rule names the command and a double esc stops it, as
 		// every other wait the user watches does
-		defer h.Busy("! "+clipLine(cmd, 60), cancel)()
+		defer h.Busy(clipLine(cmd, 60), cancel)()
 		c := proc.CommandContext(ctx, "sh", "-c", cmd)
 		c.Dir = h.Dirs.ProjectDir
 		env := append(os.Environ(), proc.NonInteractiveEnv...)
@@ -68,7 +68,7 @@ func (h *Host) RunShell(cmd string) {
 			if err := h.chat.Shell(row.Text, row.Detail, status != CallErr); err != nil {
 				h.logAppendFailed(err)
 			}
-			if err := h.chat.Echo("!command", status != CallErr, text, StreamTool{}); err != nil {
+			if err := h.chat.Echo("user-shell", status != CallErr, text, StreamTool{}); err != nil {
 				h.logAppendFailed(err)
 			}
 		}
