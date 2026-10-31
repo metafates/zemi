@@ -838,7 +838,10 @@ func (h *Host) openMessageView(n int) error {
 	if err != nil {
 		return err
 	}
-	tr := h.viewedTranscript()
+	// the list's rows are numbered over the transcript its echoes splice
+	// into (withBrowseEchoes): the same space here, or every echo past the
+	// first shifts a later row's view onto its neighbor
+	tr := h.withBrowseEchoes(h.pickerTranscript()).tr
 	if n < 1 || n > len(tr) {
 		return Usagef("the chat shows no row %d", n)
 	}

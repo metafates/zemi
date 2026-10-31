@@ -151,6 +151,42 @@ func TestMessagesTurnSurvivesARowlessTurn(t *testing.T) {
 	_ = o
 }
 
+// TestMessagesViewReadsTheSplicedIndex: the list numbers its rows over the
+// transcript its echoes splice into, so l opens the row the list named — an
+// unpaired echo must not shift a later row's view onto its neighbor nor
+// refuse the last row with "no row N".
+func TestMessagesViewReadsTheSplicedIndex(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	rows := []struct {
+		kind       store.LogKind
+		text, meta string
+	}{
+		{store.KindUser, "read @w.txt", ""},
+		{store.KindEcho, "\n<file path=\"w.txt\">\nwords\n</file>", `{"tool":"attach","ok":true}`},
+		{store.KindAgent, "the reply body", ""},
+	}
+	for _, r := range rows {
+		if _, err := h.DB.AppendLog(r.kind, r.text, r.meta, "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	log, err := h.DB.LogTail(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.SetTranscript(logRows(log))
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	// the merged list: user, the spliced echo, the reply — l on the reply
+	if err := h.openMessageView(3); err != nil {
+		t.Fatal(err)
+	}
+	if got := ui.opened[len(ui.opened)-1].Body; got != "the reply body" {
+		t.Fatalf("l on the spliced list's last row opened %q", got)
+	}
+}
+
 // TestMessageHead: a message reads by its first content line — a fence and a
 // bare <zemi-note> wrapper are passed over; a file echo's wrapper is not, its
 // path is the honest head.
