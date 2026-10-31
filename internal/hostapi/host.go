@@ -1355,7 +1355,9 @@ func (h *Host) OpenHelp() error {
 	var items []OverlayItem
 	keys, lists := ui.KeyHelp()
 	for _, k := range keys {
-		items = append(items, OverlayItem{Text: k[0], Desc: k[1], Section: "Keymaps"})
+		// y copies the line whole: a long desc truncates in the list, and
+		// its tail is the part a reader was after
+		items = append(items, OverlayItem{Text: k[0], Desc: k[1], Copy: k[0] + "  " + k[1], Section: "Keymaps"})
 	}
 	var aliases []OverlayItem
 	for _, b := range h.Keymaps.List() {

@@ -807,7 +807,7 @@ cmd_type() {
 		i=$((i + 1))
 		sleep 0.25
 	done
-	die "type: '$*' never reached the composer (the pane died?)"
+	die "type: '$*' never reached the composer (an overlay is open? zemi stopped? send Escape first)"
 }
 
 cmd_send() {

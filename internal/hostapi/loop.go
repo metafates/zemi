@@ -27,9 +27,8 @@ const (
 // loopTag opens a loop run's note; a turn whose text holds it is a loop run.
 const loopTag = agent.AttachMarker + "\n<loop>\n"
 
-// loopRunPrefix leads a loop run's body with its run number; loopSent
-// (tasks.go) parses the same words back out for the chat row.
-const loopRunPrefix = "Run %d of: "
+// loopRunPrefix leads a loop run's body with its run number.
+const loopRunPrefix = "Run %d: "
 
 // Loop is the live session's loop (/loop): a prompt sent again on a timer,
 // or when the model says, while this process keeps the session open. It is
@@ -89,10 +88,10 @@ func (h *Host) SetLoop(args string) error {
 	var every time.Duration
 	if d, err := time.ParseDuration(first); err == nil {
 		if d > loopMaxEvery {
-			return Usagef("a loop runs every 1m to 24h; a longer wait belongs to cron")
+			return Usagef("%s is over the 24h ceiling; a longer wait belongs to cron", first)
 		}
 		if d < loopMin {
-			return Usagef("a loop runs every 1m to 24h")
+			return Usagef("%s is under the 1m floor; a loop runs every 1m to 24h", first)
 		}
 		every, prompt = d, strings.TrimSpace(rest)
 	}

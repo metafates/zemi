@@ -456,7 +456,7 @@ func (a *App) draftCapToast() {
 // why, the throttle is for the key flood a paste flood makes.
 func (a *App) draftCapToastNow() {
 	a.pushToast(slog.LevelWarn, "Draft too long",
-		fmt.Sprintf("the composer holds at most %dk characters; save the text to a file and attach it with @path", maxDraftChars/1000))
+		fmt.Sprintf("a message holds at most %dk characters; save the text to a file and attach it with @path", maxDraftChars/1000))
 }
 
 // capToastTTL is how long a draft-cap toast lives and how long the next one

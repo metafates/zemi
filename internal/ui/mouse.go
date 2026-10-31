@@ -681,7 +681,7 @@ func (a *App) openLink(url string) {
 
 // copied copies text and says how much it was.
 func (a *App) copied(text string) tea.Cmd {
-	size := fmt.Sprintf("%d chars", utf8.RuneCountInString(text))
+	size := fmt.Sprintf("%d %s", utf8.RuneCountInString(text), hostapi.Plural(utf8.RuneCountInString(text), "char", "chars"))
 	if n := strings.Count(text, "\n") + 1; n > 1 {
 		size = fmt.Sprintf("%d lines, %s", n, size)
 	}
