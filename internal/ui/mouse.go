@@ -649,9 +649,18 @@ func (a *App) itemSpans(y int, same func(hostapi.Segment) bool) []cellSpan {
 func (a *App) clickWidget(s hostapi.Segment, x, y int) {
 	a.leaveTail(s.Widget)
 	p := a.press
+	button := ""
+	switch p.button {
+	case tea.MouseLeft:
+		button = "left"
+	case tea.MouseRight:
+		button = "right"
+	case tea.MouseMiddle:
+		button = "middle"
+	}
 	ev := map[string]any{
 		"id": s.Click, "x": x, "y": y, "clicks": p.clicks,
-		"button": map[tea.MouseButton]string{tea.MouseLeft: "left", tea.MouseRight: "right", tea.MouseMiddle: "middle"}[p.button],
+		"button": button,
 		"mods":   map[string]any{"shift": p.mod.Contains(tea.ModShift), "ctrl": p.mod.Contains(tea.ModCtrl), "alt": p.mod.Contains(tea.ModAlt)},
 	}
 	a.background(func() {

@@ -381,7 +381,11 @@ func (h *Host) trustWord(p Project) string {
 	if p.Root != h.trustRoot() {
 		return word
 	}
-	if run := map[bool]string{true: config.Trusted, false: config.Untrusted}[h.ProjectTrusted()]; run != word {
+	run := config.Untrusted
+	if h.ProjectTrusted() {
+		run = config.Trusted
+	}
+	if run != word {
 		return run + " this run"
 	}
 	return word

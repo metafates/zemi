@@ -652,7 +652,11 @@ func (tg *trustGate) record(root, answer string) (bool, error) {
 	ok := answer == "trust"
 	if answer != "later" && !hostapi.TrustUnsaved(root) {
 		saved := tg.dirs.ReadTrust()
-		saved[root] = map[bool]string{true: config.Trusted, false: config.Untrusted}[ok]
+		mark := config.Untrusted
+		if ok {
+			mark = config.Trusted
+		}
+		saved[root] = mark
 		err := tg.dirs.WriteTrust(saved)
 		if err == nil {
 			tg.session.Store(nil)
@@ -672,7 +676,11 @@ func (tg *trustGate) command() func() {
 		// the prompt blocks until answered: off the UI goroutine
 		tg.h.GoSafe("trust", func() {
 			root, was := tg.dirs.TrustRoot(), tg.h.ProjectTrusted()
-			answer := tg.ask(root, tg.dirs.ProjectDir, map[bool]string{true: config.Trusted, false: config.Untrusted}[was])
+			mark := config.Untrusted
+			if was {
+				mark = config.Trusted
+			}
+			answer := tg.ask(root, tg.dirs.ProjectDir, mark)
 			if answer == "later" {
 				return
 			}

@@ -1689,7 +1689,11 @@ func TestWorkflowUserStart(t *testing.T) {
 			// the report's turn carries what the command had attached, a loop's note
 			h.modelFn = func() (fantasy.LanguageModel, error) {
 				return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
-					return textParts(map[bool]string{true: "ok", false: "no note"}[strings.Contains(last, loopTag)])
+					note := "no note"
+					if strings.Contains(last, loopTag) {
+						note = "ok"
+					}
+					return textParts(note)
 				}}, nil
 			}
 			if err := h.workflowCommands()[0].GoFn(h, "run count"+agent.Attached("loop", "Run 1 of: /workflows run count"), false); err != nil {

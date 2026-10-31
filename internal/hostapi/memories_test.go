@@ -200,7 +200,16 @@ func TestMemoriesZoomDeep(t *testing.T) {
 		if z.Title != "Memories / "+c.id.id() {
 			t.Errorf("zoom %s title %q", c.id.id(), z.Title)
 		}
-		if want := map[string]string{"0+8": "memories zoom 2 0", "0+4": "memories zoom 1 0", "0+2": "memories view 0 0"}[c.id.id()]; z.Items[0].Run != want {
+		want := ""
+		switch c.id.id() {
+		case "0+8":
+			want = "memories zoom 2 0"
+		case "0+4":
+			want = "memories zoom 1 0"
+		case "0+2":
+			want = "memories view 0 0"
+		}
+		if z.Items[0].Run != want {
 			t.Errorf("zoom %s child run %q, want %q", c.id.id(), z.Items[0].Run, want)
 		}
 	}

@@ -2807,7 +2807,11 @@ func (h *Host) classifies(name string) bool {
 // provider refuses it.
 func (h *Host) WarnModel() {
 	if row := h.modelRow(); row.Level != HealthOK {
-		h.Notify(slog.LevelWarn, map[HealthLevel]string{HealthError: "Model unavailable", HealthWarn: unlistedTitle}[row.Level], row.Detail)
+		title := unlistedTitle
+		if row.Level == HealthError {
+			title = "Model unavailable"
+		}
+		h.Notify(slog.LevelWarn, title, row.Detail)
 	}
 }
 

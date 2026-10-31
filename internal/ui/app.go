@@ -332,7 +332,11 @@ func (a *App) RelaunchDir() (dir, resume string) {
 func (a *App) quitTo(dir string) {
 	quit := func() {
 		if res := a.host.EmitVetoable(context.Background(), hostapi.EventAppQuit, map[string]any{}); res.Denied {
-			a.Notify(slog.LevelWarn, map[bool]string{true: "Quit blocked", false: "Switch blocked"}[dir == ""], res.Reason)
+			what := "Switch blocked"
+			if dir == "" {
+				what = "Quit blocked"
+			}
+			a.Notify(slog.LevelWarn, what, res.Reason)
 			return
 		}
 		a.relaunch.Store(&relaunchTarget{dir})
@@ -505,7 +509,13 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		defer a.disarmIfMoved(true)()
 		a.mouse = mouseSel{}
 		a.hoverSpans = nil // the content under the pointer moves
-		step := map[tea.MouseButton]int{tea.MouseWheelUp: -1, tea.MouseWheelDown: 1}[msg.Button]
+		step := 0
+		switch msg.Button {
+		case tea.MouseWheelUp:
+			step = -1
+		case tea.MouseWheelDown:
+			step = 1
+		}
 		if step != 0 {
 			a.wheel(msg.X, msg.Y, step)
 		}

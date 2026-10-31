@@ -201,7 +201,11 @@ func promptBox(title, badge string, body [][]hostapi.Segment, w, h, maxW int, si
 		body = slices.Insert(body, len(body)-1, make([][]hostapi.Segment, n)...)
 	}
 	if size.h > 0 { // a kept box cuts a longer title (a detail view's breadcrumb) instead of widening
-		title = ansi.Truncate(title, size.w-1-map[bool]int{true: ansi.StringWidth(badge) + 2}[badge != ""], "…")
+		badgeW := 0
+		if badge != "" {
+			badgeW = ansi.StringWidth(badge) + 2
+		}
+		title = ansi.Truncate(title, size.w-1-badgeW, "…")
 	}
 	box := hostBox(title, hostapi.ChromeTitle, badge, body, w, maxW, size.w)
 	size.w, size.h = max(size.w, hostapi.SegsWidth(box[0])-4), max(size.h, len(box))
@@ -535,7 +539,11 @@ func markSeg(kind hostapi.MarkKind) hostapi.Segment {
 	if !ok {
 		return hostapi.Segment{}
 	}
-	return hostapi.Segment{Text: m.Glyph + " ", HL: m.HL, NoCopy: true, Effect: map[bool]hostapi.Effect{true: hostapi.EffectSpin}[kind == tools.MarkSpin]}
+	var fx hostapi.Effect
+	if kind == tools.MarkSpin {
+		fx = hostapi.EffectSpin
+	}
+	return hostapi.Segment{Text: m.Glyph + " ", HL: m.HL, NoCopy: true, Effect: fx}
 }
 
 // itemMark is a row's leading mark: its own glyph when it carries one, else
@@ -669,7 +677,10 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 				row = append([]hostapi.Segment{it.mark}, row...)
 			}
 			descW := -1 // no cut
-			kw := map[bool]int{true: 2 + ansi.StringWidth(it.key.Text)}[it.key.Text != ""]
+			kw := 0
+			if it.key.Text != "" {
+				kw = 2 + ansi.StringWidth(it.key.Text)
+			}
 			cut := ellipsizeSegs
 			if it.row.Tail {
 				cut = tailSegs
@@ -729,7 +740,10 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 	}
 	for y, r := range rows {
 		k, ok := keys[y]
-		kw := map[bool]int{true: 2 + ansi.StringWidth(k.Text)}[ok]
+		kw := 0
+		if ok {
+			kw = 2 + ansi.StringWidth(k.Text)
+		}
 		if maxW > 0 && hostapi.SegsWidth(r)+kw > maxW {
 			// a cut row still wants every cell, so the list keeps them all
 			// where the word-boundary cut would leave a few
@@ -787,7 +801,10 @@ func matchSegs(segs []hostapi.Segment, pos []int, sel bool) []hostapi.Segment {
 	if len(pos) == 0 {
 		return segs
 	}
-	hl := map[bool]string{false: hostapi.ChromeHintKey, true: hostapi.ChromeTitle}[sel]
+	hl := hostapi.ChromeHintKey
+	if sel {
+		hl = hostapi.ChromeTitle
+	}
 	var out []hostapi.Segment
 	j, off := 0, 0
 	for _, s := range segs {
@@ -936,7 +953,11 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 		room := h - 2 - len(stack(tight, placeholder, list, oneRow)) + len(placeholder)
 		left := func() int {
 			facts := len(target) + nWhy + nSays
-			return room - facts - map[bool]int{true: 1}[facts > 0 && !tight]
+			gap := 0
+			if facts > 0 && !tight {
+				gap = 1
+			}
+			return room - facts - gap
 		}
 		keep := min(len(content), 2)
 		nWhy, nSays = len(why), len(says)

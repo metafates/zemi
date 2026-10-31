@@ -923,7 +923,14 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	}
 	// a view opened from a rail steps along it in place, and the level under
 	// it steps with it: the view and the list name one row
-	if run := map[string]string{"ctrl+j": o.Next, "ctrl+k": o.Prev}[key]; run != "" {
+	run := ""
+	switch key {
+	case "ctrl+j":
+		run = o.Next
+	case "ctrl+k":
+		run = o.Prev
+	}
+	if run != "" {
 		a.stepTo(o, run)
 		a.stepUnder(run)
 		return nil
@@ -1386,7 +1393,11 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 	measuring := st.size.h == 0
 	fields := st.o.Fields
 	if st.back {
-		title := ansi.StringWidth(st.o.Title) + 1 + map[bool]int{true: ansi.StringWidth(badge) + 2}[badge != ""]
+		badgeW := 0
+		if badge != "" {
+			badgeW = ansi.StringWidth(badge) + 2
+		}
+		title := ansi.StringWidth(st.o.Title) + 1 + badgeW
 		st.size.w = max(st.size.w, min(title, inner))
 		if title <= inner {
 			fields = slices.DeleteFunc(slices.Clone(fields), func(f hostapi.Field) bool { return strings.HasSuffix(st.o.Title, " / "+f.Value) })
@@ -1466,7 +1477,11 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 		// the selected row's preview, in rows every row's fits
 		var pane [][]hostapi.Segment
 		if previews {
-			pane = make([][]hostapi.Segment, map[bool]int{true: 1, false: st.paneN}[level > 1])
+			paneRows := st.paneN
+			if level > 1 {
+				paneRows = 1
+			}
+			pane = make([][]hostapi.Segment, paneRows)
 			if len(st.visible) > 0 {
 				copy(pane, capRows(wrapText(st.items[st.visible[st.selected]].row.Preview, hostapi.ChromeHint, bodyW), len(pane), bodyW))
 			}
@@ -1519,7 +1534,10 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 		if scroll == nil && st.o.Reload != nil {
 			scroll = []hintPair{scrollGap}
 		}
-		esc := map[bool]string{true: "back", false: "close"}[st.back]
+		esc := "close"
+		if st.back {
+			esc = "back"
+		}
 		if !st.back && st.o.Follow && a.menuRoot(st.o.ID) != "" {
 			// esc from any level of a browsing menu closes the whole menu,
 			// while h is the one-level back

@@ -275,7 +275,11 @@ func (h *Host) setWriter(mine bool) {
 	ag.writer = mine
 	ag.remote = nil // the write and the watch never share a window
 	ag.mu.Unlock()
-	h.setLeaseWord(map[bool]string{true: writerThis, false: writerOther}[mine])
+	word := writerOther
+	if mine {
+		word = writerThis
+	}
+	h.setLeaseWord(word)
 }
 
 // setLeaseWord stores what the pill and the ctx read.

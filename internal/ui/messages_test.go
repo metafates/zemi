@@ -144,7 +144,11 @@ func TestMessagesRowsTrimAtTheBox(t *testing.T) {
 		})]
 		text, width := hostapi.SegsText(row), hostapi.SegsWidth(row)
 		t.Logf("%s: boxw=%d roww=%d", c.name, st.size.w, width)
-		if n := strings.Count(text, "…"); n != map[bool]int{true: 1, false: 0}[c.wantCut] {
+		want := 0
+		if c.wantCut {
+			want = 1
+		}
+		if n := strings.Count(text, "…"); n != want {
 			t.Fatalf("%s: %d ellipses in %q", c.name, n, text)
 		}
 		if c.wantCut && width <= 68 { // the old 60-rune clip drew 68 cells here

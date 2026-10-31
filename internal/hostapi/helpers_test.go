@@ -87,11 +87,19 @@ func dumpItem(it OverlayItem) string {
 		add("keys", "["+strings.Join(dumpKeys(it.Keys), " ")+"]")
 	}
 	if it.Locked != nil {
-		add("locked", map[bool]string{true: "true", false: "false"}[*it.Locked])
+		locked := "false"
+		if *it.Locked {
+			locked = "true"
+		}
+		add("locked", locked)
 	}
 	add("mark", string(it.Mark))
 	if it.On != nil {
-		add("on", map[bool]string{true: "true", false: "false"}[*it.On])
+		onv := "false"
+		if *it.On {
+			onv = "true"
+		}
+		add("on", onv)
 	}
 	add("preview", it.Preview)
 	add("run", it.Run)

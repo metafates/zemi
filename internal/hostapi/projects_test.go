@@ -281,7 +281,11 @@ func TestSplashProjects(t *testing.T) {
 			for _, p := range h.splashProjects() {
 				got = append(got, p.Root)
 			}
-			if want := map[bool][]string{true: {other}}[c.listed]; !slices.Equal(got, want) {
+			var want []string
+			if c.listed {
+				want = []string{other}
+			}
+			if !slices.Equal(got, want) {
 				t.Fatalf("splashProjects = %q, want %q", got, want)
 			}
 		})

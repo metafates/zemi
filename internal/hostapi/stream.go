@@ -273,7 +273,11 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		t := &ag.tools[i]
 		open := t.Status == CallRun || t.Status == CallWait
 		if open {
-			t.Status, t.Diff = map[bool]CallStatus{true: CallStopped, false: CallErr}[errors.Is(err, context.Canceled)], ""
+			t.Status = CallErr
+			if errors.Is(err, context.Canceled) {
+				t.Status = CallStopped
+			}
+			t.Diff = ""
 		}
 		// the pair a settled step logged is already in the log; the cut path
 		// logs only what no StepDone ever wrote, and says how the call ended

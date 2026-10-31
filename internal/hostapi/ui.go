@@ -577,7 +577,11 @@ func hlSpec(L *glua.LState, where string, m map[string]any) HLSpec {
 	switch u := m["underline"].(type) {
 	case nil:
 	case bool:
-		spec.Underline = map[bool]Underline{true: UnderlineSingle, false: UnderlineNone}[u]
+		if u {
+			spec.Underline = UnderlineSingle
+		} else {
+			spec.Underline = UnderlineNone
+		}
 	case string:
 		if !slices.Contains(underlines, Underline(u)) {
 			L.RaiseError("%s: underline %q is not one of %s", where, u, strings.Join(strs(underlines), ", "))

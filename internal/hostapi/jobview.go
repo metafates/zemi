@@ -101,12 +101,16 @@ func (h *Host) jobsOverlay() Overlay {
 	all := h.jobs.List()
 	slices.Reverse(all)
 	for _, j := range all {
+		section := "Ended"
+		if j.Running() {
+			section = sectionRunning
+		}
 		item := OverlayItem{
 			ID:      j.ID,
 			Text:    j.Name,
 			Desc:    statusCol(j.Status()) + " · " + fmtDuration(j.Elapsed()) + " · " + j.ID,
 			Mark:    j.Mark(),
-			Section: map[bool]string{true: sectionRunning, false: "Ended"}[j.Running()],
+			Section: section,
 			Run:     "jobs view " + j.ID, Verb: VerbOpen,
 		}
 		if j.Running() {

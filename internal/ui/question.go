@@ -305,7 +305,11 @@ func questionTabs(qp *questionPrompt) []hostapi.Segment {
 			}
 			row = append(row, mark)
 		}
-		row = append(row, hostapi.Segment{Text: label, HL: map[bool]string{true: hostapi.ChromeTitle, false: hostapi.ChromeHint}[i == qp.at]})
+		hl := hostapi.ChromeHint
+		if i == qp.at {
+			hl = hostapi.ChromeTitle
+		}
+		row = append(row, hostapi.Segment{Text: label, HL: hl})
 	}
 	return row
 }
@@ -408,7 +412,11 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	var hints []hintPair
 	switch {
 	case st.typing:
-		hints = slices.Concat(moves, []hintPair{sendHint, {key: "esc", verb: map[bool]string{true: "dismiss", false: "back"}[len(q.Options) == 0]}})
+		escVerb := "back"
+		if len(q.Options) == 0 {
+			escVerb = "dismiss"
+		}
+		hints = slices.Concat(moves, []hintPair{sendHint, {key: "esc", verb: escVerb}})
 	case q.Multi():
 		hints = slices.Concat(moves, []hintPair{{key: "space", verb: "toggle"}, sendHint, {key: "esc", verb: "dismiss"}})
 	default:
@@ -418,7 +426,10 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	return fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
 		tight := level > 0
 		optsPH := oneRow[:min(len(items), 1)]
-		paneRows := map[bool]int{true: 1, false: paneN}[level > 1]
+		paneRows := paneN
+		if level > 1 {
+			paneRows = 1
+		}
 		pane := make([][]hostapi.Segment, paneRows)
 		if st.sel < len(paneWrapped) {
 			copy(pane, capRows(paneWrapped[st.sel], paneRows, inner))

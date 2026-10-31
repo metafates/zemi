@@ -257,7 +257,15 @@ func TestBuiltin(t *testing.T) {
 		{ID: "unbundled key", Type: catwalk.TypeMessages, APIKey: "$GITHUB_TOKEN"},
 		{ID: "unbundled endpoint", Type: catwalk.TypeCompletions, APIKey: "$XAI_API_KEY", APIEndpoint: "$GITHUB_TOKEN"},
 	} {
-		if c := Builtin([]catwalk.Provider{p}, func(k string) string { return map[string]string{"XAI_API_KEY": "k", "GITHUB_TOKEN": "gh"}[k] }); len(c.Specs) != 0 || len(c.Keys) != 0 {
+		if c := Builtin([]catwalk.Provider{p}, func(k string) string {
+			switch k {
+			case "XAI_API_KEY":
+				return "k"
+			case "GITHUB_TOKEN":
+				return "gh"
+			}
+			return ""
+		}); len(c.Specs) != 0 || len(c.Keys) != 0 {
 			t.Errorf("%s: %+v", p.ID, c)
 		}
 	}

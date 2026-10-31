@@ -179,8 +179,12 @@ func (h *Host) configSet(path config.Key, value string) error {
 	case config.KindList:
 		v = listValue(value)
 	case config.KindBool:
-		b, ok := map[string]bool{"on": true, "true": true, "off": false, "false": false}[value]
-		if !ok {
+		b := false
+		switch value {
+		case "on", "true":
+			b = true
+		case "off", "false":
+		default:
 			return Usagef("%s is on or off", path)
 		}
 		v = b
@@ -258,7 +262,10 @@ func (h *Host) configItems(section string) []OverlayItem {
 		}
 		keys := []ItemKey{edit}
 		if !reflect.DeepEqual(v, base) {
-			label := map[bool]string{true: "reset to init.lua", false: "reset to default"}[set]
+			label := "reset to default"
+			if set {
+				label = "reset to init.lua"
+			}
 			keys = append(keys, ItemKey{Key: "r", Desc: label, Run: "config reset " + string(s.Path)})
 		}
 		if note != "" {
@@ -273,7 +280,10 @@ func (h *Host) configItems(section string) []OverlayItem {
 func showSetting(v any) string {
 	switch v := v.(type) {
 	case bool:
-		return map[bool]string{true: "on", false: "off"}[v]
+		if v {
+			return "on"
+		}
+		return "off"
 	case string:
 		return cmp.Or(v, "empty")
 	case []string:

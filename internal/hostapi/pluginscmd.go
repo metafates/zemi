@@ -190,7 +190,13 @@ func (h *Host) pluginsCommand(line string, confirm bool) error {
 				var out strings.Builder
 				err := plugin.Run(ctx, h.Dirs, args, &out)
 				body := strings.TrimSpace(out.String())
-				title := map[string]string{"add": "Marketplace added", "remove": "Marketplace removed", "update": "Marketplace updated"}[sub]
+				title := "Marketplace updated"
+				switch sub {
+				case "add":
+					title = "Marketplace added"
+				case "remove":
+					title = "Marketplace removed"
+				}
 				if body == plugin.MarketplacesUpToDate {
 					title, body = body, ""
 				}
@@ -208,11 +214,18 @@ func (h *Host) pluginsCommand(line string, confirm bool) error {
 		if len(args) > 1 {
 			name = plugin.Name(args[len(args)-1])
 		}
-		label := map[string]string{"install": "Installing ", "add": "Installing ", "delete": "Deleting "}[verb] + name
+		verbLabel := "Installing "
+		if verb == "delete" {
+			verbLabel = "Deleting "
+		}
+		label := verbLabel + name
 		background(label, func(ctx context.Context) error {
 			var out strings.Builder
 			err := plugin.Run(ctx, h.Dirs, args, &out)
-			title := map[string]string{"install": "Plugin installed", "add": "Plugin installed", "delete": "Plugin deleted"}[verb]
+			title := "Plugin installed"
+			if verb == "delete" {
+				title = "Plugin deleted"
+			}
 			body := strings.TrimSpace(out.String())
 			if verb == "delete" && err == nil {
 				body = args[1]
@@ -237,7 +250,13 @@ var marketplaceVerbs = []string{"add", "remove", "update"}
 // the clone decides a marketplace's name, so add names the source it was
 // given; the others name their argument.
 func marketplaceLabel(args []string) string {
-	kind := map[string]string{"add": "Adding", "remove": "Removing", "update": "Updating"}[args[1]]
+	kind := "Updating"
+	switch args[1] {
+	case "add":
+		kind = "Adding"
+	case "remove":
+		kind = "Removing"
+	}
 	if len(args) > 2 {
 		return kind + " marketplace " + args[2]
 	}

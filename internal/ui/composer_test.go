@@ -350,7 +350,11 @@ func TestWrapComposer(t *testing.T) {
 		marks := ""
 		for i, r := range rows {
 			got = append(got, string(r))
-			marks += map[bool]string{true: "~", false: "."}[soft[i]]
+			if soft[i] {
+				marks += "~"
+			} else {
+				marks += "."
+			}
 		}
 		if strings.Join(got, "|") != c.rows || row != c.row || col != c.col || marks != c.soft {
 			t.Errorf("%s: rows %q cursor %d,%d soft %q", c.name, got, row, col, marks)

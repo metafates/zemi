@@ -43,11 +43,15 @@ func (m *askModel) Stream(ctx context.Context, _ fantasy.Call) (fantasy.StreamRe
 
 // chunkAs runs src as code of origin: a plugin's is plugin a's.
 func chunkAs(ctx context.Context, h *Host, r *lua.Runtime, origin lua.Origin, src string) error {
-	path := map[lua.Origin]string{
-		lua.OriginUser:    filepath.Join(h.Dirs.ConfigHome, "init.lua"),
-		lua.OriginPlugin:  filepath.Join(h.pluginsRoot(), "local", "a", ".zemi", "init.lua"),
-		lua.OriginProject: filepath.Join(h.Dirs.ProjectDir, ".agents", "init.lua"),
-	}[origin]
+	var path string
+	switch origin {
+	case lua.OriginUser:
+		path = filepath.Join(h.Dirs.ConfigHome, "init.lua")
+	case lua.OriginPlugin:
+		path = filepath.Join(h.pluginsRoot(), "local", "a", ".zemi", "init.lua")
+	case lua.OriginProject:
+		path = filepath.Join(h.Dirs.ProjectDir, ".agents", "init.lua")
+	}
 	return r.ExecuteChunk(ctx, src, path, origin)
 }
 

@@ -54,7 +54,11 @@ func TestToggleOverlayStaysOpen(t *testing.T) {
 	a.overlays[0].size = boxSize{60, 12}
 	for _, key := range []string{"space", "enter"} {
 		wasOn := on
-		a.overlayKey(key, map[string]string{"space": " "}[key])
+		text := ""
+		if key == "space" {
+			text = " "
+		}
+		a.overlayKey(key, text)
 		if len(a.overlays) != 1 || a.overlays[0].selected != 1 || on == wasOn || a.overlays[0].size != (boxSize{60, 12}) {
 			t.Fatalf("%s: overlays=%d selected=%d on=%v size=%v", key, len(a.overlays), a.overlays[0].selected, on, a.overlays[0].size)
 		}
@@ -197,7 +201,10 @@ func TestOverlayFilter(t *testing.T) {
 			}
 			a.openOverlay(c.o)
 			for _, k := range c.keys {
-				text := map[string]string{"space": " "}[k]
+				text := ""
+				if k == "space" {
+					text = " "
+				}
 				if len([]rune(k)) == 1 {
 					text = k
 				}
@@ -684,7 +691,10 @@ func TestOverlayNavigation(t *testing.T) {
 			nil,
 			func(a *App) string {
 				box := fmt.Sprint(a.overlayBox(&a.overlays[0], 80, 20, true))
-				return map[bool]string{true: box}[strings.Contains(box, "toggle")]
+				if strings.Contains(box, "toggle") {
+					return box
+				}
+				return ""
 			},
 		},
 		{
@@ -1392,7 +1402,10 @@ func TestOverlayHints(t *testing.T) {
 	a.openOverlay(hostapi.Overlay{ID: "menu 1", Follow: true, Items: run})
 	for _, i := range []int{0, 1} {
 		box := a.overlayBox(&a.overlays[i], 80, 20, true)
-		want := map[bool]string{true: "esc close all", false: "esc close"}[i == 1]
+		want := "esc close"
+		if i == 1 {
+			want = "esc close all"
+		}
 		if got := strings.Trim(hostapi.SegsText(box[len(box)-2]), "│ "); !strings.HasSuffix(got, want) {
 			t.Errorf("menu level %d: %q, want %q", i, got, want)
 		}
@@ -1564,7 +1577,11 @@ func TestOverlayRowsBuiltOnce(t *testing.T) {
 	} {
 		c.step()
 		before := st.rows
-		app.overlayBox(st, map[bool]int{true: 60, false: 80}[c.name == "resize"], 20, true)
+		w := 80
+		if c.name == "resize" {
+			w = 60
+		}
+		app.overlayBox(st, w, 20, true)
 		if built := before == nil || &before[0] != &st.rows[0]; built != c.built {
 			t.Errorf("%s: rows built %v, want %v", c.name, built, c.built)
 		}
@@ -2551,7 +2568,10 @@ func TestMemoriesDrillBack(t *testing.T) {
 	}
 	db := testStore(t, host)
 	for i := range 6 {
-		kind := map[bool]store.LogKind{true: store.KindUser, false: store.KindAgent}[i%2 == 0]
+		kind := store.KindAgent
+		if i%2 == 0 {
+			kind = store.KindUser
+		}
 		if _, err := db.AppendLog(kind, fmt.Sprintf("msg %d", i), "", "", ""); err != nil {
 			t.Fatal(err)
 		}

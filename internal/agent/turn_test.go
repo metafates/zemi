@@ -926,7 +926,11 @@ func TestCacheBreakpoints(t *testing.T) {
 	marks := func(list []jsontext.Value) string {
 		out := ""
 		for _, v := range list {
-			out += map[bool]string{true: "+", false: "-"}[strings.Contains(string(v), "cache_control")]
+			if strings.Contains(string(v), "cache_control") {
+				out += "+"
+			} else {
+				out += "-"
+			}
 		}
 		return out
 	}
@@ -1025,7 +1029,11 @@ func TestSignedThinking(t *testing.T) {
 	thoughts := func(msgs []fantasy.Message) string {
 		out := ""
 		for _, m := range msgs {
-			out += map[bool]string{true: "+", false: "-"}[slices.ContainsFunc(m.Content, func(p fantasy.MessagePart) bool { return p.GetType() == fantasy.ContentTypeReasoning })]
+			if slices.ContainsFunc(m.Content, func(p fantasy.MessagePart) bool { return p.GetType() == fantasy.ContentTypeReasoning }) {
+				out += "+"
+			} else {
+				out += "-"
+			}
 		}
 		return out
 	}

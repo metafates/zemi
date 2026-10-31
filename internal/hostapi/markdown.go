@@ -725,7 +725,15 @@ func DiffRows(d string, width int) [][]Segment {
 			rows = append(rows, WrapSegs([]Segment{{Text: " " + l.text, HL: "DiffCtxNum"}}, width)...)
 			continue
 		}
-		hl := map[byte]string{'+': "DiffAdd", '-': "DiffDel", ' ': "DiffCtx"}[l.kind]
+		hl := ""
+		switch l.kind {
+		case '+':
+			hl = "DiffAdd"
+		case '-':
+			hl = "DiffDel"
+		case ' ':
+			hl = "DiffCtx"
+		}
 		num := strings.Repeat(" ", nw)
 		if l.num > 0 {
 			num = fmt.Sprintf("%*d", nw, l.num)

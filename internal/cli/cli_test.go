@@ -281,7 +281,11 @@ func TestTrustGate(t *testing.T) {
 		if ignored := err == nil; h.ProjectTrusted() != c.trusted || loaded != c.trusted || again != c.trusted || ignored != c.trusted {
 			t.Errorf("%s: trusted=%v loaded=%v again=%v worktrees ignored=%v", c.name, h.ProjectTrusted(), loaded, again, ignored)
 		}
-		if want := map[bool]int{true: 1, false: 0}[c.answer != ""]; asked != want {
+		want := 0
+		if c.answer != "" {
+			want = 1
+		}
+		if asked != want {
 			t.Errorf("%s: prompt opened %d times", c.name, asked)
 		}
 		if got := tg.dirs.ReadTrust()[root]; got != c.wantSaved {
