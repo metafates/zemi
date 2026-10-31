@@ -2014,8 +2014,8 @@ func (h *Host) maybeNagTodos() {
 	}
 	ag := h.agents
 	ag.mu.Lock()
-	defer ag.mu.Unlock()
 	if !ag.active || ag.todoPending {
+		ag.mu.Unlock()
 		return
 	}
 	current, open := "", 0
@@ -2028,13 +2028,39 @@ func (h *Host) maybeNagTodos() {
 		}
 	}
 	if current == "" && open == 0 {
+		ag.mu.Unlock()
 		return // nothing open: nothing to nudge about
 	}
 	ag.todoSteps++
 	if ag.todoSteps-ag.todoNagAt < todoNagAfter {
+		ag.mu.Unlock()
 		return
 	}
 	ag.todoNagAt = ag.todoSteps
+	ag.mu.Unlock()
+	// the store is the truth at the moment of the nag: a sibling's ticks
+	// never reach this window's cache mid-turn, and no store call runs under
+	// the agents' lock
+	todos := ag.todoList
+	if h.DB != nil {
+		if td, err := h.DB.Todos(h.AgentSessionID()); err == nil && len(td) > 0 {
+			todos = td
+		}
+	}
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	current, open = "", 0
+	for _, td := range todos {
+		switch td.Status {
+		case store.TodoInProgress:
+			current = td.Content
+		case store.TodoPending:
+			open++
+		}
+	}
+	if current == "" && open == 0 {
+		return // the sibling finished it: nothing left to nudge about
+	}
 	ag.todoPending = true
 	if current != "" {
 		ag.todoNag = agent.Note(fmt.Sprintf(
