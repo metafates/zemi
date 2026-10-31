@@ -211,7 +211,7 @@ func (s *streamAdapter) StreamDone(u fantasy.Usage) {
 	ag := s.h.agents
 	in := billedInput(u)
 	ag.mu.Lock()
-	model := s.h.turnModelID()
+	model := s.h.turnModelIDLocked()
 	// the context the latest step carried: the statusline's ctx meter reads it
 	ag.lastIn = in
 	ag.mu.Unlock()
@@ -229,7 +229,7 @@ func (s *streamAdapter) StepDone(st agent.Step) {
 	h := s.h
 	ag := h.agents
 	ag.mu.Lock()
-	model, touched := h.turnModelID(), ag.todoTouched
+	model, touched := h.turnModelIDLocked(), ag.todoTouched
 	ag.todoTouched = false
 	ag.stepSettled = true // the step's calls and results reached the log
 	for i := range ag.tools {
@@ -253,7 +253,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 		ag.holdOverflow && contextTooLarge(err)
 	ag.holdOverflow, ag.holdImages, ag.holdCap = false, false, false
 	now := h.now()
-	model := h.turnModelID()
+	model := h.turnModelIDLocked()
 	text, live := ag.textBuf, ag.tools
 	steered := ag.steeredTurn
 	// the reply row's stat carries the turn's whole thought: the live digest

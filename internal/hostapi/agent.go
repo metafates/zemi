@@ -1559,9 +1559,16 @@ func toolStatus(result fantasy.ToolResultOutputContent, cancelled bool, o tools.
 	return CallErr
 }
 
-// turnModelID is the model the running turn bills to (ag.mu held); a turn
-// the host did not start (tests) bills to the default role.
+// turnModelID is the model the running turn bills to; a turn the host did
+// not start (tests) bills to the default role.
 func (h *Host) turnModelID() string {
+	h.agents.mu.Lock()
+	defer h.agents.mu.Unlock()
+	return h.turnModelIDLocked()
+}
+
+// turnModelIDLocked is turnModelID with ag.mu held.
+func (h *Host) turnModelIDLocked() string {
 	if m := h.agents.turnModel; m != "" {
 		return m
 	}
