@@ -197,8 +197,8 @@ type App struct {
 	keySeq        []string         // keys of a bound sequence typed so far
 	keySeqAt      time.Time
 	armed         armed                // a key whose second press acts (ctrl+c quit, esc interrupt)
-	burstSwallow  time.Time // a danger key's fire: one burst key eats, the echo of the confirm
-	askSwallow    time.Time // a key that answered an ask: the paste's whole tail eats till the window ends
+	burstSwallow  time.Time            // a danger key's fire: one burst key eats, the echo of the confirm
+	askSwallow    time.Time            // a key that answered an ask: the paste's whole tail eats till the window ends
 	burstKey      string               // the key whose echo the swallow waits for
 	colors        colorprofile.Profile // what the terminal can show: segStyle quantizes cells to it, never OSC 11
 
