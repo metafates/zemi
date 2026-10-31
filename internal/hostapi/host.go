@@ -958,6 +958,7 @@ func (h *Host) markDeadTail() {
 // "■ Interrupted" does. The log stays as it is, a live peer's sync never draws
 // one, and the next turn's rows make the check pass.
 func (h *Host) markDanglingTail() {
+	h.tMu.Lock()
 	tr := h.session.Transcript
 	start := -1
 	for i, m := range slices.Backward(tr) {
@@ -966,21 +967,27 @@ func (h *Host) markDanglingTail() {
 			break
 		}
 	}
-	for _, m := range tr[start+1:] {
-		if m.Kind == RowError || m.Kind == RowMessage && m.Role == fantasy.MessageRoleAssistant {
-			return
+	dangling := false
+	if start >= 0 {
+		dangling = true
+		for _, m := range tr[start+1:] {
+			if m.Kind == RowError || m.Kind == RowMessage && m.Role == fantasy.MessageRoleAssistant {
+				dangling = false
+				break
+			}
 		}
 	}
-	if start < 0 && len(tr) > 0 {
-		return // a tail with no turn of its own: nothing is dangling
+	if dangling {
+		h.session.Transcript = append(tr, ChatMessage{
+			Role: fantasy.MessageRoleAssistant, Kind: RowError,
+			Text: "the window closed mid-turn", Status: CallCancelled, Seq: NoSeq,
+		})
+		h.trEpoch.Add(1)
 	}
-	if len(tr) == 0 {
+	h.tMu.Unlock()
+	if !dangling {
 		return
 	}
-	h.session.Transcript = append(tr, ChatMessage{
-		Role: fantasy.MessageRoleAssistant, Kind: RowError,
-		Text: "the window closed mid-turn", Status: CallCancelled, Seq: NoSeq,
-	})
 	// the turn died without a release: the item it took up goes back to pending
 	h.GoSafe("settle todos", h.settleTodos)
 }
