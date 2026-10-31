@@ -963,9 +963,10 @@ func bandSpan(lines [][]hostapi.Segment, from, to, width int) [][]hostapi.Segmen
 // its first rows, top down: the nearest turn header above top, then each
 // section header of that turn that has passed the row it pins on, until its
 // end mark (a run of PinEnd rows, as a wrapped row carries it down) reaches
-// that row. Nothing pins while a turn header is within the first three rows
-// shown, so the pins never stack two turns with a gap row and a stats line
-// between.
+// that row or the next header begins — a folded run's digest is a one-row
+// section with no end mark of its own. Nothing pins while a turn header is
+// within the first three rows shown, so the pins never stack two turns with
+// a gap row and a stats line between.
 // NOTE: a scan back to the turn header per painted frame of a view below
 // one, following a turn included: a few hundred reads in a long turn.
 func pinned(dst []int, lines [][]hostapi.Segment, top int) []int {
@@ -997,7 +998,11 @@ func pinned(dst []int, lines [][]hostapi.Segment, top int) []int {
 		case p == hostapi.PinTurn:
 			dst = append(dst[:0], i)
 		default:
-			dst = append(dst, i)
+			if n := len(dst); n > 0 && pinOf(lines[dst[n-1]]) == hostapi.PinSection {
+				dst[n-1] = i
+			} else {
+				dst = append(dst, i)
+			}
 		}
 	}
 	return dst
