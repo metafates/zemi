@@ -461,8 +461,9 @@ func (h *Host) OpenUsage() error {
 	spec, _ := h.modelSpec(id)
 	priced := spec.CostPer1MIn > 0 || spec.CostPer1MOut > 0 || s.SessionCost > 0 || windows[len(windows)-1].u.Cost > 0
 	// the live session's cache share, when there is one: a broken prefix has
-	// no other symptom than the bill. It rides the title as a note, since
-	// only the live session answers it and a column of blanks would too
+	// no other symptom than the bill. It rides the title's row behind the
+	// column head, so the head keeps the rows' columns, and only the live
+	// session answers it - a column of blanks would too
 	cached := ""
 	if s.CacheBilled > 0 {
 		cached = fmt.Sprintf("cached %.1f%%", float64(s.CacheRead)*100/float64(s.CacheBilled))
@@ -472,7 +473,7 @@ func (h *Host) OpenUsage() error {
 		head += "      cost"
 	}
 	if cached != "" {
-		section("Tokens", text(ChromeHint, "  "+cached), text(ChromeHint, head))
+		section("Tokens", text(ChromeHint, head), text(ChromeHint, "  "+cached))
 	} else {
 		section("Tokens", text(ChromeHint, head))
 	}

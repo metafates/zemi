@@ -375,13 +375,16 @@ func TestUsageBreaksThePromptDown(t *testing.T) {
 	if strings.Contains(body, "cached") {
 		t.Fatalf("no turn ran, so nothing is cached:\n%s", body)
 	}
+	h.SeedStream(StreamSnapshot{SessionCost: 0.27}) // a session with a bill draws the cost column
 	h.agents.cacheRead, h.agents.cacheBilled = 9989, 10000
 	if err := h.OpenUsage(); err != nil {
 		t.Fatal(err)
 	}
-	// the share sits in its own labelled column, on the live session's row
-	if body := ui.opened[1].Body; !strings.Contains(body, "cached") || !strings.Contains(body, "99.9%") {
-		t.Fatalf("no cache share in the usage body:\n%s", body)
+	// the share trails the priced column head, so the columns stay over
+	// their values whatever the note adds to the title's row
+	body = ui.opened[1].Body
+	if !strings.Contains(body, "Tokens                in      out      cost  cached 99.9%\n  this session         0        0     $0.27") {
+		t.Fatalf("the cache note shifted the columns:\n%s", body)
 	}
 }
 
