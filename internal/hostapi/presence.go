@@ -52,13 +52,13 @@ func (h *Host) StartPeers() {
 	h.listenPeers()
 	h.beat() // the first view comes now, not at the first tick
 	h.GoSafe("peers", func() {
-		var last peersView
 		for range time.Tick(peersTick) {
 			h.beat()
-			if view := h.peerView(); view != last {
-				last = view
-				h.refresh()
-			}
+			// unconditional: a beat another goroutine ran (a poke's hello)
+			// stores a snapshot this ticker's own last view never saw, and
+			// gating the refresh on it left a sibling's working flag stale
+			// up to a minute while the file said false
+			h.refresh()
 		}
 	})
 	h.GoSafe("peer hello", h.peerPoke)

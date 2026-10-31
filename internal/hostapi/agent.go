@@ -800,9 +800,13 @@ func (h *Host) release() {
 	h.agents.active = false
 	h.agents.task = "" // the note a sender reads names a live turn, not the last one
 	h.turn.Store(nil)
-	// on its own goroutine: this runs under ag.mu, which no store call may
-	// wait on while it holds the one connection
+	// on their own goroutines: these run under ag.mu, which no store call
+	// may wait on while it holds the one connection
 	h.GoSafe("settle todos", h.settleTodos)
+	// the beat before the poke: a turn under one beat's length ends with
+	// the file still saying working, and a sibling's poke would then read
+	// the stale flag and hold its pill up for the next minute
+	h.GoSafe("release beat", h.beat)
 	h.GoSafe("peer poke", h.peerPoke)
 }
 

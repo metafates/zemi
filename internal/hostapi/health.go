@@ -240,7 +240,12 @@ func (h *Host) builderRow() HealthRow {
 	unbuilt := h.chat.tree.health.unbuilt.Load()
 	failed := h.chat.tree.health.failed.Load()
 	queued := h.chat.tree.health.queued.Load()
-	detail := fmt.Sprintf("%d lines not summarized yet, %d %s queued", unbuilt, queued, Plural(int(queued), "build", "builds"))
+	parts := []string{}
+	if unbuilt > 0 {
+		parts = append(parts, fmt.Sprintf("%d lines not summarized yet", unbuilt))
+	}
+	parts = append(parts, fmt.Sprintf("%d %s queued", queued, Plural(int(queued), "build", "builds")))
+	detail := strings.Join(parts, ", ")
 	how, cooling := "they retry when new messages land", false
 	if until := h.chat.tree.health.coolingUntil.Load(); until > 0 {
 		if left := time.Until(time.Unix(0, until)); left > 0 {

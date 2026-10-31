@@ -101,7 +101,7 @@ zemi.ui.widget.add({
 				-- the number by the armed key is the window it still waits; the
 				-- turn's clock trails at a weight the narrow rule drops first
 				ticks = {
-					{ plain(fmt.duration(math.ceil(ctx.interrupt_in or 0), true)), 7 },
+					{ plain("arm " .. fmt.duration(math.ceil(ctx.interrupt_in or 0), true)), 7 },
 					{ plain("elapsed " .. clock(ag.elapsed)), 5 },
 				}
 			end
