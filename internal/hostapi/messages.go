@@ -382,6 +382,7 @@ func (h *Host) messagesList(p pickTr, at int) Overlay {
 	}
 	h.msgMu.Lock()
 	old := slices.Clone(h.msgOld)
+	from := h.msgFrom
 	h.msgMu.Unlock()
 	p.old = old
 	// the loaded pages list the way the window's turns do: the same rows, a
@@ -391,8 +392,21 @@ func (h *Host) messagesList(p pickTr, at int) Overlay {
 	for i := range rows {
 		rows[i] = -len(p.live) - 1 - i
 	}
-	// the wipe's own row leads the list: the reset note the transcript draws
-	// nothing of, reachable here and by view alone — the fold header counts it
+	// the cue leads the list while the log holds rows above the pages: a
+	// move held on this row is what loads them (o.More), so the head's
+	// earlier count and the first view no longer disagree in silence
+	if h.DB != nil {
+		if oldest, _ := h.messagesBound(from); oldest > 0 {
+			o.Items = append(o.Items, OverlayItem{
+				Text:    "… earlier messages above",
+				Desc:    "up at this row loads them",
+				Section: "Earlier",
+			})
+		}
+	}
+	// the wipe's own row leads the pages: the reset note the transcript
+	// draws nothing of, reachable here and by view alone — the fold header
+	// counts it
 	if h.DB != nil {
 		if first, err := h.DB.LogFrom(0, 1); err == nil && len(first) == 1 && first[0].Kind == store.KindNote {
 			o.Items = append(o.Items, OverlayItem{
@@ -475,19 +489,17 @@ func olderItem(item OverlayItem, m ChatMessage) OverlayItem {
 	return item
 }
 
-// messagesOlder loads the page of log rows before the oldest loaded one and
-// returns the list rebuilt with it; ok false when nothing older is left. It
-// runs on the UI worker, never on the key path.
-func (h *Host) messagesOlder() (Overlay, bool) {
-	if h.DB == nil {
-		return Overlay{}, false
-	}
+// messagesBound names the seqs the browser's Earlier reaches back from:
+// oldest is the loaded pages' from (else the window's oldest stamped row),
+// head the window's oldest stamped row itself. Zero or less says the log's
+// start is already on screen.
+func (h *Host) messagesBound(from int64) (oldest, head int64) {
 	// the window's oldest claimed row: the pages stop before it, whatever
 	// seq it carries, the log's own 0 included
 	h.tMu.RLock()
 	tr, claimed := h.session.Transcript, h.stampRow
 	h.tMu.RUnlock()
-	head := NoSeq
+	head = NoSeq
 	if claimed > 0 && len(tr) > 0 {
 		head = tr[0].Seq
 	} else {
@@ -498,14 +510,29 @@ func (h *Host) messagesOlder() (Overlay, bool) {
 			}
 		}
 	}
+	switch {
+	case from >= 0:
+		return from, head
+	case head < 0:
+		return 0, head
+	default:
+		return head, head
+	}
+}
+
+// messagesOlder loads the page of log rows before the oldest loaded one and
+// returns the list rebuilt with it; ok false when nothing older is left. It
+// runs on the UI worker, never on the key path.
+func (h *Host) messagesOlder() (Overlay, bool) {
+	if h.DB == nil {
+		return Overlay{}, false
+	}
 	h.msgMu.Lock()
-	oldest := h.msgFrom
+	from := h.msgFrom
 	h.msgMu.Unlock()
-	if oldest < 0 {
-		if head < 0 {
-			return Overlay{}, false
-		}
-		oldest = head
+	oldest, head := h.messagesBound(from)
+	if oldest <= 0 {
+		return Overlay{}, false
 	}
 	lo := max(int64(0), oldest-chatPageRows)
 	if lo >= oldest {

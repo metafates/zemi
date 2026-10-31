@@ -136,6 +136,35 @@ func TestMessagesList(t *testing.T) {
 	}
 }
 
+// TestMessagesEarlierNamesItsMore: while the log holds rows above the
+// window's pages, the list leads with the row whose up-move loads them;
+// the cue goes once the pages reach the log's start.
+func TestMessagesEarlierNamesItsMore(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	for i := range 3 {
+		if _, err := h.DB.AppendLog(store.KindUser, fmt.Sprintf("old %d", i), "", "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tr := []ChatMessage{{Role: fantasy.MessageRoleUser, Text: "new", Seq: 3}}
+	h.tMu.Lock()
+	h.session = &Session{Transcript: tr}
+	h.tMu.Unlock()
+	o := h.messagesList(pickTr{tr: tr}, 0)
+	if len(o.Items) == 0 || o.Items[0].Text != "… earlier messages above" || o.Items[0].Section != "Earlier" {
+		t.Fatalf("the list does not lead with the load cue: %+v", o.Items)
+	}
+	h.msgMu.Lock()
+	h.msgFrom = 0
+	h.msgMu.Unlock()
+	for _, it := range h.messagesList(pickTr{tr: tr}, 0).Items {
+		if it.Text == "… earlier messages above" {
+			t.Fatal("the load cue stays with the pages at the log's start")
+		}
+	}
+}
+
 // TestStampingPairsResultRows: a tool result's log row draws no row of its
 // own, so the pairing passes it instead of spending the next row's slot on
 // it - which stalled every turn after the first tool call and left its rows
@@ -437,22 +466,27 @@ func TestMessagesPageUp(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := ui.opened[len(ui.opened)-1]
-	if len(before.Items) != chatWindowRows {
+	// the cue row leads: the window's rows follow it
+	if len(before.Items) != chatWindowRows+1 {
 		t.Fatalf("the window lists %d rows", len(before.Items))
 	}
-	if before.Items[0].Anchor != 1 {
-		t.Fatalf("the window's first row anchors %d", before.Items[0].Anchor)
+	if before.Items[0].Text != "… earlier messages above" {
+		t.Fatalf("the list does not lead with the load cue: %+v", before.Items[0])
+	}
+	if before.Items[1].Anchor != 1 {
+		t.Fatalf("the window's first row anchors %d", before.Items[1].Anchor)
 	}
 	o, ok := h.messagesOlder()
 	if !ok {
 		t.Fatal("nothing loaded for a window that opened mid-log")
 	}
-	// the page holds the 100 rows before the window's first: seqs 0..99
+	// the page holds the 100 rows before the window's first: seqs 0..99,
+	// and it reaches the log's start, so the load cue goes
 	if len(o.Items) != chatWindowRows+100 {
 		t.Fatalf("the extended list holds %d rows", len(o.Items))
 	}
 	for i := 100; i < len(o.Items); i++ {
-		was := before.Items[i-100]
+		was := before.Items[i-99]
 		if o.Items[i].Anchor != was.Anchor || rowKey(o.Items[i]) != rowKey(was) {
 			t.Fatalf("window row %d moved: anchor %d key %q, was %d %q",
 				i, o.Items[i].Anchor, rowKey(o.Items[i]), was.Anchor, rowKey(was))
