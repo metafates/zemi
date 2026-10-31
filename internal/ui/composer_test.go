@@ -1298,6 +1298,34 @@ func TestPaletteComplete(t *testing.T) {
 	}
 }
 
+// TestPaletteRefitsAsItNarrows: the popup's box follows its list, so a query
+// that drops rows shrinks the box back, the way the @ popup's does.
+func TestPaletteRefitsAsItNarrows(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 14)
+	for _, c := range []struct{ name, desc string }{
+		{"alpha", strings.Repeat("long ", 16)},
+		{"beta", "b"},
+	} {
+		if _, err := app.host.Commands.Add(&hostapi.Command{Name: c.name, Desc: c.desc, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	keys := func(s string) {
+		for _, r := range s {
+			app.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+		}
+		app.renderSync(t)
+		app.Frame()
+	}
+	keys("/")
+	full := app.palette.size
+	keys("beta")
+	narrow := app.palette.size
+	if !app.palette.open || len(app.palette.matches) != 1 || narrow.w >= full.w || narrow.h >= full.h {
+		t.Fatalf("the palette did not refit: full %+v narrow %+v open=%v matches=%d", full, narrow, app.palette.open, len(app.palette.matches))
+	}
+}
+
 func TestPaletteDispatch(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
