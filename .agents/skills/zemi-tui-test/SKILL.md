@@ -173,7 +173,10 @@ streamed chunks.
   execs down), but a `kill -STOP` from a tool shell does not take on it (state stays
   `Ss+`, three shells observed; SIGKILL lands fine). A stopped zemi's frozen screen
   reads as settled to a compare, so `wait`, `prompt`, `type` and `ask` refuse one (`kill -CONT` to
-  resume).
+  resume). A hand-booted window (not via `up`) has the login shell as the pane pid: before
+  calling a pane-pid `kill -9` a kill, check `tmux ... display -p '#{pane_current_command}'`
+  reads `zemi`, else find zemi's pid from the store dir (`pgrep -f zemi-safe`) — killing
+  the shell closes the pane while zemi finishes its turn headless.
 - Direct `tmux -L zl-<name>` probes need the lab's socket dir: the lab exports
   `TMUX_TMPDIR=$TMPDIR`, so set it the same way or tmux looks in `/tmp/tmux-*`
   and finds no server.
