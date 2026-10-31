@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -52,6 +53,51 @@ func TestPeersBeat(t *testing.T) {
 				t.Fatalf("beat read %d peers, %d working, want %d and %d", got.n, got.working, c.wantN, c.wantWorking)
 			}
 		})
+	}
+}
+
+// TestSiblingWorkingIgnoresItsOwnHeartbeat: the window's own heartbeat reads
+// working until its next beat, and its socket answers; a settle must not
+// read it as a sibling at work and skip closing the todo list.
+func TestSiblingWorkingIgnoresItsOwnHeartbeat(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	// a bind dir short enough for a sun_path on every platform, the way the
+	// send tests make one: a test temp dir can outgrow the address limit
+	dir0, err := os.MkdirTemp("", "zemi-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir0) })
+	sock := filepath.Join(dir0, "s.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() { // the socket the window's own heartbeat advertises: alive
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			if req, err := ipc.ReadRequest(conn); err == nil && req.Hello {
+				_ = ipc.WriteReply(conn, ipc.Reply{OK: true})
+			}
+			conn.Close()
+		}
+	}()
+	h.sockPath = sock
+	dir := filepath.Join(h.Dirs.StateHome, "peers", filepath.Base(filepath.Dir(h.DB.Path())))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	own := `{"working":true,"sock":"` + sock + `"}`
+	if err := os.WriteFile(filepath.Join(dir, "mine.json"), []byte(own), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if h.siblingWorking() {
+		t.Fatal("the window's own heartbeat reads as a sibling at work")
 	}
 }
 

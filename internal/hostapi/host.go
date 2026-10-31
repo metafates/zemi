@@ -1003,6 +1003,9 @@ func (h *Host) siblingWorking() bool {
 		if json.Unmarshal(raw, &hb) != nil || !hb.Working || hb.Sock == "" {
 			continue
 		}
+		if hb.Sock == h.sockPath {
+			continue // the window's own heartbeat reads working until its next beat; only a sibling's says a sibling runs
+		}
 		if peerAlive(hb.Sock) {
 			return true
 		}
