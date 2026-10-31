@@ -1741,7 +1741,8 @@ UI extensibility contract:
   for `@`, `Commands` for the palette; a source's own trigger titles nothing,
   since zemi cannot know what it means.
 - The composer has one word trigger, `@`: one popup titled "Attach",
-  two sections under headers - `Files`, then `Skills`, each
+  four sections under headers - `Files`, then `Skills`, then `Workflows`,
+  then `Agents` - each
   dropped, header included, when nothing matches it. Skills complete by
   name and attach as `@name` on submit, disabled ones included; files
   complete from a walk of the project (every file and directory, ignored
@@ -1752,19 +1753,27 @@ UI extensibility contract:
   (`internal/`), quoted forms too), from the listing of
   the directory it names - `@~/Downloads/`, `@../sibling/`, `@/etc/`,
   `@internal/` walk
-  in shell-tab style, a directory accept keeping the popup open. On submit
-  a directory attaches its own entries, as `ls` lists them - one name per
-  line, a subdirectory's trailing its slash - capped with the remainder
-  named at the tail; reading deeper is what the model's tools are for. A path
+  in shell-tab style, a directory accept keeping the popup open. Workflows
+  complete by name from the saved files the `/workflows` overlay runs,
+  agents from the definitions the `/agents` overlay lists; on submit a
+  name no path answers attaches the hint that runs one - its kind, what it
+  is and the exact call (`workflow name="…" args="…"`, `agent agent="…"
+  prompt="…"`) - never the entity's source, the words around the mention
+  staying the request; an existing path always wins the name, and a name
+  both kinds hold goes to the workflow. On submit a directory attaches its
+  own entries, as `ls` lists them - one name per line, a subdirectory's
+  trailing its slash - capped with the remainder named at the tail; reading
+  deeper is what the model's tools are for. A path
   that cannot ride a bare word (whitespace, trailing sentence punctuation)
   rides quoted, `@"~/My Docs/a.txt"` - framed `'` when the name itself
   holds `"`, whose pair would end there; a space ends the word - an
   open-quoted one whose path resolves, as the expander resolves it,
   symlinks included, takes its closing quote before the space, so prose
   after it rides outside, while a word still being typed keeps its quote open
-  and swallows the line, as a shell's does. While both sections have rows, the
-  Files section caps so both headers stay in the window, the Lua extras
-  pricing in first; the Files ranking
+  and swallows the line, as a shell's does. While the Skills section has
+  rows, the Files section caps so both headers stay in the window (the
+  workflow and agent sections window below, reached by narrowing or
+  scrolling), the Lua extras pricing in first; the Files ranking
   keeps a file name the token begins first, then the score of the name, or
   of the path when only the path matches. `+` is free for a completion
   source again: no trigger is reserved but `/`.

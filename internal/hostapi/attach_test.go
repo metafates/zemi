@@ -780,3 +780,62 @@ func TestSendPromptDefuses(t *testing.T) {
 		t.Fatalf("a forged element survived SendPrompt: %q", got)
 	}
 }
+
+// TestEntityAttachment: an @name no path answers can name a saved workflow
+// or an agent definition; the mention attaches the hint that runs it - the
+// kind, what it is and the exact call - while the typed words stay the
+// request. An existing path wins the name, a name both kinds hold goes to
+// the workflow, a mention attaches once, and a name nothing offers stays
+// prose.
+func TestEntityAttachment(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.Dirs.ConfigHome = t.TempDir()
+	flows := filepath.Join(h.Dirs.ConfigHome, "workflows")
+	agents := filepath.Join(h.Dirs.ConfigHome, "agents")
+	for _, f := range []struct{ dir, name, body string }{
+		{flows, "fresh.lua", "-- a fresh workflow\nreturn 1\n"},
+		{flows, "dual.lua", "-- both kinds\nreturn 1\n"},
+		{agents, "lookout.md", "---\ndescription: watches a corner of the tree\n---\nbody"},
+		{agents, "scout.md", "---\ndescription: scopes the tree for a name\n---\nbody"},
+		{agents, "dual.md", "---\ndescription: the agent of the same name\n---\nbody"},
+	} {
+		if err := os.MkdirAll(f.dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(f.dir, f.name), []byte(f.body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// the file shadows the agent's name: an existing path always wins
+	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "scout"), []byte("a file named scout"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range []struct{ name, text, want, not string }{
+		{
+			"a workflow attaches its run hint", "@fresh make it count",
+			"<workflow name=\"fresh\">\nThe user attached this saved workflow with @fresh in the message above", "",
+		},
+		{
+			"the hint carries what it is and the call", "@fresh go",
+			`Run it with the workflow tool: workflow name="fresh" args="<the request, from the words around the mention>" description="<a 3-6 word label>"`, "",
+		},
+		{"an agent attaches its run hint", "@lookout wide", "<agent name=\"lookout\">", ""},
+		{"the agent hint names the call", "@lookout", `Start it with the agent tool: agent agent="lookout" description="<a 3-5 word label>" prompt="<the full task>"`, ""},
+		{"a name both kinds hold goes to the workflow", "@dual see it", "<workflow name=\"dual\">", "<agent name=\"dual\">"},
+		{"a path wins the name", "@scout read it", "<file path=\"scout\">\na file named scout", "<agent name=\"scout\">"},
+	} {
+		got, _ := h.expandAttachments(c.text, true)
+		typed, tail := agent.CutAttached(got)
+		if typed != c.text || !strings.Contains(tail, c.want) || (c.not != "" && strings.Contains(tail, c.not)) {
+			t.Errorf("%s: typed %q, tail:\n%s", c.name, typed, tail)
+		}
+	}
+	if n := strings.Count(mustAttached(t, h, "@fresh a @fresh b"), "<workflow name="); n != 1 {
+		t.Errorf("a repeated mention attached %d hints", n)
+	}
+	if got, _ := h.expandAttachments("@nosuch here", true); got != "@nosuch here" {
+		t.Errorf("a name nothing offers changed the message: %q", got)
+	}
+}

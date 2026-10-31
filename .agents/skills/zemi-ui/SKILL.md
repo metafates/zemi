@@ -168,6 +168,9 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   the project, `/` as itself - wherever it lives, a symlink out of the project attaching its
   target; a directory attaches its own entries, as `ls` lists them - one
   name per line, a subdirectory's trailing its slash - capped with the
-  remainder named at the tail; what attached shows in the attach echo, and
+  remainder named at the tail; a word no path answers falls to
+  `attachEntity`, which resolves a saved workflow or an agent definition by
+  name and attaches the run hint (kind, description, the exact call), a name
+  held by both going to the workflow; what attached shows in the attach echo, and
   a refusal names why with the absolute
   path (the read tool refuses `~`).
