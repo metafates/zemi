@@ -24,6 +24,10 @@ func seedKeys(h *Host) {
 func TestKeysOverlayRows(t *testing.T) {
 	h, _ := newTestHost(t)
 	seedKeys(h)
+	// a waiting builtin names its variable, not the shell's export line
+	if r := h.keysOverlay("").Items; len(r) != 2 || r[1].Text != "wait" || r[1].Section != "Needs a key" || r[1].Desc != "WAIT_KEY" || r[1].Copy != "WAIT_KEY=" {
+		t.Fatalf("waiting row: %+v", r)
+	}
 	if err := h.Providers.Register(agent.Spec{ID: "cfg", Kind: agent.KindAnthropic}, "ck", false); err != nil {
 		t.Fatal(err)
 	}

@@ -2336,7 +2336,7 @@ func strs[T ~string](vals []T) []string {
 }
 
 // OpenModelPicker lists the registered models for a target, where enter sets
-// it, then the keyless builtin providers, where it copies the export line.
+// it, then the keyless builtin providers, where it copies the variable.
 // Name "" is /model and "default" the model key's list, both of them the
 // conversation's: a pick there writes models.default. Another
 // target's list opens on a row leaving it to its own model.
@@ -2447,7 +2447,7 @@ func (h *Host) modelPicker(name string) Overlay {
 	}
 	// the builtin providers without a key close the list, so a user finds
 	// what else zemi supports and the variable that turns each on; enter
-	// pastes a key, y still copies the export line
+	// pastes a key, y still copies the variable
 	for _, m := range h.Providers.Missing() {
 		o.Items = append(o.Items, missingKeyRow(m))
 	}
