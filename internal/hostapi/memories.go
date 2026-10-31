@@ -138,6 +138,7 @@ func (h *Host) memoriesOverlay() Overlay {
 		if unbuilt > 0 {
 			foot += fmt.Sprintf(" · %d not summarized yet", unbuilt)
 		}
+		foot += " · tags are line ids"
 		o.Foot = foot
 	}
 	return o

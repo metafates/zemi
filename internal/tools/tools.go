@@ -148,6 +148,14 @@ var readOnlyVerdict = Verdict{DecidedBy: ByReadOnly, Reason: "the read-only agen
 // DeniedText is the tool error a refused gate returns: who decided, what
 // it was about, and the reason the asker gave.
 func DeniedText(v Verdict, what string) string {
+	if v.DecidedBy == ByNobody {
+		// no one could answer the ask: no UI for it, or it died with its chat
+		s := "no one could answer the ask: " + what
+		if v.Reason == "" {
+			return s
+		}
+		return s + ": " + v.Reason
+	}
 	s := deniedPrefix + v.DecidedBy + "): " + what
 	if v.Reason == "" {
 		return s

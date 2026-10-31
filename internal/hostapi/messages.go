@@ -45,7 +45,7 @@ func (h *Host) MessagesCommand(args string) error {
 		if seq, err := strconv.ParseInt(strings.TrimPrefix(rest, "#"), 10, 64); err == nil {
 			return h.openMessagesRailSeq(seq)
 		}
-		return Usagef("/messages rail <row> (a row the list shows)")
+		return Usagef("/messages rail <row> (a row the list shows; opens the run behind it)")
 	case "view":
 		rest = strings.TrimSpace(rest)
 		if n, err := strconv.Atoi(rest); err == nil {
@@ -53,7 +53,7 @@ func (h *Host) MessagesCommand(args string) error {
 		}
 		seq, err := strconv.ParseInt(strings.TrimPrefix(rest, "#"), 10, 64)
 		if err != nil {
-			return Usagef("/messages view <row> (a row the list shows)")
+			return Usagef("/messages view <row> (a row the list shows; opens the row whole)")
 		}
 		return h.openLogView(seq)
 	}

@@ -382,7 +382,7 @@ func TestNotFoundNamesSiblings(t *testing.T) {
 func TestAskDenialText(t *testing.T) {
 	for _, c := range []struct{ by, want string }{
 		{"user", "permission denied (user): tool.shell"},
-		{"nobody", "permission denied (nobody): tool.shell"},
+		{"nobody", "no one could answer the ask: tool.shell"},
 	} {
 		p, _ := testPipeline(t, false)
 		p.Ask = func(Request) (bool, string) { return false, c.by }

@@ -200,7 +200,7 @@ func (h *Host) OpenErrors(args string) error {
 			Keys:   keys,
 		})
 	}
-	ui.OpenOverlay(Overlay{ID: "errors", Title: "Errors", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Empty: "No machinery errors yet; a failed turn draws its error in the chat."})
+	ui.OpenOverlay(Overlay{ID: "errors", Title: "Errors", Origin: lua.OriginBuiltin, Items: items, Selected: sel, Empty: "No recorded errors yet; a failed turn draws its error in the chat."})
 	return nil
 }
 
