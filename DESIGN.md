@@ -1917,7 +1917,15 @@ and the moves that matter travel it: a second zemi reads the lease row
 and dials the holder the way the composer would (`zemi send`), and a
 window whose presence moved - booted, closed - pokes every
 sibling it can dial, whose beat then reads the change at once instead of
-at its next tick. `/windows` lists the siblings off the same heartbeats -
+at its next tick. The writer's live turn travels it too: every stream
+flush and every row it logs pokes a push, and one coalesced wake ships
+the whole live snapshot to every sibling it can dial, which applies it
+with a sync of the rows the same flush logged - a viewer draws the
+writer's turn at the cadence the writer draws its own, with no tick's
+second between. The pushed turn never owns the watching window: its
+`AgentActive` stays false, so its sync tick still runs and its composer
+still refuses; the snapshot's clocks advance from the frame's arrival
+between pushes, and a takeover drops the watch whole. `/windows` lists the siblings off the same heartbeats -
 origin, process, what each says it is on, the holder named - and its
 `kill <origin>` tells the process to quit (asks first): the killed
 window's clean exit releases its lease, and the killer takes the write

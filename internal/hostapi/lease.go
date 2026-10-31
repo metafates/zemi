@@ -273,6 +273,7 @@ func (h *Host) setWriter(mine bool) {
 	ag := h.agents
 	ag.mu.Lock()
 	ag.writer = mine
+	ag.remote = nil // the write and the watch never share a window
 	ag.mu.Unlock()
 	h.setLeaseWord(map[bool]string{true: writerThis, false: writerOther}[mine])
 }

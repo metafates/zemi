@@ -272,7 +272,8 @@ func (h *Host) WriterResetEnded() {
 }
 
 // SyncChat pulls what other windows appended to the shared log into this
-// window's transcript, on the config watch's idle tick: two windows on one
+// window's transcript, on the config watch's idle tick and on every stream
+// frame the writing window pushes: two windows on one
 // repository are the one chat it keeps, and the log's newest word is the
 // truth. A live turn or run owns the tail, so the tick's own AgentActive
 // guard covers it. A log that shrank under this window, or whose row this

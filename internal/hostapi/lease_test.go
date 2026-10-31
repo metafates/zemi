@@ -14,6 +14,7 @@ func openClaimed(t *testing.T, stateHome, projectDir string) *Host {
 	t.Helper()
 	h, _ := newWindow(t, stateHome, projectDir)
 	h.OpenPeers()
+	h.beat() // the heartbeat is what a pushing writer dials
 	t.Cleanup(h.ClosePeers)
 	return h
 }
@@ -185,5 +186,105 @@ func TestYieldEndsTheTurnAtItsBoundary(t *testing.T) {
 	b.leaseTick(true)
 	if !b.writerFlag() {
 		t.Fatal("the asker did not promote")
+	}
+}
+
+// TestViewerDrawsTheWritersStreamLive: the writer's flushed stream reaches the
+// watching window over its socket - the same snapshot it draws itself, clocks
+// running between frames - and the viewer owns no turn underneath: its sync
+// tick still runs and its composer still refuses.
+func TestViewerDrawsTheWritersStreamLive(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a := openClaimed(t, state, proj)
+	b := openClaimed(t, state, proj)
+
+	a.SeedStream(StreamSnapshot{Active: true, Text: "mid-reply", Task: "write the docs", Elapsed: time.Second})
+	a.pokeViewers()
+	var got StreamSnapshot
+	for range 500 {
+		if got = b.AgentStream(); got.Text == "mid-reply" && got.Active {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got.Text != "mid-reply" || !got.Active {
+		t.Fatalf("the viewer never drew the pushed stream: %+v", got)
+	}
+	if b.AgentActive() {
+		t.Fatal("a pushed turn made the viewer own one: the tick and the composer would follow")
+	}
+	if got.Elapsed <= time.Second {
+		t.Fatalf("the pushed clock did not run: %v", got.Elapsed)
+	}
+	if got.Task != "write the docs" {
+		t.Fatalf("the pushed task did not arrive: %q", got.Task)
+	}
+	time.Sleep(25 * time.Millisecond)
+	if after := b.AgentStream().Elapsed; after <= got.Elapsed {
+		t.Fatalf("the watched clock froze between frames: %v then %v", got.Elapsed, after)
+	}
+
+	// the turn's end clears the live view the way the writer's own window sees it
+	a.SeedStream(StreamSnapshot{})
+	a.pokeViewers()
+	for range 500 {
+		if got = b.AgentStream(); !got.Active {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got.Active || got.Text != "" {
+		t.Fatalf("the turn's end never reached the viewer: %+v", got)
+	}
+}
+
+// TestPushedRowsReachTheViewerWithoutTheTick: a row the writer logs rides the
+// same poke as its stream, so the watching window splices it when the frame
+// arrives - no tick's second of latency.
+func TestPushedRowsReachTheViewerWithoutTheTick(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a := openClaimed(t, state, proj)
+	b := openClaimed(t, state, proj)
+
+	if _, err := a.chat.Notice("the loop ran", "run 3 of 5"); err != nil {
+		t.Fatalf("Notice: %v", err)
+	}
+	for range 500 {
+		for _, m := range b.Session().Transcript {
+			if m.Text == "the loop ran" {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the logged row never reached the viewer without its tick")
+}
+
+// TestTakeoverDropsTheWatch: the survivor that takes the write stops drawing
+// the gone writer's stream - its own snapshot is the truth again.
+func TestTakeoverDropsTheWatch(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a := openClaimed(t, state, proj)
+	b := openClaimed(t, state, proj)
+
+	a.SeedStream(StreamSnapshot{Active: true, Text: "frozen mid-reply"})
+	a.pokeViewers()
+	for range 500 {
+		if b.AgentStream().Text == "frozen mid-reply" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if b.AgentStream().Text != "frozen mid-reply" {
+		t.Fatal("the viewer never drew the pushed stream")
+	}
+
+	a.ClosePeers()     // a clean close releases the lease
+	b.leaseTick(false) // the survivor takes the write
+	if !b.writerFlag() {
+		t.Fatal("the survivor never took the write")
+	}
+	if s := b.AgentStream(); s.Active || s.Text != "" {
+		t.Fatalf("the takeover still draws the gone writer's stream: %+v", s)
 	}
 }

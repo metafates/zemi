@@ -340,7 +340,8 @@ applied one. A store made before goose only gains its version table: the baselin
   and replaced whole; `InputHistory` reads the log's user rows. `historyFrom` decodes a run's
   stored messages into model history and transcript rows for its child session. A second
   window's rows carry a different log `origin`, which the seq stamping skips and `SyncChat`
-  (the config watch's idle tick) splices into this window at their place, so two windows on
+  (the config watch's idle tick, and every stream frame the writing window pushes) splices
+  into this window at their place, so two windows on
   one repository draw the one chat the log keeps; rows carry no provenance, and the writing
   window's reset toasts "Chat reset by the writable window" and reloads this window whole. A
   window whose composer holds a draft when the writer's rows land gets one collision toast
@@ -359,7 +360,14 @@ applied one. A store made before goose only gains its version table: the baselin
   `ClosePeers` follows `p.Run()`, which is not `Host.Close`'s path). The heartbeat advertises
   the window's socket (`internal/ipc`, bound in a private temp dir), and a window whose
   presence moved - booted, closed - pokes every sibling it can dial (`peerPoke`), so
-  their next beat reads the change at once; the beat stays as the crash backstop. `zemi send
+  their next beat reads the change at once; the beat stays as the crash backstop. The
+  writer's live turn travels the same sockets: every stream flush (`agentStream`) and
+  every logged row (`chatLog.wake`) pokes, and one coalesced wake (`pushStreamLoop`,
+  writer-gated) ships the whole snapshot to each sibling - `servePeer` stores it
+  (`watchStream`, drawn by `streamLocked` with its clocks advanced from the frame's
+  arrival) and syncs the rows the same flush logged. A pushed turn never flips the
+  watcher's `AgentActive` - its tick keeps running, its composer keeps refusing - and
+  `setWriter` drops the watch on takeover. `zemi send
   <text>` (internal/cli/send.go) reads the lease row and dials the holder: a
   command runs, a message starts a turn or joins the steering queue, and
   the reply frame says which (`servePeer` in presence.go); a holder that refuses or dies is

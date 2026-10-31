@@ -7,6 +7,7 @@ package ipc
 
 import (
 	"bufio"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -70,14 +71,16 @@ func Dial(path string, timeout time.Duration) (net.Conn, error) {
 }
 
 // Request is the one frame a client sends: the text to deliver, a presence
-// poke, the write handed over, or a viewer's ask for it.
+// poke, the write handed over, a viewer's ask for it, or the writing window's
+// live stream pushed to the ones watching.
 type Request struct {
-	Text   string `json:"text"`
-	Hello  bool   `json:"hello,omitempty"`  // presence poke: re-read the siblings now
-	Yours  bool   `json:"yours,omitempty"`  // the write was handed to this window: re-read the lease now
-	Yield  bool   `json:"yield,omitempty"`  // ask for the write; Origin and Sock name the asker
-	Origin string `json:"origin,omitempty"` // the asking window's per-boot id
-	Sock   string `json:"sock,omitempty"`   // the asking window's socket
+	Text   string         `json:"text"`
+	Hello  bool           `json:"hello,omitempty"`  // presence poke: re-read the siblings now
+	Yours  bool           `json:"yours,omitempty"`  // the write was handed to this window: re-read the lease now
+	Yield  bool           `json:"yield,omitempty"`  // ask for the write; Origin and Sock name the asker
+	Origin string         `json:"origin,omitempty"` // the asking window's per-boot id
+	Sock   string         `json:"sock,omitempty"`   // the asking window's socket
+	Stream jsontext.Value `json:"stream,omitempty"` // the writer's live turn, whole: a watching window draws it as its own
 }
 
 // Reply is the one frame the window answers with.

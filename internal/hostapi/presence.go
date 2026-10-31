@@ -10,6 +10,7 @@ package hostapi
 
 import (
 	"cmp"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -69,6 +70,8 @@ func (h *Host) OpenPeers() {
 		return
 	}
 	h.listenPeers()
+	h.streamPoke = make(chan struct{}, 1)
+	h.GoSafe("stream push", h.pushStreamLoop)
 	h.claimLease()
 }
 
@@ -134,14 +137,24 @@ func (h *Host) agentsTask() string {
 // servePeer reads one delivered frame: a prompt goes the way the composer
 // would (a command runs, a message starts a turn or joins the running one),
 // a hello makes this window re-read its siblings now, a yours re-reads the
-// lease the write just moved to, and a yield asks this window for the write.
-// The reply tells the sender which happened; a bind probe or an unreadable
-// frame goes unanswered, a read frame is always answered.
+// lease the write just moved to, a yield asks this window for the write, and
+// a stream frame is the writing window's live turn, applied with the rows the
+// same flush logged. The reply tells the sender which happened; a bind probe
+// or an unreadable frame goes unanswered, a read frame is always answered.
 func (h *Host) servePeer(conn net.Conn) {
 	defer func() { _ = conn.Close() }()
 	_ = conn.SetReadDeadline(time.Now().Add(peerReadWait))
 	req, err := ipc.ReadRequest(conn)
 	if err != nil {
+		return
+	}
+	if req.Stream != nil {
+		_ = ipc.WriteReply(conn, ipc.Reply{OK: true})
+		var w streamWire
+		if json.Unmarshal([]byte(req.Stream), &w) == nil {
+			h.watchStream(wireToStream(w))
+			h.SyncChat() // the frame's rows ride the shared log: splice them now, not at the next tick
+		}
 		return
 	}
 	if req.Hello {
@@ -186,14 +199,29 @@ func (h *Host) servePeer(conn net.Conn) {
 // heartbeat is on disk before it pokes; a poke that misses costs nothing, the
 // ticker sweeps it up.
 func (h *Host) peerPoke() {
+	for _, sock := range h.siblingSocks() {
+		conn, err := ipc.Dial(sock, time.Second)
+		if err != nil {
+			continue
+		}
+		_, _ = ipc.RoundTrip(conn, &ipc.Request{Hello: true}, 2*time.Second)
+		_ = conn.Close()
+	}
+}
+
+// siblingSocks reads the peers dir into the sockets a delivered frame reaches,
+// this window's own heartbeat left out: a stale heartbeat's socket simply
+// refuses the dial.
+func (h *Host) siblingSocks() []string {
 	if h.peersPath == "" {
-		return
+		return nil
 	}
 	dir := filepath.Dir(h.peersPath)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return
+		return nil
 	}
+	var socks []string
 	mine := filepath.Base(h.peersPath)
 	for _, e := range entries {
 		if e.Name() == mine || filepath.Ext(e.Name()) != ".json" {
@@ -209,12 +237,114 @@ func (h *Host) peerPoke() {
 		if json.Unmarshal(raw, &hb) != nil || hb.Sock == "" {
 			continue
 		}
-		conn, err := ipc.Dial(hb.Sock, time.Second)
+		socks = append(socks, hb.Sock)
+	}
+	return socks
+}
+
+// pokeViewers asks for the live view to reach the sibling windows now, not at
+// their next sync tick: every stream flush and every logged row calls here.
+// The send never blocks and never queues - a poke that finds the gate full is
+// dropped, because the pusher's next snapshot carries the newer state whole.
+func (h *Host) pokeViewers() {
+	if h.peersPath == "" || h.streamPoke == nil {
+		return
+	}
+	select {
+	case h.streamPoke <- struct{}{}:
+	default:
+	}
+}
+
+// streamWire is the pushed snapshot on the wire: StreamSnapshot with its
+// clocks as milliseconds, which json has a default representation for -
+// time.Duration it does not. Every StreamSnapshot field rides it; a new one
+// joins here too, or the watching windows never see it.
+type streamWire struct {
+	Active       bool         `json:"active"`
+	Text         string       `json:"text"`
+	Reasoning    string       `json:"reasoning"`
+	Thinking     bool         `json:"thinking"`
+	Task         string       `json:"task"`
+	Tools        []StreamTool `json:"tools"`
+	Model        string       `json:"model"`
+	Steering     []Queued     `json:"steering"`
+	ThoughtMS    int64        `json:"thought_ms"`
+	ElapsedMS    int64        `json:"elapsed_ms"`
+	Retrying     bool         `json:"retrying"`
+	RetryInMS    int64        `json:"retry_in_ms"`
+	Retries      int          `json:"retries"`
+	RetryWhy     string       `json:"retry_why"`
+	Turn         int          `json:"turn"`
+	CheckingGoal bool         `json:"checking_goal"`
+	ByLoop       bool         `json:"by_loop"`
+	SessionIn    int64        `json:"session_in"`
+	SessionOut   int64        `json:"session_out"`
+	LastIn       int64        `json:"last_in"`
+	CtxWindow    int64        `json:"ctx_window"`
+	SessionCost  float64      `json:"session_cost"`
+	CacheRead    int64        `json:"cache_read"`
+	CacheBilled  int64        `json:"cache_billed"`
+}
+
+func streamToWire(s StreamSnapshot) streamWire {
+	return streamWire{
+		Active: s.Active, Text: s.Text, Reasoning: s.Reasoning, Thinking: s.Thinking,
+		Task: s.Task, Tools: s.Tools, Model: s.Model, Steering: s.Steering,
+		ThoughtMS: s.Thought.Milliseconds(), ElapsedMS: s.Elapsed.Milliseconds(),
+		Retrying: s.Retrying, RetryInMS: s.RetryIn.Milliseconds(),
+		Retries: s.Retries, RetryWhy: s.RetryWhy, Turn: s.Turn,
+		CheckingGoal: s.CheckingGoal, ByLoop: s.ByLoop,
+		SessionIn: s.SessionIn, SessionOut: s.SessionOut, LastIn: s.LastIn,
+		CtxWindow: s.CtxWindow, SessionCost: s.SessionCost,
+		CacheRead: s.CacheRead, CacheBilled: s.CacheBilled,
+	}
+}
+
+func wireToStream(w streamWire) StreamSnapshot {
+	return StreamSnapshot{
+		Active: w.Active, Text: w.Text, Reasoning: w.Reasoning, Thinking: w.Thinking,
+		Task: w.Task, Tools: w.Tools, Model: w.Model, Steering: w.Steering,
+		Thought:  time.Duration(w.ThoughtMS) * time.Millisecond,
+		Elapsed:  time.Duration(w.ElapsedMS) * time.Millisecond,
+		Retrying: w.Retrying, RetryIn: time.Duration(w.RetryInMS) * time.Millisecond,
+		Retries: w.Retries, RetryWhy: w.RetryWhy, Turn: w.Turn,
+		CheckingGoal: w.CheckingGoal, ByLoop: w.ByLoop,
+		SessionIn: w.SessionIn, SessionOut: w.SessionOut, LastIn: w.LastIn,
+		CtxWindow: w.CtxWindow, SessionCost: w.SessionCost,
+		CacheRead: w.CacheRead, CacheBilled: w.CacheBilled,
+	}
+}
+
+// pushStreamLoop is the live sync's push half: one wake ships the current
+// snapshot to every sibling socket, the pokes that piled up meanwhile folded
+// into it, so a viewer draws the writer's turn at the cadence the writer
+// draws its own. The round trips are this goroutine's alone: a stalled viewer
+// delays nothing but its own next frame.
+func (h *Host) pushStreamLoop() {
+	for range h.streamPoke {
+		for len(h.streamPoke) > 0 {
+			<-h.streamPoke
+		}
+		if !h.writerFlag() {
+			continue // a viewer's own flushes poke too; only the writer pushes
+		}
+		socks := h.siblingSocks()
+		if len(socks) == 0 {
+			continue
+		}
+		raw, err := json.Marshal(streamToWire(h.AgentStream()))
 		if err != nil {
 			continue
 		}
-		_, _ = ipc.RoundTrip(conn, &ipc.Request{Hello: true}, 2*time.Second)
-		_ = conn.Close()
+		for _, sock := range socks {
+			conn, err := ipc.Dial(sock, time.Second)
+			if err != nil {
+				continue
+			}
+			_, _ = ipc.RoundTrip(conn, &ipc.Request{Stream: jsontext.Value(raw)}, 2*time.Second)
+			_ = conn.Close()
+		}
 	}
 }
 

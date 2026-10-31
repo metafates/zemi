@@ -97,7 +97,13 @@ type agentHost struct {
 	active bool
 	// writer: this window holds the lease, so only it may start turns, run the
 	// goal chain and write user rows. True until OpenPeers' claim loses it.
-	writer    bool
+	writer bool
+	// remote is the writing window's pushed live turn, which a window that owns
+	// no turn draws as its own: replaced whole per push, its clocks advanced
+	// from remoteAt at each read. AgentActive stays false under it, so the sync
+	// tick keeps running and the composer keeps refusing.
+	remote    *StreamSnapshot
+	remoteAt  time.Time
 	textBuf   string
 	reasonBuf string
 	// stretchMS holds the wall time of each reasoning stretch the turn has
@@ -1494,6 +1500,7 @@ func (h *Host) AgentActive() bool {
 }
 
 func (h *Host) agentStream() {
+	h.pokeViewers()
 	if ui := h.hooks(); ui != nil {
 		ui.AgentStream()
 	}

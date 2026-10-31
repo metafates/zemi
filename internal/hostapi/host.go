@@ -581,15 +581,16 @@ type Host struct {
 	// origin is this window's writer id, what its log rows carry and the
 	// pairing tells its rows apart by; pendRows buffers the other windows'
 	// rows the pairing passed, for SyncChat to splice in.
-	origin    string
-	peersPath string                    // this window's heartbeat file, "" without a store
-	peers     atomic.Pointer[peersView] // the sibling windows the last beat read
-	lease     atomic.Pointer[string]    // the lease word the pill and the ctx read
-	leaseTTL  time.Duration             // lease staleness before a takeover; 0 reads peersTTL (tests narrow it)
-	sockLn    net.Listener              // the delivered-prompt socket, nil when not bound
-	sockDir   string                    // its private temp dir, removed on close
-	sockPath  string                    // the socket's path, advertised in the heartbeat
-	pendRows  []store.LogEntry
+	origin     string
+	peersPath  string                    // this window's heartbeat file, "" without a store
+	peers      atomic.Pointer[peersView] // the sibling windows the last beat read
+	lease      atomic.Pointer[string]    // the lease word the pill and the ctx read
+	leaseTTL   time.Duration             // lease staleness before a takeover; 0 reads peersTTL (tests narrow it)
+	sockLn     net.Listener              // the delivered-prompt socket, nil when not bound
+	sockDir    string                    // its private temp dir, removed on close
+	sockPath   string                    // the socket's path, advertised in the heartbeat
+	streamPoke chan struct{}             // the live-view push gate: one buffered poke, coalesced by the pusher
+	pendRows   []store.LogEntry
 
 	// agentRows caches ctx.agent's tool subtables between renders: a finished
 	// tool's fields never change, so a long turn rebuilds only the rows that

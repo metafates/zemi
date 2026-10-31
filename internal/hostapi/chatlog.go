@@ -130,7 +130,7 @@ func (c *chatLog) Thought(text string, ms int64) error {
 	if _, err := c.h.DB.AppendLog(store.KindThought, text, string(meta), "", thoughtLeaf(text)); err != nil {
 		return err
 	}
-	c.tree.Wake()
+	c.wake()
 	return nil
 }
 
@@ -205,7 +205,7 @@ func (c *chatLog) Tool(name, input, id string) error {
 			return err
 		}
 	}
-	c.tree.Wake()
+	c.wake()
 	return nil
 }
 
@@ -241,7 +241,7 @@ func (c *chatLog) Echo(name string, ok bool, output string, call StreamTool) err
 	if _, err := c.h.DB.AppendLog(store.KindEcho, clipped, string(meta), "", echoLeaf(name, ok, clipped)); err != nil {
 		return err
 	}
-	c.tree.Wake()
+	c.wake()
 	return nil
 }
 
@@ -282,6 +282,13 @@ func (c *chatLog) setReplyStat(stat TurnStat, thought time.Duration) error {
 	return c.h.DB.SetLogMeta(c.reply, string(meta))
 }
 
+// wake ends a logged row's write: the tree rebuilds from it, and the sibling
+// windows hear of it now - their sync runs on the frame, not on their tick.
+func (c *chatLog) wake() {
+	c.tree.Wake()
+	c.h.pokeViewers()
+}
+
 // append logs the rows a text splits into, each with its view line, and
 // returns the first and the last seq it wrote.
 func (c *chatLog) append(kind store.LogKind, text, meta, parts string) (int64, int64, error) {
@@ -305,7 +312,7 @@ func (c *chatLog) appendRows(kind store.LogKind, rows []string, meta, parts stri
 		}
 		last = seq
 	}
-	c.tree.Wake()
+	c.wake()
 	return first, last, nil
 }
 
