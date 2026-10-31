@@ -553,8 +553,8 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		// a desc keeps its runs of spaces: padded columns (a status word) stay put
 		item.Desc, item.Tag, item.Section = oneLine.Replace(sanitize.String(item.Desc)), sanitize.Line(item.Tag), sanitize.Line(item.Section)
 		item.Verb = hostapi.Verb(sanitize.Line(string(item.Verb)))
-		item.Fill, item.Copy, item.Preview = sanitize.String(item.Fill), sanitize.String(item.Copy), sanitize.String(item.Preview)                          // Detail is the detail view's Body, sanitized there
-		it := listItem{label: sanitize.Line(item.Text), desc: item.Desc, key: tagSeg(item.Tag), section: item.Section, mark: markSeg(item.Mark), row: item} // a newline would break the box
+		item.Fill, item.Copy, item.Preview = sanitize.String(item.Fill), sanitize.String(item.Copy), sanitize.String(item.Preview)                      // Detail is the detail view's Body, sanitized there
+		it := listItem{label: sanitize.Line(item.Text), desc: item.Desc, key: tagSeg(item.Tag), section: item.Section, mark: itemMark(item), row: item} // a newline would break the box
 		if item.On != nil || item.Locked != nil {
 			it.key = switchSeg(item.On != nil && *item.On, item.Locked != nil)
 		}

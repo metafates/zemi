@@ -622,6 +622,7 @@ type OverlayItem struct {
 	Text, Desc, Tag, Section, Detail, Fill, Copy, Run, ID, Preview string
 	Verb                                                           Verb
 	Mark                                                           MarkKind   // drawn ahead of the text
+	Glyph                                                          string     // a leading glyph no state owns: drawn ahead like a mark, kept out of the label a filter matches
 	On, Locked                                                     *bool      // On: the switch is drawn, on or off; Locked: it stands with nothing to switch
 	Danger                                                         bool       // cannot be undone: drawn in Danger, and its first enter or key only arms it
 	Tail                                                           bool       // a text too wide is cut from the left: a path's name is at its end
