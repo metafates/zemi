@@ -799,6 +799,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	return []fantasy.AgentTool{
 		mk(ToolShell, `Run a shell command. It runs bash when bash is on PATH and, on unix, falls back to zsh, dash, then sh, so a bashism can fail there. Every call already starts in the working directory: relative paths resolve there and a command never needs a cd to reach it. A cd or export lasts for its call only. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged.
 Not for what does not exit on its own (npm run dev, tsc -w, tail -f): what a command leaves running is stopped when it returns. Not for reading, searching or editing a file, but one perl -pi command makes the same substitution across many files.
+A command whose output is worth a second look (a build, a long test run, a log) tees under $ZEMI_SCRATCH before any other pipe stage - make test 2>&1 | tee "$ZEMI_SCRATCH/t.log" | tail -3 - so a stage that fails, or the next part you want, reads the file instead of rerunning the command.
 Chain dependent steps with &&.`,
 			false,
 			shellArgs{},
