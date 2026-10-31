@@ -1528,8 +1528,14 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 			statW = ansi.StringWidth(st.o.Foot) + 3
 		}
 		foot := hint(footW-statW, hints...)
-		if st.armed {
-			foot = armedHint(footW, "enter", st.items[st.visible[st.selected]].label, "again to ")
+		// the filter can empty the list under an armed key: the footer then
+		// names the arm alone, no row's label or view
+		var sel *listItem
+		if len(st.visible) > 0 {
+			sel = &st.items[st.visible[st.selected]]
+		}
+		if st.armed && sel != nil {
+			foot = armedHint(footW, "enter", sel.label, "again to ")
 		}
 		if d := st.keyDesc(st.keyArmed); d != "" {
 			// the typed confirm's arm completes the command the user typed:
@@ -1541,7 +1547,7 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 			}
 			// a danger confirm's consequences live in the row's view: the arm
 			// is exactly when they should stay one key away
-			if hasView(st.items[st.visible[st.selected]].row) {
+			if sel != nil && hasView(sel.row) {
 				foot = append(foot,
 					hostapi.Segment{Text: " · ", HL: hostapi.ChromeHint},
 					hostapi.Segment{Text: "l", HL: hostapi.ChromeHintKey},

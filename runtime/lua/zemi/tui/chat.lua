@@ -290,7 +290,7 @@ local function builder(ctx, width)
 		if #wrapped > draw then
 			push({
 				{ text = "▌ ", hl = bar_hl, copy = false, hover = false, sticky = not waiting },
-				{ text = "… +" .. (#wrapped - draw) .. " lines · ctrl+m to read", hl = "Dim", copy = false },
+				{ text = "… +" .. (#wrapped - draw) .. " lines · /messages to read", hl = "Dim", copy = false },
 			})
 		end
 		-- another window wrote this: name it under the message, the reply
@@ -948,8 +948,9 @@ zemi.ui.widget.add({
 				B.gap("text")
 				B.markdown(m.text)
 				-- another window wrote this reply: name it under the text, the
-				-- user row's mark, so a spliced exchange reads as whose it was
-				if m.foreign then
+				-- user row's mark, so a spliced exchange reads as whose it was —
+				-- once per exchange, where the rows before it did not already
+				if m.foreign and not (tr[first - 1] and tr[first - 1].foreign) then
 					B.lines[#B.lines + 1] = { { text = "  ", copy = false }, { text = "· other window", hl = "Dim" } }
 				end
 				-- The readout rides the reply that ends the exchange, and only the
@@ -1201,7 +1202,7 @@ zemi.ui.widget.add({
 							.. older
 							.. " earlier "
 							.. (older == 1 and "message" or "messages")
-							.. " · ctrl+m to browse",
+							.. " · /messages to browse",
 						hl = "Dim",
 						copy = false,
 						hover = false,

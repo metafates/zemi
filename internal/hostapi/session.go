@@ -140,6 +140,9 @@ func (h *Host) stampLogSeqsLocked() {
 		if h.reloadChatLocked() {
 			h.GoSafe("chat dropped by another window", func() {
 				h.chatDropped()
+				// the chat the turn worked in is gone: its work would write
+				// rows a wiped log no longer holds, so the turn ends with it
+				h.AgentCancel()
 				h.refreshMessages()
 				h.scroll(ScrollBottom, "")
 				h.refresh()
@@ -190,8 +193,10 @@ func (h *Host) stampLogSeqsLocked() {
 			if strings.HasPrefix(m.Text, row.Text) {
 				// the message split into sibling log rows (the 8k chat split):
 				// this row stands for the first chunk and names its message;
-				// the siblings ride it, their text inside the row's own
-				for i+1 < len(rows) && rows[i+1].Kind == row.Kind && strings.Contains(m.Text, rows[i+1].Text) {
+				// the siblings ride it, by their split mark where one is
+				// written and by their text inside the row's own otherwise
+				for i+1 < len(rows) && rows[i+1].Kind == row.Kind &&
+					(splitMarked(rows[i+1]) || strings.Contains(m.Text, rows[i+1].Text)) {
 					i++
 					consumed++
 				}
@@ -516,7 +521,19 @@ func logRowsFor(rows []store.LogEntry, browse bool) []ChatMessage {
 		return q[1:], q[0]
 	}
 	tr := make([]ChatMessage, 0, len(rows))
-	for i, row := range rows {
+	for i := 0; i < len(rows); i++ {
+		row := rows[i]
+		if splitMarked(row) {
+			// the chat logged a longer message as siblings: the transcript
+			// holds one row for it, so the rebuild folds them back together
+			var b strings.Builder
+			b.WriteString(row.Text)
+			for i+1 < len(rows) && splitMarked(rows[i+1]) && rows[i+1].Kind == row.Kind {
+				i++
+				b.WriteString(rows[i].Text)
+			}
+			row.Text = b.String()
+		}
 		switch row.Kind {
 		case store.KindUser:
 			if s := strings.TrimSpace(row.Text); s != "" {

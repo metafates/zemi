@@ -289,7 +289,7 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 	}
 	textW := max(w-kw-5, 8)
 	lw = min(lw, textW/2)
-	descW := textW - lw - 2
+	descW := textW - lw - 3
 	var rows [][]hostapi.Segment
 	for i, c := range choices {
 		pad := strings.Repeat(" ", kw-ansi.StringWidth(c.key)+1)
@@ -317,7 +317,10 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 				r = label[j]
 			}
 			if j < len(desc) {
-				r = slices.Concat(r, []hostapi.Segment{{Text: strings.Repeat(" ", max(lw+2-hostapi.SegsWidth(r), 2)), HL: hostapi.ChromeHint}}, desc[j])
+				// the seam between a label and its description reads as a
+				// sentence break when the label fills its column: a dot marks it
+				pad := max(lw+1-hostapi.SegsWidth(r), 1)
+				r = slices.Concat(r, []hostapi.Segment{{Text: strings.Repeat(" ", pad) + "· ", HL: hostapi.ChromeHint}}, desc[j])
 			}
 			row := slices.Concat(btn, r)
 			if j > 0 {

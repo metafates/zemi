@@ -670,6 +670,15 @@ func TestStampPairsASplitMessage(t *testing.T) {
 	if _, err := h.DB.GetKV(goalKV); err != nil {
 		t.Fatalf("the goal survives the split: %v", err)
 	}
+	// the rebuild folds the marked siblings back into the one row the live
+	// window drew: a peer's transcript matches it
+	marked := func(seq int64, text string) store.LogEntry {
+		return store.LogEntry{Seq: seq, Kind: store.KindUser, Text: text, MetaJSON: `{"split":true}`}
+	}
+	folded := logRows([]store.LogEntry{marked(0, full[:8000]), marked(1, full[8000:])})
+	if len(folded) != 1 || folded[0].Text != full {
+		t.Fatalf("the rebuild folds the split's siblings: %+v", folded)
+	}
 }
 
 // TestLogRowsBrowseKeepsUnpairedEchoes: the transcript folds an attachment's

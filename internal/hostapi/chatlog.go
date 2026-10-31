@@ -193,6 +193,10 @@ func (c *chatLog) Tool(name, input, id string) error {
 	if err != nil {
 		return err
 	}
+	marked := len(splitText(input, chatSplitChars)) > 1
+	if marked {
+		meta = []byte(withSplit(string(meta)))
+	}
 	for _, row := range splitText(input, chatSplitChars) {
 		leaf := toolLeaf(name, row)
 		if _, err := c.h.DB.AppendLog(store.KindTool, row, string(meta), "", leaf); err != nil {
@@ -285,6 +289,11 @@ func (c *chatLog) append(kind store.LogKind, text, meta, parts string) (int64, i
 func (c *chatLog) appendRows(kind store.LogKind, rows []string, meta, parts string) (int64, int64, error) {
 	first, last := int64(-1), int64(-1)
 	for _, row := range rows {
+		if len(rows) > 1 {
+			// the chat split a longer message into siblings: the meta marks
+			// them, so a rebuild merges what one transcript row holds
+			meta = withSplit(meta)
+		}
 		seq, err := c.h.DB.AppendLog(kind, row, meta, parts, "")
 		if err != nil {
 			return first, last, err
@@ -296,6 +305,29 @@ func (c *chatLog) appendRows(kind store.LogKind, rows []string, meta, parts stri
 	}
 	c.tree.Wake()
 	return first, last, nil
+}
+
+// withSplit adds the split mark to a log row's meta: a message the chat
+// logged as sibling rows, which a rebuild folds back into one.
+func withSplit(meta string) string {
+	var m map[string]any
+	if json.Unmarshal([]byte(meta), &m) != nil || m == nil {
+		m = map[string]any{}
+	}
+	m["split"] = true
+	b, err := json.Marshal(m, json.Deterministic(true))
+	if err != nil {
+		return meta
+	}
+	return string(b)
+}
+
+// splitMarked reads the split mark withSplit wrote.
+func splitMarked(row store.LogEntry) bool {
+	var m struct {
+		Split bool `json:"split"`
+	}
+	return json.Unmarshal([]byte(row.MetaJSON), &m) == nil && m.Split
 }
 
 // toolLeaf renders a tool call's line mechanically: the tool and the first
