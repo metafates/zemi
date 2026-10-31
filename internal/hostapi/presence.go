@@ -181,19 +181,6 @@ func (h *Host) peerPoke() {
 	}
 }
 
-// peerAlive dials the window whose heartbeat advertises sock: a live one
-// answers a hello in ms, a dead one fails the dial. mtime has writers other
-// than the window; the dial is the ground truth.
-func peerAlive(sock string) bool {
-	conn, err := ipc.Dial(sock, time.Second)
-	if err != nil {
-		return false
-	}
-	defer func() { _ = conn.Close() }()
-	_, err = ipc.RoundTrip(conn, &ipc.Request{Hello: true}, 2*time.Second)
-	return err == nil
-}
-
 // beat rewrites this window's heartbeat, then re-reads the siblings' into
 // the snapshot a render reads.
 func (h *Host) beat() {

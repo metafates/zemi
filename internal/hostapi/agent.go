@@ -844,12 +844,12 @@ func (h *Host) settleTodos() {
 	}
 	// a send may have claimed the agent while this read was in flight, and
 	// its turn writes a list of its own: that one is not a leftover to settle.
-	// A sibling at work may hold the item too: the same ground truth the boot
-	// path checks before mourning its turn
+	// Only the lease's holder settles the shared list: a viewer's release
+	// would flip the item the writer's turn holds
 	ag.mu.Lock()
 	stale := ag.active
 	ag.mu.Unlock()
-	if stale || h.siblingWorking() {
+	if stale || !h.writerFlag() {
 		return
 	}
 	if err := h.DB.SetTodos(sid, todos); err != nil {
@@ -1110,8 +1110,8 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 	}
 	// a background run's report starts its own turn, which is checked after
 	goal := ag.goal
-	if goal != nil && !h.goalMine(goal) {
-		goal = nil // another window set it: its chain is that window's to run
+	if goal != nil && !ag.writer { // ag.mu held: the flag, not the locking reader
+		goal = nil // a viewer runs no chain: the goal belongs to the window that writes the chat now
 	}
 	if text != "" || err != nil || done.ctx.Err() != nil || h.tasks.runningFor(store.MainSessionID) > 0 {
 		goal = nil

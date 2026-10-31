@@ -5,8 +5,6 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -189,34 +187,8 @@ func (h *Host) setGoalFrom(seq int64, msg fantasy.Message) {
 	h.refresh()
 }
 
-// goalMine reports whether this window runs g's chain: the window that set
-// it, a row that predates the field, or a fresh boot of the same chat - the
-// writer's heartbeat is gone, so one window takes the chain over instead of
-// leaving a resumed goal with nobody to run it. Two live windows still never
-// run it twice. mtime is the cheap test and it has writers other than the
-// window, so a stale heartbeat is probed at the writer's socket before the
-// chain is taken.
-func (h *Host) goalMine(g *Goal) bool {
-	if g.Writer == "" || g.Writer == h.origin {
-		return true
-	}
-	if h.peersPath == "" {
-		return true // presence is off (headless): the store's one window is ours
-	}
-	path := filepath.Join(filepath.Dir(h.peersPath), g.Writer+".json")
-	raw, err := os.Stat(path)
-	if err == nil && time.Since(raw.ModTime()) <= peersTTL {
-		return false
-	}
-	var hb struct {
-		Sock string `json:"sock"`
-	}
-	if b, err := os.ReadFile(path); err == nil && json.Unmarshal(b, &hb) == nil && hb.Sock != "" && peerAlive(hb.Sock) {
-		return false
-	}
-	return true
-}
-
+// stopGoal drops the goal this window holds; a viewer's /goal stop refused at
+// the gate, so only the writer that runs the chain can end it.
 func (h *Host) stopGoal() error {
 	ag := h.agents
 	ag.mu.Lock()

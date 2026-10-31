@@ -4,8 +4,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -267,13 +265,12 @@ func TestGoalOnlyFromSetGoal(t *testing.T) {
 	}
 }
 
-// TestGoalChainsOnlyWhereSet: the goal's chain runs in the window that set
-// it. A window that boots on the same store loads the condition, never runs
-// a judge on it, and drops its copy when the row says the goal is gone.
-func TestGoalChainsOnlyWhereSet(t *testing.T) {
+// TestGoalChainsOnlyInTheWriter: the goal's chain runs in the window that
+// writes the chat. A viewer sends nothing and never runs a judge on it, and
+// drops its copy when the row says the goal is gone.
+func TestGoalChainsOnlyInTheWriter(t *testing.T) {
 	proj, state := t.TempDir(), t.TempDir()
-	a, _ := newWindow(t, state, proj)
-	peerHeartbeat(t, a)
+	a := openClaimed(t, state, proj)
 	var aChecks atomic.Int32
 	a.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
@@ -298,9 +295,8 @@ func TestGoalChainsOnlyWhereSet(t *testing.T) {
 	if json.Unmarshal([]byte(raw), &row) != nil || row.Condition != "the tests pass" || row.Writer != a.origin {
 		t.Fatalf("the goal row = %s, want a's condition under a's writer", raw)
 	}
-	// b boots on the store: it loads the goal and chains none of it
-	b, _ := newWindow(t, state, proj)
-	peerHeartbeat(t, b)
+	// b opens as a viewer: it loads the goal and chains none of it
+	b := openClaimed(t, state, proj)
 	var bChecks atomic.Int32
 	b.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
@@ -314,12 +310,8 @@ func TestGoalChainsOnlyWhereSet(t *testing.T) {
 	if g, ok := b.Goal(); !ok || g.Condition != "the tests pass" || g.Writer != a.origin {
 		t.Fatalf("b loaded the goal %+v, want a's", g)
 	}
-	if err := b.AgentSend("from b"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, b)
-	if got := bChecks.Load(); got != 0 {
-		t.Fatalf("b ran %d judge asides on a's goal, want none", got)
+	if err := b.AgentSend("from b"); !errors.Is(err, errNotWriter) {
+		t.Fatalf("a viewer sent: %v", err)
 	}
 	// the row still names a, and a's chain still runs to its MET
 	if raw, err = a.DB.GetKV(goalKV); err != nil {
@@ -338,7 +330,7 @@ func TestGoalChainsOnlyWhereSet(t *testing.T) {
 	if _, err := a.DB.GetKV(goalKV); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("the met goal's row survived: %v", err)
 	}
-	// b's copy of the now-gone foreign goal drops without a judge here
+	// b's copy of the now-gone goal drops without a judge here
 	b.SyncChat()
 	if _, ok := b.Goal(); ok {
 		t.Fatal("b still holds the goal the row dropped")
@@ -349,19 +341,17 @@ func TestGoalChainsOnlyWhereSet(t *testing.T) {
 }
 
 // TestGoalChainsAfterTheWriterGone: a goal outlives the window that set it.
-// While the writer's heartbeat is fresh, a window that boots on the store
-// chains none of it; once the writer is gone, the same window takes the
-// chain over, so a restarted chat resumes instead of stalling.
+// While another window writes the chat, this one runs none of it; once the
+// write is handed over, the same window takes the chain over, so a restarted
+// chat resumes instead of stalling.
 func TestGoalChainsAfterTheWriterGone(t *testing.T) {
 	proj, state := t.TempDir(), t.TempDir()
-	a, _ := newWindow(t, state, proj)
-	peerHeartbeat(t, a)
+	a := openClaimed(t, state, proj)
 	if err := a.SetGoal("the tests pass"); err != nil {
 		t.Fatal(err)
 	}
 	waitIdle(t, a)
-	b, _ := newWindow(t, state, proj)
-	peerHeartbeat(t, b)
+	b := openClaimed(t, state, proj)
 	var bChecks atomic.Int32
 	b.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
@@ -372,40 +362,20 @@ func TestGoalChainsAfterTheWriterGone(t *testing.T) {
 			return textParts("ok")
 		}}, nil
 	}
-	if err := b.AgentSend("from b"); err != nil {
-		t.Fatal(err)
+	if err := b.AgentSend("from b"); !errors.Is(err, errNotWriter) {
+		t.Fatalf("a viewer sent: %v", err)
 	}
-	waitIdle(t, b)
-	if got := bChecks.Load(); got != 0 {
-		t.Fatalf("b ran %d judge asides on a live writer's goal, want none", got)
-	}
-	if err := os.Remove(filepath.Join(filepath.Dir(b.peersPath), a.origin+".json")); err != nil {
-		t.Fatal(err)
-	}
+	a.ClosePeers() // the writer's clean close hands the chain over
+	b.leaseTick()
 	if err := b.AgentSend("again"); err != nil {
 		t.Fatal(err)
 	}
 	waitIdle(t, b)
 	if bChecks.Load() != 1 {
-		t.Fatalf("b ran %d judge asides on a gone writer's goal, want the adoption check", bChecks.Load())
+		t.Fatalf("b ran %d judge asides after the handover, want the adoption check", bChecks.Load())
 	}
 	if _, err := b.DB.GetKV(goalKV); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("the met goal's row survived: %v", err)
-	}
-}
-
-// peerHeartbeat plants the heartbeat file the goal gate reads for a live
-// window: StartPeers's ticker would keep beating after a Close, so the tests
-// name the files by hand.
-func peerHeartbeat(t *testing.T, h *Host) {
-	t.Helper()
-	dir := filepath.Join(h.Dirs.StateHome, "peers", filepath.Base(filepath.Dir(h.DB.Path())))
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	h.peersPath = filepath.Join(dir, h.origin+".json")
-	if err := os.WriteFile(h.peersPath, []byte(`{"working":false}`), 0o600); err != nil {
-		t.Fatal(err)
 	}
 }
 

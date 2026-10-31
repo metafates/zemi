@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -969,9 +968,9 @@ func (h *Host) markDeadTail() {
 	if len(tr) == 0 {
 		return
 	}
-	if h.siblingWorking() {
-		// a sibling is running this turn: its rows only look dangling because
-		// its reply has not landed here yet
+	if l, err := h.DB.ReadLeader(); err == nil && !l.Stale(h.staleAfter()) {
+		// the lease's holder may be running this very turn: its rows only look
+		// dangling because its reply has not landed here yet
 		return
 	}
 	h.session.Transcript = append(tr, ChatMessage{
@@ -980,46 +979,6 @@ func (h *Host) markDeadTail() {
 	})
 	// the turn died without a release: the item it took up goes back to pending
 	h.GoSafe("settle todos", h.settleTodos)
-}
-
-// siblingWorking reports a heartbeat whose window says it runs a turn and
-// whose socket answers: a boot beside a live writer must not mourn its turn.
-func (h *Host) siblingWorking() bool {
-	if h.DB == nil || h.Dirs.StateHome == "" {
-		return false
-	}
-	dir := filepath.Join(h.Dirs.StateHome, "peers", filepath.Base(filepath.Dir(h.DB.Path())))
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return false
-	}
-	for _, e := range entries {
-		if filepath.Ext(e.Name()) != ".json" {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil || time.Since(info.ModTime()) > peersTTL {
-			continue
-		}
-		raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
-		if err != nil {
-			continue
-		}
-		var hb struct {
-			Working bool   `json:"working"`
-			Sock    string `json:"sock"`
-		}
-		if json.Unmarshal(raw, &hb) != nil || !hb.Working || hb.Sock == "" {
-			continue
-		}
-		if hb.Sock == h.sockPath {
-			continue // the window's own heartbeat reads working until its next beat; only a sibling's says a sibling runs
-		}
-		if peerAlive(hb.Sock) {
-			return true
-		}
-	}
-	return false
 }
 
 // NewHost wires the registries and opens the stores (best effort:

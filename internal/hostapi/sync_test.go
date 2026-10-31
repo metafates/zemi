@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -658,15 +659,13 @@ func TestLogRowsToolWithoutEcho(t *testing.T) {
 }
 
 // TestSyncChatLoadsAForeignGoal: a goal another window set joins a live
-// window's state on the tick, so the chain moves here once the writer's
-// heartbeat is gone instead of leaving the goal unowned; while the writer
-// lives, this window holds the row but does not run its chain.
+// window's state on the tick, so the chain moves here with the write instead
+// of leaving the goal unowned; this window holds the row and runs none of it
+// while another window writes the chat.
 func TestSyncChatLoadsAForeignGoal(t *testing.T) {
 	proj, state := t.TempDir(), t.TempDir()
-	a, _ := newWindow(t, state, proj)
-	b, _ := newWindow(t, state, proj)
-	peerHeartbeat(t, a)
-	peerHeartbeat(t, b)
+	a := openClaimed(t, state, proj)
+	b := openClaimed(t, state, proj)
 	if _, err := a.DB.AppendLog(store.KindUser, "the goal's message", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -686,13 +685,22 @@ func TestSyncChatLoadsAForeignGoal(t *testing.T) {
 	if !ok || g.Condition != "check is clean" {
 		t.Fatalf("b's goal after the sync = %+v, want the foreign one loaded", g)
 	}
-	if b.goalMine(&g) {
-		t.Fatal("b runs the chain while the writer's heartbeat is fresh")
+	if b.writerFlag() {
+		t.Fatal("b runs the chain while another window writes the chat")
 	}
-	if err := os.Remove(a.peersPath); err != nil {
+}
+
+// peerHeartbeat plants the heartbeat file the sync tests read for a live
+// window: StartPeers's ticker would keep beating after a Close, so the tests
+// name the files by hand.
+func peerHeartbeat(t *testing.T, h *Host) {
+	t.Helper()
+	dir := filepath.Join(h.Dirs.StateHome, "peers", filepath.Base(filepath.Dir(h.DB.Path())))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if !b.goalMine(&g) {
-		t.Fatal("b refuses the chain with the writer's heartbeat gone")
+	h.peersPath = filepath.Join(dir, h.origin+".json")
+	if err := os.WriteFile(h.peersPath, []byte(`{"working":false}`), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

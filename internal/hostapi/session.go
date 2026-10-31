@@ -302,9 +302,8 @@ func (h *Host) SyncChat() {
 			h.refresh()
 		}
 	}
-	// a goal another window set joins this window live, so the chain can
-	// move here once the writer's heartbeat is gone: goalMine decides at the
-	// check whether this window runs it
+	// a goal another window set joins this window live, so the chain can move
+	// here with the write: the goal runs wherever the lease holds
 	if _, ok := h.Goal(); !ok {
 		h.loadGoal()
 		if _, ok := h.Goal(); ok {

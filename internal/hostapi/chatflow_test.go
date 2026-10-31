@@ -703,6 +703,14 @@ func TestResumedWindowNamesADeadTail(t *testing.T) {
 			}
 			return h.chat.Error("Interrupted", true)
 		}, false},
+		{"the lease's live holder", func(h *Host) error {
+			if _, err := h.chat.User("go", ""); err != nil {
+				return err
+			}
+			// a fresh lease row: its holder may be running this very turn
+			_, err := h.DB.ClaimLeader(h.origin, "s.sock", store.Leader{})
+			return err
+		}, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h := newTestHostUI(t, &fakeClock{now: testEpoch})
