@@ -136,6 +136,21 @@ func TestMessagesList(t *testing.T) {
 	}
 }
 
+// TestMessagesTurnSurvivesARowlessTurn: a foreign reset mid-turn reloads the
+// log with the reset note dropped, so a transcript can lead with a tool row —
+// a turn with no prompt row. The messages refresh reads it, it does not die
+// on a rows[1:] slice of nothing and wedge the window.
+func TestMessagesTurnSurvivesARowlessTurn(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHost(t)
+	tr := []ChatMessage{{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "shell", Text: "echo hi"}}
+	h.tMu.Lock()
+	h.session = &Session{Transcript: tr}
+	h.tMu.Unlock()
+	o := h.messagesList(pickTr{tr: tr}, 0) // the read must survive, panic-free
+	_ = o
+}
+
 // TestMessageHead: a message reads by its first content line — a fence and a
 // bare <zemi-note> wrapper are passed over; a file echo's wrapper is not, its
 // path is the honest head.

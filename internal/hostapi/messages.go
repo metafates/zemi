@@ -567,7 +567,10 @@ func turnSection(p pickTr, t msgTurn, prevDay *string) string {
 		desc = append(desc, at.Format(ClockLayout))
 	}
 	replies := 0
-	for _, idx := range t.rows[1:] {
+	// a turn's rows can be empty: a foreign reset mid-turn reloads the log
+	// with the note dropped, so a transcript led by a tool row makes a turn
+	// with no prompt row, and the refresh must read it, not die on it
+	for _, idx := range t.rows[min(1, len(t.rows)):] {
 		r := p.at(idx)
 		if r.Kind == "" && strings.TrimSpace(r.Text) != "" {
 			replies++

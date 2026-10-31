@@ -73,7 +73,11 @@ func (s *streamAdapter) Retrying(err error, delay time.Duration) {
 
 func (s *streamAdapter) ReasoningDelta(text string) {
 	ag := s.h.agents
+	// deferred, not plain: flushOutput panics past this function on a wiped
+	// chat, and a plain unlock would leave ag.mu poisoned — the recovery
+	// deadlocks on it and the window wedges
 	ag.mu.Lock()
+	defer ag.mu.Unlock()
 	// a new step thinks: what the last one showed goes above it. Reasoning
 	// after text with no call between, or while the step's calls are still
 	// open, is a late chunk of the same thought (providers send the last
@@ -92,7 +96,6 @@ func (s *streamAdapter) ReasoningDelta(text string) {
 		ag.reasonBuf += text
 	}
 	ag.retryAt = time.Time{}
-	ag.mu.Unlock()
 	s.h.agentStream()
 	s.h.EmitAsync(EventAgentReasoningDelta, map[string]any{"text": text})
 }
@@ -138,7 +141,9 @@ func (s *streamAdapter) ToolCallRunning(id string) {
 // instead of running on.
 func (s *streamAdapter) openToolRow(row StreamTool) {
 	ag := s.h.agents
+	// deferred for the same wiped-chat panic ReasoningDelta guards
 	ag.mu.Lock()
+	defer ag.mu.Unlock()
 	ag.endThinking()
 	ag.retryAt = time.Time{}
 	// the thought the call closes belongs above it, with the call rather than
@@ -146,7 +151,6 @@ func (s *streamAdapter) openToolRow(row StreamTool) {
 	s.h.flushOutput(TurnStat{})
 	ag.tools = append(ag.tools, row)
 	ag.stepSettled = false // the call is not in the log until its step finishes
-	ag.mu.Unlock()
 	s.h.agentStream()
 }
 
