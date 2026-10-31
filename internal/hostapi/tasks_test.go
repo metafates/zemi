@@ -799,9 +799,9 @@ func TestAgentSendsWhileBackground(t *testing.T) {
 	}
 }
 
-// TestReportStoredWhenSessionMoved: a background report that finishes after
-// the user moved on reaches the chat as a work row in the log and the next
-// send carries it.
+// TestReportStoredWhenSessionMoved: a background report that finishes while
+// the window is live reaches the chat as a work row in the log, the model
+// reads it, and the next send still ends the chat.
 func TestReportStoredWhenSessionMoved(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -827,6 +827,18 @@ func TestReportStoredWhenSessionMoved(t *testing.T) {
 		found := slices.ContainsFunc(h.Session().Transcript, func(m ChatMessage) bool { return m.Kind == RowNotice && m.Run != "" })
 		if !found {
 			return errors.New("the chat lacks the report notice")
+		}
+		return nil
+	})
+	// the report's own send runs a turn once the work row lands: wait for the
+	// model's echo of it, or a send racing that window steers the report into
+	// the next turn instead
+	waitFor(t, func() error {
+		read := slices.ContainsFunc(h.Session().Transcript, func(m ChatMessage) bool {
+			return m.Role == fantasy.MessageRoleAssistant && strings.Contains(m.Text, "agent-report run=")
+		})
+		if !read {
+			return errors.New("the model never read the report")
 		}
 		return nil
 	})
