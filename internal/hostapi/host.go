@@ -2838,9 +2838,13 @@ func (h *Host) PurgeGeneration() {
 // Close ends the host: the runtime, what its generation started (timers,
 // jobs, requests, servers) and the stores, so it holds no file or goroutine.
 func (h *Host) Close() {
+	// under the agents lock: a live turn's armQueueDrain rewrites resumeStop
+	ag := h.agents
+	ag.mu.Lock()
 	if h.resumeStop != nil {
 		h.resumeStop()
 	}
+	ag.mu.Unlock()
 	h.RT.Close()
 	h.PurgeGeneration()
 	h.mcp.stopParked()
