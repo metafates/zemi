@@ -828,8 +828,9 @@ func tagStart(c byte) bool {
 	switch c {
 	case '/', '!', '?':
 		return true
+	default:
+		return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z'
 	}
-	return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z'
 }
 
 // fenceRun is the 3+-of-one-character run a fenced code block opens with

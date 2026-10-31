@@ -352,8 +352,9 @@ func fmtTokens(n int64) string {
 		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e6), ".0") + "M"
 	case n >= 1000:
 		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e3), ".0") + "k"
+	default:
+		return strconv.FormatInt(n, 10)
 	}
-	return strconv.FormatInt(n, 10)
 }
 
 // fmtCost is a cost in dollars to the cent; one under half a cent is not free.

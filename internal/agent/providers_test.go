@@ -263,8 +263,9 @@ func TestBuiltin(t *testing.T) {
 				return "k"
 			case "GITHUB_TOKEN":
 				return "gh"
+			default:
+				return ""
 			}
-			return ""
 		}); len(c.Specs) != 0 || len(c.Keys) != 0 {
 			t.Errorf("%s: %+v", p.ID, c)
 		}

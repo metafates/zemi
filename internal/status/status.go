@@ -49,8 +49,9 @@ func (s State) String() string {
 		return "error"
 	case Clear:
 		return "clear"
+	default:
+		return ""
 	}
-	return ""
 }
 
 // Kind is what a blocked report waits on. Kind(0) is none and drops the pair,
@@ -76,8 +77,9 @@ func (k Kind) String() string {
 		return "question"
 	case KindAuth:
 		return "auth"
+	default:
+		return ""
 	}
-	return ""
 }
 
 // The protocol's caps: a report breaking one is discarded whole by the

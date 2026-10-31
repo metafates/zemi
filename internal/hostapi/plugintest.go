@@ -416,8 +416,9 @@ func (t *PluginTest) drive(L *glua.LState, name, own string, act func(ctx contex
 			return func(*glua.LState) []glua.LValue { return []glua.LValue{glua.LNil, glua.LString(t.Rel(err.Error()))} }
 		case push == nil:
 			return func(*glua.LState) []glua.LValue { return []glua.LValue{glua.LTrue} }
+		default:
+			return push
 		}
-		return push
 	})
 }
 
@@ -820,8 +821,9 @@ func stubKind(subject string) string {
 		return "send"
 	case subject == luaFSWrite:
 		return "write"
+	default:
+		return ""
 	}
-	return ""
 }
 
 // stub is test.stub(subject [, pattern [, reply]]).
@@ -976,8 +978,9 @@ func stubLine(kind, subject, arg string, req map[string]any) string {
 		return `test.stub("` + luaModelAsk + `", "*", "...")`
 	case "classify":
 		return `test.stub("` + luaClassifyAsk + `", "*", { answers = { safe = { value = true, probability = 0.9 } }, strategy = "logprobs" })`
+	default:
+		return "test.stub(" + luaLiteral(subject) + ")"
 	}
-	return "test.stub(" + luaLiteral(subject) + ")"
 }
 
 // the test zemi's UI

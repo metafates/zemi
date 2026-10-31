@@ -135,8 +135,9 @@ func TestLoop(t *testing.T) {
 						return []fantasy.StreamPart{{Type: fantasy.StreamPartTypeError, Error: errors.New("boom")}}
 					case "hang":
 						return nil
+					default:
+						return textParts(c.reply)
 					}
-					return textParts(c.reply)
 				}}, nil
 			}
 			if _, err := h.Commands.Add(&Command{Name: "note", NArgs: NArgsAny, Desc: "d", Origin: lua.OriginUser, GoFn: func(h *Host, args string, confirm bool) error {

@@ -91,8 +91,9 @@ func TestGoalLoop(t *testing.T) {
 						return []fantasy.StreamPart{{Type: fantasy.StreamPartTypeError, Error: errors.New("boom")}}
 					case c.cancel:
 						return nil // waits for the interrupt
+					default:
+						return textParts("worked")
 					}
-					return textParts("worked")
 				}}, nil
 			}
 			h.agents.mu.Lock()

@@ -33,8 +33,9 @@ func (h *Host) vetoHook() func(tools.Request) (string, string) {
 			return tools.VetoDeny, res.Reason
 		case res.Ask:
 			return tools.VetoAsk, ""
+		default:
+			return "", ""
 		}
-		return "", ""
 	}
 }
 

@@ -429,8 +429,9 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 			return "link"
 		case fi.IsDir():
 			return "dir"
+		default:
+			return "file"
 		}
-		return "file"
 	}
 
 	tb.RawSetString("read", L.NewFunction(func(L *glua.LState) int {

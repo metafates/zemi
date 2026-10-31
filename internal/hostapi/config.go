@@ -168,8 +168,9 @@ func (h *Host) cfgSource(path config.Key) string {
 		return "saved"
 	case reflect.DeepEqual(live, h.Settings.Default(path)):
 		return "default"
+	default:
+		return "this run"
 	}
-	return "this run"
 }
 
 // cfgBase is what path is without a pick: config's last write when init.lua

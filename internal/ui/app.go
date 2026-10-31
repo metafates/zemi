@@ -646,8 +646,9 @@ func (a *App) notifyAs(style, text string) tea.Cmd {
 			_ = proc.Run(proc.CommandContext(ctx, args[0], args[1:]...))
 			return nil
 		}
+	default:
+		return nil
 	}
-	return nil
 }
 
 // Frame renders the full screen as styled text; exported for the golden
@@ -885,8 +886,9 @@ func (a *App) waiting() hostapi.Waiting {
 		return hostapi.WaitPlan
 	case a.question != nil:
 		return hostapi.WaitAnswer
+	default:
+		return ""
 	}
-	return ""
 }
 
 // windowTitle is the tab title: the host's, behind a mark for a prompt that
@@ -901,8 +903,9 @@ func (a *App) windowTitle() string {
 		return "✓ " + t
 	case a.unseen == hostapi.TurnError:
 		return "✗ " + t
+	default:
+		return t
 	}
-	return t
 }
 
 // frameClock is the frame clock's tick, frameMS each: what the spinner, the

@@ -201,8 +201,9 @@ func (a protocolAnswer) answer(q Question) (Answer, error) {
 			return Answer{Type: TypeScore, Score: a.Score, Confidence: a.Confidence}, nil
 		}
 		return Answer{Type: TypeScore, Score: a.Score}, nil
+	default:
+		return Answer{}, fmt.Errorf("unknown question type %q", q.Type)
 	}
-	return Answer{}, fmt.Errorf("unknown question type %q", q.Type)
 }
 
 // probabilities checks a label-to-probability map: only the question's labels,

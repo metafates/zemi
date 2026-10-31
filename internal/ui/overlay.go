@@ -175,8 +175,9 @@ func (f *listFilter) filterRow(w int) []hostapi.Segment {
 		return tailSegs(append([]hostapi.Segment{slash}, cursorSegs(r, min(f.cursor, len(r)), hostapi.ChromeBold)...), w)
 	case f.query != "":
 		return ellipsizeSegs([]hostapi.Segment{slash, {Text: f.query, HL: hostapi.ChromeValue}}, w)
+	default:
+		return []hostapi.Segment{{Text: "/", HL: hostapi.ChromeHintKey}, {Text: " filter", HL: hostapi.ChromeHint}}
 	}
-	return []hostapi.Segment{{Text: "/", HL: hostapi.ChromeHintKey}, {Text: " filter", HL: hostapi.ChromeHint}}
 }
 
 // filterHints are the footer's keys while a filter types, since every
@@ -518,8 +519,9 @@ func itemKey(r hostapi.OverlayItem) string {
 		return r.ID
 	case r.Anchor != 0:
 		return "row " + strconv.Itoa(r.Anchor)
+	default:
+		return r.Text
 	}
-	return r.Text
 }
 
 func (a *App) overlayState(o hostapi.Overlay) overlayState {
@@ -660,8 +662,9 @@ func (st *overlayState) enterVerb(idx int) hostapi.Verb {
 		return hostapi.VerbGo
 	case r.Copy != "":
 		return hostapi.VerbCopy
+	default:
+		return ""
 	}
-	return ""
 }
 
 // hasView reports whether a row has a view of its own: text and facts, or a

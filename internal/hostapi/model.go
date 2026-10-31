@@ -337,8 +337,9 @@ func (h *Host) modelAsk(L *glua.LState) int {
 				return []glua.LValue{glua.LNil, glua.LString(err.Error())}
 			case schema != nil:
 				return []glua.LValue{lua.FromGo(L, obj), glua.LString(raw)}
+			default:
+				return []glua.LValue{glua.LString(text)}
 			}
-			return []glua.LValue{glua.LString(text)}
 		},
 	})
 	return 1

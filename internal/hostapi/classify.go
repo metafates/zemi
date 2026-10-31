@@ -251,8 +251,9 @@ func criteriaHint(t classify.Type) string {
 		return `{ label = "what it means", ... }`
 	case classify.TypeScore:
 		return `{ "the lowest level", ..., "the highest" }`
+	default:
+		return `{ type = "bool", instructions = "...", criteria = ... }`
 	}
-	return `{ type = "bool", instructions = "...", criteria = ... }`
 }
 
 // criteriaText is one criterion as text: what it means, so a number or a

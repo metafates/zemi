@@ -315,8 +315,9 @@ func (h *Host) recipeAfterWrite(path string) string {
 		return note + fmt.Sprintf("over %d bytes, the skill tool cuts it: split it and link the parts by [[name]]", tools.SkillMaxOut)
 	case err != nil:
 		return note + strings.TrimPrefix(err.Error(), "skills: ")
+	default:
+		return note + sk.Name + " saved; the skill tool loads it"
 	}
-	return note + sk.Name + " saved; the skill tool loads it"
 }
 
 // discoverProjectSkills scans the repository's .agents/skills, which other

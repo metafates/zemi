@@ -1558,8 +1558,9 @@ func toolStatus(result fantasy.ToolResultOutputContent, cancelled bool, o tools.
 		return CallOK
 	case o.Stopped || cancelled:
 		return CallStopped
+	default:
+		return CallErr
 	}
-	return CallErr
 }
 
 // turnModelID is the model the running turn bills to; a turn the host did
@@ -1786,8 +1787,9 @@ func toolSummary(tool, input string) string {
 				return id + "+" + strconv.FormatInt(in.N, 10)
 			case in.Page > 0:
 				return fmt.Sprintf("%s page %d", id, in.Page+1)
+			default:
+				return id
 			}
-			return id
 		}
 	}
 	// a tool that names what it does in "action" reads as the action and
@@ -2760,8 +2762,9 @@ func (h *Host) CompleteModel(lead, line string) []string {
 			return ids
 		case h.isTarget(sub):
 			return append([]string{defaultRole}, ids...)
+		default:
+			return nil
 		}
-		return nil
 	})(h, lead, line)
 }
 
@@ -2897,8 +2900,9 @@ func (h *Host) effortDesc(model, level string) string {
 		return "the model takes no reasoning effort"
 	case level == "":
 		return "the model's own: " + sent
+	default:
+		return "sent as " + sent
 	}
-	return "sent as " + sent
 }
 
 // slotLine is what a model row shows: the model the slot runs on and the

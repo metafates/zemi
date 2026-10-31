@@ -1401,8 +1401,9 @@ func SkipDir(name string) bool {
 	case "node_modules", "vendor", "target", "dist", "build",
 		"__pycache__", "coverage", "venv":
 		return true
+	default:
+		return false
 	}
-	return false
 }
 
 // SortShallow orders paths shortest first in depth: fewer separators

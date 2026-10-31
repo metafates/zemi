@@ -521,8 +521,9 @@ func (p *Pipeline) unexpandedText(path string) string {
 		return msg + ": home is " + home + "."
 	case p.Pad != "":
 		return msg + ": the scratchpad is " + p.Pad + "."
+	default:
+		return msg + "."
 	}
-	return msg + "."
 }
 
 // post runs the tool.post events over a text summary of the response, which
@@ -622,8 +623,9 @@ func unquote(want string, v any) (any, bool) {
 	case "number", "integer":
 		f, err := strconv.ParseFloat(s, 64)
 		return f, err == nil && !math.IsInf(f, 0) && !math.IsNaN(f) && typeOK(want, f)
+	default:
+		return nil, false
 	}
-	return nil, false
 }
 
 func typeOK(want string, v any) bool {
@@ -649,8 +651,9 @@ func typeOK(want string, v any) bool {
 	case "object":
 		_, ok := v.(map[string]any)
 		return ok
+	default:
+		return true
 	}
-	return true
 }
 
 // SchemaProperties returns what fantasy expects in ToolInfo.Parameters: it
@@ -721,8 +724,9 @@ func resolveRefs(v, root any, seen set.Set[string], depth int) (any, error) {
 			out[i] = r
 		}
 		return out, nil
+	default:
+		return v, nil
 	}
-	return v, nil
 }
 
 // schemaPointer walks a local JSON pointer; anything else (an http ref, a

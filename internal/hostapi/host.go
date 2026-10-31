@@ -1239,8 +1239,9 @@ func ToastTitle(level slog.Level, title string) string {
 		return title
 	case level == slog.LevelWarn:
 		return "Warning"
+	default:
+		return "Error"
 	}
-	return "Error"
 }
 
 // Notify shows a toast; before the UI attaches, a warning or an error goes
@@ -1774,8 +1775,9 @@ func (w *Widget) tableSegments(v glua.LValue) (out [][]Segment, ok bool) {
 							return bool(f)
 						case glua.LNumber:
 							return float64(f)
+						default:
+							return nil
 						}
-						return nil
 					}, w.ID))
 				default:
 					return nil, false
@@ -1900,8 +1902,9 @@ func luaShape(v any) string {
 			return "a single segment"
 		}
 		return "a table of keys"
+	default:
+		return "an unexpected value"
 	}
-	return "an unexpected value"
 }
 
 // oneLine wraps the two returns that mean one line:

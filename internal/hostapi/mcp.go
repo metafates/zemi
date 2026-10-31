@@ -1001,8 +1001,9 @@ func (h *Host) mcpCommands() []*Command {
 			case "sign-out":
 				name, confirm = ConfirmArgs(name, confirm)
 				return h.signOutMCP(name, confirm)
+			default:
+				return Usagef("unknown /mcp subcommand %q; one of restart, sign-in, sign-in-all, sign-out, enable, disable, toggle, group", sub)
 			}
-			return Usagef("unknown /mcp subcommand %q; one of restart, sign-in, sign-in-all, sign-out, enable, disable, toggle, group", sub)
 		},
 		GoComplete: SubcommandCompleter([]string{"restart", "sign-in", "sign-in-all", "sign-out", "enable", "disable", "toggle", "group"}, func(h *Host, sub string) []string {
 			var names []string

@@ -640,8 +640,9 @@ func (r *Runtime) findModule(gen *Generation, L *glua.LState, name string) (stri
 					where = "plugin " + filepath.Base(c.root)
 				}
 				return "", "", fmt.Errorf("module %q at %s is outside %s", name, resolved, where)
+			default:
+				return resolved, origin, nil
 			}
-			return resolved, origin, nil
 		}
 	}
 	if relative {

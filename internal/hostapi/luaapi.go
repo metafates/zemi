@@ -276,6 +276,7 @@ func (h *Host) callAssembleHandler(L *glua.LState, hd *EventHandler) (title, tex
 		return "", string(v)
 	case *glua.LTable:
 		return glua.LVAsString(v.RawGetString("title")), glua.LVAsString(v.RawGetString("text"))
+	default:
+		return "", ""
 	}
-	return "", ""
 }

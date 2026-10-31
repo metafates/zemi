@@ -31,8 +31,9 @@ func (h *Host) jobsCommands() []*Command {
 				return h.openJob(id)
 			case "stop":
 				return h.stopJobs(id)
+			default:
+				return Usagef("unknown /jobs subcommand %q (view <id>, stop <id>|all)", sub)
 			}
-			return Usagef("unknown /jobs subcommand %q (view <id>, stop <id>|all)", sub)
 		},
 		GoComplete: SubcommandCompleter([]string{"view", "stop"}, func(h *Host, sub string) []string {
 			if sub == "stop" {

@@ -285,8 +285,9 @@ func grey16(l float64) ansi.BasicColor {
 		return ansi.BrightBlack
 	case l < 0.93:
 		return ansi.White
+	default:
+		return ansi.BrightWhite
 	}
-	return ansi.BrightWhite
 }
 
 // surface16 is what a 16-color terminal shows for a background: a grey by

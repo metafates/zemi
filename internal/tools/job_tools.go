@@ -165,8 +165,9 @@ func (j *Job) Mark() MarkKind {
 		return MarkStop
 	case j.code == 0 && j.err == "":
 		return MarkOK
+	default:
+		return MarkErr
 	}
-	return MarkErr
 }
 
 // Output is what the job's buffers still hold, stdout then stderr.
@@ -195,8 +196,9 @@ func (j *Job) since() (out, errOut chunk, running bool, errText string) {
 		case n >= int64(len(s)):
 			// all of it is new, and past Max the buffer dropped the middle
 			return chunk{s, n - int64(b.Max)}
+		default:
+			return chunk{s[int64(len(s))-n:], 0}
 		}
-		return chunk{s[int64(len(s))-n:], 0}
 	}
 	return rest(j.stdout, &j.sent[0]), rest(j.stderr, &j.sent[1]), j.Running(), j.err
 }

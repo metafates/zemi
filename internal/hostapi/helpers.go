@@ -165,8 +165,9 @@ func rawScalar(v glua.LValue) (string, bool) {
 	switch v.(type) {
 	case glua.LString, glua.LNumber, glua.LBool:
 		return v.String(), true
+	default:
+		return "", false
 	}
-	return "", false
 }
 
 // rawStrings reads the scalars of a list field as strings; nil when the

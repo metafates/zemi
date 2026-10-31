@@ -908,8 +908,9 @@ func TestWorkflowSchema(t *testing.T) {
 				return textParts("Here:\n```json\n{\"n\": 1}\n```")
 			case strings.HasPrefix(first, "Your reply is not the JSON"):
 				return textParts(`{"n": 1}`)
+			default:
+				return textParts(`{}`)
 			}
-			return textParts(`{}`)
 		}}, nil
 	}
 	const n = `{type = "object", properties = {n = {type = "number"}}, required = {"n"}}`
@@ -1509,8 +1510,9 @@ func TestTurnReadsTheUsersMessageWhileARunWaits(t *testing.T) {
 					return textParts("noted")
 				case !toolResult:
 					return toolCallParts("c1", string(tools.ToolWorkflow), `{"script":"-- wait\nreturn zemi.workflow.agent('x')"}`)
+				default:
+					return textParts("read it")
 				}
-				return textParts("read it")
 			},
 		}, nil
 	}

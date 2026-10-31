@@ -1927,8 +1927,9 @@ func (h *Host) workflowCommands() []*Command {
 				return say("Saved as "+perm.TildePath(path), err)
 			case "open":
 				return h.openFlowScript(id)
+			default:
+				return Usagef("unknown /workflows subcommand %q (%s)", verb, strings.Join(workflowVerbs, ", "))
 			}
-			return Usagef("unknown /workflows subcommand %q (%s)", verb, strings.Join(workflowVerbs, ", "))
 		},
 		GoComplete: func(h *Host, _, rest string) []string {
 			f := strings.Fields(rest)

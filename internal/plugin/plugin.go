@@ -399,8 +399,9 @@ func marketplaceSource(arg string) (url, ref string, err error) {
 		return normalizeGitURL(s), ref, nil
 	case githubShorthand(s):
 		return "https://github.com/" + s + ".git", ref, nil
+	default:
+		return "", "", fmt.Errorf("%s is not a marketplace source: expected owner/repo, a git URL, or a local directory", arg)
 	}
-	return "", "", fmt.Errorf("%s is not a marketplace source: expected owner/repo, a git URL, or a local directory", arg)
 }
 
 // looksLikeLocalPath reports the shapes a marketplace add reads as a
@@ -646,8 +647,9 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 		return SetEnabled(d, rest[0], verb == "enable")
 	case verb == "delete" && len(rest) == 1:
 		return remove(d, rest[0])
+	default:
+		return ErrUsage
 	}
-	return ErrUsage
 }
 
 // InstallKind says what an install links into: a link reaches into the

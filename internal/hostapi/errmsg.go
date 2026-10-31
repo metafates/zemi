@@ -79,8 +79,9 @@ func (h *Host) explain(err error) (cause, advice string) {
 		return "network: the provider timed out", "check your connection and send again"
 	case garbled:
 		return "the provider sent a reply zemi could not read", "send again"
+	default:
+		return err.Error(), ""
 	}
-	return err.Error(), ""
 }
 
 // friendlyError is the headline a person can act on: the cause, then the

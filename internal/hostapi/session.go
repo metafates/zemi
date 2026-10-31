@@ -866,8 +866,9 @@ func ago(ms int64) string {
 		return fmt.Sprintf("%dm ago", int(d.Minutes()))
 	case d < 24*time.Hour:
 		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
-	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 }
 
 func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {

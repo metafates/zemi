@@ -138,8 +138,9 @@ func LogLevel(v string) (lvl slog.Level, ok bool) {
 		return slog.LevelWarn, true
 	case "error":
 		return slog.LevelError, true
+	default:
+		return 0, false
 	}
-	return 0, false
 }
 
 func NewStore() *Store {
@@ -454,8 +455,9 @@ func stringList(val any) ([]string, bool) {
 			out[i] = s
 		}
 		return out, true
+	default:
+		return nil, false
 	}
-	return nil, false
 }
 
 func choiceList(choices []string) string {

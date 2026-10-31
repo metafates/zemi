@@ -74,8 +74,9 @@ func clamp(r uv.Rectangle, x, y int) (int, int) {
 		return r.Max.X - 1, r.Max.Y - 1
 	case y < r.Min.Y:
 		return r.Min.X, r.Min.Y
+	default:
+		return max(r.Min.X, min(x, r.Max.X-1)), y
 	}
-	return max(r.Min.X, min(x, r.Max.X-1)), y
 }
 
 // selClip is where a drag pressed at (x, y) may select: the top modal's

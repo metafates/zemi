@@ -233,8 +233,9 @@ func isEditKey(key string) bool {
 		"alt+right", "alt+f", "ctrl+right", "home", "ctrl+a", "end", "ctrl+e",
 		"ctrl+w", "alt+backspace", "ctrl+u":
 		return true
+	default:
+		return false
 	}
-	return false
 }
 
 // editKey applies a cursor move or deletion key; it reports whether key was

@@ -1925,8 +1925,9 @@ func (h *Host) agentsCommands() []*Command {
 				return Usagef("/agents view <id> [show|list]")
 			case "stop":
 				return h.stopRun(id)
+			default:
+				return Usagef("unknown /agents subcommand %q (new [what it does], open <name>, show <id>, view <id> [show|list], stop [id])", sub)
 			}
-			return Usagef("unknown /agents subcommand %q (new [what it does], open <name>, show <id>, view <id> [show|list], stop [id])", sub)
 		},
 		GoComplete: SubcommandCompleter([]string{"new", "open", "show", "view", "stop"}, func(h *Host, sub string) []string {
 			if sub != "open" {

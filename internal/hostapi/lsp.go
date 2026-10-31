@@ -751,8 +751,9 @@ func (h *Host) noLSP(path string) error {
 		return errors.New("the project's language servers are off: it is not trusted (the user runs /trust)")
 	case path == "":
 		return fmt.Errorf("no language server for this project: none of %s is installed with its marker file here; zemi.lsp.add adds one", builtinCommands())
+	default:
+		return fmt.Errorf("no language server for %s files (install one, or add it with zemi.lsp.add)", filepath.Ext(path))
 	}
-	return fmt.Errorf("no language server for %s files (install one, or add it with zemi.lsp.add)", filepath.Ext(path))
 }
 
 func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {

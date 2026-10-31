@@ -490,8 +490,9 @@ func (h *Host) callToolPre(L *glua.LState, hd *EventHandler, tool string, input 
 		}
 		m, _ := rw.(map[string]any)
 		return tools.PreRewrite, "", m
+	default:
+		return "", "", nil
 	}
-	return "", "", nil
 }
 
 // toolPostWait bounds one call's tool.post handlers in wall time, their

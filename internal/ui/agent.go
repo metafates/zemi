@@ -569,8 +569,9 @@ func switchSeg(on, locked bool) hostapi.Segment {
 		return hostapi.Segment{Text: "  on ", HL: hostapi.ChromeHint}
 	case on:
 		return hostapi.Segment{Text: "◆ on ", HL: hostapi.ChromeOk}
+	default:
+		return hostapi.Segment{Text: "◇ off", HL: hostapi.ChromeHint}
 	}
-	return hostapi.Segment{Text: "◇ off", HL: hostapi.ChromeHint}
 }
 
 // listRowsW is the one list renderer: the selected item gets "› ", bold text
@@ -1058,8 +1059,9 @@ func permTitle(req hostapi.PermRequest) string {
 		return "Run this workflow?"
 	case req.Subject == "tool."+req.Tool:
 		return "Use the " + req.Tool + " tool?"
+	default:
+		return "Allow " + req.Subject + "?"
 	}
-	return "Allow " + req.Subject + "?"
 }
 
 // permAlert is the one line a permission ask pings with: the ask's label and
@@ -1131,8 +1133,9 @@ func permTarget(req hostapi.PermRequest, root string) (string, []hostapi.Segment
 		return "workflow", []hostapi.Segment{{Text: arg, HL: hostapi.ChromeValue}}
 	case strings.HasPrefix(req.Subject, "mcp."), req.Subject == "tool."+req.Tool, arg == "script":
 		return "", nil
+	default:
+		return "arg", parts(req.Arg)
 	}
-	return "arg", parts(req.Arg)
 }
 
 // hintPair is one key of a footer hint and the verb it does; row marks the
@@ -1167,8 +1170,9 @@ func hintSlot(p hintPair) int {
 		return 5
 	case p == scrollHint || p == scrollGap:
 		return 6
+	default:
+		return 4
 	}
-	return 4
 }
 
 // hint is the one footer row every box draws: "enter pick · esc deny",
@@ -1246,8 +1250,9 @@ func previewLang(req hostapi.PermRequest) string {
 		return "lua"
 	case strings.HasPrefix(req.Subject, "mcp.") || strings.HasPrefix(req.Subject, "tool."):
 		return "json" // a call's input
+	default:
+		return ""
 	}
-	return ""
 }
 
 // codePanel shows text in a well of the canvas inside the box, wrapped to

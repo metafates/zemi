@@ -147,8 +147,9 @@ func (q Question) answerFromProbabilities(keys []string, probs []float64) (Answe
 			score += float64(i) * p
 		}
 		return Answer{Type: TypeScore, Score: &score, Confidence: confidence(probs)}, nil
+	default:
+		return Answer{}, fmt.Errorf("unknown question type %q", q.Type)
 	}
-	return Answer{}, fmt.Errorf("unknown question type %q", q.Type)
 }
 
 // labelProbabilities is the softmax over the log probabilities of the labels,

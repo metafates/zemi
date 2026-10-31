@@ -288,8 +288,9 @@ func showSetting(v any) string {
 		return cmp.Or(v, "empty")
 	case []string:
 		return cmp.Or(strings.Join(v, ", "), "none")
+	default:
+		return luaLiteral(v)
 	}
-	return luaLiteral(v)
 }
 
 // listValue is a list key's line: entries separated by commas or spaces.
@@ -309,8 +310,9 @@ func configPicker(path config.Key) string {
 		return "model " + role
 	case path == config.KeyUITheme:
 		return "theme"
+	default:
+		return "config edit " + string(path)
 	}
-	return "config edit " + string(path)
 }
 
 // settingGhost is what an empty input means for the setting, shown dim in

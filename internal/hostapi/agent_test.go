@@ -2375,8 +2375,9 @@ func TestInterruptHandsTheForegroundRunOff(t *testing.T) {
 				return textParts("noted")
 			case calls.Add(1) == 1:
 				return toolCallParts("c1", "agent", `{"description":"slow dig","prompt":"find it","agent":"explore"}`)
+			default:
+				return textParts("done")
 			}
-			return textParts("done")
 		}}, nil
 	}
 	if err := h.AgentSend("go"); err != nil {

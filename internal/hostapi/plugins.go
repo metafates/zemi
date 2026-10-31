@@ -469,8 +469,9 @@ func (h *Host) OriginBadge(o lua.Origin, path string) string {
 		return string(o) + ":" + h.PluginOf(path)
 	case path != "":
 		return string(o) + ":" + filepath.Base(path)
+	default:
+		return string(o)
 	}
-	return string(o)
 }
 
 // localPluginDir is the local/<name> directory holding path, or "".

@@ -680,8 +680,9 @@ func listMove(key string) int {
 		return -1
 	case "down", "j", "ctrl+n":
 		return 1
+	default:
+		return 0
 	}
-	return 0
 }
 
 // cycleSel applies a list key to a popup's selection, wrapping at the ends:
@@ -864,8 +865,9 @@ func (a *App) topChrome() modal {
 		return modalTrust
 	case len(a.overlays) > 0:
 		return modalOverlay
+	default:
+		return noModal
 	}
-	return noModal
 }
 
 // wheel scrolls the box on top: the modal chrome, else an open composer

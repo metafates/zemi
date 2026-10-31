@@ -56,8 +56,9 @@ func (h *Host) MessagesCommand(args string) error {
 			return Usagef("/messages view <row> (a row the list shows; opens the row whole)")
 		}
 		return h.openLogView(seq)
+	default:
+		return Usagef("usage: /messages [rail <row> | view <row>]")
 	}
-	return Usagef("usage: /messages [rail <row> | view <row>]")
 }
 
 // pickTr is the conversation the picker reads: the session's transcript plus,

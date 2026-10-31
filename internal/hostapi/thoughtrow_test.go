@@ -299,8 +299,9 @@ func TestReplyReadoutDropsWhenTheNextReplyLands(t *testing.T) {
 				return textParts("the report said: R7REPORT ok")
 			case strings.Contains(last, "Do not end the turn"):
 				return toolCallParts("w1", "agent", `{"wait":"all"}`)
+			default:
+				return toolCallParts("c1", "agent", `{"description":"r7 readout","prompt":"reply R7REPORT ok","agent":"explore","background":true}`)
 			}
-			return toolCallParts("c1", "agent", `{"description":"r7 readout","prompt":"reply R7REPORT ok","agent":"explore","background":true}`)
 		}}, nil
 	}
 	if err := h.AgentSend("go"); err != nil {

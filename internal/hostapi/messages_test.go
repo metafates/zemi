@@ -27,8 +27,9 @@ func rowKey(it OverlayItem) string {
 		return it.ID
 	case it.Anchor != 0:
 		return "row " + strconv.Itoa(it.Anchor)
+	default:
+		return it.Text
 	}
-	return it.Text
 }
 
 // TestMessagesList: /messages lists every turn's rows in order, each turn a

@@ -44,8 +44,9 @@ func (h *Host) MemoriesCommand(args string) error {
 			return h.openMemoriesRange(l, i)
 		}
 		return h.openMemoriesZoom(nodeID{l, i})
+	default:
+		return Usagef("usage: /memories [zoom <l> <i> | view <l> <i>]")
 	}
-	return Usagef("usage: /memories [zoom <l> <i> | view <l> <i>]")
 }
 
 // parseNodeArgs reads a tree node's "l i" arguments. The level is a shift
@@ -325,6 +326,7 @@ func fmtBytes(n int64) string {
 		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e6), ".0") + "M"
 	case n >= 1000:
 		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e3), ".0") + "k"
+	default:
+		return strconv.FormatInt(n, 10) + " B"
 	}
-	return strconv.FormatInt(n, 10) + " B"
 }

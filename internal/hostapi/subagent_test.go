@@ -122,8 +122,9 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 				return textParts("sub report for: " + last)
 			case toolResult:
 				return textParts("parent saw: " + last)
+			default:
+				return toolCallParts("call-1", "agent", `{"description":"find things","prompt":"look around","agent":"explore"}`)
 			}
-			return toolCallParts("call-1", "agent", `{"description":"find things","prompt":"look around","agent":"explore"}`)
 		}}, nil
 	}
 	if err := h.AgentSend("go"); err != nil {
@@ -911,8 +912,9 @@ func TestAgentUpdateReachesTheCaller(t *testing.T) {
 				return textParts("noted")
 			case strings.Contains(last, "Do not end the turn"):
 				return toolCallParts("w1", "agent", `{"wait":"all"}`)
+			default:
+				return toolCallParts("c1", "agent", `{"description":"d","prompt":"look","agent":"general"}`)
 			}
-			return toolCallParts("c1", "agent", `{"description":"d","prompt":"look","agent":"general"}`)
 		}}, nil
 	}
 	if err := h.AgentSend("go"); err != nil {
@@ -959,8 +961,9 @@ func TestAgentMessageKeepsThePin(t *testing.T) {
 				return textParts("got the report")
 			case strings.Contains(last, "Do not end the turn"):
 				return toolCallParts("w1", "agent", `{"wait":"all"}`)
+			default:
+				return toolCallParts("c1", "agent", `{"description":"d","prompt":"look","agent":"general","background":true}`)
 			}
-			return toolCallParts("c1", "agent", `{"description":"d","prompt":"look","agent":"general","background":true}`)
 		}}, nil
 	}
 	if err := h.AgentSend("go"); err != nil {
@@ -1142,8 +1145,9 @@ func TestForkKnowsItIsAFork(t *testing.T) {
 				return textParts("after the tool: " + last)
 			case strings.Contains(last, forkTask):
 				return toolCallParts("c2", "agent", `{"description":"again","prompt":"more","agent":"fork"}`)
+			default:
+				return toolCallParts("c1", "agent", `{"description":"check it","prompt":"review","agent":"fork"}`)
 			}
-			return toolCallParts("c1", "agent", `{"description":"check it","prompt":"review","agent":"fork"}`)
 		}}, nil
 	}
 	if err := h.AgentSend("hello"); err != nil {
@@ -1537,8 +1541,9 @@ func TestWaitWakesOnUpdate(t *testing.T) {
 				return textParts("child done")
 			case strings.Contains(last, "<agent-update"), strings.Contains(last, "<agent-report"):
 				return textParts("noted")
+			default:
+				return textParts("ok")
 			}
-			return textParts("ok")
 		}}, nil
 	}
 	def, _ := h.agentDef("explore")
@@ -1611,8 +1616,9 @@ func TestForegroundWakesOnUpdate(t *testing.T) {
 				return toolCallParts("w1", "agent", fmt.Sprintf(`{"wait":%q}`, run.id))
 			case strings.Contains(last, "<agent-report"), strings.Contains(last, "its report arrives as a message"):
 				return textParts("noted")
+			default:
+				return toolCallParts("c1", "agent", `{"description":"dig","prompt":"look","agent":"general"}`)
 			}
-			return toolCallParts("c1", "agent", `{"description":"dig","prompt":"look","agent":"general"}`)
 		}}, nil
 	}
 	calls := make(chan fantasy.ToolResponse, 1)
@@ -1944,8 +1950,9 @@ func TestWaitAllWakesOnUpdate(t *testing.T) {
 				return textParts("child done")
 			case strings.Contains(last, "<agent-update"), strings.Contains(last, "<agent-report"):
 				return textParts("noted")
+			default:
+				return textParts("ok")
 			}
-			return textParts("ok")
 		}}, nil
 	}
 	def, _ := h.agentDef("explore")

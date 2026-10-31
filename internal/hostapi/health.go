@@ -185,8 +185,9 @@ func healthResult(v any) (HealthLevel, string, error) {
 		}
 		detail, _ := v["detail"].(string)
 		return level, sanitize.String(detail), nil
+	default:
+		return HealthOK, "", nil
 	}
-	return HealthOK, "", nil
 }
 
 // notifiers name the native notifier per GOOS.
@@ -262,8 +263,9 @@ func (h *Host) builderRow() HealthRow {
 		return HealthRow{Level: HealthWarn, Detail: fmt.Sprintf("%d builds failed, %s; %s", failed, detail, how)}
 	case unbuilt > 4*leafWaitLines:
 		return HealthRow{Level: HealthWarn, Detail: "the view holds " + detail + "; zoom still reads the raw messages"}
+	default:
+		return HealthRow{Level: HealthOK, Detail: detail}
 	}
-	return HealthRow{Level: HealthOK, Detail: detail}
 }
 
 // goHealthRows are the Go-side checks, in the order /health shows them.
@@ -510,8 +512,9 @@ func (h *Host) modelCheck(name, id string, classify bool) HealthRow {
 		return HealthRow{Level: HealthError, Name: name, Detail: err.Error()}
 	case !known:
 		return HealthRow{Level: HealthWarn, Name: name, Detail: unlistedDetail(id)}
+	default:
+		return HealthRow{Level: HealthOK, Name: name, Detail: id}
 	}
-	return HealthRow{Level: HealthOK, Name: name, Detail: id}
 }
 
 // unlistedDetail is the warning for an id the provider's models list

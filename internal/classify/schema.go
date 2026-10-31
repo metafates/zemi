@@ -122,8 +122,9 @@ func (q Question) answerValue(v any) (Answer, error) {
 			return Answer{}, err
 		}
 		return Answer{Type: TypeScore, Score: &f}, nil
+	default:
+		return Answer{}, fmt.Errorf("unknown question type %q", q.Type)
 	}
-	return Answer{}, fmt.Errorf("unknown question type %q", q.Type)
 }
 
 // schemaPrompt is the state and every question, in the one call the schema

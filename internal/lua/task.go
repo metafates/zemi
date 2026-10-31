@@ -162,8 +162,9 @@ func (tr *taskRun) run(L *glua.LState) ([]any, error) {
 		return nil, errors.New("wait ran where it cannot suspend, such as inside a metamethod")
 	case tr.Done == nil:
 		return nil, nil
+	default:
+		return tr.Done(L, rets)
 	}
-	return tr.Done(L, rets)
 }
 
 // endTask forgets a task's thread and kills it, so Lua holding the thread

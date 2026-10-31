@@ -655,8 +655,9 @@ func luaList(v any) ([]any, bool) {
 		return l, true
 	case map[string]any:
 		return nil, len(l) == 0
+	default:
+		return nil, false
 	}
-	return nil, false
 }
 
 // onlyKeys refuses a field the table's kind does not take, so a typo is an

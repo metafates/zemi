@@ -212,8 +212,9 @@ func SubcommandCompleter(subs []string, next func(h *Host, sub string) []string)
 			return subs
 		case arg == 2 && next != nil:
 			return next(h, fields[1])
+		default:
+			return nil
 		}
-		return nil
 	}
 }
 
@@ -376,8 +377,9 @@ func (h *Host) RunRHS(ctx context.Context, b *KeyBinding) (err error) {
 			return fmt.Errorf("%w: %q", errReserved, name)
 		}
 		return fn(h, args)
+	default:
+		return nil
 	}
-	return nil
 }
 
 // SplitCommand splits "name arg string" into the command name and the raw

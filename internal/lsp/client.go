@@ -58,8 +58,9 @@ func SeverityName(s int) string {
 		return "warning"
 	case 3:
 		return "info"
+	default:
+		return "hint"
 	}
-	return "hint"
 }
 
 type message struct {

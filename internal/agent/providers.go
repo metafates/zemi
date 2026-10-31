@@ -177,8 +177,9 @@ func (i CatalogInfo) String() string {
 		return "updated " + i.Fetched.Local().Format(time.DateOnly) + " from " + strings.TrimPrefix(CatalogURL, "https://")
 	case i.Version == "":
 		return "bundled"
+	default:
+		return "bundled (catwalk " + i.Version + ")"
 	}
-	return "bundled (catwalk " + i.Version + ")"
 }
 
 // Summary counts what zemi supports of the catalog.
@@ -231,8 +232,9 @@ func builtinKind(id catwalk.InferenceProvider, t catwalk.Type) Kind {
 		return KindAnthropic
 	case catwalk.TypeResponses:
 		return KindOpenAI
+	default:
+		return KindOpenAICompat
 	}
-	return KindOpenAICompat
 }
 
 // anthropicBase is the base the anthropic SDK merges v1/messages onto, by
@@ -464,8 +466,9 @@ func (k Kind) sendsBody() bool {
 		return true
 	case KindGoogle, KindSystemOne:
 		return false
+	default:
+		return false
 	}
-	return false
 }
 
 // takesObjectMode says whether this kind's provider has a WithObjectMode
@@ -476,8 +479,9 @@ func (k Kind) takesObjectMode() bool {
 		return true
 	case KindAnthropic, KindSystemOne:
 		return false
+	default:
+		return false
 	}
-	return false
 }
 
 // Registry holds provider specs; ids are unique. API keys live in a side
@@ -899,8 +903,9 @@ func (r *Registry) Effort(id ModelID, pick Effort) string {
 		return ""
 	case pick == "":
 		return m.Effort
+	default:
+		return nearestEffort(m.Efforts, string(pick))
 	}
-	return nearestEffort(m.Efforts, string(pick))
 }
 
 // CallOptions are the provider options a turn runs with: the reasoning
@@ -945,8 +950,9 @@ func (r *Registry) CallOptions(id ModelID, effort, sessionID string) fantasy.Pro
 			return openai.NewResponsesProviderOptions(&openai.ResponsesProviderOptions{ReasoningEffort: re, ReasoningSummary: new("auto"), PromptCacheKey: key})
 		case re != nil || key != nil:
 			return openai.NewProviderOptions(&openai.ProviderOptions{ReasoningEffort: re, PromptCacheKey: key})
+		default:
+			return nil
 		}
-		return nil
 	}
 	if re == nil && len(spec.Body) == 0 {
 		return nil
@@ -1009,8 +1015,9 @@ func EffortName(level string) string {
 		return ""
 	case "xhigh":
 		return "X-High"
+	default:
+		return strings.ToUpper(level[:1]) + level[1:]
 	}
-	return strings.ToUpper(level[:1]) + level[1:]
 }
 
 // nearestEffort is the listed level closest to effort, the lower on a tie
@@ -1133,8 +1140,9 @@ func apiKind(api string, spec Kind) Kind {
 		return KindAnthropic
 	case "responses":
 		return KindOpenAI
+	default:
+		return spec
 	}
-	return spec
 }
 
 func (r *Registry) resolve(id ModelID) (fantasy.LanguageModel, error) {

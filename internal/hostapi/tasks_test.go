@@ -143,8 +143,9 @@ func TestBackgroundAgent(t *testing.T) {
 				return textParts("the agent reported: " + last[strings.Index(last, "found"):strings.Index(last, "found")+15])
 			case strings.Contains(last, "Do not end the turn"):
 				return toolCallParts("w1", "agent", `{"wait":"all"}`)
+			default:
+				return toolCallParts("c1", "agent", `{"description":"slow @main.go search","prompt":"find it","agent":"explore","background":true}`)
 			}
-			return toolCallParts("c1", "agent", `{"description":"slow @main.go search","prompt":"find it","agent":"explore","background":true}`)
 		}}, nil
 	}
 	if err := h.AgentSend("go"); err != nil {
@@ -387,8 +388,9 @@ func TestMessageAgent(t *testing.T) {
 						return textParts("first")
 					case last == "also this" && !toolResult:
 						return textParts("got it")
+					default:
+						return textParts("unexpected: " + last)
 					}
-					return textParts("unexpected: " + last)
 				}}, nil
 			}
 			if _, err := viaTool(h, "", ""); err == nil {

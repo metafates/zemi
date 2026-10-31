@@ -111,8 +111,9 @@ func (p Project) TrustWord() string {
 		return config.Untrusted
 	case p.Trust == "":
 		return "undecided"
+	default:
+		return p.Trust
 	}
-	return p.Trust
 }
 
 // splashProjects is what the splash offers in place of recent sessions: the

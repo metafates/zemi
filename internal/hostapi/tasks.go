@@ -979,8 +979,9 @@ func reportTense(s reportStatus) string {
 		return "warned"
 	case updateStatus:
 		return "updated"
+	default:
+		return string(s)
 	}
-	return string(s)
 }
 
 // workflowAgent reports whether a report's agent attribute names a workflow,
@@ -1051,8 +1052,9 @@ func workStatus(status string) CallStatus {
 		return CallWarn
 	case reportFinished:
 		return CallOK
+	default:
+		return ""
 	}
-	return ""
 }
 
 // stopRun cancels a running agent; "" means the one the chat shows.
