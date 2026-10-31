@@ -239,13 +239,6 @@ func (h *Host) stampReset(tr []ChatMessage) {
 	h.tMu.Unlock()
 }
 
-// SyncChat pulls what other windows appended to the shared log into this
-// window's transcript, on the config watch's idle tick: two windows on one
-// repository are the one chat it keeps, and the log's newest word is the
-// truth. A live turn or run owns the tail, so the tick's own AgentActive
-// guard covers it. A log that shrank under this window, or whose row this
-// window stamped now reads differently, is another window's reset: the
-// window reloads whole, the way its own reset left it.
 // ChatWiped reports whether another window reset the shared log under this
 // window while its turn runs: the row the transcript last stamped no longer
 // is the row the store holds there. Read-only on purpose — the reload stays
@@ -273,6 +266,13 @@ func (h *Host) ForeignResetEnded() {
 	h.Notify(slog.LevelInfo, "Chat reset by another window", "this window reloaded from the shared log")
 }
 
+// SyncChat pulls what other windows appended to the shared log into this
+// window's transcript, on the config watch's idle tick: two windows on one
+// repository are the one chat it keeps, and the log's newest word is the
+// truth. A live turn or run owns the tail, so the tick's own AgentActive
+// guard covers it. A log that shrank under this window, or whose row this
+// window stamped now reads differently, is another window's reset: the
+// window reloads whole, the way its own reset left it.
 func (h *Host) SyncChat() {
 	if h.DB == nil || h.DB.Origin == "" {
 		return

@@ -63,8 +63,9 @@ zemi.ui.widget.add({
 				local clock = function(s) return string.format("%dm %02ds", math.floor(s / 60), math.floor(s) % 60) end
 				local tick = { plain(clock(busy.elapsed)), 5, 7 }
 				if ctx.interrupt_armed then
+					local arm = "arm " .. fmt.duration(math.ceil(ctx.interrupt_in or 0), true)
 					tick = {
-						plain("arm " .. fmt.duration(math.ceil(ctx.interrupt_in or 0), true) .. " · " .. clock(busy.elapsed)),
+						plain(arm .. " · " .. clock(busy.elapsed)),
 						5,
 						7,
 					}
