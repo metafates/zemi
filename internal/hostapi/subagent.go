@@ -673,9 +673,9 @@ func (h *Host) labelAsks(pipe *tools.Pipeline, run *agentRun, name string) {
 // sendPruning runs one subagent turn inside the context window: a run that
 // fills it drops the middle of its history, once - the task and a recent
 // tail stay - and goes on. A subagent has no summarizer: its history is its
-// own and only its report leaves the run. A cap the model refuses is dropped
-// once. own is where the run's own messages start and moves with what a drop
-// takes from the front.
+// own and only its report leaves the run. A cap the model refuses, or one a
+// pruned run still cannot fit, is dropped once. own is where the run's own
+// messages start and moves with what a drop takes from the front.
 // NOTE: the dropped steps are lost unsummarized, a follow-up message older
 // than the tail among them, and a run that fills the window again ends with
 // the error.
@@ -685,6 +685,10 @@ func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, t
 		text = "" // history holds the prompt from here on
 		switch {
 		case runner.MaxOutputTokens > 0 && maxTokensRefused(err):
+			capRejected.Store(modelID, true)
+			runner.MaxOutputTokens = 0
+		case runner.MaxOutputTokens > 0 && contextTooLarge(err) && (dropped > 0 || len(runner.History) < 3):
+			// nothing left to drop, so the cap zemi set is what does not fit
 			capRejected.Store(modelID, true)
 			runner.MaxOutputTokens = 0
 		case contextTooLarge(err) || err == nil && runner.CutShort():

@@ -32,7 +32,7 @@ Model fields besides `id` and `display`:
 
 - `context_window`: without it there is no context percent, and a too-long refusal only merges a view batch and retries once.
 - `pricing = { input, output, cache_write, cache_read }`: USD per million tokens; the cache pair prices tokens written to and read from the prompt cache. Without the cache pair, cached turns read cheaper than they were.
-- `max_output`: reply cap in tokens; unset, anthropic models get 32000, others the provider default.
+- `max_output`: reply cap in tokens; unset, anthropic models get 32000, openai_compat ones 65536, others the provider default.
 - `capabilities = { vision, audio }`: a model that takes no images says `capabilities = { vision = false }` - read's description tells it so, read refuses image files, and images leave its history. Without it zemi learns that from the provider's first refusal, for the process. `audio = true` lets an MCP result's audio ride.
 - `api`: the wire format the model speaks, `"completions"`, `"responses"` or `"messages"`, when it differs from its provider's own - one provider can serve formats side by side.
 - `max_attachments`: the @ references one message may carry, when the model caps them.
