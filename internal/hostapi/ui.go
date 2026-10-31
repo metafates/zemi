@@ -972,16 +972,13 @@ func (h *Host) EmitAsync(name string, payload map[string]any) {
 	})
 }
 
-// checkTheme refuses a ui.theme value no theme answers to.
+// checkTheme refuses a ui.theme value no theme answers to; the picker, not
+// a refusal line, is where the names live.
 func (h *Host) checkTheme(name string) error {
 	if h.Themes.Get(name) != nil {
 		return nil
 	}
-	var names []string
-	for _, t := range h.Themes.List() {
-		names = append(names, t.Name)
-	}
-	return Usagef("unknown theme %q: themes are %s", name, strings.Join(names, ", "))
+	return Usagef("unknown theme %q; /theme lists them", name)
 }
 
 // CheckTheme records a ui.theme no theme answers to once boot is done: a
