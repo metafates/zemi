@@ -40,10 +40,12 @@ zemi.ui.widget.add({
 })
 
 -- The session's goal, while one is set; no count, so a check moves nothing.
+-- The goal and the loop are the user's standing intents, not passing state:
+-- they outlast the transient pills when the row runs short.
 zemi.ui.widget.add({
 	id = "statusline.goal",
 	region = "statusline.left",
-	priority = 20,
+	priority = 11,
 	on_click = fmt.run_click,
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]
@@ -59,7 +61,7 @@ zemi.ui.widget.add({
 zemi.ui.widget.add({
 	id = "statusline.loop",
 	region = "statusline.left",
-	priority = 21,
+	priority = 12,
 	on_click = fmt.run_click,
 	---@param ctx zemi.WidgetCtx
 	---@return zemi.Line[]

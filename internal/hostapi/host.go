@@ -898,6 +898,12 @@ func (h *Host) trimTranscript(tr []ChatMessage) []ChatMessage {
 		tr = slices.Clone(kept)
 		h.trCut.Add(int64(cut))
 		h.stampCursor(cut)
+		// the page anchor may name a row the shed dropped: the next page
+		// re-derives it from the head the window can still see, or every
+		// later page finds nothing older than a cursor below the shed
+		h.msgMu.Lock()
+		h.msgFrom = -1
+		h.msgMu.Unlock()
 	}
 	return tr
 }

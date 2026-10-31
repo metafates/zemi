@@ -1972,16 +1972,21 @@ const todoNagAfter = 4
 // armTodoTurnNote arms a turn-start remind while the todo list has open
 // items: a long session's view carries the list only as a summary line, and
 // a model that never opens it works untracked. One note per turn, dropped by
-// the todos write the turn starts with.
+// the todos write the turn starts with. The store is the list's truth —
+// another window's write never reaches this window's cache.
 func (h *Host) armTodoTurnNote() {
+	var todos []store.Todo
+	if h.DB != nil {
+		todos, _ = h.DB.Todos(h.AgentSessionID())
+	}
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	if ag.todoNag != "" || len(ag.todoList) == 0 {
+	if ag.todoNag != "" || len(todos) == 0 {
 		return
 	}
 	open := 0
-	for _, td := range ag.todoList {
+	for _, td := range todos {
 		if td.Status != store.TodoDone {
 			open++
 		}

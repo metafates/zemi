@@ -100,7 +100,7 @@ func (h *Host) SetLoop(args string) error {
 	switch {
 	case prompt == "" && every == 0:
 		return h.openLoop()
-	case prompt == "stop" && every == 0:
+	case (prompt == "stop" || strings.HasPrefix(prompt, "stop ")) && every == 0:
 		why := "Loop stopped"
 		if l, ok := h.Loop(); ok {
 			why = fmt.Sprintf("Loop stopped (%d %s)", l.Runs, Plural(l.Runs, "run", "runs"))

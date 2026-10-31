@@ -1126,7 +1126,10 @@ func hint(w int, pairs ...hintPair) []hostapi.Segment {
 			case len(out) > 0:
 				out = append(out, hostapi.Segment{Text: " · ", HL: hostapi.ChromeHint})
 			}
-			out = append(out, hostapi.Segment{Text: p.key, HL: hostapi.ChromeHintKey}, hostapi.Segment{Text: " " + p.verb, HL: hostapi.ChromeHint})
+			out = append(out, hostapi.Segment{Text: p.key, HL: hostapi.ChromeHintKey})
+			if p.verb != "" {
+				out = append(out, hostapi.Segment{Text: " " + p.verb, HL: hostapi.ChromeHint})
+			}
 		}
 		i := slices.IndexFunc(pairs, func(p hintPair) bool { return p == scrollHint || p == scrollGap })
 		if i < 0 {
