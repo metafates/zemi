@@ -5,7 +5,7 @@
 </div>
 
 <div align="center">
-	<img width="800" alt="zemi chat" src="https://github.com/user-attachments/assets/e408a167-6126-45b8-aced-64b6ae726328" />
+	<img width="800" alt="zemi chat" src="https://github.com/user-attachments/assets/45797dac-3470-4983-863c-fc23c223d473" />
 </div>
 
 Zemi is a (coding) agent harness that...
