@@ -628,6 +628,38 @@ func TestLogRowsPairsParallelCalls(t *testing.T) {
 	}
 }
 
+// TestStampPairsASplitMessage: a message over the chat split logs as sibling
+// rows while the transcript holds one; the row names the first chunk and the
+// pairing walks past the siblings. Marked gone instead, the cursor stalls on
+// the second chunk and the window never pairs again - deaf to live sync.
+func TestStampPairsASplitMessage(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	full := strings.Repeat("x", 9000) + "tail"
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: full})
+	if _, err := h.DB.AppendLog(store.KindUser, full[:8000], "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.DB.AppendLog(store.KindUser, full[8000:], "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: "reply"})
+	if _, err := h.DB.AppendLog(store.KindAgent, "reply", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	h.stampLogSeqs()
+	tr := h.Session().Transcript
+	if tr[0].Seq != 0 || tr[1].Seq != 2 {
+		t.Fatalf("the split message's row names its first chunk and the next row pairs: %d, %d", tr[0].Seq, tr[1].Seq)
+	}
+	h.tMu.RLock()
+	from := h.stampFrom
+	h.tMu.RUnlock()
+	if from != 3 {
+		t.Fatalf("the cursor walked past the siblings: %d", from)
+	}
+}
+
 // TestLogRowsBrowseKeepsUnpairedEchoes: the transcript folds an attachment's
 // echo and a !command's full output into the row they belong to; the
 // browser, where the log's whole truth lives, draws what nothing consumed.

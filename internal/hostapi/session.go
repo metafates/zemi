@@ -161,7 +161,8 @@ func (h *Host) stampLogSeqsLocked() {
 	var stamps []stamp
 	w := min(h.stampRow, len(tr))
 	consumed := 0
-	for _, row := range rows {
+	for i := 0; i < len(rows); i++ {
+		row := rows[i]
 		if row.Origin != h.origin {
 			// another window's row: never this transcript's to stamp
 			h.foreignPend = append(h.foreignPend, row)
@@ -186,6 +187,21 @@ func (h *Host) stampLogSeqsLocked() {
 			break // the log is ahead of the flush that draws its row: wait for it
 		}
 		if row.Kind != store.KindTool && row.Text != m.Text {
+			if strings.HasPrefix(m.Text, row.Text) {
+				// the message split into sibling log rows (the 8k chat split):
+				// this row stands for the first chunk and names its message;
+				// the siblings ride it, their text inside the row's own
+				for i+1 < len(rows) && rows[i+1].Kind == row.Kind && strings.Contains(m.Text, rows[i+1].Text) {
+					i++
+					consumed++
+				}
+				if m.Seq != row.Seq {
+					stamps = append(stamps, stamp{at: w, seq: row.Seq})
+				}
+				w++
+				consumed++
+				continue
+			}
 			// the log write for this row failed: the row draws unstamped and
 			// the log row pairs with the next one
 			stamps = append(stamps, stamp{at: w, gone: true})
