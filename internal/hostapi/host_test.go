@@ -1065,29 +1065,55 @@ func TestOverlayCallbackErrorsRecorded(t *testing.T) {
 	}
 }
 
-// TestWorkingRuleNamesTheBusyJob: the composer rule names the newest job the
-// user waits on, and a narrow one drops that name before the key that stops it
-// and the clock that shows it alive.
-func TestWorkingRuleNamesTheBusyJob(t *testing.T) {
+// TestWorkingRuleCarriesThePendingRowOnlyOutOfView: the chat's pending row is
+// where background work lives; the rule carries nothing while the chat shows
+// it, and once the reader scrolls it out of view the rule centres the same
+// row - mark and shimmer, no key the chat row does not carry.
+func TestWorkingRuleCarriesThePendingRowOnlyOutOfView(t *testing.T) {
 	t.Parallel()
-	clock := &fakeClock{now: testEpoch}
-	h := newTestHostUI(t, clock)
-	defer h.Busy("Reflecting", func() {})()
-	// the rule keeps its block away for the first 300ms of a job
-	clock.set(clock.Now().Add(4 * time.Second))
-	row := func(w int) string {
-		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("working"), w, 3, UIState{})
+	h := newTestHostUI(t)
+	defer h.Busy("Answering the side question", func() {})()
+	row := func(st UIState) string {
+		t.Helper()
+		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("working"), 80, 1, st)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return SegsText(lines[0])
 	}
-	if got := row(80); !strings.Contains(got, "reflecting · esc interrupt · 0m 04s") {
-		t.Errorf("the rule does not name the busy job: %q", got)
+	if got := row(UIState{}); strings.Contains(got, "side question") || strings.Contains(got, "esc") {
+		t.Fatalf("the rule carries the pending row the chat shows: %q", got)
 	}
-	if got := row(34); strings.Contains(got, "reflecting") || !strings.Contains(got, "esc interrupt · 0m 04s") {
-		t.Errorf("the narrow rule lost the key or the clock: %q", got)
+	got := row(UIState{RowsBelow: 1})
+	if !strings.Contains(got, "answering the side question") {
+		t.Fatalf("the scrolled-away row never reached the rule: %q", got)
 	}
+	if strings.Contains(got, "esc") {
+		t.Fatalf("the copy carries a key the chat row does not: %q", got)
+	}
+}
+
+// TestChatCountsTheRowsBelowItsPendingRow: the chat draws its pending row
+// above the todo list and says how many rows sit below it, so the rule carries
+// the row only once that block scrolled out of view too.
+func TestChatCountsTheRowsBelowItsPendingRow(t *testing.T) {
+	t.Parallel()
+	h := newTestHostUI(t)
+	h.AppendMessage("user", "hi")
+	defer h.Busy("Answering the side question", func() {})()
+	render := func() {
+		t.Helper()
+		if _, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("chat"), 80, 40, UIState{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	render()
+	runUser(t, h.RT, `assert(require("zemi.tui.text").rows_after_pending == 0, "without todos the pending row is the last")`)
+	h.todoMu.Lock()
+	h.todoSID, h.todos = h.AgentSessionID(), []store.Todo{{Content: "a thing", Status: "pending"}}
+	h.todoMu.Unlock()
+	render()
+	runUser(t, h.RT, `assert(require("zemi.tui.text").rows_after_pending > 0, "the todo block sits below the pending row")`)
 }
 
 // TestViewerRuleNamesNoInterruptKey: a viewer draws the writing window's turn

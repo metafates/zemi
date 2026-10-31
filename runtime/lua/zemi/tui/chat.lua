@@ -808,6 +808,9 @@ zemi.ui.widget.add({
 	render = function(ctx)
 		local width = ctx.width or 80
 		local count = ctx.transcript_count or 0
+		-- 0 until this render says where its pending row sits: the working rule
+		-- reads the count with the viewport's rows below
+		fmt.rows_after_pending = 0
 		-- the splash owns the empty chat: it draws the pending row too, in a
 		-- block that fits, so nothing here can scroll it off the top
 		if fmt.empty_chat(ctx) then return {} end
@@ -1287,9 +1290,11 @@ zemi.ui.widget.add({
 		end
 		-- What will change this conversation later sits between it and the
 		-- todos: a static row, so nothing here keeps the frame clock awake.
+		local pending_at = 0
 		if pending then
 			if #B.lines > 0 then B.blank() end
 			B.lines[#B.lines + 1] = pending
+			pending_at = #B.lines
 		end
 		local lines = B.lines
 		-- The todo list stays under the conversation until every item is done.
@@ -1360,6 +1365,9 @@ zemi.ui.widget.add({
 			end
 			if last < #todos then fold(#todos - last) end
 		end
+		-- what sits below the pending row (the todo list): the rule carries
+		-- the row only once the reader scrolled this much out of the view
+		if pending_at > 0 then fmt.rows_after_pending = #lines - pending_at end
 		return lines, more
 	end,
 })

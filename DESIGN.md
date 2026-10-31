@@ -1977,15 +1977,17 @@ view; a reset's wipe drops the row with the chat.
   cancelled; at the right end of the rule the interrupt key
   with the elapsed time, and while the chat shows an agent run's transcript
   that run's agent with `esc back` in its place, both on an idle
-  rule too, and that run's own clock while it runs. The block ends a cell off
+  rule too, and that run's own clock while it runs; the interrupt key shows
+  only on the window that writes the chat - a viewer's esc stops nothing - and
+  the chat's pending row rides the rule's middle, drawn as the chat draws it,
+  only while the reader has scrolled that row out of the view. The block ends a cell off
   the rule's end, a cell of rule either side of it, so nothing to its
   right ever moves and the cells a part grows into come out of the rule on its
   left; a narrow rule sheds the least worth first, sized by the cells a part
   can grow to; the running call names
   no cell of it, which the chat row already says. It reads `ctx.frame`,
   `ctx.ended`, `ctx.cancelling`, `interrupt_armed`, `view`, `editing`,
-  `waiting`, `busy` (its newest entry, the job the user waits on)
-  and `agent.retry`/`checking_goal`),
+  `waiting`, `rows_below`, `writer` and `agent.retry`/`checking_goal`),
   the statusline on a bar row below the box. The mascot is always drawn and the frame's height
   never moves with agent state, so no turn adds or removes a row.
   Statusline

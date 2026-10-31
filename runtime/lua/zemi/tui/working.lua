@@ -10,9 +10,10 @@ local READS = { read = true, grep = true, glob = true, skill = true }
 -- on either side and ends a cell off the rule's end, so nothing to
 -- its right ever moves and the cells a part grows into come out of the rule on
 -- its left. The block stays away for the first 300ms so instant turns do not
--- flash it, and the eyes say how the turn ended for a few seconds after. A
--- busy job shows the same way while idle; an agent view names the run it shows
--- in the middle of the rule and leaves on esc where the interrupt key stands.
+-- flash it, and the eyes say how the turn ended for a few seconds after. The
+-- chat's pending row rides the rule's middle once the reader scrolled it out
+-- of the view; an agent view names the run it shows there instead, and leaves
+-- on esc where the interrupt key stands.
 
 -- the state the eyes last showed and the frame it began on: an eye cycle
 -- starts with its state, whatever the clock read
@@ -38,10 +39,6 @@ zemi.ui.widget.add({
 		---@return zemi.Line
 		local function plain(text, hl, effect) return { { text = text, hl = hl or "Dim", effect = effect } } end
 		local state = "idle"
-		---@type { label: string, elapsed: number, cancellable: boolean }?
-		local busy = (ctx.busy or {})[1]
-		-- a job that just started is not worth the block that comes and goes
-		if busy and busy.elapsed < 0.3 then busy = nil end
 		local key, verb = "esc", "interrupt"
 		if ctx.interrupt_armed then verb = "again to interrupt" end
 		-- the run the chat shows and the key that leaves it, which is what esc
@@ -51,27 +48,15 @@ zemi.ui.widget.add({
 			parts[#parts + 1] = { plain(ctx.view.agent, "Title"), 5, center = true }
 			parts[#parts + 1] = { fmt.hint("esc", "back"), 6, 13 }
 		end
+		-- the chat's pending row, carried on the rule only once the reader
+		-- scrolled it out of the view: centred where a view's name stands and
+		-- drawn as the chat draws it - the mark, the shimmer, clickable nowhere
+		if not ctx.view and (ctx.rows_below or 0) > (fmt.rows_after_pending or 0) then
+			local pending = fmt.pending(ctx)
+			if pending then parts[#parts + 1] = { pending, 4, center = true } end
+		end
 		if not ctx.agent_active then
-			if busy then
-				state = "working"
-				-- what the job is, worth least of the three parts: a narrow rule
-				-- keeps the key that stops it and the clock that shows it alive
-				parts[#parts + 1] = { plain(fmt.lower(busy.label), nil, "shimmer"), 4 }
-				if busy.cancellable and not ctx.view then parts[#parts + 1] = { fmt.hint(key, verb), 6, 13 } end
-				-- the armed number counts the window it still waits, as the
-				-- turn's does: the job's clock reads as if it ran on
-				local clock = function(s) return string.format("%dm %02ds", math.floor(s / 60), math.floor(s) % 60) end
-				local tick = { plain(clock(busy.elapsed)), 5, 7 }
-				if ctx.interrupt_armed then
-					local arm = "arm " .. fmt.duration(math.ceil(ctx.interrupt_in or 0), true)
-					tick = {
-						plain(arm .. " · " .. clock(busy.elapsed)),
-						5,
-						7,
-					}
-				end
-				parts[#parts + 1] = tick
-			elseif ctx.ended == "ok" then
+			if ctx.ended == "ok" then
 				state = "done"
 			elseif ctx.ended == "error" then
 				state = "error"

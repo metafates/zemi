@@ -115,6 +115,11 @@ function M.pending(ctx)
 	return row
 end
 
+--- Rows the chat drew below its pending row, which the todo list takes: the
+--- working rule reads the count with ctx.rows_below to know the row left the
+--- view. The chat sets it every render; 0 when its pending row is the last.
+M.rows_after_pending = 0
+
 --- Whether the splash owns the chat this frame: an empty transcript with no
 --- turn running and no todo left. The chat yields the region to it, since the
 --- splash draws the pending row itself in a block that fits; two widgets whose
