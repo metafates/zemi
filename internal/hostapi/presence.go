@@ -149,12 +149,16 @@ func (h *Host) servePeer(conn net.Conn) {
 		return
 	}
 	if req.Stream != nil {
-		_ = ipc.WriteReply(conn, ipc.Reply{OK: true})
 		var w streamWire
-		if json.Unmarshal([]byte(req.Stream), &w) == nil {
-			h.watchStream(wireToStream(w))
-			h.SyncChat() // the frame's rows ride the shared log: splice them now, not at the next tick
+		if err := json.Unmarshal([]byte(req.Stream), &w); err != nil {
+			h.RecordErrorOnce("peer stream", "", "a pushed frame did not parse: "+err.Error())
+			return
 		}
+		h.watchStream(wireToStream(w))
+		h.SyncChat() // the frame's rows ride the shared log: splice them now, not at the next tick
+		// answered only once applied: the sender waits for this reply before
+		// its next frame, so an older frame cannot land after a newer one
+		_ = ipc.WriteReply(conn, ipc.Reply{OK: true})
 		return
 	}
 	if req.Hello {
@@ -335,6 +339,7 @@ func (h *Host) pushStreamLoop() {
 		}
 		raw, err := json.Marshal(streamToWire(h.AgentStream()))
 		if err != nil {
+			h.RecordErrorOnce("stream push", "", "a frame did not marshal: "+err.Error())
 			continue
 		}
 		for _, sock := range socks {

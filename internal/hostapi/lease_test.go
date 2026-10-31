@@ -260,6 +260,42 @@ func TestPushedRowsReachTheViewerWithoutTheTick(t *testing.T) {
 	t.Fatal("the logged row never reached the viewer without its tick")
 }
 
+// TestTheTurnsEndClearsTheViewersLiveView: release is what the actor runs at
+// a turn's end, and its poke is what ships the final frame - without it every
+// viewer keeps the last live frame drawn forever, spinner and esc hint included.
+func TestTheTurnsEndClearsTheViewersLiveView(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a := openClaimed(t, state, proj)
+	b := openClaimed(t, state, proj)
+
+	a.SeedStream(StreamSnapshot{Active: true, Text: "mid-reply", Task: "write the docs"})
+	a.pokeViewers()
+	for range 500 {
+		if b.AgentStream().Active {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !b.AgentStream().Active {
+		t.Fatal("the viewer never drew the live turn")
+	}
+	// the settled turn leaves the writer's own stream empty (flushOutput
+	// took its text), and release - not a hand poke - is what ships that
+	// final frame
+	a.SeedStream(StreamSnapshot{})
+	a.agents.mu.Lock()
+	a.release()
+	a.agents.mu.Unlock()
+	var got StreamSnapshot
+	for range 500 {
+		if got = b.AgentStream(); !got.Active && got.Text == "" {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("the turn's end never reached the viewer: %+v", got)
+}
+
 // TestTakeoverDropsTheWatch: the survivor that takes the write stops drawing
 // the gone writer's stream - its own snapshot is the truth again.
 func TestTakeoverDropsTheWatch(t *testing.T) {

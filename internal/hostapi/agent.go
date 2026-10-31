@@ -837,6 +837,9 @@ func (h *Host) release() {
 	h.agents.active = false
 	h.agents.task = "" // the note a sender reads names a live turn, not the last one
 	h.turn.Store(nil)
+	// the turn's last frame ships too: nothing logs after this, so without a
+	// poke every viewer keeps drawing the turn live
+	h.pokeViewers()
 	// on their own goroutines: these run under ag.mu, which no store call
 	// may wait on while it holds the one connection
 	h.GoSafe("settle todos", h.settleTodos)

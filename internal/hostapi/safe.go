@@ -58,10 +58,10 @@ func (h *Host) clearCrashedTurn(r any) {
 	h.logPanic("agent turn", r)
 	ag := h.agents
 	ag.mu.Lock()
-	h.release()
 	ag.checkingGoal = false
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
 	ag.turnStart, ag.retryAt = time.Time{}, time.Time{}
+	h.release()
 	ag.mu.Unlock()
 	// the tail must terminate: a panic left unlogged reads as a turn the
 	// window closed on, with the reply the user read gone

@@ -633,12 +633,11 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 // composer still refuses - and a frame that overtakes this window's own turn
 // or write is dropped: the writer is never a watcher.
 func (h *Host) watchStream(s StreamSnapshot) {
-	if h.writerFlag() {
-		return
-	}
 	ag := h.agents
 	ag.mu.Lock()
-	if ag.active {
+	// the writer under the same lock: a promotion between an unlocked read
+	// and this store would land a frame on the new writer
+	if ag.writer || ag.active {
 		ag.mu.Unlock()
 		return
 	}
