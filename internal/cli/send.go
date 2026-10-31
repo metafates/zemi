@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -41,8 +42,9 @@ func sendCommand(o *options) *cobra.Command {
 				return fmt.Errorf("no zemi window is live in %s", perm.TildePath(o.dirs.TrustRoot()))
 			}
 			type peer struct {
-				sock  string
-				fresh bool
+				sock    string
+				fresh   bool
+				working bool
 			}
 			var heartbeats []peer
 			for _, e := range entries {
@@ -50,7 +52,8 @@ func sendCommand(o *options) *cobra.Command {
 					continue
 				}
 				var hb struct {
-					Sock string `json:"sock"`
+					Sock    string `json:"sock"`
+					Working bool   `json:"working"`
 				}
 				raw, err := os.ReadFile(filepath.Join(peers, e.Name()))
 				if err != nil || json.Unmarshal(raw, &hb) != nil || hb.Sock == "" {
@@ -60,8 +63,20 @@ func sendCommand(o *options) *cobra.Command {
 				if info, err := e.Info(); err == nil && time.Since(info.ModTime()) <= hostapi.PeersTTL {
 					fresh = true
 				}
-				heartbeats = append(heartbeats, peer{hb.Sock, fresh})
+				heartbeats = append(heartbeats, peer{hb.Sock, fresh, hb.Working})
 			}
+			// a window at work takes the message first: a steer meant for the
+			// running turn should not land on an idle sibling whose heartbeat
+			// merely sorts ahead
+			slices.SortStableFunc(heartbeats, func(a, b peer) int {
+				if a.working != b.working {
+					if a.working {
+						return -1
+					}
+					return 1
+				}
+				return 0
+			})
 			// deliver prints the verdict and reports whether it happened; a
 			// window that refused names why
 			deliver := func(sock string) (bool, error) {
