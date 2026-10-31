@@ -436,11 +436,14 @@ write_config() {
 
 # wait_boot: poll captures until the composer shows, or fail loudly. The
 # placeholder can also read "tell zemi what to do instead…" - a [t] answer
-# points the draft at itself until the first key.
+# points the draft at itself until the first key - or, on a peer window,
+# "another window writes" - the lease's viewer wording.
 wait_boot() {
 	i=0
 	while [ "$i" -lt 120 ]; do
-		case "$(cap)" in *"Ask anything"* | *"what to do instead"*) return 0 ;; esac
+		case "$(cap)" in
+		*"Ask anything"* | *"what to do instead"* | *"another window writes"*) return 0 ;;
+		esac
 		i=$((i + 1))
 		sleep 0.25
 	done
@@ -713,15 +716,16 @@ cmd_prompt() {
 	# empty composer, quits) - but the C-c can be eaten by an overlay still
 	# closing (send Escape; prompt right after), so verify the composer box
 	# emptied and retry, bounded. The placeholder can also read "tell zemi
-	# what to do instead…" after a [t] answer.
+	# what to do instead…" after a [t] answer, or "another window writes" on
+	# a peer window.
 	i=0
 	while [ "$i" -lt 4 ]; do
-		composer_has "Ask anything" || composer_has "what to do instead" && break
+		composer_has "Ask anything" || composer_has "what to do instead" || composer_has "another window writes" && break
 		send_keys C-c
 		sleep 0.4
 		i=$((i + 1))
 	done
-	composer_has "Ask anything" || composer_has "what to do instead" ||
+	composer_has "Ask anything" || composer_has "what to do instead" || composer_has "another window writes" ||
 		die "the composer will not empty (a draft survived 4 ctrl+c - an overlay may still be open)"
 	# a per-call marker rides the text, so delivery is attributable to it
 	# alone (request_carries); the composer check must match what was typed
@@ -1052,7 +1056,11 @@ cmd_peer() {
 			rex) cur=$(rex capture -s "$RSESSION" -b "$RBLK" 2>/dev/null || true) ;;
 			*) cur=$(tmux -L "$SERVER" capture-pane -t "$WIN" -p 2>/dev/null || true) ;;
 		esac
-		case "$cur" in *"Ask anything"*) break ;; esac
+		# a peer usually opens a viewer: its composer says who writes instead
+		# of "Ask anything" (the lease's wording, same as wait_boot's variants)
+		case "$cur" in
+		*"Ask anything"* | *"what to do instead"* | *"another window writes"*) break ;;
+		esac
 		i=$((i + 1))
 		sleep 0.25
 	done
