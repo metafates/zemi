@@ -69,17 +69,22 @@ func Dial(path string, timeout time.Duration) (net.Conn, error) {
 	return nil, err
 }
 
-// Request is the one frame a client sends: the text to deliver, or a
-// presence poke.
+// Request is the one frame a client sends: the text to deliver, a presence
+// poke, the write handed over, or a viewer's ask for it.
 type Request struct {
-	Text  string `json:"text"`
-	Hello bool   `json:"hello,omitempty"`
+	Text   string `json:"text"`
+	Hello  bool   `json:"hello,omitempty"`  // presence poke: re-read the siblings now
+	Yours  bool   `json:"yours,omitempty"`  // the write was handed to this window: re-read the lease now
+	Yield  bool   `json:"yield,omitempty"`  // ask for the write; Origin and Sock name the asker
+	Origin string `json:"origin,omitempty"` // the asking window's per-boot id
+	Sock   string `json:"sock,omitempty"`   // the asking window's socket
 }
 
 // Reply is the one frame the window answers with.
 type Reply struct {
 	OK     bool   `json:"ok"`
 	Queued bool   `json:"queued,omitempty"` // the message joined a running turn
+	Parked bool   `json:"parked,omitempty"` // the message parked on a viewer: it sends once the write comes to it
 	Ran    bool   `json:"ran,omitempty"`    // a command ran instead
 	Error  string `json:"error,omitempty"`
 	Note   string `json:"note,omitempty"` // what the window is on, for windows a sender cannot tell apart

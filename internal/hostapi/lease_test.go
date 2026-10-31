@@ -32,13 +32,13 @@ func TestLeaseOneWindowWrites(t *testing.T) {
 		t.Fatalf("the second window views: writer=%v word=%q viewer=%v", b.writerFlag(), b.WriterWord(), b.IsViewer())
 	}
 
-	b.leaseTick() // a live holder's beat is fresh: the viewer leaves it alone
+	b.leaseTick(false) // a live holder's beat is fresh: the viewer leaves it alone
 	if b.writerFlag() {
 		t.Fatal("the viewer took the lease from a live holder")
 	}
 
 	a.ClosePeers() // a clean close releases, so the survivor needs no TTL
-	b.leaseTick()
+	b.leaseTick(false)
 	if !b.writerFlag() || b.WriterWord() != writerThis || b.IsViewer() {
 		t.Fatalf("the survivor writes after the holder's close: writer=%v word=%q viewer=%v", b.writerFlag(), b.WriterWord(), b.IsViewer())
 	}
@@ -53,12 +53,12 @@ func TestLeaseTTLTakeoverAndSelfDemotion(t *testing.T) {
 	b := openClaimed(t, state, proj)
 	b.leaseTTL = time.Nanosecond // play a's death: its beat is older than this
 
-	b.leaseTick()
+	b.leaseTick(false)
 	if !b.writerFlag() || b.WriterWord() != writerThis {
 		t.Fatalf("the survivor took over the stale lease: writer=%v word=%q", b.writerFlag(), b.WriterWord())
 	}
 
-	a.leaseTick()
+	a.leaseTick(false)
 	if a.writerFlag() || a.WriterWord() != writerOther {
 		t.Fatalf("the replaced holder demoted: writer=%v word=%q", a.writerFlag(), a.WriterWord())
 	}
@@ -72,7 +72,7 @@ func TestLeaseRenewErrorKeepsTheWrite(t *testing.T) {
 	if err := a.DB.Close(); err != nil {
 		t.Fatal(err)
 	}
-	a.leaseTick()
+	a.leaseTick(false)
 	if !a.writerFlag() || a.WriterWord() != writerThis {
 		t.Fatalf("an unreachable store demoted the holder: writer=%v word=%q", a.writerFlag(), a.WriterWord())
 	}
@@ -80,18 +80,19 @@ func TestLeaseRenewErrorKeepsTheWrite(t *testing.T) {
 
 // TestViewerWritesNothing: every road a model turn or a destructive act begins
 // refuses on a viewer with the one error, a held -p hands its text back, and
-// a background report never turns the model.
+// a background report never turns the model. The typed message is the one
+// road that does not refuse: it parks, asks the writer for the chat, and the
+// write arrives - the parked queue sends.
 func TestViewerWritesNothing(t *testing.T) {
 	proj, state := t.TempDir(), t.TempDir()
-	openClaimed(t, state, proj) // the writer
+	a := openClaimed(t, state, proj) // the writer
 	b := openClaimed(t, state, proj)
+	replyStub(t, b, "ok")
 
 	sends := []struct {
 		name string
 		send func() error
 	}{
-		{"message", func() error { return b.AgentSendUser("hello") }},
-		{"delivered prompt", func() error { _, _, err := b.sendPrompt("hello again"); return err }},
 		{"goal", func() error { return b.SetGoal("make check is clean") }},
 		{"loop", func() error { return b.SetLoop("1m polish the readme") }},
 		{"reset", func() error {
@@ -128,5 +129,61 @@ func TestViewerWritesNothing(t *testing.T) {
 	b.deliverReport(b.AgentSessionID(), report{id: "gone-run", agent: "general", status: reportStatus("done"), description: "counting", body: "found 3"}, "")
 	if b.AgentActive() {
 		t.Fatal("the viewer started a model turn for a report")
+	}
+
+	// the typed message parks and asks; the writer hands the chat over, and
+	// the parked queue sends once this window holds the write
+	if err := b.AgentSendUser("hello"); err != nil {
+		t.Fatalf("the viewer's message did not park: %v", err)
+	}
+	if _, _, err := b.sendPrompt("hello again"); err != nil {
+		t.Fatalf("the delivered message did not park: %v", err)
+	}
+	for i := 0; i < 500 && b.IsViewer(); i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if b.IsViewer() || !a.IsViewer() {
+		t.Fatalf("the ask did not hand the write over: the asker views=%v the writer views=%v", b.IsViewer(), a.IsViewer())
+	}
+	for range 500 {
+		if n, err := b.DB.LogCount(); err == nil && n >= 2 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the parked queue never sent")
+}
+
+// TestYieldEndsTheTurnAtItsBoundary: an ask that lands mid-turn parks, the
+// turn's end hands the lease to the asker, and the demoted writer keeps
+// neither the ask nor the write.
+func TestYieldEndsTheTurnAtItsBoundary(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a := openClaimed(t, state, proj)
+	b := openClaimed(t, state, proj)
+
+	ag := a.agents
+	ag.mu.Lock()
+	ag.beginTurn() // a turn runs: the ask parks rather than moving the write
+	scope := a.claim()
+	ag.mu.Unlock()
+	a.yieldWrite(b.origin, b.sockPath)
+	if !a.yieldPending() {
+		t.Fatal("the ask did not park for the running turn")
+	}
+	if l, err := a.DB.ReadLeader(); err != nil || l.Origin != a.origin {
+		t.Fatalf("the parked ask moved the lease early: %+v (%v)", l, err)
+	}
+
+	a.nextTurn(scope, nil) // the turn ends at its boundary
+	if l, err := b.DB.ReadLeader(); err != nil || l.Origin != b.origin {
+		t.Fatalf("the lease did not move to the asker: %+v (%v)", l, err)
+	}
+	if a.writerFlag() || a.WriterWord() != writerOther || a.yieldPending() {
+		t.Fatalf("the writer did not demote: writer=%v word=%q", a.writerFlag(), a.WriterWord())
+	}
+	b.leaseTick(true)
+	if !b.writerFlag() {
+		t.Fatal("the asker did not promote")
 	}
 }

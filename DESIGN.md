@@ -1885,10 +1885,17 @@ it. One window writes: a one-row lease (`leader`) names it, claimed at
 boot before the first prompt, renewed on the peers tick, lost to a clean
 close or a beat gone stale past its TTL; first claim wins at boot, first
 CAS wins a takeover, and two racers serialize under SQLite's write lock.
-Every other window is a read-only viewer: its every road to a model turn
-refuses with one error, its background reports store and toast instead of
-turning the model, and promotion reloads before the write is visible, so
-its first turn answers with the previous writer's rows. Notice-class rows
+Every other window is a read-only viewer: every road to a model turn but
+the composer refuses with one error, its background reports store and toast
+instead of turning the model, and promotion reloads before the write is
+visible, so its first turn answers with the previous writer's rows. A typed
+message parks as a queued row and asks the holder for the write; the asker's
+beat repeats the ask while its queue waits. An idle holder hands the write
+over at once, a holder mid-turn parks the ask - its runner's `Full` ends the
+turn at the next tool-call boundary - and the turn's end hands the lease to
+the asker by CAS, demotes, and pokes the asker's socket (`Yours`), whose
+lease read promotes it and sends its parked queue. The parked queue is
+live-only, like a draft: it goes with its window. Notice-class rows
 (`/note`) still write from a viewer - honest rows the seq order already
 places. A window's presence rides heartbeat files under `<state>/peers/<store
 key>/` (one per origin, a two-second beat, fresh for six seconds), so the
@@ -1910,7 +1917,8 @@ for a window that died before it could say so. Ceilings: for up to one
 tick a GC-paused zombie may write beside the new holder - interleaved
 rows the seq-ordered splice already handles; a wedged-but-alive holder
 keeps the lease until killed, since a hung socket proves nothing - a
-clean close releases; and a binary too old to claim the row never writes
+clean close releases; a hand-over to an asker that died costs one TTL, its
+stale row going to the first survivor; and a binary too old to claim the row never writes
 one, so mid-rollout `zemi send` may name no writer while one runs - no
 compat shims.
 

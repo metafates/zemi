@@ -87,7 +87,7 @@ func (h *Host) StartPeers() {
 			// unconditional: a beat another goroutine ran (a poke's hello)
 			// stores a snapshot this ticker's own last view never saw
 			h.refresh()
-			h.leaseTick()
+			h.leaseTick(false)
 		}
 	})
 	h.GoSafe("peer hello", h.peerPoke)
@@ -133,9 +133,10 @@ func (h *Host) agentsTask() string {
 
 // servePeer reads one delivered frame: a prompt goes the way the composer
 // would (a command runs, a message starts a turn or joins the running one),
-// and a hello makes this window re-read its siblings now. The reply tells the
-// sender which happened; a bind probe or an unreadable frame goes
-// unanswered, a read frame is always answered.
+// a hello makes this window re-read its siblings now, a yours re-reads the
+// lease the write just moved to, and a yield asks this window for the write.
+// The reply tells the sender which happened; a bind probe or an unreadable
+// frame goes unanswered, a read frame is always answered.
 func (h *Host) servePeer(conn net.Conn) {
 	defer func() { _ = conn.Close() }()
 	_ = conn.SetReadDeadline(time.Now().Add(peerReadWait))
@@ -149,10 +150,31 @@ func (h *Host) servePeer(conn net.Conn) {
 		h.refresh()
 		return
 	}
+	if req.Yours {
+		_ = ipc.WriteReply(conn, ipc.Reply{OK: true})
+		h.beat()
+		h.leaseTick(true) // the write was handed here: read the row now
+		h.refresh()
+		return
+	}
+	if req.Yield {
+		reply := ipc.Reply{Note: clipLine(h.agentsTask(), 60)}
+		if h.writerFlag() {
+			reply.OK = true
+			h.yieldWrite(req.Origin, req.Sock)
+		} else {
+			reply.Error = errNotWriter.Error()
+		}
+		_ = ipc.WriteReply(conn, reply)
+		return
+	}
 	reply := ipc.Reply{OK: true, Note: clipLine(h.agentsTask(), 60)}
 	queued, ran, err := h.sendPrompt(req.Text)
 	if err != nil {
 		reply.OK, reply.Error = false, err.Error()
+	} else if queued && !ran && !h.writerFlag() {
+		// a viewer parks a delivered message for the write; it joins no turn
+		reply.Parked = true
 	} else {
 		reply.Queued, reply.Ran = queued, ran
 	}
@@ -366,7 +388,7 @@ func (h *Host) killWindow(origin string, yes bool) error {
 	// before the ticker does
 	h.GoSafe("lease nudge", func() {
 		time.Sleep(300 * time.Millisecond)
-		h.leaseTick()
+		h.leaseTick(false)
 	})
 	return nil
 }

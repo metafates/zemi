@@ -116,6 +116,9 @@ type agentHost struct {
 	steering             []string
 	steeredTurn          bool   // the running turn's input came from the steering queue
 	task                 string // the running turn's own input, one line: the program status report names it
+	// yield is a viewer's ask for the write, parked while a turn runs: the
+	// turn ends at its next step boundary and the chat is handed to the asker
+	yield *yieldAsk
 	// spoke is closed when the user's own message arrives during a turn
 	// (UserSpoke): a foreground call waiting on a long run hands it off
 	// instead of holding the turn past the message. Re-armed where the queue
@@ -351,6 +354,8 @@ func (h *Host) ensureRunner(toolset []fantasy.AgentTool) (*agent.Runner, error) 
 	r.Hooks = h.streamHooks()
 	r.Persist = h.persistMessage
 	r.Steer = h.deliverSteering
+	// a viewer's ask for the write ends this turn at its next tool boundary
+	r.Full = func(int64) bool { return h.yieldPending() }
 	r.TextOnly = !h.takesImages(id)
 	r.Compose = func(text string) fantasy.Message { return h.composeUserMessage(text, !r.TextOnly) }
 	return r, nil
@@ -512,9 +517,17 @@ func (h *Host) AgentSendUser(text string) error {
 }
 
 // agentSendUser is AgentSendUser, reporting whether the message joined a
-// running turn.
+// running turn. On a viewer the message parks instead: it draws as queued,
+// and the writing window is asked to hand the chat over.
 func (h *Host) agentSendUser(text string) (queued bool, err error) {
 	text = agent.Defuse(text)
+	if !h.writerFlag() {
+		if err := checkMessage(text); err != nil {
+			return false, err
+		}
+		h.parkForHandover(text)
+		return true, nil
+	}
 	if queued, err = h.agentSend(text); queued {
 		h.UserSpoke()
 	}
@@ -527,15 +540,24 @@ func (h *Host) agentSendUser(text string) (queued bool, err error) {
 // NOTE: a fixed ceiling, not the model's own window; a file goes as @path.
 const maxMessageChars = 400_000
 
-// agentSend is AgentSend, reporting whether the message joined a running turn.
-func (h *Host) agentSend(text string) (queued bool, err error) {
+// checkMessage refuses what no turn can take: an empty message, or a paste
+// beyond the ceiling.
+func checkMessage(text string) error {
 	if strings.TrimSpace(text) == "" {
 		// a provider refuses an empty user message, and where it landed would
 		// be the middle of a turn
-		return false, errors.New("nothing to send")
+		return errors.New("nothing to send")
 	}
 	if utf8.RuneCountInString(text) > maxMessageChars {
-		return false, fmt.Errorf("the message is over the %dk character limit; save it to a file and attach it with @path", maxMessageChars/1000)
+		return fmt.Errorf("the message is over the %dk character limit; save it to a file and attach it with @path", maxMessageChars/1000)
+	}
+	return nil
+}
+
+// agentSend is AgentSend, reporting whether the message joined a running turn.
+func (h *Host) agentSend(text string) (queued bool, err error) {
+	if err := checkMessage(text); err != nil {
+		return false, err
 	}
 	if !h.writerFlag() {
 		return false, errNotWriter
@@ -1088,6 +1110,18 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 	ag := h.agents
 	ag.mu.Lock()
 	text := ""
+	if y := ag.yield; y != nil {
+		// a viewer's ask ended this turn at its boundary: the write goes to
+		// the asker, and this window's own queue returns to the composer with
+		// the demotion
+		ag.yield = nil
+		h.release()
+		ag.mu.Unlock()
+		done.cancel()
+		h.handOver(*y)
+		h.refresh()
+		return nil, ""
+	}
 	if done.ctx.Err() != nil {
 		// esc stopped the turn; the reports behind it wait for the drain
 		// instead of the user's next message
@@ -1176,6 +1210,12 @@ func (h *Host) continueGoal(next *turnScope, g *Goal) (*turnScope, string) {
 	case note != "":
 		ag.goalRuns++
 	}
+	var y *yieldAsk
+	if ag.yield != nil {
+		// a viewer's ask outranks the chain: the write goes to the asker, and
+		// the goal reloads on the window that takes it
+		y, ag.yield, note = ag.yield, nil, ""
+	}
 	if note == "" {
 		h.release()
 	} else {
@@ -1187,6 +1227,9 @@ func (h *Host) continueGoal(next *turnScope, g *Goal) (*turnScope, string) {
 	}
 	if note == "" {
 		next.cancel()
+		if y != nil {
+			h.handOver(*y)
+		}
 		h.refresh()
 		return nil, ""
 	}

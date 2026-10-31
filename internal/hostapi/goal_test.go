@@ -366,7 +366,7 @@ func TestGoalChainsAfterTheWriterGone(t *testing.T) {
 		t.Fatalf("a viewer sent: %v", err)
 	}
 	a.ClosePeers() // the writer's clean close hands the chain over
-	b.leaseTick()
+	b.leaseTick(false)
 	if err := b.AgentSend("again"); err != nil {
 		t.Fatal(err)
 	}

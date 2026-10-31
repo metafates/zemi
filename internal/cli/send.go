@@ -51,6 +51,8 @@ func sendCommand(o *options) *cobra.Command {
 				switch {
 				case reply.Ran:
 					fmt.Fprintf(c.OutOrStdout(), "delivered: the command runs in the window\n")
+				case reply.Parked:
+					fmt.Fprintf(c.OutOrStdout(), "parked: the window does not write this chat yet; the message sends once the write comes to it\n")
 				case reply.Queued:
 					fmt.Fprintf(c.OutOrStdout(), "delivered: the message joined a running turn in the window\n")
 				default:

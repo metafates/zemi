@@ -347,8 +347,13 @@ applied one. A store made before goose only gains its version table: the baselin
   6s into the ctx's `peers`. Beside it `lease.go` keeps the one-row `leader` lease: claimed
   at boot (`OpenPeers`, before the first prompt), renewed on the same tick, taken over when
   the holder's beat goes stale or a close releases it, and named in the ctx's `writer`
-  ("this"|"other"|"none") - a viewer refuses every model turn with one error and its
-  reports store and toast (presence.go is started by the boot, after the config watch;
+  ("this"|"other"|"none") - a viewer refuses every model turn but its composer
+  with one error and its reports store and toast; its typed message parks as
+  queued and asks the holder for the write (idle holders hand over at once, a
+  mid-turn holder parks the ask and its runner's `Full` ends the turn at the
+  next tool boundary, where `nextTurn` CASes the lease to the asker, demotes
+  and pokes it - `Yours` - whose lease read promotes it and sends the parked
+  queue; presence.go is started by the boot, after the config watch;
   `ClosePeers` follows `p.Run()`, which is not `Host.Close`'s path). The heartbeat advertises
   the window's socket (`internal/ipc`, bound in a private temp dir), and a window whose
   presence moved - booted, closed - pokes every sibling it can dial (`peerPoke`), so
