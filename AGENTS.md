@@ -38,7 +38,10 @@ Comments say only what the code cannot: a why, an invariant, a ceiling, in one o
 describing the code as it is and never the diff. A deliberate shortcut gets a `NOTE:` naming
 the ceiling. Tests are tables and one runner, a case another case covers is deleted,
 non-trivial logic leaves exactly one runnable check, and security assertions are never
-weakened.
+weakened. An existing expectation is a contract: a fix that must flip a test's `want` or
+regenerate a golden is a behavior change, and DESIGN.md or the user names the new behavior
+before it lands — a polish-round finding that would flip one is a question for the user,
+not a fix.
 
 Fast is a feature. Nothing slow sits between submit and the provider request, an idle zemi
 redraws nothing, and there are no per-frame Lua or allocation hot spots. Cosmetics never cost a

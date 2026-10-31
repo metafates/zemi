@@ -47,6 +47,13 @@ Anything in the prefix that varies per request busts the provider cache for the 
 
 ## Traps
 
+- A pin flip is the loudest alarm in a polish round: a fix that must edit an existing test's
+  `want` or regenerate a golden to pass is changing designed behavior, not fixing a defect.
+  Round 12 "fixed" a persona's "digest scrolls off the top edge" exactly this way
+  (TestChatStickyDigest's want edited, golden regen'd) while DESIGN.md's chat section named the
+  old behavior as the design; the user reported the flood it caused two commits later. Before
+  fixing a behavior finding, grep DESIGN.md for it: a spec-named or test-pinned behavior is the
+  user's call, and a finding that wants it changed goes back as a question.
 - Agents sharing one working tree must not commit concurrently; give each a package or run them in sequence.
 - gopher-lua: once `pcall` catches an error, closures made before it stop sharing locals with their maker. Share state through a table.
 - Lua's `os.clock` is wall time on the runtime's `lua.Clock`, not CPU time.
