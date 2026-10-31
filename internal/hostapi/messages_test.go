@@ -39,11 +39,11 @@ func TestMessagesList(t *testing.T) {
 	sent := time.Date(2026, 10, 19, 14, 2, 0, 0, time.Local)
 	tr := []ChatMessage{
 		{Role: fantasy.MessageRoleUser, Text: "ping", Seq: 7, SentAt: sent.UnixMilli()},
-		{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "hmm"},
-		{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "shell", Text: "go test", Label: "run the tests", Status: CallErr, Output: "a\nb"},
-		{Role: fantasy.MessageRoleAssistant, Text: "the tests fail"},
-		{Role: fantasy.MessageRoleUser, Text: "again", SentAt: sent.UnixMilli()},
-		{Role: fantasy.MessageRoleAssistant, Text: "twice"},
+		{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "hmm", Seq: NoSeq},
+		{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "shell", Text: "go test", Label: "run the tests", Status: CallErr, Output: "a\nb", Seq: NoSeq},
+		{Role: fantasy.MessageRoleAssistant, Text: "the tests fail", Seq: NoSeq},
+		{Role: fantasy.MessageRoleUser, Text: "again", SentAt: sent.UnixMilli(), Seq: NoSeq},
+		{Role: fantasy.MessageRoleAssistant, Text: "twice", Seq: NoSeq},
 	}
 	h, _ := newTestHost(t)
 	ui := &fakeUI{}
@@ -68,7 +68,7 @@ func TestMessagesList(t *testing.T) {
 	}
 	turn1, turn2 := "Turn 1 · "+day+" · "+clock+" · 1 reply", "Turn 2 · "+clock+" · 1 reply"
 	want := []row{
-		{"ping", turn1, "", "messages view 1", 1},
+		{"ping", turn1, "", "messages view #7", 1},
 		{"2 steps", turn1, "", "messages rail 2", 2},
 		{"the tests fail", turn1, "", "messages view 4", 4},
 		{"again", turn2, "", "messages view 5", 5},
@@ -184,6 +184,19 @@ func TestMessagesViewReadsTheSplicedIndex(t *testing.T) {
 	}
 	if got := ui.opened[len(ui.opened)-1].Body; got != "the reply body" {
 		t.Fatalf("l on the spliced list's last row opened %q", got)
+	}
+	// l on the echo row reads it whole, and y copies it whole: the rebuild
+	// hands the row its head in Text and its body in Detail
+	if err := h.openMessageView(2); err != nil {
+		t.Fatal(err)
+	}
+	want := "\n<file path=\"w.txt\">\nwords\n</file>"
+	if got := strings.TrimSpace(ui.opened[len(ui.opened)-1].Body); got != strings.TrimSpace(want) {
+		t.Fatalf("l on the echo row opened %q, want the body whole", got)
+	}
+	o := h.messagesList(h.withBrowseEchoes(h.pickerTranscript()), 0)
+	if got := o.Items[1].Copy; got != strings.TrimSpace(want) {
+		t.Fatalf("y on the echo row copies %q, want the body whole", got)
 	}
 }
 

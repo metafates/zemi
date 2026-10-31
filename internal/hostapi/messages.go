@@ -584,13 +584,19 @@ func (h *Host) messagesOlder() (Overlay, bool) {
 // and what it held after the prompt.
 func turnSection(p pickTr, t msgTurn, prevDay *string) string {
 	var desc []string
-	if m := p.at(t.first); m.SentAt > 0 {
-		at := time.UnixMilli(m.SentAt)
-		if day := at.Format("Jan 02"); day != *prevDay {
-			desc = append(desc, day)
-			*prevDay = day
+	// the turn's time is its prompt's: a notice (a goal echo) can lead the
+	// rows in the spliced build, so the clock walks to the first row that
+	// carries one instead of reading the head only
+	for _, idx := range append([]int{t.first}, t.rows...) {
+		if m := p.at(idx); m.SentAt > 0 {
+			at := time.UnixMilli(m.SentAt)
+			if day := at.Format("Jan 02"); day != *prevDay {
+				desc = append(desc, day)
+				*prevDay = day
+			}
+			desc = append(desc, at.Format(ClockLayout))
+			break
 		}
-		desc = append(desc, at.Format(ClockLayout))
 	}
 	replies := 0
 	// a turn's rows can be empty: a foreign reset mid-turn reloads the log
@@ -832,10 +838,19 @@ func messageRow(idx int, m ChatMessage) OverlayItem {
 	}
 	item.Text = head
 	item.Desc = desc
-	if text != "" {
-		item.Copy = text
+	// y copies the row whole: an echo's rebuild carries its body in Detail
+	// and only its head in Text
+	if read := cmp.Or(strings.TrimSpace(m.Detail), text); read != "" {
+		item.Copy = read
 	}
-	item.Run, item.Verb = "messages view "+strconv.Itoa(idx), VerbGo
+	// a stamped row opens by its seq, the log's own identity: the splice
+	// shifts indexes, the seq does not, so the view opens the row it names
+	// whatever landed since the list was built
+	if m.Seq >= 0 {
+		item.Run, item.Verb = "messages view #"+strconv.FormatInt(m.Seq, 10), VerbGo
+	} else {
+		item.Run, item.Verb = "messages view "+strconv.Itoa(idx), VerbGo
+	}
 	if mark := markFor(m); mark != "" {
 		item.Mark, item.Row = mark, []Segment{{Text: head}}
 		return item
@@ -875,7 +890,8 @@ func (h *Host) openMessageView(n int) error {
 		return Usagef("the chat shows no row %d", n)
 	}
 	m := tr[n-1]
-	text := strings.TrimSpace(m.Text)
+	// an echo's rebuild carries its body in Detail and only its head in Text
+	text := cmp.Or(strings.TrimSpace(m.Detail), strings.TrimSpace(m.Text))
 	if text == "" {
 		return Usagef("row %d has no text", n)
 	}
