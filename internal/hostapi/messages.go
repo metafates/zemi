@@ -599,7 +599,7 @@ func turnSection(p pickTr, t msgTurn, prevDay *string) string {
 		}
 	}
 	replies := 0
-	// a turn's rows can be empty: a foreign reset mid-turn reloads the log
+	// a turn's rows can be empty: the writer's reset mid-turn reloads the log
 	// with the note dropped, so a transcript led by a tool row makes a turn
 	// with no prompt row, and the refresh must read it, not die on it
 	for _, idx := range t.rows[min(1, len(t.rows)):] {

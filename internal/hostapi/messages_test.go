@@ -136,7 +136,7 @@ func TestMessagesList(t *testing.T) {
 	}
 }
 
-// TestMessagesTurnSurvivesARowlessTurn: a foreign reset mid-turn reloads the
+// TestMessagesTurnSurvivesARowlessTurn: the writer's reset mid-turn reloads the
 // log with the reset note dropped, so a transcript can lead with a tool row —
 // a turn with no prompt row. The messages refresh reads it, it does not die
 // on a rows[1:] slice of nothing and wedge the window.

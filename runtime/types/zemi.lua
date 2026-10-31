@@ -775,7 +775,6 @@ function zemi.event.stats() end
 ---@field elapsed number
 ---@field ended number Unix time the turn ended, 0 when unknown.
 ---@field model string The model id that wrote the reply, "" elsewhere.
----@field foreign? boolean Another window wrote this row and a sync spliced it in live; false on rows this window wrote or read at boot.
 
 ---@class zemi.RecentProject
 ---@field path string The project root, ~-shortened.

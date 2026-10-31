@@ -270,8 +270,8 @@ local function builder(ctx, width)
 	-- view, and the bar never hovers there.
 	---@param text string
 	---@param waiting boolean? Waiting for the turn's next step boundary.
-	function B.user(text, waiting, foreign)
-		local bar_hl = waiting and "Queued" or foreign and "Dim" or "UserMsg"
+	function B.user(text, waiting)
+		local bar_hl = waiting and "Queued" or "UserMsg"
 		local room = width - 2
 		local wrapped = zemi.ui.wrap(text, room)
 		-- a user row past the composer's own paste threshold folds: the model
@@ -291,11 +291,6 @@ local function builder(ctx, width)
 				{ text = "▌ ", hl = bar_hl, copy = false, hover = false, sticky = not waiting },
 				{ text = "… +" .. (#wrapped - draw) .. " lines · /messages to read", hl = "Dim", copy = false },
 			})
-		end
-		-- another window wrote this: name it under the message, the reply
-		-- readout's shape, so "who wrote this" reads off the row
-		if foreign then
-			B.lines[#B.lines + 1] = { { text = "  ", copy = false }, { text = "· other window", hl = "Dim" } }
 		end
 	end
 
@@ -931,16 +926,10 @@ zemi.ui.widget.add({
 			elseif m.role == "user" then
 				-- plain text: what the user typed is not markdown
 				B.gap("user")
-				B.user(m.text, nil, m.foreign)
+				B.user(m.text, nil)
 			else
 				B.gap("text")
 				B.markdown(m.text)
-				-- another window wrote this reply: name it under the text, the
-				-- user row's mark, so a spliced exchange reads as whose it was —
-				-- once per exchange, where the rows before it did not already
-				if m.foreign and not (tr[first - 1] and tr[first - 1].foreign) then
-					B.lines[#B.lines + 1] = { { text = "  ", copy = false }, { text = "· other window", hl = "Dim" } }
-				end
 				-- The readout rides the reply that ends the exchange, and only the
 				-- next text row decides it: a call, notice or error after it changes
 				-- nothing, while another reply means a sentence between runs. No

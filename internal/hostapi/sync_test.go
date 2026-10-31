@@ -45,10 +45,10 @@ func newWindow(t *testing.T, stateHome, projectDir string) (*Host, *replyStubMod
 	return h, m
 }
 
-// TestSyncChatReplacesAStaleForeignGoal: a window that adopted a gone
+// TestSyncChatReplacesAStaleInheritedGoal: a window that adopted a gone
 // writer's goal drops the stale copy when the writer returns with a new one,
 // and the live row keeps standing - the stale copy never deletes it.
-func TestSyncChatReplacesAStaleForeignGoal(t *testing.T) {
+func TestSyncChatReplacesAStaleInheritedGoal(t *testing.T) {
 	proj, state := t.TempDir(), t.TempDir()
 	a, _ := newWindow(t, state, proj)
 	peerHeartbeat(t, a)
@@ -173,8 +173,8 @@ func (u *notifyUI) titles() []string {
 
 // TestSyncChatPullsTheOtherWindow: two windows on one repository read as the
 // one chat the log keeps - each window's SyncChat splices the other's rows in
-// at their place, in the order a restart reads, and a foreign reset reloads
-// the window whole.
+// at their place, in the order a restart reads, and the writer's reset
+// reloads the window whole.
 func TestSyncChatPullsTheOtherWindow(t *testing.T) {
 	proj, state := t.TempDir(), t.TempDir()
 	a, ma := newWindow(t, state, proj)
@@ -197,7 +197,7 @@ func TestSyncChatPullsTheOtherWindow(t *testing.T) {
 	a.SyncChat()
 	got = windowText(a)
 	if len(got) < 6 || !strings.Contains(got[4], "between") {
-		t.Fatalf("a's window spliced the foreign rows wrong = %q", got)
+		t.Fatalf("a's window spliced the other window's rows wrong = %q", got)
 	}
 	b.SyncChat()
 	waitFor(t, func() error {
@@ -215,7 +215,7 @@ func TestSyncChatPullsTheOtherWindow(t *testing.T) {
 			t.Fatalf("b's window holds an unstamped row: %+v", m)
 		}
 	}
-	// a foreign reset wipes under this window: it reloads whole, the goal
+	// the writer's reset wipes under this window: it reloads whole, the goal
 	// this window held drops with its kv row, and the reset names itself
 	g := &Goal{Condition: "the tests pass", SetAt: 0}
 	a.agents.mu.Lock()
@@ -227,16 +227,16 @@ func TestSyncChatPullsTheOtherWindow(t *testing.T) {
 	}
 	a.SyncChat()
 	if got := windowText(a); len(got) != 0 {
-		t.Fatalf("a's window after the foreign reset = %q, want empty", got)
+		t.Fatalf("a's window after the writer's reset = %q, want empty", got)
 	}
 	if _, ok := a.Goal(); ok {
-		t.Fatal("the goal survived the foreign reset")
+		t.Fatal("the goal survived the writer's reset")
 	}
 	if _, err := a.DB.GetKV("goal"); !errors.Is(err, store.ErrNotFound) {
-		t.Fatalf("the goal's kv row survived the foreign reset: %v", err)
+		t.Fatalf("the goal's kv row survived the writer's reset: %v", err)
 	}
-	if got := ui.titles(); len(got) == 0 || got[len(got)-1] != "Chat reset by another window" {
-		t.Fatalf("a's toasts after the foreign reset = %q", got)
+	if got := ui.titles(); len(got) == 0 || got[len(got)-1] != "Chat reset by the writable window" {
+		t.Fatalf("a's toasts after the writer's reset = %q", got)
 	}
 	sendTurns(t, a, ma, "fresh after the reset")
 	b.SyncChat()
@@ -247,7 +247,7 @@ func TestSyncChatPullsTheOtherWindow(t *testing.T) {
 }
 
 // TestSyncChatLeavesOwnStampingAlone: a window's own rows stamp through the
-// pairing exactly as without a second window, foreign rows around them or not.
+// pairing exactly as without a second window, spliced rows around them or not.
 func TestSyncChatLeavesOwnStampingAlone(t *testing.T) {
 	proj, state := t.TempDir(), t.TempDir()
 	a, ma := newWindow(t, state, proj)
@@ -261,24 +261,10 @@ func TestSyncChatLeavesOwnStampingAlone(t *testing.T) {
 		t.Fatalf("a's first turn lost its seqs = %+v", got[:2])
 	}
 	if !strings.Contains(got[2].Text, "b between") || got[2].Seq != 2 {
-		t.Fatalf("the foreign turn did not splice at its place = %+v", got[2])
+		t.Fatalf("the other window's turn did not splice at its place = %+v", got[2])
 	}
 	if got[3].Seq != 3 {
 		t.Fatalf("a's second turn lost its seq = %+v", got[3])
-	}
-	for i, m := range got {
-		// b's user row (seq 2) and its reply (seq 3) are the spliced pair
-		if m.Foreign != (m.Seq == 2 || m.Seq == 3) {
-			t.Fatalf("a's row %d (seq %d) foreign = %v, want the spliced pair alone", i, m.Seq, m.Foreign)
-		}
-	}
-	// a window booting late reads the same rows unmarked: the mark is for
-	// rows that arrived while this window watched, not for the log's
-	c, _ := newWindow(t, state, proj)
-	for i, m := range c.Session().Transcript {
-		if m.Foreign {
-			t.Fatalf("c's boot row %d carries the foreign mark: %+v", i, m)
-		}
 	}
 }
 
@@ -293,7 +279,7 @@ func TestSyncChatToastsADraftCollision(t *testing.T) {
 	a.SetComposerSnapshot("a draft", 6)
 	sendTurns(t, b, mb, "from b")
 	a.SyncChat()
-	if got := ui.titles(); len(got) != 1 || got[0] != "Another window sent a message" {
+	if got := ui.titles(); len(got) != 1 || got[0] != "The writable window sent a message" {
 		t.Fatalf("a's toasts = %q, want the one collision toast", got)
 	}
 	a.SyncChat()
@@ -323,7 +309,7 @@ func TestSyncChatWithoutAStore(t *testing.T) {
 	}
 }
 
-// TestSyncChatReloadsARegrownReset: a foreign reset whose wiped place the
+// TestSyncChatReloadsARegrownReset: the writer's reset whose wiped place the
 // log already regrown past - a turn or machine-paced sends refilled it
 // before the tick - is still caught, by content: the window reloads and
 // toasts instead of drawing the wiped chat forever.
@@ -347,7 +333,7 @@ func TestSyncChatReloadsARegrownReset(t *testing.T) {
 	if len(got) != 6 || !strings.Contains(got[0], "r1") || !strings.Contains(got[4], "r3") {
 		t.Fatalf("a's window after the regrown reset = %q, want b's fresh chat", got)
 	}
-	if got := ui.titles(); !slices.Contains(got, "Chat reset by another window") {
+	if got := ui.titles(); !slices.Contains(got, "Chat reset by the writable window") {
 		t.Fatalf("a's toasts = %q, want the reset one", got)
 	}
 	// the window keeps working: a's next turn lands on the fresh chat and stamps
@@ -397,7 +383,7 @@ func TestSyncChatSpliceWaitsForTheTurn(t *testing.T) {
 		}
 		return nil
 	})
-	sendTurns(t, b, mb, "from b") // foreign rows land while the turn holds
+	sendTurns(t, b, mb, "from b") // the writer's rows land while the turn holds
 	a.SyncChat()                  // a direct sync mid-turn, the guard the idle tick relies on raced
 	if got := windowText(a); slices.Contains(got, "from b") {
 		t.Fatalf("a spliced under its live turn = %q", got)
@@ -405,22 +391,8 @@ func TestSyncChatSpliceWaitsForTheTurn(t *testing.T) {
 	close(hold)
 	waitIdle(t, a)
 	a.SyncChat()
-	// own rows keep their seqs, the foreign pair sits at its place, and the
-	// live order is the order a restart reads
-	tr := a.Session().Transcript
-	foreignSeqs := map[int64]bool{}
-	if rows, err := a.DB.LogFrom(0, 1000); err == nil {
-		for _, r := range rows {
-			if r.Origin != a.origin {
-				foreignSeqs[r.Seq] = true
-			}
-		}
-	}
-	for i, m := range tr {
-		if m.Foreign != foreignSeqs[m.Seq] {
-			t.Fatalf("a's row %d (seq %d) foreign = %v, want %v", i, m.Seq, m.Foreign, foreignSeqs[m.Seq])
-		}
-	}
+	// the spliced pair sits at its place, and the live order is the order a
+	// restart reads
 	if got := windowText(a); !slices.Contains(got, "from b") || got[len(got)-1] != "step two" {
 		t.Fatalf("a's window = %q, want the splice under the turn's own rows", got)
 	}
@@ -430,7 +402,7 @@ func TestSyncChatSpliceWaitsForTheTurn(t *testing.T) {
 	}
 }
 
-// TestSyncChatReloadsUnderTheTurn: a foreign reset the log regrew past
+// TestSyncChatReloadsUnderTheTurn: the writer's reset the log regrew past
 // while a turn runs here is caught by the pairing itself - the window
 // reloads mid-turn, the turn's next rows land on the fresh log, and the
 // wiped chat is gone.
@@ -475,7 +447,7 @@ func TestSyncChatReloadsUnderTheTurn(t *testing.T) {
 		t.Fatalf("a's window under the turn = %q, want the fresh chat with the turn's row", got)
 	}
 	waitFor(t, func() error {
-		if !slices.Contains(ui.titles(), "Chat reset by another window") {
+		if !slices.Contains(ui.titles(), "Chat reset by the writable window") {
 			return errors.New("the reset toast has not landed")
 		}
 		return nil
@@ -491,7 +463,7 @@ func TestSyncChatReloadsUnderTheTurn(t *testing.T) {
 	}
 }
 
-// TestSyncChatSplicesFreshMeta: a foreign reply the pairing buffered before
+// TestSyncChatSplicesFreshMeta: a reply the pairing buffered before
 // its readout landed splices with the readout the log holds now, the way a
 // restart reads it.
 func TestSyncChatSplicesFreshMeta(t *testing.T) {
@@ -502,7 +474,7 @@ func TestSyncChatSplicesFreshMeta(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.stampLogSeqs() // the pairing buffers the foreign row before the readout lands
+	a.stampLogSeqs() // the pairing buffers the writer's row before the readout lands
 	if err := b.DB.SetLogMeta(seq, `{"turn_ms":7000,"out":50}`); err != nil {
 		t.Fatal(err)
 	}
@@ -511,18 +483,18 @@ func TestSyncChatSplicesFreshMeta(t *testing.T) {
 		if m.Text != "hello from b" {
 			continue
 		}
-		if !m.Foreign || m.Stat == nil || m.Stat.ElapsedMS != 7000 || m.Stat.Out != 50 {
-			t.Fatalf("the spliced reply drew foreign=%v stat=%+v, want the mark and the readout", m.Foreign, m.Stat)
+		if m.Stat == nil || m.Stat.ElapsedMS != 7000 || m.Stat.Out != 50 {
+			t.Fatalf("the spliced reply drew stat=%+v, want the readout", m.Stat)
 		}
 		return
 	}
-	t.Fatalf("the foreign reply never spliced: %q", windowText(a))
+	t.Fatalf("the writer's reply never spliced: %q", windowText(a))
 }
 
-// TestSyncChatSplicesAForeignFailedCall: a call another window failed draws
+// TestSyncChatSplicesAFailedCall: a call another window failed draws
 // failed here too - the splice builds the round's rows together, so the tool
 // row pairs with its echo instead of defaulting to a success.
-func TestSyncChatSplicesAForeignFailedCall(t *testing.T) {
+func TestSyncChatSplicesAFailedCall(t *testing.T) {
 	proj, state := t.TempDir(), t.TempDir()
 	a, _ := newWindow(t, state, proj)
 	b, _ := newWindow(t, state, proj)
@@ -544,7 +516,7 @@ func TestSyncChatSplicesAForeignFailedCall(t *testing.T) {
 	}
 }
 
-// TestSyncChatSplicesAMultiBatchBurstAfterTheTurn: a foreign burst bigger
+// TestSyncChatSplicesAMultiBatchBurstAfterTheTurn: a spliced burst bigger
 // than one pairing batch, buffered while a turn holds, splices whole and in
 // log order once the turn ends - the splice never lands a row after own rows
 // it precedes, and a later plant joins after the burst, never over a skipped
@@ -658,11 +630,11 @@ func TestLogRowsToolWithoutEcho(t *testing.T) {
 	}
 }
 
-// TestSyncChatLoadsAForeignGoal: a goal another window set joins a live
+// TestSyncChatLoadsTheWritersGoal: a goal another window set joins a live
 // window's state on the tick, so the chain moves here with the write instead
 // of leaving the goal unowned; this window holds the row and runs none of it
 // while another window writes the chat.
-func TestSyncChatLoadsAForeignGoal(t *testing.T) {
+func TestSyncChatLoadsTheWritersGoal(t *testing.T) {
 	proj, state := t.TempDir(), t.TempDir()
 	a := openClaimed(t, state, proj)
 	b := openClaimed(t, state, proj)
@@ -683,7 +655,7 @@ func TestSyncChatLoadsAForeignGoal(t *testing.T) {
 	b.SyncChat()
 	g, ok := b.Goal()
 	if !ok || g.Condition != "check is clean" {
-		t.Fatalf("b's goal after the sync = %+v, want the foreign one loaded", g)
+		t.Fatalf("b's goal after the sync = %+v, want the writer's one loaded", g)
 	}
 	if b.writerFlag() {
 		t.Fatal("b runs the chain while another window writes the chat")

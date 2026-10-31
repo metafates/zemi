@@ -88,7 +88,7 @@ func (h *Host) SetTranscript(tr []ChatMessage) {
 	h.tMu.Lock()
 	h.session.Transcript, h.view = tr, nil
 	h.trEpoch.Add(1)
-	h.foreignPend = nil
+	h.pendRows = nil
 	h.tMu.Unlock()
 	// the loaded pages and the stamping cursor speak the cut log's shape, and
 	// the window is stamped whole from the log
@@ -128,7 +128,7 @@ func (h *Host) stampLogSeqs() {
 }
 
 // stampLogSeqsLocked is stampLogSeqs with tMu held. Rows another window
-// wrote pair with nothing here: they buffer in foreignPend for syncChat to
+// wrote pair with nothing here: they buffer in pendRows for SyncChat to
 // splice in at their place, and the pairing cursor passes them like the
 // kinds it pairs with nothing.
 func (h *Host) stampLogSeqsLocked() {
@@ -138,7 +138,7 @@ func (h *Host) stampLogSeqsLocked() {
 		// drops off this goroutine: a flush calls here under ag.mu, and tMu
 		// must never wait on it.
 		if h.reloadChatLocked() {
-			h.GoSafe("chat dropped by another window", h.ForeignResetEnded)
+			h.GoSafe("chat dropped by the writer", h.WriterResetEnded)
 		}
 		return
 	}
@@ -158,8 +158,8 @@ func (h *Host) stampLogSeqsLocked() {
 	for i := 0; i < len(rows); i++ {
 		row := rows[i]
 		if row.Origin != h.origin {
-			// another window's row: never this transcript's to stamp
-			h.foreignPend = append(h.foreignPend, row)
+			// a row this window did not write: never this transcript's to stamp
+			h.pendRows = append(h.pendRows, row)
 			consumed++
 			continue
 		}
@@ -169,8 +169,8 @@ func (h *Host) stampLogSeqsLocked() {
 			consumed++
 			continue
 		}
-		for w < len(tr) && (!stampable(tr[w]) || tr[w].Foreign && tr[w].Seq != NoSeq) {
-			w++ // a notice, a thought or an error row pairs past it; a spliced foreign row is named already
+		for w < len(tr) && (!stampable(tr[w]) || tr[w].Seq != NoSeq) {
+			w++ // a notice, a thought or an error row pairs past it; a spliced row is named already
 		}
 		if w >= len(tr) {
 			break
@@ -253,9 +253,9 @@ func (h *Host) ChatWiped() bool {
 	return h.logWipedLocked()
 }
 
-// ForeignResetEnded ends this window's work after another window reset the
+// WriterResetEnded ends this window's work after the writing window reset the
 // shared log: the turn dies with the chat it ran in, the view reloads.
-func (h *Host) ForeignResetEnded() {
+func (h *Host) WriterResetEnded() {
 	h.chatDropped()
 	// the chat the turn worked in is gone: its work would write rows a
 	// wiped log no longer holds, so the turn ends with it
@@ -268,7 +268,7 @@ func (h *Host) ForeignResetEnded() {
 	h.refreshMessages()
 	h.scroll(ScrollBottom, "")
 	h.refresh()
-	h.Notify(slog.LevelInfo, "Chat reset by another window", "this window reloaded from the shared log")
+	h.Notify(slog.LevelInfo, "Chat reset by the writable window", "this window reloaded from the shared log")
 }
 
 // SyncChat pulls what other windows appended to the shared log into this
@@ -282,9 +282,9 @@ func (h *Host) SyncChat() {
 	if h.DB == nil || h.DB.Origin == "" {
 		return
 	}
-	// a foreign goal the kv row no longer holds (met or stopped where it was
-	// set, or replaced by a newer goal) leaves this window's copy stale: drop
-	// it, with no judge run here
+	// a goal another window set that the kv no longer holds (met or stopped
+	// where it was set, or replaced by a newer goal) leaves this window's copy
+	// stale: drop it, with no judge run here
 	if g, ok := h.Goal(); ok && g.Writer != "" && g.Writer != h.origin {
 		stale := false
 		if raw, err := h.DB.GetKV(goalKV); errors.Is(err, store.ErrNotFound) {
@@ -327,43 +327,42 @@ func (h *Host) SyncChat() {
 		// reads differently: another window reset, its regrown rows included
 		h.tMu.Unlock()
 		h.agents.mu.Unlock()
-		h.ForeignResetEnded()
+		h.WriterResetEnded()
 		return
 	}
 	h.stampLogSeqsLocked()
-	foreign := h.foreignPend
-	h.foreignPend = nil
+	pend := h.pendRows
+	h.pendRows = nil
 	active := h.agents.active
-	if len(foreign) > 0 && active {
+	if len(pend) > 0 && active {
 		// a turn owns the tail: its unstamped rows are the pairing's to
 		// claim, not a splice's to step over - the next tick splices them
-		h.foreignPend = foreign
-		foreign = nil
+		h.pendRows = pend
+		pend = nil
 	}
-	if len(foreign) > 0 {
+	if len(pend) > 0 {
 		// the pairing buffered copies, and a reply's readout lands in its
 		// row's meta after that: re-read the span, then splice what the log
 		// holds now
-		if fresh, err := h.DB.LogFrom(foreign[0].Seq, int(foreign[len(foreign)-1].Seq-foreign[0].Seq)+1); err == nil {
-			foreign = foreign[:0]
+		if fresh, err := h.DB.LogFrom(pend[0].Seq, int(pend[len(pend)-1].Seq-pend[0].Seq)+1); err == nil {
+			pend = pend[:0]
 			for _, row := range fresh {
 				if row.Origin != h.origin {
-					foreign = append(foreign, row)
+					pend = append(pend, row)
 				}
 			}
 		}
 		// Session() hands out snapshots of this array under a
 		// never-written-in-place contract, and an insert lands mid-array
-		// whenever a foreign row's seq sorts before the stamped tail: build
+		// whenever a spliced row's seq sorts before the stamped tail: build
 		// the spliced slice fresh, the way a whole replacement does
 		tr := slices.Clone(h.session.Transcript)
-		for _, m := range logRows(foreign) {
-			m.Foreign = true
+		for _, m := range logRows(pend) {
 			// splice at the row's place in the log, so the window draws the
 			// order a restart reads: past the pairing's cursor the rows are
 			// unclaimed and their seqs all sort above the buffered span, so
-			// the scan stops at the first of them - stepping over drew a
-			// foreign burst after own rows it precedes
+			// the scan stops at the first of them - stepping over drew the
+			// burst after own rows it precedes
 			at := len(tr)
 			for i, o := range tr {
 				if o.Seq != NoSeq && o.Seq > m.Seq || i >= h.stampRow && o.Seq == NoSeq && stampable(o) {
@@ -381,7 +380,7 @@ func (h *Host) SyncChat() {
 	}
 	h.tMu.Unlock()
 	h.agents.mu.Unlock()
-	if len(foreign) > 0 {
+	if len(pend) > 0 {
 		// another window may have written the list: the snapshot reloads on
 		// the next render, or this window's block freezes at its own last
 		// write forever
@@ -393,7 +392,7 @@ func (h *Host) SyncChat() {
 			h.composerMu.Lock()
 			h.draftToasted = draft
 			h.composerMu.Unlock()
-			h.Notify(slog.LevelInfo, "Another window sent a message", "your draft is kept")
+			h.Notify(slog.LevelInfo, "The writable window sent a message", "your draft is kept")
 		}
 	}
 }
@@ -476,7 +475,7 @@ func (h *Host) reloadChatLocked() bool {
 	h.msgOld, h.msgFrom = nil, -1
 	h.msgMu.Unlock()
 	h.stampRow, h.stampFrom = len(h.session.Transcript), h.stampedTail(h.session.Transcript)
-	h.foreignPend = nil
+	h.pendRows = nil
 	h.trEpoch.Add(1)
 	return true
 }

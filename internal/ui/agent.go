@@ -111,7 +111,7 @@ func (a *App) TurnDone(err string, stopped bool) {
 }
 
 // DismissAsk implements hostapi.UIHooks: it answers the shown permission
-// ask as nobody, the chat it belonged to gone (a foreign reset), so the
+// ask as nobody, the chat it belonged to gone (the writer's reset), so the
 // waiter unblocks at the wipe and the turn ends with its honest interrupt
 // instead of on the next key.
 func (a *App) DismissAsk() {

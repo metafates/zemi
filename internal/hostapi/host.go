@@ -70,7 +70,7 @@ type UIHooks interface {
 	TurnDone(err string, stopped bool)
 	AskPermission(req PermRequest) (allowed bool, decidedBy string)
 	// DismissAsk answers the shown permission ask as nobody: the chat it
-	// belonged to is gone (a foreign reset), the waiter unblocks at once.
+	// belonged to is gone (the writer's reset), the waiter unblocks at once.
 	DismissAsk()
 	// Screenshot is the last drawn frame as plain text, "" before the
 	// first one; safe from any goroutine.
@@ -425,11 +425,6 @@ type ChatMessage struct {
 	Seq    int64
 	ID     string // a run row's stored message id (its transcript rebuilds from the store)
 	SentAt int64  // a user row: when the prompt was sent, unix ms, 0 elsewhere
-	// Foreign marks a row another window wrote and a sync spliced in live:
-	// the chat dims its gutter, so "who wrote this" reads off the row. Rows
-	// read at boot or after a reload carry no mark: the whole window is
-	// equally the log's.
-	Foreign bool
 }
 
 // Plural is one when n is 1, else many.
@@ -584,17 +579,17 @@ type Host struct {
 	stampRow  int
 
 	// origin is this window's writer id, what its log rows carry and the
-	// pairing tells its rows apart by; foreignPend buffers the other
-	// windows' rows the pairing passed, for syncChat to splice in.
-	origin      string
-	peersPath   string                    // this window's heartbeat file, "" without a store
-	peers       atomic.Pointer[peersView] // the sibling windows the last beat read
-	lease       atomic.Pointer[string]    // the lease word the pill and the ctx read
-	leaseTTL    time.Duration             // lease staleness before a takeover; 0 reads peersTTL (tests narrow it)
-	sockLn      net.Listener              // the delivered-prompt socket, nil when not bound
-	sockDir     string                    // its private temp dir, removed on close
-	sockPath    string                    // the socket's path, advertised in the heartbeat
-	foreignPend []store.LogEntry
+	// pairing tells its rows apart by; pendRows buffers the other windows'
+	// rows the pairing passed, for SyncChat to splice in.
+	origin    string
+	peersPath string                    // this window's heartbeat file, "" without a store
+	peers     atomic.Pointer[peersView] // the sibling windows the last beat read
+	lease     atomic.Pointer[string]    // the lease word the pill and the ctx read
+	leaseTTL  time.Duration             // lease staleness before a takeover; 0 reads peersTTL (tests narrow it)
+	sockLn    net.Listener              // the delivered-prompt socket, nil when not bound
+	sockDir   string                    // its private temp dir, removed on close
+	sockPath  string                    // the socket's path, advertised in the heartbeat
+	pendRows  []store.LogEntry
 
 	// agentRows caches ctx.agent's tool subtables between renders: a finished
 	// tool's fields never change, so a long turn rebuilds only the rows that
@@ -2352,7 +2347,6 @@ func chatRow(L *glua.LState, m ChatMessage) *glua.LTable {
 		row.RawSetString("ended", glua.LNumber(m.Stat.Ended))
 		row.RawSetString("model", glua.LString(m.Stat.Model))
 	}
-	row.RawSetString("foreign", glua.LBool(m.Foreign))
 	return row
 }
 

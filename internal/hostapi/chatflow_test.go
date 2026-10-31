@@ -283,10 +283,10 @@ func TestBuilderWakesOnRealTurns(t *testing.T) {
 	}
 }
 
-// TestBuilderRebuildsAfterForeignReset: another window's /reset shrank the
+// TestBuilderRebuildsAfterTheWritersReset: the writer's /reset shrank the
 // log under this builder's cursor; its next wake must rebuild and build the
 // fresh seqs instead of stalling until restart.
-func TestBuilderRebuildsAfterForeignReset(t *testing.T) {
+func TestBuilderRebuildsAfterTheWritersReset(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	m := replyStub(t, h, "ok")
@@ -308,7 +308,7 @@ func TestBuilderRebuildsAfterForeignReset(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		if _, err := h.chat.User("after the foreign reset", ""); err != nil {
+		if _, err := h.chat.User("after the writer's reset", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -319,7 +319,7 @@ func TestBuilderRebuildsAfterForeignReset(t *testing.T) {
 		return nil
 	})
 	if m.calls.Load() == 0 {
-		t.Fatal("no builder call after the foreign reset")
+		t.Fatal("no builder call after the writer's reset")
 	}
 }
 

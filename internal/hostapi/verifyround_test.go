@@ -73,13 +73,13 @@ func TestVerifySnapshotRacesTheHeldDrop(t *testing.T) {
 	}
 }
 
-// TestVerifySnapshotRacesTheForeignSplice runs the attack against the sync
-// tick's splice: a foreign row whose seq sits before this window's stamped
+// TestVerifySnapshotRacesTheSplice runs the attack against the sync
+// tick's splice: a spliced row whose seq sits before this window's stamped
 // tail inserts mid-array, and slices.Insert shifts the shared backing array
 // in place when its capacity allows - while Session() snapshots read it
 // unlocked. b runs its own turns so its rows stamp and the splice lands
 // mid-array; a's rows are older by the time b's tick sees them.
-func TestVerifySnapshotRacesTheForeignSplice(t *testing.T) {
+func TestVerifySnapshotRacesTheSplice(t *testing.T) {
 	proj, state := t.TempDir(), t.TempDir()
 	a, _ := newWindow(t, state, proj)
 	b, _ := newWindow(t, state, proj)
@@ -121,7 +121,7 @@ func TestVerifySnapshotRacesTheForeignSplice(t *testing.T) {
 			default:
 			}
 			if !a.AgentActive() {
-				_ = a.AgentSend(fmt.Sprintf("foreign %d", i))
+				_ = a.AgentSend(fmt.Sprintf("a spliced %d", i))
 			}
 			time.Sleep(2 * time.Millisecond)
 		}
