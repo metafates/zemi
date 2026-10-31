@@ -543,6 +543,87 @@ func TestSyncChatSplicesAForeignFailedCall(t *testing.T) {
 	}
 }
 
+// TestSyncChatSplicesAMultiBatchBurstAfterTheTurn: a foreign burst bigger
+// than one pairing batch, buffered while a turn holds, splices whole and in
+// log order once the turn ends - the splice never lands a row after own rows
+// it precedes, and a later plant joins after the burst, never over a skipped
+// range.
+func TestSyncChatSplicesAMultiBatchBurstAfterTheTurn(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a, _ := newWindow(t, state, proj)
+	b, _ := newWindow(t, state, proj)
+	hold := make(chan struct{})
+	var calls atomic.Int32
+	a.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
+			if calls.Add(1) == 1 {
+				return []fantasy.StreamPart{
+					{Type: fantasy.StreamPartTypeToolCall, ID: "c1", ToolCallName: "nope", ToolCallInput: "{}"},
+					{Type: fantasy.StreamPartTypeFinish, FinishReason: fantasy.FinishReasonToolCalls},
+				}
+			}
+			<-hold
+			return textParts("held step done")
+		}}, nil
+	}
+	if err := a.AgentSend("go"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if calls.Load() < 2 {
+			return errors.New("the held step has not started")
+		}
+		return nil
+	})
+	for i := range 3 * stampBatch {
+		if _, err := b.DB.AppendLog(store.KindUser, fmt.Sprintf("burst row %d", i), "", "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	close(hold)
+	waitIdle(t, a)
+	for range 2*stampBatch/128 + 4 { // the pairing claims one batch per tick
+		a.SyncChat()
+	}
+	checkBurstOrder := func(when, tail string) {
+		t.Helper()
+		tr := a.Session().Transcript
+		prev := int64(-1)
+		for i, m := range tr {
+			if m.Seq == NoSeq {
+				continue
+			}
+			if m.Seq <= prev {
+				t.Fatalf("%s: row %d draws seq %d after seq %d (%.30q after %.30q)",
+					when, i, m.Seq, prev, m.Text, tr[i-1].Text)
+			}
+			prev = m.Seq
+		}
+		if last := tr[len(tr)-1]; last.Text != tail {
+			t.Fatalf("%s: the tail is %.40q, want %q", when, last.Text, tail)
+		}
+	}
+	checkBurstOrder("after the burst", "held step done")
+	var seqs []int64
+	for _, m := range a.Session().Transcript {
+		if strings.HasPrefix(m.Text, "burst row ") {
+			seqs = append(seqs, m.Seq)
+		}
+	}
+	if len(seqs) != 3*stampBatch {
+		t.Fatalf("%d burst rows drew, want %d", len(seqs), 3*stampBatch)
+	}
+	// a later plant splices after the burst, in its place
+	if _, err := b.DB.AppendLog(store.KindUser, "recovery probe", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	a.SyncChat()
+	checkBurstOrder("after the probe", "recovery probe")
+	if got := windowText(a); !slices.Contains(got, "recovery probe") {
+		t.Fatalf("the recovery probe never spliced: %q", got[len(got)-3:])
+	}
+}
+
 // TestLogRowsToolWithoutEcho: a call whose echo never landed (a window
 // killed mid-turn) draws failed, not a quiet success; one whose echo may
 // still be beyond the read stays quiet.

@@ -337,10 +337,13 @@ func (h *Host) SyncChat() {
 		for _, m := range logRows(foreign) {
 			m.Foreign = true
 			// splice at the row's place in the log, so the window draws the
-			// order a restart reads
+			// order a restart reads: past the pairing's cursor the rows are
+			// unclaimed and their seqs all sort above the buffered span, so
+			// the scan stops at the first of them - stepping over drew a
+			// foreign burst after own rows it precedes
 			at := len(tr)
 			for i, o := range tr {
-				if o.Seq != NoSeq && o.Seq > m.Seq {
+				if o.Seq != NoSeq && o.Seq > m.Seq || i >= h.stampRow && o.Seq == NoSeq && stampable(o) {
 					at = i
 					break
 				}
