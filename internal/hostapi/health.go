@@ -406,11 +406,11 @@ func (h *Host) goHealthRows() []HealthRow {
 	}
 	switch n := fmt.Sprintf("%d %s", len(loads), Plural(len(loads), "plugin", "plugins")); {
 	case len(loads) == 0:
-		add(HealthOK, "plugins", "none on", "plugins")
+		add(HealthOK, "plugins", "none on", "plugin")
 	case failed == 0:
-		add(HealthOK, "plugins", n+" ready", "plugins")
+		add(HealthOK, "plugins", n+" ready", "plugin")
 	default:
-		add(HealthWarn, "plugins", fmt.Sprintf("%s: %d failed, %d ready", n, failed, len(loads)-failed), "plugins")
+		add(HealthWarn, "plugins", fmt.Sprintf("%s: %d failed, %d ready", n, failed, len(loads)-failed), "plugin")
 	}
 
 	h.errs.mu.Lock()
@@ -547,7 +547,7 @@ func (h *Host) WaitMCP(ctx context.Context) {
 
 // healthActions labels the command a check's detail view runs; its initial
 // is the key.
-var healthActions = map[string]string{"errors": "Show errors", "trust": "Change trust", "mcp": "Open MCP servers", "plugins": "Open plugins"}
+var healthActions = map[string]string{"errors": "Show errors", "trust": "Change trust", "mcp": "Open MCP servers", "plugin": "Open plugins"}
 
 // healthAction is what a check's Run resolves to. A run the table does not
 // label takes no action rather than reading a missing label.

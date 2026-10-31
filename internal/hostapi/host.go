@@ -695,7 +695,7 @@ type Host struct {
 	msgs  msgLog   // recent print and zemi.log lines for /messages
 	evlog eventLog // recent events and notifications for Lua reflection
 
-	pluginLoads atomic.Pointer[[]pluginLoad] // the last boot's enabled plugins, for /health and /plugins
+	pluginLoads atomic.Pointer[[]pluginLoad] // the last boot's enabled plugins, for /health and /plugin
 	pluginGrant atomic.Pointer[pluginGrant]  // the plugins the last boot loaded: their roots and what each manifest declared
 	// askMu holds the prompt stage of an ask (ask); asksWaiting counts the
 	// asks in it, and askCut moves when the user denies every waiting one

@@ -2062,7 +2062,7 @@ func (h *Host) workflowsOverlay() Overlay {
 	for _, f := range stored {
 		earlier = append(earlier, h.flowItem(f, "Earlier in this session"))
 	}
-	// making one heads the list, as it does in /agents and /plugins, and a run
+	// making one heads the list, as it does in /agents and /plugin, and a run
 	// already in flight is what its keys act on by default
 	items := []OverlayItem{{Text: "New workflow", Verb: VerbFill, Fill: "/workflows new "}}
 	sel := 0

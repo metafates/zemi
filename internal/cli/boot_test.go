@@ -171,3 +171,21 @@ func TestSkillsCoverBuiltinCommands(t *testing.T) {
 		}
 	}
 }
+
+// TestHealthRowActionsRunCommands: a /health row's action runs a command by
+// name, and the rows live apart from the commands they name, so a rename that
+// misses them fails here rather than as a dead key in the overlay. The mcp
+// row's action appears only with servers, which this harness starts none of.
+func TestHealthRowActionsRunCommands(t *testing.T) {
+	h := commandHost(t)
+	h.RecordError("command", "probe", "planted so the errors row carries its action")
+	for _, c := range h.HealthRows() {
+		if c.Run == "" {
+			continue
+		}
+		name, _ := hostapi.SplitCommand(c.Run)
+		if h.Commands.Lookup(name) == nil {
+			t.Errorf("health row %q runs %q, which is no command", c.Name, c.Run)
+		}
+	}
+}
