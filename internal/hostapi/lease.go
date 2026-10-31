@@ -100,6 +100,12 @@ func (h *Host) leaseTick(handed bool) {
 // A message parked for the write sends now.
 func (h *Host) promote(handed bool) {
 	h.SyncChat()
+	if !handed {
+		// the write came from a holder that died inside its turn: say its turn
+		// ended the way it did. A hand-over ended its turn cleanly at the
+		// boundary and marks nothing.
+		h.markDanglingTail()
+	}
 	h.loadGoal()
 	h.setWriter(true)
 	detail := "the window that wrote it is gone"

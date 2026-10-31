@@ -1139,6 +1139,10 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 		h.release()
 		ag.mu.Unlock()
 		done.cancel()
+		// the end frame ships in line, while this window still writes: past
+		// the hand-over the pusher drops it as a viewer's, and every sibling
+		// would keep drawing the turn live
+		h.pushStream()
 		h.handOver(*y)
 		h.refresh()
 		return nil, ""

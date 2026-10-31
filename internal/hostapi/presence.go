@@ -323,33 +323,43 @@ func wireToStream(w streamWire) StreamSnapshot {
 // pushStreamLoop is the live sync's push half: one wake ships the current
 // snapshot to every sibling socket, the pokes that piled up meanwhile folded
 // into it, so a viewer draws the writer's turn at the cadence the writer
-// draws its own. The round trips are this goroutine's alone: a stalled viewer
-// delays nothing but its own next frame.
+// draws its own.
 func (h *Host) pushStreamLoop() {
 	for range h.streamPoke {
 		for len(h.streamPoke) > 0 {
 			<-h.streamPoke
 		}
-		if !h.writerFlag() {
-			continue // a viewer's own flushes poke too; only the writer pushes
-		}
-		socks := h.siblingSocks()
-		if len(socks) == 0 {
-			continue
-		}
-		raw, err := json.Marshal(streamToWire(h.AgentStream()))
+		h.pushStream()
+	}
+}
+
+// pushStream ships the current snapshot to every sibling socket. The loop and
+// a hand-over's in-line call share it under one lock, so two rounds never
+// interleave their frames; a round trip waits for the viewer to apply before
+// it replies, so a stalled one holds the lock no longer than its dial and
+// reply deadlines.
+func (h *Host) pushStream() {
+	h.pushMu.Lock()
+	defer h.pushMu.Unlock()
+	if !h.writerFlag() {
+		return // a viewer's own flushes poke too; only the writer pushes
+	}
+	socks := h.siblingSocks()
+	if len(socks) == 0 {
+		return
+	}
+	raw, err := json.Marshal(streamToWire(h.AgentStream()))
+	if err != nil {
+		h.RecordErrorOnce("stream push", "", "a frame did not marshal: "+err.Error())
+		return
+	}
+	for _, sock := range socks {
+		conn, err := ipc.Dial(sock, time.Second)
 		if err != nil {
-			h.RecordErrorOnce("stream push", "", "a frame did not marshal: "+err.Error())
 			continue
 		}
-		for _, sock := range socks {
-			conn, err := ipc.Dial(sock, time.Second)
-			if err != nil {
-				continue
-			}
-			_, _ = ipc.RoundTrip(conn, &ipc.Request{Stream: jsontext.Value(raw)}, 2*time.Second)
-			_ = conn.Close()
-		}
+		_, _ = ipc.RoundTrip(conn, &ipc.Request{Stream: jsontext.Value(raw)}, 2*time.Second)
+		_ = conn.Close()
 	}
 }
 

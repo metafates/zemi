@@ -65,6 +65,48 @@ func TestLeaseTTLTakeoverAndSelfDemotion(t *testing.T) {
 	}
 }
 
+// TestATakeoverMarksTheTurnItsWriterDiedIn: the holder that dies mid-turn
+// leaves a turn with no reply and no error row; the survivor that takes the
+// write says so in its view, while a hand-over - whose turn ended cleanly at
+// the boundary - marks nothing.
+func TestATakeoverMarksTheTurnItsWriterDiedIn(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		take func(a, b *Host)
+		want bool
+	}{
+		{"a death marks the dangling turn", func(a, b *Host) {
+			b.leaseTTL = time.Nanosecond // play the writer's death
+			b.leaseTick(false)
+		}, true},
+		{"a hand-over marks nothing", func(a, b *Host) {
+			a.handOver(yieldAsk{origin: b.origin, sock: b.sockPath})
+			b.leaseTick(true)
+		}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			proj, state := t.TempDir(), t.TempDir()
+			a := openClaimed(t, state, proj) // the writer whose turn dangles
+			b := openClaimed(t, state, proj)
+			if _, err := a.DB.AppendLog("user", "answer me", "", "", ""); err != nil {
+				t.Fatal(err)
+			}
+			c.take(a, b)
+			if !b.writerFlag() {
+				t.Fatal("the survivor did not take the write")
+			}
+			tr := b.Session().Transcript
+			if len(tr) == 0 {
+				t.Fatal("the takeover never loaded the dangling turn")
+			}
+			last := tr[len(tr)-1]
+			if got := last.Kind == RowError && last.Text == "the window closed mid-turn"; got != c.want {
+				t.Fatalf("the tail row is %q %s, want the marker %v", last.Text, last.Kind, c.want)
+			}
+		})
+	}
+}
+
 // TestLeaseRenewErrorKeepsTheWrite: a store that cannot answer is a wait, not
 // a verdict - the holder keeps the lease rather than demoting on SQLITE_BUSY.
 func TestLeaseRenewErrorKeepsTheWrite(t *testing.T) {
@@ -176,9 +218,27 @@ func TestYieldEndsTheTurnAtItsBoundary(t *testing.T) {
 		t.Fatalf("the parked ask moved the lease early: %+v (%v)", l, err)
 	}
 
+	// the turn is live on the viewer; the same call that hands the write away
+	// still ships its end frame, or the viewer keeps drawing the turn live
+	a.SeedStream(StreamSnapshot{Active: true, Text: "mid-reply"})
+	a.pokeViewers()
+	for range 500 {
+		if b.AgentStream().Active {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !b.AgentStream().Active {
+		t.Fatal("the viewer never drew the live turn")
+	}
+	a.SeedStream(StreamSnapshot{}) // the flush a settling turn runs
+
 	a.nextTurn(scope, nil) // the turn ends at its boundary
 	if l, err := b.DB.ReadLeader(); err != nil || l.Origin != b.origin {
 		t.Fatalf("the lease did not move to the asker: %+v (%v)", l, err)
+	}
+	if got := b.AgentStream(); got.Active || got.Text != "" {
+		t.Fatalf("the ended turn stays live on the asker: %+v", got)
 	}
 	if a.writerFlag() || a.WriterWord() != writerOther || a.yieldPending() {
 		t.Fatalf("the writer did not demote: writer=%v word=%q", a.writerFlag(), a.WriterWord())

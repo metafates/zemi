@@ -590,6 +590,7 @@ type Host struct {
 	sockDir    string                    // its private temp dir, removed on close
 	sockPath   string                    // the socket's path, advertised in the heartbeat
 	streamPoke chan struct{}             // the live-view push gate: one buffered poke, coalesced by the pusher
+	pushMu     sync.Mutex                // one push round at a time: the loop and a hand-over's last frame share it
 	pendRows   []store.LogEntry
 
 	// agentRows caches ctx.agent's tool subtables between renders: a finished
@@ -939,12 +940,24 @@ func turnStart(row ChatMessage) bool {
 	return row.Kind == RowShell || row.Kind == RowMessage && row.Role == fantasy.MessageRoleUser
 }
 
-// markDeadTail terminates the tail a window died inside: a turn whose rows
+// markDeadTail is the boot read of the dangling check: the lease's holder may
+// be running the very turn the tail shows dangling - its rows only look
+// dangling because its reply has not landed here yet - so a live holder blocks
+// the mark. A takeover needs no guard: it knows the holder it replaced is
+// gone.
+func (h *Host) markDeadTail() {
+	if l, err := h.DB.ReadLeader(); err == nil && !l.Stale(h.staleAfter()) {
+		return
+	}
+	h.markDanglingTail()
+}
+
+// markDanglingTail terminates the tail a window died inside: a turn whose rows
 // hold no reply and no error row never ended — the window closed on it
 // (a kill, a quit, a crash) — and the view says so, the way an interrupt's
-// "■ Interrupted" does. Boot-only: the log stays as it is, a live peer's
-// sync never draws one, and the next turn's rows make the check pass.
-func (h *Host) markDeadTail() {
+// "■ Interrupted" does. The log stays as it is, a live peer's sync never draws
+// one, and the next turn's rows make the check pass.
+func (h *Host) markDanglingTail() {
 	tr := h.session.Transcript
 	start := -1
 	for i, m := range slices.Backward(tr) {
@@ -962,11 +975,6 @@ func (h *Host) markDeadTail() {
 		return // a tail with no turn of its own: nothing is dangling
 	}
 	if len(tr) == 0 {
-		return
-	}
-	if l, err := h.DB.ReadLeader(); err == nil && !l.Stale(h.staleAfter()) {
-		// the lease's holder may be running this very turn: its rows only look
-		// dangling because its reply has not landed here yet
 		return
 	}
 	h.session.Transcript = append(tr, ChatMessage{
