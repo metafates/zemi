@@ -74,6 +74,16 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 	}
+	// a key just answered an ask while a paste was in flight: its tail eats
+	// whole, since a burst's leftover keys deny the next ask and mangle the
+	// draft under it. esc and ctrl+c pass — the way out never swallows.
+	if !a.askSwallow.IsZero() {
+		if a.now().Sub(a.askSwallow) < askSwallowWindow && key != "esc" && key != "ctrl+c" {
+			a.bump()
+			return nil
+		}
+		a.askSwallow = time.Time{}
+	}
 	a.dropAnsweredPerm() // a lost Refresh must not leave an inert box holding the keys
 	top := a.topChrome()
 	// an armed key acts only when pressed again right away on the bare
@@ -244,6 +254,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			switch key {
 			case "y", "n", "t":
 				if pa.answerArmed == key && a.now().Before(pa.answerUntil) {
+					a.askSwallow = a.now() // the paste behind the second press eats whole
 					for _, c := range pa.choices() {
 						if c.key == key {
 							a.choosePerm(c)
@@ -266,11 +277,13 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		switch key {
 		case "enter":
+			a.askSwallow = a.now() // the paste behind the enter eats whole
 			a.choosePerm(choices[pa.sel])
 			return nil
 		default:
 			for _, c := range choices {
 				if c.key == key {
+					a.askSwallow = a.now() // the paste behind the answer eats whole
 					a.choosePerm(c)
 					return nil
 				}

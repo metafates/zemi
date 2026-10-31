@@ -49,6 +49,10 @@ type permAskPrompt struct {
 // message should not approve a command by accident.
 const permGrace = 400 * time.Millisecond
 
+// askSwallowWindow is how long a key that answered an ask eats the keys
+// behind it: a paste's tail arrives within it, a human's next key does not.
+const askSwallowWindow = 100 * time.Millisecond
+
 // fresh reports whether a prompt opened within permGrace.
 func (a *App) fresh(opened time.Time) bool {
 	return a.program != nil && a.now().Sub(opened) < permGrace

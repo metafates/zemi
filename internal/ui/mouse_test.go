@@ -140,6 +140,9 @@ func TestMouseHover(t *testing.T) {
 	}
 	app.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
 	<-done
+	// the answer swallowed the keys behind it (a paste's tail); a human's
+	// next key comes after the swallow window
+	app.now = func() time.Time { return time.Now().Add(time.Second) }
 
 	if _, err := app.host.Commands.Add(&hostapi.Command{Name: "help", Desc: "show keys", GoFn: func(*hostapi.Host, string, bool) error { return nil }}); err != nil {
 		t.Fatal(err)
