@@ -537,6 +537,9 @@ func (h *Host) agentSend(text string) (queued bool, err error) {
 	if utf8.RuneCountInString(text) > maxMessageChars {
 		return false, fmt.Errorf("the message is over the %dk character limit; save it to a file and attach it with @path", maxMessageChars/1000)
 	}
+	if !h.writerFlag() {
+		return false, errNotWriter
+	}
 	ag := h.agents
 	ag.mu.Lock()
 	if ag.active {
@@ -695,6 +698,9 @@ func (h *Host) sendClaimed(scope *turnScope, text string, held *heldPrompt) (err
 		h.endScope(scope)
 		h.refresh()
 		return err
+	}
+	if !h.writerFlag() {
+		return fail(errNotWriter)
 	}
 	id := h.roleModel(defaultRole)
 	if _, err := h.resolveTurnModel(id); err != nil {

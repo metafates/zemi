@@ -770,6 +770,9 @@ func (h *Host) chatCommands() []*Command {
 	}, {
 		Name: "reset", NArgs: NArgsOptional, Desc: "wipe this chat's log and summary tree and start it over",
 		GoFn: func(h *Host, args string, confirm bool) error {
+			if !h.writerFlag() {
+				return errNotWriter
+			}
 			_, yes := ConfirmArgs(args, confirm)
 			if !confirm {
 				return h.ResetChat(yes)

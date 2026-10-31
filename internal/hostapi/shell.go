@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -28,6 +29,10 @@ const shellTimeout = 2 * time.Minute
 func (h *Host) RunShell(cmd string) {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {
+		return
+	}
+	if !h.writerFlag() {
+		h.Notify(slog.LevelError, "Could not run the command", errNotWriter.Error())
 		return
 	}
 	h.GoSafe("shell", func() {

@@ -1,6 +1,8 @@
 package hostapi
 
 import (
+	"errors"
+	"slices"
 	"testing"
 	"time"
 )
@@ -73,5 +75,58 @@ func TestLeaseRenewErrorKeepsTheWrite(t *testing.T) {
 	a.leaseTick()
 	if !a.writerFlag() || a.WriterWord() != writerThis {
 		t.Fatalf("an unreachable store demoted the holder: writer=%v word=%q", a.writerFlag(), a.WriterWord())
+	}
+}
+
+// TestViewerWritesNothing: every road a model turn or a destructive act begins
+// refuses on a viewer with the one error, a held -p hands its text back, and
+// a background report never turns the model.
+func TestViewerWritesNothing(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	openClaimed(t, state, proj) // the writer
+	b := openClaimed(t, state, proj)
+
+	sends := []struct {
+		name string
+		send func() error
+	}{
+		{"message", func() error { return b.AgentSendUser("hello") }},
+		{"delivered prompt", func() error { _, _, err := b.sendPrompt("hello again"); return err }},
+		{"goal", func() error { return b.SetGoal("make check is clean") }},
+		{"loop", func() error { return b.SetLoop("1m polish the readme") }},
+		{"reset", func() error {
+			reset := slices.IndexFunc(b.chatCommands(), func(c *Command) bool { return c.Name == "reset" })
+			return b.chatCommands()[reset].GoFn(b, "", false)
+		}},
+	}
+	for _, s := range sends {
+		t.Run(s.name, func(t *testing.T) {
+			if err := s.send(); !errors.Is(err, errNotWriter) {
+				t.Fatalf("got %v, want the read-only refusal", err)
+			}
+		})
+	}
+
+	b.RunShell("echo no") // !command writes user rows into the shared chat
+	if n, err := b.DB.LogCount(); err != nil || n != 0 {
+		t.Fatalf("the viewer's !command wrote %d log rows (err %v)", n, err)
+	}
+
+	b.HoldPrompt("do this now") // a follower booted with -p
+	if err := b.SendHeld("do this now"); !errors.Is(err, errNotWriter) {
+		t.Fatalf("the held prompt: %v", err)
+	}
+	if ui, ok := b.hooks().(*fakeUI); ok {
+		ui.mu.Lock()
+		handBack := slices.Contains(ui.composed, "do this now")
+		ui.mu.Unlock()
+		if !handBack {
+			t.Fatal("the refused hold did not hand its text back to the composer")
+		}
+	}
+
+	b.deliverReport(b.AgentSessionID(), report{id: "gone-run", agent: "general", status: reportStatus("done"), description: "counting", body: "found 3"}, "")
+	if b.AgentActive() {
+		t.Fatal("the viewer started a model turn for a report")
 	}
 }

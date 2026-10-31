@@ -142,6 +142,8 @@ func (h *Host) SetGoal(args string) error {
 	switch {
 	case cond == "":
 		return h.openGoal()
+	case !h.writerFlag():
+		return errNotWriter
 	case cond == "stop":
 		return h.stopGoal()
 	case !strings.Contains(cond, " "):
