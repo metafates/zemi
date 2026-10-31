@@ -462,8 +462,8 @@ func (h *Host) OpenWindows(args string, confirm bool) error {
 	return nil
 }
 
-// windowItems is the /windows list: one row per sibling heartbeat, the writer
-// named among them.
+// windowItems is the /windows list: this window first, then one row per
+// sibling heartbeat, the writer named among them.
 func (h *Host) windowItems() []OverlayItem {
 	leader := ""
 	if h.DB != nil {
@@ -471,9 +471,18 @@ func (h *Host) windowItems() []OverlayItem {
 			leader = l.Origin
 		}
 	}
-	rows := h.peerView().rows
-	items := make([]OverlayItem, 0, len(rows))
-	for _, p := range rows {
+	role := "watching"
+	if h.writerFlag() {
+		role = "writes this chat"
+	}
+	task := cmp.Or(h.agentsTask(), "idle")
+	items := []OverlayItem{{
+		Text: task,
+		Desc: "pid " + strconv.Itoa(os.Getpid()) + " · this window · " + role,
+		Fields: append(fieldList("origin", h.origin, "task", task),
+			Field{Name: "pid", Value: strconv.Itoa(os.Getpid())}),
+	}}
+	for _, p := range h.peerView().rows {
 		role := "watching"
 		if p.Origin == leader {
 			role = "writes this chat"

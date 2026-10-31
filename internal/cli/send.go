@@ -93,7 +93,7 @@ func sendCommand(o *options) *cobra.Command {
 				}
 			}
 			if errors.Is(derr, ipc.ErrDead) {
-				return errors.New("the writable window did not answer; it may be handing over - try again")
+				return fmt.Errorf("%w: the lease names a window that does not answer - a hand-over may be mid-flight, or it died without releasing; a window opened on this project claims the write within a beat", ipc.ErrDead)
 			}
 			return derr
 		},

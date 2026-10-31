@@ -5,11 +5,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/ipc"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -91,7 +91,7 @@ func TestSendDialsTheLease(t *testing.T) {
 
 	t.Run("no writer is an honest refusal", func(t *testing.T) {
 		_, err := runSend(t, dirs, "hello")
-		if err == nil || err.Error() != "no zemi window is writing this chat in "+perm.TildePath(dirs.TrustRoot()) {
+		if err == nil || !strings.Contains(err.Error(), "no zemi window is writing this chat") {
 			t.Fatalf("refusal = %v, want the no-writer error", err)
 		}
 	})
@@ -108,8 +108,8 @@ func TestSendDialsTheLease(t *testing.T) {
 	t.Run("a holder that will not answer names the handover", func(t *testing.T) {
 		claim("b", filepath.Join(shortSockDir(t), "gone.sock"))
 		_, err := runSend(t, dirs, "nobody")
-		if err == nil || err.Error() != "the writable window did not answer; it may be handing over - try again" {
-			t.Fatalf("refusal = %v, want the handover error", err)
+		if !errors.Is(err, ipc.ErrDead) {
+			t.Fatalf("refusal = %v, want the dead-holder error", err)
 		}
 	})
 

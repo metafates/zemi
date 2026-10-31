@@ -521,8 +521,11 @@ func (h *Host) streamLocked() StreamSnapshot {
 		// the writing window's pushed turn replaces this window's whole live
 		// view: the clocks advance from the frame's arrival, so the readouts
 		// run between pushes and freeze only when the writer dies - the
-		// takeover's promotion drops the watch
+		// takeover's promotion drops the watch. The queue stays this
+		// window's own: its parked message must not vanish behind the
+		// writer's stream, and the writer's parked drafts are not its to show.
 		r := *ag.remote
+		r.Steering = queuedRows(ag.steering)
 		if r.Active {
 			r.Elapsed += now.Sub(ag.remoteAt)
 			if r.Thinking {

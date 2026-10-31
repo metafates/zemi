@@ -149,16 +149,19 @@ func TestWindowsListsTheSharingWindows(t *testing.T) {
 		t.Fatal(err)
 	}
 	ov := f.overlays()[len(f.overlays())-1]
-	if ov.ID != "windows" || len(ov.Items) != 2 {
-		t.Fatalf("overlay = %s over %d items, want windows over 2", ov.ID, len(ov.Items))
+	if ov.ID != "windows" || len(ov.Items) != 3 {
+		t.Fatalf("overlay = %s over %d items, want windows over 3", ov.ID, len(ov.Items))
 	}
-	if ov.Items[0].Text != "from an older zemi" || ov.Items[0].Desc != "watching" {
-		t.Fatalf("the pidless row = %q, %q", ov.Items[0].Text, ov.Items[0].Desc)
+	if ov.Items[0].Text != "idle" || !strings.Contains(ov.Items[0].Desc, "this window · writes this chat") {
+		t.Fatalf("this window's row = %q, %q", ov.Items[0].Text, ov.Items[0].Desc)
 	}
-	if ov.Items[1].Text != "writing docs" || ov.Items[1].Desc != "pid 1234 · watching" {
-		t.Fatalf("the sibling row = %q, %q", ov.Items[1].Text, ov.Items[1].Desc)
+	if ov.Items[1].Text != "from an older zemi" || ov.Items[1].Desc != "watching" {
+		t.Fatalf("the pidless row = %q, %q", ov.Items[1].Text, ov.Items[1].Desc)
 	}
-	if k := ov.Items[1].Keys[0]; k.Key != "x" || k.Run != "windows kill sib" || !k.Danger {
+	if ov.Items[2].Text != "writing docs" || ov.Items[2].Desc != "pid 1234 · watching" {
+		t.Fatalf("the sibling row = %q, %q", ov.Items[2].Text, ov.Items[2].Desc)
+	}
+	if k := ov.Items[2].Keys[0]; k.Key != "x" || k.Run != "windows kill sib" || !k.Danger {
 		t.Fatalf("the sibling's key = %+v", k)
 	}
 
@@ -170,7 +173,7 @@ func TestWindowsListsTheSharingWindows(t *testing.T) {
 	if won, err := h.DB.ClaimLeader("sib", "", store.Leader{}); err != nil || !won {
 		t.Fatalf("the sibling did not take the lease: won=%v err=%v", won, err)
 	}
-	if got := h.windowItems()[1].Desc; got != "pid 1234 · writes this chat" {
+	if got := h.windowItems()[2].Desc; got != "pid 1234 · writes this chat" {
 		t.Fatalf("the holder's row = %q, want the write named", got)
 	}
 

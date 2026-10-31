@@ -296,6 +296,36 @@ func TestTheTurnsEndClearsTheViewersLiveView(t *testing.T) {
 	t.Fatalf("the turn's end never reached the viewer: %+v", got)
 }
 
+// TestAViewerSeesItsOwnParkedMessage: a pushed frame replaces the viewer's
+// whole live view, but the queue it draws is its own - a message parked for
+// the write must not vanish behind the writer's stream, and the writer's
+// parked drafts are not the viewer's to show.
+func TestAViewerSeesItsOwnParkedMessage(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a := openClaimed(t, state, proj)
+	b := openClaimed(t, state, proj)
+
+	a.SeedStream(StreamSnapshot{Active: true, Text: "the writer's reply", Steering: []Queued{{Text: "the writer's parked draft"}}})
+	a.pokeViewers()
+	for range 500 {
+		if b.AgentStream().Text == "the writer's reply" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	b.parkForHandover("the viewer's note")
+	var got StreamSnapshot
+	for range 500 {
+		if got = b.AgentStream(); len(got.Steering) > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(got.Steering) != 1 || got.Steering[0].Text != "the viewer's note" {
+		t.Fatalf("the viewer's parked message: %+v", got.Steering)
+	}
+}
+
 // TestTakeoverDropsTheWatch: the survivor that takes the write stops drawing
 // the gone writer's stream - its own snapshot is the truth again.
 func TestTakeoverDropsTheWatch(t *testing.T) {
