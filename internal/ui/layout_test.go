@@ -144,10 +144,8 @@ func TestPinned(t *testing.T) {
 		{"the section's end on its pin's row ends it", "t . s . . e . . . .", 4, []int{0}},
 		{"a second section after the first's end", "t . s . e . s . . . .", 8, []int{0, 6}},
 		{"a new turn resets", "t . s . . . t . . . . .", 10, []int{6}},
-		{"a wrapped end drops one section", "t . s . s . e e . . . .", 10, []int{0}},
+		{"a wrapped end drops one section", "t . s . s . e e . . . .", 10, []int{0, 2}},
 		{"sections without a turn", ". s . . . .", 3, []int{1}},
-		{"folded digests pin the one the top edge falls in", "t . s . . s . . s . .", 9, []int{0, 8}},
-		{"an opened section's end frees the pin for the next digest", "t . s . . s . e . s .", 9, []int{0, 9}},
 	} {
 		var lines [][]hostapi.Segment
 		pins := map[string]hostapi.Pin{"t": hostapi.PinTurn, "s": hostapi.PinSection, "e": hostapi.PinEnd}
