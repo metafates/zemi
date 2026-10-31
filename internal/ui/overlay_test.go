@@ -1421,8 +1421,8 @@ func TestListAlias(t *testing.T) {
 		}, "ctrl+j", func(a *App) string {
 			return fail(a.palette.open && a.palette.selected == 1, "not moved")
 		}},
-		{"ctrl+j on the bare composer types the newline it means", func(a *App) { pressKeys(a, "hi") }, "ctrl+j", func(a *App) string {
-			return fail(a.composer.text == "hi\n", fmt.Sprintf("composer %q", a.composer.text))
+		{"ctrl+j on the bare composer scrolls the chat", func(a *App) { pressKeys(a, "hi") }, "ctrl+j", func(a *App) string {
+			return fail(a.composer.text == "hi", fmt.Sprintf("composer %q", a.composer.text))
 		}},
 		{"an alias of ctrl+d moves half a page", func(a *App) {
 			a.openOverlay(hostapi.Overlay{ID: "o", Origin: lua.OriginBuiltin, Items: many})
