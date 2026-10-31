@@ -544,7 +544,9 @@ local function builder(ctx, width)
 			if #B.lines > at then B.lines[#B.lines][1].sticky = "end" end
 			return
 		end
-		local head = opened and "section" or nil
+		-- the digest pins folded or opened: a run whose rows scrolled past
+		-- still names itself at the view's top edge, under the prompt's pin
+		local head = "section"
 		-- a collapsed run of exactly one thought opens its view at once: a
 		-- rail of one row expanded draws what the view shows. Opened, the
 		-- digest's click closes it again.

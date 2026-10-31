@@ -896,7 +896,9 @@ func TestChatStickyDigest(t *testing.T) {
 	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "turn:2"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := pins("answer 2"); !slices.EqualFunc(got, []string{prompt}, strings.HasPrefix) {
+	// folded, the run's digest still pins: the rows it folded scrolled past,
+	// and the digest is what names them at the view's top edge
+	if got := pins("answer 2"); !slices.EqualFunc(got, []string{prompt, digest}, strings.HasPrefix) {
 		t.Fatalf("with the run folded the pins read %q", got)
 	}
 }
