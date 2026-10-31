@@ -340,6 +340,26 @@ func completionItems(v any) []CompletionItem {
 	return slices.DeleteFunc(out, func(c CompletionItem) bool { return c.Text == "" })
 }
 
+// WorkflowMentions lists saved workflows for the @ popup's Workflows
+// section: name and description, a mention attaching how to run one.
+func (h *Host) WorkflowMentions() []CompletionItem {
+	var out []CompletionItem
+	for _, w := range h.workflows() {
+		out = append(out, CompletionItem{Text: w.Name, Desc: listDesc(w.Description)})
+	}
+	return out
+}
+
+// AgentMentions lists agent definitions for the @ popup's Agents section:
+// name and description, a mention attaching how to start one.
+func (h *Host) AgentMentions() []CompletionItem {
+	var out []CompletionItem
+	for _, d := range h.agentDefs() {
+		out = append(out, CompletionItem{Text: d.Name, Desc: listDesc(d.Description)})
+	}
+	return out
+}
+
 // DidYouMean returns the name nearest got among names, "" when none is
 // within an edit distance of 2 (the CLI root's near-miss distance).
 func DidYouMean(got string, names []string) string {

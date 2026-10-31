@@ -1851,7 +1851,8 @@ function zemi.agent.usage() end
 function zemi.agent.prompt() end
 
 --- The subagents this project can run: builtin, `agents/*.md`, and trusted
---- project definitions.
+--- project definitions. They also complete in the `@` popup, and a mention
+--- of one attaches the hint that starts it.
 ---@return zemi.AgentDef[]
 function zemi.agent.list() end
 
@@ -1897,6 +1898,8 @@ function zemi.agent.run(spec, on_done) end
 ---@field args any Workflow scripts only: the args the run was given.
 zemi.workflow = {}
 
+--- Saved workflows also complete in the `@` popup, and a mention of one
+--- attaches the hint that runs it.
 ---@return zemi.WorkflowInfo[]
 function zemi.workflow.list() end
 

@@ -17,24 +17,27 @@ import (
 )
 
 // wordCompleter holds the composer popup that completes the word after a
-// trigger: "@" lists the project's files, the skills and, for a path-
-// headed word, the entries of the directory it names - sections under
-// headers; any trigger lists what its Lua sources offer (extra, first).
+// trigger: "@" lists the project's files, the skills, the workflows and
+// agents - sections under headers - and, for a path-headed word, the
+// entries of the directory it names; any trigger lists what its Lua
+// sources offer (extra, first).
 type wordCompleter struct {
-	open      bool
-	trigger   rune
-	start     int      // rune index of the trigger char in the composer
-	token     string   // query between the trigger and the cursor
-	files     []string // paths relative to the session cwd
-	bases     []string // each file's last element
-	matches   []hostapi.Hit
-	skills    []hostapi.CompletionItem // fetched once per open
-	skillRows []listItem               // the skills narrowed to the token
-	paths     []listItem               // directory candidates: rows of the words they insert
-	extra     []listItem               // the Lua sources' items, ahead of the sections
-	selected  int
-	view      viewport
-	size      boxSize // the last drawn size, kept for a frame with no matches to show
+	open       bool
+	trigger    rune
+	start      int      // rune index of the trigger char in the composer
+	token      string   // query between the trigger and the cursor
+	files      []string // paths relative to the session cwd
+	bases      []string // each file's last element
+	matches    []hostapi.Hit
+	skills     []hostapi.CompletionItem // fetched once per open
+	skillRows  []listItem               // the skills narrowed to the token
+	entities   []listItem               // workflows and agents fetched once per open, each row its section
+	entityRows []listItem               // the entities narrowed to the token
+	paths      []listItem               // directory candidates: rows of the words they insert
+	extra      []listItem               // the Lua sources' items, ahead of the sections
+	selected   int
+	view       viewport
+	size       boxSize // the last drawn size, kept for a frame with no matches to show
 
 	scanning   bool
 	walkGen    int      // bumps so stale scan results are dropped
@@ -106,19 +109,23 @@ func (a *App) updateCompletion() tea.Cmd {
 	if opening {
 		// the rows are fetched once per open, like the file scan; typing
 		// narrows what the last fetch gave
-		f.skills, f.skillRows = nil, nil
+		f.skills, f.skillRows, f.entities, f.entityRows = nil, nil, nil, nil
 		a.background(func() {
 			items := a.host.SkillMentions()
+			entities := append(candRows(a.host.WorkflowMentions(), "Workflows"), candRows(a.host.AgentMentions(), "Agents")...)
 			a.do(func() {
 				if !f.open || f.trigger != '@' {
 					return // the popup closed, or another trigger took it
 				}
 				f.skills = items
+				f.entities = entities
 				f.reskill()
+				f.rentities()
 			})
 		})
 	}
 	f.reskill()
+	f.rentities()
 	f.rematch()
 	a.repaths()
 	if _, _, ok := pathToken(f.token); ok {
@@ -235,12 +242,13 @@ func (f *wordCompleter) close() {
 	f.token = ""
 	f.selected, f.view, f.size = 0, viewport{}, boxSize{}
 	f.matches, f.extra = f.matches[:0], nil
-	f.skillRows, f.paths = nil, nil
+	f.skillRows, f.entityRows, f.paths = nil, nil, nil
+	f.entities = nil
 	f.dirDir, f.dirList, f.dirPending = "", nil, ""
 }
 
 func (f *wordCompleter) count() int {
-	return len(f.extra) + len(f.skillRows) + len(f.paths) + len(f.matches)
+	return len(f.extra) + len(f.skillRows) + len(f.entityRows) + len(f.paths) + len(f.matches)
 }
 
 // shown reports whether the popup is drawn and takes its keys: a Lua
@@ -259,6 +267,12 @@ func (f *wordCompleter) title() string {
 // reskill narrows the fetched skills to the token.
 func (f *wordCompleter) reskill() {
 	f.skillRows = matchRows(candRows(f.skills, "Skills"), unquoteToken(f.token), true)
+	f.trim()
+}
+
+// rentities narrows the fetched workflows and agents to the token.
+func (f *wordCompleter) rentities() {
+	f.entityRows = matchRows(f.entities, unquoteToken(f.token), true)
 	f.trim()
 }
 
@@ -526,14 +540,15 @@ func matchRows(rows []listItem, query string, narrow bool) []listItem {
 // acceptCompletion replaces what follows the trigger with the selected
 // match and closes the popup - unless the row is a directory candidate:
 // its word ends in /, so the popup stays open and the listing follows the
-// word in, shell-tab style. A skill or Lua-source row keeps the trigger,
-// which is its own; a project file becomes the host's @ word for it.
+// word in, shell-tab style. A skill, workflow, agent or Lua-source row
+// keeps the trigger, which is its own; a project file becomes the host's
+// @ word for it.
 func (a *App) acceptCompletion() {
 	f := &a.completion
 	if !f.open || f.selected >= f.count() {
 		return
 	}
-	n, mt, p := len(f.extra), len(f.matches), len(f.paths)
+	n, mt, p, s := len(f.extra), len(f.matches), len(f.paths), len(f.skillRows)
 	switch sel := f.selected; {
 	case sel < n: // a Lua source's row: its trigger is its own
 		a.composer.replace(f.start+1, f.extra[sel].label+" ")
@@ -596,8 +611,11 @@ func (a *App) acceptCompletion() {
 		}
 		a.composer.replace(f.start+1, word+" ")
 		f.close()
-	default:
+	case sel < n+mt+p+s:
 		a.composer.replace(f.start+1, f.skillRows[sel-n-mt-p].label+" ")
+		f.close()
+	default:
+		a.composer.replace(f.start+1, f.entityRows[sel-n-mt-p-s].label+" ")
 		f.close()
 	}
 }
@@ -649,6 +667,7 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	}
 	items = append(items, f.paths...)
 	items = append(items, f.skillRows...)
+	items = append(items, f.entityRows...)
 	return listRowsW(items, items, f.selected, &f.view, min(completionMaxRows, room), minW, maxW)
 }
 

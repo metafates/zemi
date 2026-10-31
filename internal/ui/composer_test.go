@@ -893,6 +893,34 @@ func TestCompletionSections(t *testing.T) {
 	}
 }
 
+// TestEntityCompletion: the @ popup lists the saved workflows and the agent
+// definitions under their own headers, narrows them by the token like the
+// skills, and an accept inserts the bare name the mention reads.
+func TestEntityCompletion(t *testing.T) {
+	app, _ := bootAgentApp(t, 80, 20)
+	app.composerKey("@", tea.KeyPressMsg{Text: "@"})
+	for app.Pump() { // the fetched rows land through the queue
+	}
+	has := func(label, section string) bool {
+		return slices.ContainsFunc(app.completion.entityRows, func(r listItem) bool { return r.label == label && r.section == section })
+	}
+	if !has("brainstorm", "Workflows") || !has("explore", "Agents") {
+		t.Fatalf("the entities are missing: %+v", app.completion.entityRows)
+	}
+	for _, k := range []string{"b", "r"} {
+		app.composerKey(k, tea.KeyPressMsg{Text: k})
+	}
+	if len(app.completion.entityRows) != 1 || app.completion.entityRows[0].label != "brainstorm" {
+		t.Fatalf("the token did not narrow the entities: %+v", app.completion.entityRows)
+	}
+	base := len(app.completion.extra) + len(app.completion.matches) + len(app.completion.paths) + len(app.completion.skillRows)
+	app.completion.selected = base
+	app.acceptCompletion()
+	if got := app.composer.text; got != "@brainstorm " {
+		t.Fatalf("the brainstorm row accepted %q", got)
+	}
+}
+
 // TestCompletionWalksIn: accepting a directory candidate keeps the popup
 // open on the directory, in the frame the token typed, and a file accept
 // closes it with its space.
@@ -1115,10 +1143,12 @@ func TestCompletionListWidth(t *testing.T) {
 	if row := strings.TrimSpace(hostapi.SegsText(app.completionRows(30, 10, 0)[1])); !strings.Contains(row, "_here.txt") {
 		t.Fatalf("a cut path lost its name: %q", row)
 	}
-	app.completion.selected = app.completion.count() - 1
+	// the last file row, not the last row: the popup also lists workflows
+	// and agents, which the files cap never governed
+	app.completion.selected = len(app.completion.matches) - 1
 	rows := app.completionRows(76, 10, 0)
-	if w := hostapi.SegsWidth(rows[1]); w != first || app.completion.count() != listMaxFiles {
-		t.Fatalf("width %d then %d, %d items", first, w, app.completion.count())
+	if w := hostapi.SegsWidth(rows[1]); w != first || len(app.completion.matches) != listMaxFiles {
+		t.Fatalf("width %d then %d, %d file matches", first, w, len(app.completion.matches))
 	}
 }
 

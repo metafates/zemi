@@ -1,10 +1,11 @@
 // attach.go expands @ references in a user message: each referenced skill,
 // file or directory - a project file, or any path outside it - is appended
 // to what the model receives, behind agent.AttachMarker, while the
-// transcript keeps the typed text. Images (png, jpeg, gif, webp) travel as
-// file parts for vision models. A file that is too big, not text or not
-// there gets a note saying so in place of its content, so the model knows
-// to reach for it with its tools.
+// transcript keeps the typed text. A name no path answers that names a
+// saved workflow or an agent attaches the hint that runs it. Images (png,
+// jpeg, gif, webp) travel as file parts for vision models. A file that is
+// too big, not text or not there gets a note saying so in place of its
+// content, so the model knows to reach for it with its tools.
 
 package hostapi
 
@@ -152,15 +153,23 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 				refused = append(refused, perm.TildePath(name)+": "+why)
 			}
 		}
-		// a FIFO blocks the read, and an @word naming no file is just prose;
-		// a path that is there but not a regular file says why, like every
-		// other refusal - but a directory attaches its entries listed
-		if fi, err := os.Stat(abs); err == nil && !fi.Mode().IsRegular() {
+		// a FIFO blocks the read; a path that is there but not a regular file
+		// says why, like every other refusal - but a directory attaches its
+		// entries listed
+		fi, stat := os.Stat(abs)
+		if stat == nil && !fi.Mode().IsRegular() {
 			if fi.IsDir() {
 				attachDir(&b, abs, name, &refused)
 			} else {
 				note("it is not a regular file")
 			}
+			continue
+		}
+		// a word no file or directory answers can name a saved workflow or
+		// an agent: an existing path always wins, and the mention attaches
+		// the hint that runs it in place of a file's body
+		if stat != nil {
+			h.attachEntity(&b, word)
 			continue
 		}
 		// the model reads the file, so opening a device has effects
@@ -220,6 +229,38 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 		return text, imgs
 	}
 	return text + agent.AttachMarker + b.String() + "\n</attached-files>", imgs
+}
+
+// attachEntity writes what a mention of a saved workflow or an agent
+// definition attaches: not the entity's source, which is not what the user
+// asked the model to read, but the hint that runs it - what it is, and the
+// exact call. The words around the mention stay the request, in the typed
+// message. A name held by both kinds goes to the workflow.
+func (h *Host) attachEntity(b *strings.Builder, word string) {
+	for _, w := range h.workflows() {
+		if w.Name != word {
+			continue
+		}
+		body := fmt.Sprintf("The user attached this saved workflow with @%s in the message above; run it for their request.", w.Name)
+		if w.Description != "" {
+			body += "\n\n" + w.Description
+		}
+		body += fmt.Sprintf("\n\nRun it with the workflow tool: workflow name=%q args=\"<the request, from the words around the mention>\" description=\"<a 3-6 word label>\". The script reads args as zemi.workflow.args.", w.Name)
+		b.WriteString(agent.AttachElement(fmt.Sprintf("workflow name=%q", w.Name), body))
+		return
+	}
+	for _, d := range h.agentDefs() {
+		if d.Name != word {
+			continue
+		}
+		body := fmt.Sprintf("The user attached this agent with @%s in the message above; start it for their request.", d.Name)
+		if d.Description != "" {
+			body += "\n\n" + d.Description
+		}
+		body += fmt.Sprintf("\n\nStart it with the agent tool: agent agent=%q description=\"<a 3-5 word label>\" prompt=\"<the full task>\".", d.Name)
+		b.WriteString(agent.AttachElement(fmt.Sprintf("agent name=%q", d.Name), body))
+		return
+	}
 }
 
 // attachDir is what a directory attaches: its own entries, as `ls` lists
