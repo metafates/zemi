@@ -625,13 +625,13 @@ func logRowsFor(rows []store.LogEntry, browse bool) []ChatMessage {
 			if meta.System {
 				continue
 			}
-			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(row.Text), Seq: row.Seq})
+			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: messageHead(row.Text), Seq: row.Seq})
 		case store.KindNotice:
 			var meta struct {
 				Detail string `json:"detail"`
 			}
 			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
-			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(row.Text), Detail: meta.Detail, Seq: row.Seq})
+			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: messageHead(row.Text), Detail: meta.Detail, Seq: row.Seq})
 		}
 	}
 	if browse {
@@ -645,7 +645,7 @@ func logRowsFor(rows []store.LogEntry, browse bool) []ChatMessage {
 		slices.Sort(left)
 		if len(left) > 0 {
 			notice := func(i int) ChatMessage {
-				return ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(rows[i].Text), Detail: rows[i].Text, Tool: tools.ToolName(rowTool(rows[i])), Seq: rows[i].Seq}
+				return ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: messageHead(rows[i].Text), Detail: rows[i].Text, Tool: tools.ToolName(rowTool(rows[i])), Seq: rows[i].Seq}
 			}
 			merged := make([]ChatMessage, 0, len(tr)+len(left))
 			li := 0

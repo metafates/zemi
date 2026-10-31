@@ -801,7 +801,7 @@ func (h *Host) Note(text string) error {
 	// the chapter mark joins the live transcript at once; a rebuilt window
 	// reads the same row from the log
 	if first >= 0 {
-		h.appendTranscript(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(text), Seq: first})
+		h.appendTranscript(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: messageHead(text), Seq: first})
 	}
 	return nil
 }
@@ -812,7 +812,7 @@ func (h *Host) Note(text string) error {
 // the rebuilt window will.
 func (h *Host) notice(text, detail string) {
 	text = strings.TrimSpace(text)
-	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(text), Detail: detail}
+	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: messageHead(text), Detail: detail}
 	if h.chat != nil {
 		first, err := h.chat.Notice(text, detail)
 		if err != nil {
