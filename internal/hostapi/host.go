@@ -592,6 +592,7 @@ type Host struct {
 	streamPoke chan struct{}             // the live-view push gate: one buffered poke, coalesced by the pusher
 	pushMu     sync.Mutex                // one push round at a time: the loop and a hand-over's last frame share it
 	pendRows   []store.LogEntry
+	metaWatch  []int64 // spliced foreign reply rows whose readout has not landed yet
 
 	// agentRows caches ctx.agent's tool subtables between renders: a finished
 	// tool's fields never change, so a long turn rebuilds only the rows that

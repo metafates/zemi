@@ -89,6 +89,7 @@ func (h *Host) SetTranscript(tr []ChatMessage) {
 	h.session.Transcript, h.view = tr, nil
 	h.trEpoch.Add(1)
 	h.pendRows = nil
+	h.metaWatch = nil
 	h.tMu.Unlock()
 	// the loaded pages and the stamping cursor speak the cut log's shape, and
 	// the window is stamped whole from the log
@@ -334,13 +335,6 @@ func (h *Host) SyncChat() {
 	h.stampLogSeqsLocked()
 	pend := h.pendRows
 	h.pendRows = nil
-	active := h.agents.active
-	if len(pend) > 0 && active {
-		// a turn owns the tail: its unstamped rows are the pairing's to
-		// claim, not a splice's to step over - the next tick splices them
-		h.pendRows = pend
-		pend = nil
-	}
 	if len(pend) > 0 {
 		// the pairing buffered copies, and a reply's readout lands in its
 		// row's meta after that: re-read the span, then splice what the log
@@ -375,9 +369,17 @@ func (h *Host) SyncChat() {
 			if at <= h.stampRow {
 				h.stampRow++ // the pairing's row moved down with the insert
 			}
+			if m.Role == fantasy.MessageRoleAssistant && m.Kind == RowMessage && m.Stat == nil {
+				// the readout lands on the reply row's meta only at its
+				// turn's end, after the row itself spliced in
+				h.metaWatch = append(h.metaWatch, m.Seq)
+			}
 		}
 		h.session.Transcript = h.trimTranscript(tr)
 		h.trEpoch.Add(1)
+	}
+	if len(h.metaWatch) > 0 {
+		h.watchMetaLocked()
 	}
 	h.tMu.Unlock()
 	h.agents.mu.Unlock()
@@ -477,6 +479,7 @@ func (h *Host) reloadChatLocked() bool {
 	h.msgMu.Unlock()
 	h.stampRow, h.stampFrom = len(h.session.Transcript), h.stampedTail(h.session.Transcript)
 	h.pendRows = nil
+	h.metaWatch = nil
 	h.trEpoch.Add(1)
 	return true
 }
@@ -702,6 +705,47 @@ func replyMeta(meta string) *TurnStat {
 		return nil
 	}
 	return &TurnStat{Model: m.Model, ElapsedMS: m.TurnMS, Out: m.Out, ThoughtMS: m.ThoughtMS, Ended: m.Ended}
+}
+
+// watchMetaLocked carries the readout a late settle wrote onto the log onto
+// the reply rows a splice already drew: a reply's row lands when its text
+// does, its readout only at its turn's end, so a window that spliced the row
+// in between would draw it without its telemetry forever. tMu held.
+func (h *Host) watchMetaLocked() {
+	fresh, err := h.DB.LogFrom(h.metaWatch[0], int(h.metaWatch[len(h.metaWatch)-1]-h.metaWatch[0])+1)
+	if err != nil {
+		return
+	}
+	read := make(map[int64]*TurnStat, len(fresh))
+	for _, row := range fresh {
+		if stat := replyMeta(row.MetaJSON); stat != nil {
+			read[row.Seq] = stat
+		}
+	}
+	if len(read) > 0 {
+		tr := h.session.Transcript
+		clone := false
+		for i := range tr {
+			if stat := read[tr[i].Seq]; stat != nil && tr[i].Stat == nil {
+				if !clone { // readers share the array: replace it, never write in place
+					tr = slices.Clone(tr)
+					clone = true
+				}
+				tr[i].Stat = stat
+			}
+		}
+		if clone {
+			h.session.Transcript = tr
+			h.trEpoch.Add(1)
+		}
+		h.metaWatch = slices.DeleteFunc(h.metaWatch, func(seq int64) bool { return read[seq] != nil })
+	}
+	// NOTE: a readout that never lands (its writer died before the settle, a
+	// split reply leaves its earlier stretches bare) stays watched; the cap
+	// bounds that to the last 64 replies
+	if len(h.metaWatch) > 64 {
+		h.metaWatch = h.metaWatch[len(h.metaWatch)-64:]
+	}
 }
 
 // stampMS is a log stamp as unix ms, 0 when it does not parse.

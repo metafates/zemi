@@ -350,14 +350,21 @@ func TestSyncChatReloadsARegrownReset(t *testing.T) {
 	}
 }
 
-// TestSyncChatSpliceWaitsForTheTurn: a sync that runs while a turn owns the
-// tail (the caller's AgentActive read raced, or a direct caller) defers the
-// splice to the next tick, and the spliced rows never step over the turn's
-// unstamped ones.
-func TestSyncChatSpliceWaitsForTheTurn(t *testing.T) {
+// TestSyncChatSplicesHistoryUnderTheTurn: rows another window wrote before
+// this window's turn started are this window's history: the splice lands them
+// at their place while the turn owns the tail, or back-to-back turns hold
+// them off the chat for as long as they run.
+func TestSyncChatSplicesHistoryUnderTheTurn(t *testing.T) {
 	proj, state := t.TempDir(), t.TempDir()
 	a, _ := newWindow(t, state, proj)
-	b, mb := newWindow(t, state, proj)
+	b, _ := newWindow(t, state, proj)
+	if _, err := b.DB.AppendLog(store.KindUser, "from b", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.DB.AppendLog(store.KindAgent, "b's reply", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	a.stampLogSeqs() // the pairing buffers the rows the turn will write above
 	hold := make(chan struct{})
 	var calls atomic.Int32
 	a.modelFn = func() (fantasy.LanguageModel, error) {
@@ -383,10 +390,9 @@ func TestSyncChatSpliceWaitsForTheTurn(t *testing.T) {
 		}
 		return nil
 	})
-	sendTurns(t, b, mb, "from b") // the writer's rows land while the turn holds
-	a.SyncChat()                  // a direct sync mid-turn, the guard the idle tick relies on raced
-	if got := windowText(a); slices.Contains(got, "from b") {
-		t.Fatalf("a spliced under its live turn = %q", got)
+	a.SyncChat() // a direct sync mid-turn, the guard the idle tick relies on raced
+	if got := windowText(a); !slices.Contains(got, "from b") {
+		t.Fatalf("a held the buffered rows off its live turn = %q", got)
 	}
 	close(hold)
 	waitIdle(t, a)
@@ -485,6 +491,44 @@ func TestSyncChatSplicesFreshMeta(t *testing.T) {
 		}
 		if m.Stat == nil || m.Stat.ElapsedMS != 7000 || m.Stat.Out != 50 {
 			t.Fatalf("the spliced reply drew stat=%+v, want the readout", m.Stat)
+		}
+		return
+	}
+	t.Fatalf("the writer's reply never spliced: %q", windowText(a))
+}
+
+// TestSyncChatCarriesALateReadout: a reply's readout lands in the log after
+// the row spliced in bare: the watch carries it onto the drawn row, the way
+// the writer's own settle does for its window.
+func TestSyncChatCarriesALateReadout(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a, _ := newWindow(t, state, proj)
+	b, _ := newWindow(t, state, proj)
+	seq, err := b.DB.AppendLog("agent", "hello from b", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.stampLogSeqs() // the pairing buffers the writer's row before the readout lands
+	a.SyncChat()     // the splice draws the row bare: the readout has not landed yet
+	bare := false
+	for _, m := range a.Session().Transcript {
+		if m.Text == "hello from b" {
+			bare = m.Stat == nil
+		}
+	}
+	if !bare {
+		t.Fatalf("the row spliced with its readout already: %q", windowText(a))
+	}
+	if err := b.DB.SetLogMeta(seq, `{"turn_ms":7000,"out":50}`); err != nil {
+		t.Fatal(err)
+	}
+	a.SyncChat()
+	for _, m := range a.Session().Transcript {
+		if m.Text != "hello from b" {
+			continue
+		}
+		if m.Stat == nil || m.Stat.ElapsedMS != 7000 || m.Stat.Out != 50 {
+			t.Fatalf("the spliced reply drew stat=%+v, want the late readout", m.Stat)
 		}
 		return
 	}
