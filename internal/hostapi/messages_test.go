@@ -681,6 +681,27 @@ func TestStampPairsASplitMessage(t *testing.T) {
 	}
 }
 
+// TestMessagesTurnsHoldTheEcho: an attachment's echo logs before the message
+// it rode, and the turn grouping follows it there — the file reads under the
+// exchange that received it, not the one before.
+func TestMessagesTurnsHoldTheEcho(t *testing.T) {
+	t.Parallel()
+	rows := []ChatMessage{
+		{Role: fantasy.MessageRoleUser, Text: "first", Seq: 0},
+		{Role: fantasy.MessageRoleAssistant, Text: "done", Seq: 1},
+		{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "<file path=\"w.txt\">", Tool: "attach", Seq: 2},
+		{Role: fantasy.MessageRoleUser, Text: "again", Seq: 3},
+	}
+	turns := messagesTurns(pickTr{tr: rows})
+	if len(turns) != 2 {
+		t.Fatalf("turns = %d, want the echo held for the message it rode", len(turns))
+	}
+	last := turns[1]
+	if len(last.rows) != 2 || last.rows[0] != 3 || last.rows[1] != 4 {
+		t.Fatalf("the second turn holds the echo then its message: %+v", last.rows)
+	}
+}
+
 // TestLogRowsBrowseKeepsUnpairedEchoes: the transcript folds an attachment's
 // echo and a !command's full output into the row they belong to; the
 // browser, where the log's whole truth lives, draws what nothing consumed.

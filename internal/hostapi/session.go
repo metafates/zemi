@@ -645,7 +645,7 @@ func logRowsFor(rows []store.LogEntry, browse bool) []ChatMessage {
 		slices.Sort(left)
 		if len(left) > 0 {
 			notice := func(i int) ChatMessage {
-				return ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(rows[i].Text), Detail: rows[i].Text, Seq: rows[i].Seq}
+				return ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(rows[i].Text), Detail: rows[i].Text, Tool: tools.ToolName(rowTool(rows[i])), Seq: rows[i].Seq}
 			}
 			merged := make([]ChatMessage, 0, len(tr)+len(left))
 			li := 0

@@ -333,17 +333,33 @@ type msgTurn struct {
 // they are anchored by.
 func messagesTurns(p pickTr) []msgTurn {
 	var turns []msgTurn
+	// an attachment's or !command's echo logs before the message it rode, so
+	// it holds for that message's turn; anything else arriving first pins it
+	// to the turn before
+	var pending []int
 	add := func(idx int) {
 		m := p.at(idx)
 		if m.Kind == "" && m.Role == fantasy.MessageRoleUser && strings.TrimSpace(m.Text) != "" {
+			if len(pending) > 0 {
+				turns = append(turns, msgTurn{n: len(turns) + 1, first: pending[0], rows: append(slices.Clone(pending), idx)})
+				pending = nil
+				return
+			}
 			turns = append(turns, msgTurn{n: len(turns) + 1, first: idx, rows: []int{idx}})
+			return
+		}
+		if m.Kind == RowNotice && m.Tool != "" {
+			pending = append(pending, idx)
 			return
 		}
 		if len(turns) == 0 {
 			turns = append(turns, msgTurn{n: 1, first: idx})
+		} else {
+			t := &turns[len(turns)-1]
+			t.rows = append(t.rows, pending...)
+			t.rows = append(t.rows, idx)
 		}
-		t := &turns[len(turns)-1]
-		t.rows = append(t.rows, idx)
+		pending = nil
 	}
 	for idx := 1; idx <= len(p.tr); idx++ {
 		add(idx)
