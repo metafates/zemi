@@ -1701,9 +1701,12 @@ func TestPermissionAnswersUnderADraft(t *testing.T) {
 	}
 	now = opened.Add(permGrace + time.Millisecond)
 	typeKey("hold this draft")
-	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"}) // arms
-	now = now.Add(time.Second)
-	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"}) // answers
+	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"}) // the y types and arms
+	if app.composer.text != "hold this drafty" {
+		t.Fatalf("the arm's first press types: %q", app.composer.text)
+	}
+	now = now.Add(permGrace + time.Millisecond)
+	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"}) // a human's second press answers
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -1712,8 +1715,31 @@ func TestPermissionAnswersUnderADraft(t *testing.T) {
 	if !allowed {
 		t.Fatal("the armed y approved")
 	}
-	if app.composer.text != "hold this draft" {
+	if app.composer.text != "hold this drafty" {
 		t.Fatalf("the draft must ride out the answer: %q", app.composer.text)
+	}
+
+	// a paste's adjacent yy types whole and never answers: the arm needs a
+	// human's pause between its presses. A second app, so the ask runs
+	// inline (a program would queue it where the test never pumps).
+	app2, _ := bootAgentApp(t, 80, 20)
+	done2 := make(chan struct{})
+	go func() {
+		app2.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "make deploy"})
+		close(done2)
+	}()
+	waitPrompt(t, app2, func() bool { return app2.permAsk != nil })
+	app2.composer.text, app2.composer.cursor = "paste ", 6
+	app2.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	app2.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	if app2.permAsk == nil || app2.composer.text != "paste yy" {
+		t.Fatalf("a paste's yy must type, not answer: ask=%v text=%q", app2.permAsk != nil, app2.composer.text)
+	}
+	app2.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	select {
+	case <-done2:
+	case <-time.After(2 * time.Second):
+		t.Fatal("esc must deny the paste's ask")
 	}
 }
 
@@ -1741,13 +1767,22 @@ func TestPermissionProseTypesUnderTheAsk(t *testing.T) {
 		app.Update(tea.KeyPressMsg{Code: rune(key[0]), Text: key})
 	}
 	now = opened.Add(permGrace + time.Millisecond)
-	typeKey("ou bet, run it") // the first y arms, so prose spells past it
-	if app.permAsk == nil || app.composer.text != "ou bet, run it" {
-		t.Fatalf("prose under the ask must draft: ask=%v text=%q", app.permAsk != nil, app.composer.text)
+	typeKey("you bet, run it") // the arm's first press types: prose keeps its letters
+	if app.permAsk == nil || app.composer.text != "you bet, run it" {
+		t.Fatalf("prose under the ask must draft whole: ask=%v text=%q", app.permAsk != nil, app.composer.text)
 	}
 	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	if app.permAsk == nil || app.composer.text != "ou bet, run it" {
-		t.Fatalf("a stray y in a draft arms, never types or approves: ask=%v text=%q", app.permAsk != nil, app.composer.text)
+	if app.permAsk == nil || app.composer.text != "you bet, run ity" {
+		t.Fatalf("a stray y types and arms: ask=%v text=%q", app.permAsk != nil, app.composer.text)
+	}
+	typeKey("x") // any other key drops the arm
+	if app.permAsk == nil || app.composer.text != "you bet, run ityx" {
+		t.Fatalf("prose keeps drafting under the ask: ask=%v text=%q", app.permAsk != nil, app.composer.text)
+	}
+	now = now.Add(permGrace + time.Millisecond)
+	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"}) // the arm was dropped: this y arms again
+	if app.permAsk == nil {
+		t.Fatal("a y past a dropped arm must arm again, not answer")
 	}
 	app.composerKey("enter", tea.KeyPressMsg{}) // no model: the send fails, the text is kept
 	if app.permAsk == nil || len(app.composer.history) != 1 {
@@ -1762,7 +1797,7 @@ func TestPermissionProseTypesUnderTheAsk(t *testing.T) {
 	if allowed {
 		t.Fatal("esc denied the ask")
 	}
-	if app.composer.text != "ou bet, run it" {
+	if app.composer.text != "you bet, run ityxy" {
 		t.Fatalf("the draft must survive the deny: %q", app.composer.text)
 	}
 }

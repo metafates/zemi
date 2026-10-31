@@ -39,10 +39,12 @@ type permAskPrompt struct {
 	sel    int       // highlighted choice
 	view   viewport  // the command or preview
 	size   boxSize
-	// a draft under the box arms the answer keys: the first press arms, a
-	// second within the window answers, any other key disarms
+	// a draft under the box arms the answer keys: the first press types its
+	// letter and arms, a second past a human's pause answers, any other key
+	// disarms — a paste's adjacent presses never answer
 	answerArmed string
 	answerUntil time.Time
+	armedAt     time.Time
 }
 
 // permGrace swallows keys right after a prompt opens: someone typing a

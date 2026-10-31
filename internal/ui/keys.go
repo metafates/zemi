@@ -246,14 +246,14 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		if !a.composer.empty() {
-			// a draft under the box: the answer keys arm first — a stray
-			// letter from the prose the user is typing arms and any other
-			// key drops it, so only a second press answers. The deny keys
-			// arm too: an accidental deny from prose loses the ask just as
-			// an accidental approve breaks it.
+			// a draft under the box: the answer keys type their letter and
+			// arm — prose keeps its y/n/t — and a second press past a paste's
+			// pace answers. The deny keys arm too: an accidental deny from
+			// prose loses the ask just as an accidental approve breaks it.
 			switch key {
 			case "y", "n", "t":
-				if pa.answerArmed == key && a.now().Before(pa.answerUntil) {
+				if pa.answerArmed == key && a.now().Before(pa.answerUntil) &&
+					a.now().Sub(pa.armedAt) >= permGrace {
 					a.askSwallow = a.now() // the paste behind the second press eats whole
 					for _, c := range pa.choices() {
 						if c.key == key {
@@ -263,9 +263,9 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 					}
 					return nil
 				}
-				pa.answerArmed, pa.answerUntil = key, a.now().Add(2*time.Second)
+				pa.answerArmed, pa.answerUntil, pa.armedAt = key, a.now().Add(2*time.Second), a.now()
 				a.frameDirty = true // the footer's twice-to-answer hint draws
-				return nil
+				return a.composerKey(key, msg)
 			}
 			pa.answerArmed = ""
 			return a.composerKey(key, msg)
@@ -705,6 +705,8 @@ func (a *App) typing(top modal) bool {
 	case modalQuestion:
 		qp := a.question
 		return !qp.reviewing() && qp.states[qp.at].typing
+	case modalPerm:
+		return true // the box takes prose under it: j/k are letters, not moves
 	default:
 		return false
 	}
