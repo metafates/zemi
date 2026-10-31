@@ -2739,11 +2739,14 @@ call keeps fewer provider retries than a turn (`buildMaxRetries`): a
 rate-limited round should fail into the cooldown, not have 8 slots each
 burn a full retry pass. The view self-heals.
 
-A reset quiesces the builder, and quiesce is a fence: while it holds, the
-worker dispatches nothing, and every build dispatched before it has landed
-in the view, so the wipe runs under no build. The wait is bounded
-(`quiesceWait`): a provider call wedged past it refuses the reset with a
-toast instead of wedging it, and the gate releases.
+A reset quiesces the builder, and quiesce is a fence: the builds in flight
+abort at once - a reset deletes what they are building, so no provider call
+is waited out - and once they have unwound, the worker dispatches nothing
+while the gate holds and every build dispatched before it has landed in the
+view, so the wipe runs under no build. The wait for the aborts to unwind is
+bounded (`quiesceWait`): a provider call wedged past its own cancellation
+refuses the reset with a toast instead of wedging it, and the gate opens on
+a fresh call scope.
 
 The builder runs up to 8 model calls at once (`buildSlots`) on
 `models.compact`, falling back to `models.default` while unset. One leaf
@@ -2869,9 +2872,11 @@ not the machine.
 never ends, and the wipe is the only deletion (the owner's call: the cut
 was the hardest correctness surface, and the spec has none).
 
-- The wipe holds the builder quiesced (`quiesce`: no dispatch, in-flight
-  builds waited out, the wait bounded so a wedged provider call refuses the
-  reset instead of wedging it), then deletes the log rows, every summary
+- The wipe holds the builder quiesced (`quiesce`: the in-flight builds
+  abort at once - nothing of the chat is worth a provider call once the
+  wipe is confirmed - no dispatch, the wait for the aborts to unwind bounded
+  so a provider wedged past its own cancellation refuses the reset instead
+  of wedging it), then deletes the log rows, every summary
   node, every view line and the compaction view's kv row in one transaction
   (`ResetLog`), vacuums and truncates the WAL so the text is gone from
   disk, and logs one note row - "the chat was reset", the wipe's only trace,
@@ -2880,10 +2885,11 @@ was the hardest correctness surface, and the spec has none).
   at seq 1.
 - The todo list clears, every goal drops with its kv row, the runner is
   dropped, and the transcript swaps to the empty log. It refuses a live
-  turn or run, and asks through the armed screen or `--yes`. The armed
-  key's press runs the wipe on its own goroutine, so the UI's worker never
-  sits on the quiesce; the toast names the outcome. A window whose log
-  shrinks under it - the writing window's reset - toasts "Chat reset by
+  turn or run, and asks through the armed screen or `--yes`. Between the
+  last confirmation and the wipe sits no model call and no deferred step;
+  the armed key's press runs the wipe on its own goroutine, so the UI's
+  worker never sits on it, and the toast names the outcome. A window whose
+  log shrinks under it - the writing window's reset - toasts "Chat reset by
   the writable window" and reloads whole.
 
 ### 10.7 Skills

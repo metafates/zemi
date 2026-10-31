@@ -46,10 +46,11 @@ type chatLog struct {
 	reply int64
 }
 
-// quiesce stops the builder's dispatch and waits for its in-flight builds;
+// quiesce stops the builder's dispatch and aborts its in-flight builds - a
+// reset deletes what they are building - then waits for them to unwind;
 // resume releases it. A reset holds both around the wipe. An error when the
-// fence cannot hold: the host is closing, or a build outlived the wait - the
-// caller must not cut.
+// fence cannot hold: the host is closing, or an aborted call outlived the
+// wait - the caller must not cut.
 func (c *chatLog) quiesce() error { return c.tree.quiesce() }
 
 func (c *chatLog) resume() { c.tree.resume() }
