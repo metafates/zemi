@@ -1298,8 +1298,9 @@ zemi.ui.widget.add({
 				B.markdown(text)
 			end
 			-- what waits for the turn's next step boundary: the user's own
-			-- words as typed, which never fold. The model's own markup draws
-			-- no row here: its work row landed where it was delivered.
+			-- words as typed, folding past the paste threshold like any user
+			-- row. The model's own markup draws no row here: its work row
+			-- landed where it was delivered.
 			for _, q in ipairs(queued) do
 				B.gap("queued")
 				B.user(q.text, true)

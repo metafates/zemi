@@ -556,7 +556,7 @@ EOF
 			die "the fake model died (port taken?)"
 		}
 		RB=$(rex run -s "$RS" -c "$TREE/proj" --label "$SESSION" --keep-open --focus=false --json -- \
-			env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN="$BIN" "$DIR/zemi-safe" "$TREE" $TRUST |
+			env -u NO_COLOR -u ZEMI_SCRATCH -u ZEMI_PROJECT_DIR -u ZEMI_SESSION TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN="$BIN" "$DIR/zemi-safe" "$TREE" $TRUST |
 			python3 -c 'import json,sys;print(json.load(sys.stdin)["block_ids"][0])') ||
 			die "the zemi block failed to start"
 		rex block call -s "$RS" -b "$RB" resize "{\"columns\":$W,\"rows\":$H}" >/dev/null ||
@@ -599,7 +599,7 @@ EOF
 	# exec: the login shell wrapping the boot line must not keep the pane
 	# pid (fish never exec-optimizes a single command)
 	tmux -L "$SERVER" new-session -d -s "$SESSION" -x "$W" -y "$H" -c "$TREE/proj" \
-		"exec env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' '$DIR/zemi-safe' '$TREE' $TRUST" ||
+		"exec env -u NO_COLOR -u ZEMI_SCRATCH -u ZEMI_PROJECT_DIR -u ZEMI_SESSION TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' '$DIR/zemi-safe' '$TREE' $TRUST" ||
 		die "tmux new-session failed"
 	wait_boot
 	trust_note
@@ -1024,7 +1024,7 @@ cmd_peer() {
 			die "the $WIN fake model died (port taken?)"
 		}
 		RB=$(rex run -s "$RSESSION" -c "$TREE/proj" --label "$WIN" --keep-open --focus=false --json -- \
-			env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN="$BIN" ZEMI_LAB_CONFIG="$TREE/config-$WIN" "$DIR/zemi-safe" "$TREE" ${LAB_TRUST:+"$LAB_TRUST"} |
+			env -u NO_COLOR -u ZEMI_SCRATCH -u ZEMI_PROJECT_DIR -u ZEMI_SESSION TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN="$BIN" ZEMI_LAB_CONFIG="$TREE/config-$WIN" "$DIR/zemi-safe" "$TREE" ${LAB_TRUST:+"$LAB_TRUST"} |
 			python3 -c 'import json,sys;print(json.load(sys.stdin)["block_ids"][0])') ||
 			die "the $WIN block failed to start"
 		rex block call -s "$RSESSION" -b "$RB" resize "{\"columns\":$W,\"rows\":$H}" >/dev/null ||
@@ -1043,7 +1043,7 @@ cmd_peer() {
 			die "the $WIN fake model died (port taken?)"
 		}
 		tmux -L "$SERVER" new-session -d -s "$WIN" -x "$W" -y "$H" -c "$TREE/proj" \
-			"exec env -u NO_COLOR TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' ZEMI_LAB_CONFIG='$TREE/config-$WIN' '$DIR/zemi-safe' '$TREE'${LAB_TRUST:+ $LAB_TRUST}" ||
+			"exec env -u NO_COLOR -u ZEMI_SCRATCH -u ZEMI_PROJECT_DIR -u ZEMI_SESSION TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' ZEMI_LAB_CONFIG='$TREE/config-$WIN' '$DIR/zemi-safe' '$TREE'${LAB_TRUST:+ $LAB_TRUST}" ||
 			die "tmux new-session failed"
 	fi
 	i=0
