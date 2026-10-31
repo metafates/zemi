@@ -44,7 +44,18 @@ func TestGoalLoop(t *testing.T) {
 		},
 		{
 			name: "no verdict pauses", verdict: func(*Host, int) string { return "sure" }, turns: 1, goal: true,
-			notices: []string{"Goal paused: the check gave no verdict"},
+			notices: []string{"Goal check gave no verdict; still watching"},
+		},
+		{
+			name: "a pause that answers the same draws once", verdict: func(h *Host, n int) string {
+				if n == 0 { // a queued user turn re-checks after the pause
+					if err := h.AgentSend("again"); err != nil {
+						panic(err)
+					}
+				}
+				return "sure"
+			}, turns: 2, goal: true,
+			notices: []string{"Goal check gave no verdict; still watching"},
 		},
 		{name: "the cap pauses", turns: goalMaxRuns + 1, goal: true, notices: paused},
 		{name: "a failed turn is not checked", fail: true, turns: 1, goal: true},

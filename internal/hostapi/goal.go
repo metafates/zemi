@@ -53,6 +53,9 @@ type Goal struct {
 	Since     time.Time `json:"Since"`
 	Tokens    int64     `json:"Tokens"`
 	Cost      float64   `json:"Cost"`
+	// the last pause reason a row announced: a degraded check that answers
+	// the same every turn would otherwise draw that one row per turn
+	PausedTold string `json:"PausedTold"`
 }
 
 const goalBrief = `Work until the conversation shows it holds: run the checks that prove it and keep their output in view. After each of your turns zemi checks the goal against the conversation and sends you back while it does not hold. If only the user can unblock it, say what you need and stop.`
@@ -273,12 +276,17 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 		return ""
 	}
 	ev, reason, ok := parseVerdict(reply)
+	announced := "" // the degraded check's own row, worded as what it is
 	switch {
 	case err != nil:
 		ev, reason = goalPaused, "the check failed: "+h.friendlyError(err)
+		announced = "Goal check failed: " + h.friendlyError(err) + "; still watching"
 	case !ok:
 		h.Log.Debug("no verdict", "origin", "goal", "reply", clipRunes(reply, 200))
 		ev, reason = goalPaused, "the check gave no verdict"
+		announced = "Goal check gave no verdict; still watching"
+	default:
+		g.PausedTold = ""
 	}
 	ag := h.agents
 	ag.mu.Lock()
@@ -298,7 +306,21 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 	} else {
 		ag.mu.Unlock()
 	}
-	if m, ok := goalNotice(ev, reason); ok {
+	skip := false
+	if ev == goalPaused {
+		// the pill stays armed and the next turn re-checks, so a pause that
+		// answers the same every turn draws its row once
+		if g.PausedTold == reason {
+			skip = true
+		}
+		g.PausedTold = reason
+	}
+	if skip {
+		return ""
+	}
+	if announced != "" {
+		h.notice(announced, "")
+	} else if m, ok := goalNotice(ev, reason); ok {
 		h.notice(m.Text, m.Detail)
 	}
 	if ev != goalNotYet {
