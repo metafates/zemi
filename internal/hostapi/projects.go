@@ -345,7 +345,7 @@ func (h *Host) projectItems() (items []OverlayItem, sel int) {
 		if !p.Used.IsZero() {
 			desc += " · " + ago(p.Used.UnixMilli())
 		}
-		item := OverlayItem{Text: sanitize.String(perm.TildePath(p.Root)), Tail: true, Desc: strings.TrimRight(desc, " "), Fields: h.projectFields(p)}
+		item := OverlayItem{Glyph: ProjectMark(p.Root), Text: sanitize.String(perm.TildePath(p.Root)), Tail: true, Desc: strings.TrimRight(desc, " "), Fields: h.projectFields(p)}
 		switch {
 		case p.Root == h.trustRoot():
 			item.Tag = "current"

@@ -538,6 +538,16 @@ func markSeg(kind hostapi.MarkKind) hostapi.Segment {
 	return hostapi.Segment{Text: m.Glyph + " ", HL: m.HL, NoCopy: true, Effect: map[bool]hostapi.Effect{true: hostapi.EffectSpin}[kind == tools.MarkSpin]}
 }
 
+// itemMark is a row's leading mark: its own glyph when it carries one, else
+// the state mark its kind names. Either way it draws ahead of the label and
+// stays out of it, so a filter matches the label alone.
+func itemMark(item hostapi.OverlayItem) hostapi.Segment {
+	if item.Glyph != "" {
+		return hostapi.Segment{Text: item.Glyph + " ", NoCopy: true}
+	}
+	return markSeg(item.Mark)
+}
+
 // tagSeg is a key column tag: a word that names, never a binary state.
 func tagSeg(s string) hostapi.Segment { return hostapi.Segment{Text: s, HL: hostapi.ChromeHintKey} }
 

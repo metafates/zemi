@@ -70,11 +70,11 @@ func (h *Host) missingProvider(id string) bool {
 }
 
 // missingKeyRow is the row a builtin without a key gets on both screens that
-// list providers: enter pastes, y still copies the export line.
+// list providers: enter pastes, y still copies the variable.
 func missingKeyRow(m agent.MissingKey) OverlayItem {
 	return OverlayItem{
 		Text: m.ID, Section: "Needs a key",
-		Desc: "export " + m.Env, Copy: "export " + m.Env + "=",
+		Desc: m.Env, Copy: m.Env + "=",
 		Run: "keys paste " + m.ID, Verb: VerbPaste,
 	}
 }

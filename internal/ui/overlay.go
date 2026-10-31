@@ -553,8 +553,8 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		// a desc keeps its runs of spaces: padded columns (a status word) stay put
 		item.Desc, item.Tag, item.Section = oneLine.Replace(sanitize.String(item.Desc)), sanitize.Line(item.Tag), sanitize.Line(item.Section)
 		item.Verb = hostapi.Verb(sanitize.Line(string(item.Verb)))
-		item.Fill, item.Copy, item.Preview = sanitize.String(item.Fill), sanitize.String(item.Copy), sanitize.String(item.Preview)                          // Detail is the detail view's Body, sanitized there
-		it := listItem{label: sanitize.Line(item.Text), desc: item.Desc, key: tagSeg(item.Tag), section: item.Section, mark: markSeg(item.Mark), row: item} // a newline would break the box
+		item.Fill, item.Copy, item.Preview = sanitize.String(item.Fill), sanitize.String(item.Copy), sanitize.String(item.Preview)                      // Detail is the detail view's Body, sanitized there
+		it := listItem{label: sanitize.Line(item.Text), desc: item.Desc, key: tagSeg(item.Tag), section: item.Section, mark: itemMark(item), row: item} // a newline would break the box
 		if item.On != nil || item.Locked != nil {
 			it.key = switchSeg(item.On != nil && *item.On, item.Locked != nil)
 		}
@@ -1344,16 +1344,15 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 		if st.size.w == 0 { // measuring: the line draws at its natural width
 			inW = min(inner, 40)
 		}
-		body := [][]hostapi.Segment{st.input.inputRow(inW, st.o.Placeholder)}
+		// the typed line keeps a blank row under it, so a note or an error
+		// breathes off it instead of stacking on the text
+		body := [][]hostapi.Segment{st.input.inputRow(inW, st.o.Placeholder), nil}
 		if st.inputErr != "" {
-			// the error takes the blank row between the line and the hints,
-			// wrapped to the width the box keeps, so a long one costs height
-			// and never widens or shifts the frame
+			// the error wraps to the width the box keeps, so a long one costs
+			// height and never widens or shifts the frame
 			body = append(body, hostapi.WrapSegs([]hostapi.Segment{{Text: st.inputErr, HL: hostapi.ChromeDanger}}, min(inner, max(st.size.w, 20)))...)
 		} else if st.o.Note != "" {
 			body = append(body, []hostapi.Segment{{Text: st.o.Note, HL: hostapi.GroupDim}})
-		} else {
-			body = append(body, nil)
 		}
 		save := sendHint
 		if st.o.Secret {

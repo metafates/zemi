@@ -14,6 +14,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
+	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -95,6 +96,8 @@ func TestProjectsCommand(t *testing.T) {
 				"desc:untrusted this run       · now", "[trust untrusted this run]", "tag:current",
 				"desc:missing                  · now", "[trust trusted] [messages ]",
 				"desc:trusted   · 1 message    · now", "[messages 1 · latest now: " + markedTitle(other, "fix the flaky test") + "]",
+				// the marker rides its own glyph, so the label stays the bare path
+				"text:" + perm.TildePath(other),
 				"desc:switch to it key:s run:projects switch " + other, "desc:forget trust key:f run:projects forget " + other, "danger:true desc:delete key:x run:projects delete " + other,
 				"Selected:2", // held: the gone root, used last, has nothing to switch to
 			},
@@ -162,6 +165,46 @@ func TestProjectsCommand(t *testing.T) {
 		if err := h.RunCommand(t.Context(), "projects", args, false); !errors.Is(err, ErrNeedsTUI) {
 			t.Fatalf("headless /projects %s: %v", args, err)
 		}
+	}
+}
+
+// TestProjectsRowsKeepTheirMatchLabel: a project's marker rides its own
+// glyph, ahead of the label, so the label a filter matches stays the bare
+// path - the least a list filters is five rows, and a typed path
+// abbreviation still finds its row.
+func TestProjectsRowsKeepTheirMatchLabel(t *testing.T) {
+	tmp, _ := filepath.EvalSymlinks(t.TempDir())
+	dirs := config.Dirs{ProjectDir: filepath.Join(tmp, "cur"), StateHome: filepath.Join(tmp, "state")}
+	zemi := filepath.Join(tmp, "code-github-zemi")
+	for _, name := range []string{"cur", "code-github-zemi", "docs", "mail", "scratch"} {
+		root := filepath.Join(tmp, name)
+		os.MkdirAll(root, 0o755)
+		g, p, err := store.OpenForDirs(dirs.StateHome, root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		g.Close()
+		p.Close()
+	}
+	log := slog.New(slog.DiscardHandler)
+	h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), dirs)
+	t.Cleanup(h.Close)
+	projs := ListProjects(h.Dirs, true)
+	items, _ := h.projectItems()
+	if len(items) != len(projs) || len(items) < 5 {
+		t.Fatalf("projects list: %d rows, %d roots", len(items), len(projs))
+	}
+	var labels []string
+	for i, it := range items {
+		if it.Glyph != ProjectMark(projs[i].Root) || it.Text != sanitize.String(perm.TildePath(projs[i].Root)) {
+			t.Fatalf("row %d: glyph %q text %q", i, it.Glyph, it.Text)
+		}
+		labels = append(labels, it.Text)
+	}
+	// the label a filter matches: the path alone, so the abbreviation fuzzies
+	i := slices.Index(labels, sanitize.String(perm.TildePath(zemi)))
+	if i < 0 || !slices.ContainsFunc(Match("cgz", labels, nil), func(hit Hit) bool { return hit.Index == i }) {
+		t.Fatalf("\"cgz\" did not fuzzy-match the marked row:\n%q", labels)
 	}
 }
 
