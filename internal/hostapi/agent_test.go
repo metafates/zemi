@@ -2147,7 +2147,7 @@ func TestRecap(t *testing.T) {
 		setup func()
 		want  string // the row the recap adds as text|detail, "" for none
 	}{
-		{"a turn that ran a tool gets one, the first ever naming the key", turn(true), recap + "|off in /config"},
+		{"a turn that ran a tool gets one, the first ever naming the key", turn(true), recap + "|turn off in /config"},
 		{"the next has no hint", func() {}, recap + "|"},
 		{"off in config", func() { _, _ = h.Settings.SetQuiet("session.recap", "0") }, ""},
 		{"a reply-only turn is its own recap", func() { _, _ = h.Settings.SetQuiet("session.recap", "2m"); turn(false)() }, ""},

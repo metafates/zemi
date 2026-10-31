@@ -2226,7 +2226,7 @@ func (h *Host) recap(ctx context.Context) {
 	detail := ""
 	if h.GlobalDB != nil {
 		if _, err := h.GlobalDB.GetKV("recap.hinted"); errors.Is(err, store.ErrNotFound) {
-			detail = "off in /config"
+			detail = "turn off in /config"
 		}
 	}
 	// a send, a report or a reset since the call would leave it stale

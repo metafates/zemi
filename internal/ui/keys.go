@@ -21,7 +21,7 @@ import (
 // /help would list none of them.
 var goKeys = [][2]string{
 	{"enter", "send; steers a running turn"},
-	{"shift/alt/ctrl+enter", "newline"},
+	{"shift/alt/ctrl+enter, ctrl+j", "newline"},
 	{"esc", "back; twice to interrupt"},
 	{"ctrl+c", "clear the draft, interrupt, quit"},
 	{"ctrl+g", "edit the draft in your editor"},

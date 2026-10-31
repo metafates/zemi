@@ -441,9 +441,9 @@ func TestSelectionRejoinsWrappedText(t *testing.T) {
 	recap := "recap: fixing the build; next run make check"
 	host.AppendMessage("user", prompt)
 	host.AppendMessage("assistant", "here:\n\n```go\n"+code+"\n```\n")
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: hostapi.RowNotice, Text: recap, Detail: "off in /config"})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: hostapi.RowNotice, Text: recap, Detail: "turn off in /config"})
 	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "(off in /config)") {
+	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "(turn off in /config)") {
 		t.Fatalf("the notice hint is not drawn:\n%s", frame)
 	}
 	for _, c := range []struct{ from, to, want string }{

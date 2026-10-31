@@ -220,7 +220,7 @@ func TestNoticesPersist(t *testing.T) {
 	if err := h.Note("chapter zero"); err != nil { // the log is not empty, as any chat a notice lands in
 		t.Fatal(err)
 	}
-	h.notice("Recap: working on the import", "off in /config")
+	h.notice("Recap: working on the import", "turn off in /config")
 	h.notice("Goal met: the tests pass", "")
 	rows, err := h.DB.LogTail(3)
 	if err != nil || len(rows) != 3 ||
@@ -231,7 +231,7 @@ func TestNoticesPersist(t *testing.T) {
 	// a rebuilt window draws the same rows, detail included
 	tr := logRows(rows[1:])
 	if len(tr) != 2 || tr[0].Kind != RowNotice || tr[0].Text != "Recap: working on the import" ||
-		tr[0].Detail != "off in /config" || tr[1].Text != "Goal met: the tests pass" {
+		tr[0].Detail != "turn off in /config" || tr[1].Text != "Goal met: the tests pass" {
 		t.Fatalf("rebuilt rows = %+v", tr)
 	}
 	// the live rows carry their seq from the append, and the wipe check
