@@ -523,6 +523,9 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "errors", NArgs: hostapi.NArgsAny, Desc: "show errors zemi recorded", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.OpenErrors(args)
 		}},
+		{Name: "windows", NArgs: hostapi.NArgsAny, Desc: "list the other zemi windows on this chat", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
+			return h.OpenWindows(args, confirm)
+		}},
 		{Name: "trust", Desc: "change whether this project is trusted", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			if _, err := h.Screen(); err != nil {
 				return fmt.Errorf("%w; --trust trusts the project", err)

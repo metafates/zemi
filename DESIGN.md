@@ -1901,7 +1901,11 @@ and the moves that matter travel it: a second zemi reads the lease row
 and dials the holder the way the composer would (`zemi send`), and a
 window whose presence moved - booted, closed - pokes every
 sibling it can dial, whose beat then reads the change at once instead of
-at its next tick. The beat and the freshness window stay as the backstop
+at its next tick. `/windows` lists the siblings off the same heartbeats -
+origin, process, what each says it is on, the holder named - and its
+`kill <origin>` tells the process to quit (asks first): the killed
+window's clean exit releases its lease, and the killer takes the write
+on its next tick. The beat and the freshness window stay as the backstop
 for a window that died before it could say so. Ceilings: for up to one
 tick a GC-paused zombie may write beside the new holder - interleaved
 rows the seq-ordered splice already handles; a wedged-but-alive holder

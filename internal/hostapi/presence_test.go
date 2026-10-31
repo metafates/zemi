@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -125,6 +126,66 @@ func TestPeersBeatPrunesTheStale(t *testing.T) {
 	}
 	if _, err := os.Stat(fresh); err != nil {
 		t.Fatalf("the beat pruned the fresh heartbeat: %v", err)
+	}
+}
+
+// TestWindowsListsTheSharingWindows: /windows reads the sibling heartbeats
+// into rows, names the lease's holder among them, and the kill asks first; a
+// window nobody holds and a heartbeat without a process refuse.
+func TestWindowsListsTheSharingWindows(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	h := openClaimed(t, state, proj)
+	f := h.hooks().(*fakeUI)
+	dir := filepath.Dir(h.peersPath)
+	for name, body := range map[string]string{
+		"sib.json": `{"pid":1234,"task":"writing docs"}`,
+		"old.json": `{"task":"from an older zemi"}`,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := h.OpenWindows("", false); err != nil {
+		t.Fatal(err)
+	}
+	ov := f.overlays()[len(f.overlays())-1]
+	if ov.ID != "windows" || len(ov.Items) != 2 {
+		t.Fatalf("overlay = %s over %d items, want windows over 2", ov.ID, len(ov.Items))
+	}
+	if ov.Items[0].Text != "from an older zemi" || ov.Items[0].Desc != "watching" {
+		t.Fatalf("the pidless row = %q, %q", ov.Items[0].Text, ov.Items[0].Desc)
+	}
+	if ov.Items[1].Text != "writing docs" || ov.Items[1].Desc != "pid 1234 · watching" {
+		t.Fatalf("the sibling row = %q, %q", ov.Items[1].Text, ov.Items[1].Desc)
+	}
+	if k := ov.Items[1].Keys[0]; k.Key != "k" || k.Run != "windows kill sib" || !k.Danger {
+		t.Fatalf("the sibling's key = %+v", k)
+	}
+
+	// the lease's holder reads as the writer: this window hands the row to
+	// the sibling, as a kill would leave it
+	if _, err := h.DB.ReleaseLeader(h.origin); err != nil {
+		t.Fatal(err)
+	}
+	if won, err := h.DB.ClaimLeader("sib", "", store.Leader{}); err != nil || !won {
+		t.Fatalf("the sibling did not take the lease: won=%v err=%v", won, err)
+	}
+	if got := h.windowItems()[1].Desc; got != "pid 1234 · writes this chat" {
+		t.Fatalf("the holder's row = %q, want the write named", got)
+	}
+
+	if err := h.OpenWindows("kill sib", false); err != nil {
+		t.Fatal(err)
+	}
+	ask := f.overlays()[len(f.overlays())-1]
+	if ask.ID != "windows kill" || ask.Confirm != "windows kill sib --yes" {
+		t.Fatalf("the ask = %s armed with %q", ask.ID, ask.Confirm)
+	}
+	if err := h.OpenWindows("kill nobody", true); err == nil || !strings.Contains(err.Error(), "no window nobody") {
+		t.Fatalf("an unknown window's kill err = %v", err)
+	}
+	if err := h.OpenWindows("kill old", true); err == nil || !strings.Contains(err.Error(), "no process to kill") {
+		t.Fatalf("a pidless window's kill err = %v", err)
 	}
 }
 
