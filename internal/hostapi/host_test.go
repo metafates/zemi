@@ -1090,6 +1090,30 @@ func TestWorkingRuleNamesTheBusyJob(t *testing.T) {
 	}
 }
 
+// TestViewerRuleNamesNoInterruptKey: a viewer draws the writing window's turn
+// live, but its esc cannot stop that turn, so the readout carries the
+// interrupt key only on the window that writes.
+func TestViewerRuleNamesNoInterruptKey(t *testing.T) {
+	t.Parallel()
+	h := newTestHostUI(t)
+	row := func() string {
+		t.Helper()
+		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("working"), 80, 1, UIState{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return SegsText(lines[0])
+	}
+	h.SeedStream(StreamSnapshot{Active: true, Elapsed: time.Second})
+	if got := row(); !strings.Contains(got, "interrupt") {
+		t.Fatalf("the writer's rule lost its interrupt key: %q", got)
+	}
+	h.setLeaseWord(writerOther)
+	if got := row(); strings.Contains(got, "interrupt") {
+		t.Fatalf("a viewer's rule names a key that stops nothing: %q", got)
+	}
+}
+
 // TestProjectEmojiPool: every marker emoji holds the pool's criteria - one
 // codepoint with no joiner, selector, modifier, regional indicator, keycap or
 // combining mark; emoji presentation, curated from Unicode's emoji-variants
