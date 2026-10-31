@@ -299,6 +299,10 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 	}
 	g.Turns++
 	g.Reason = goalReason(ev, reason)
+	if announced != "" {
+		// a degraded check is not a pause: the overview names it the row does
+		g.Reason = reason + "; still watching"
+	}
 	if ev == goalMet {
 		ag.goal = nil
 		ag.mu.Unlock()
