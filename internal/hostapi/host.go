@@ -70,6 +70,9 @@ type UIHooks interface {
 	// says the user ended it by dismissing a question or plan.
 	TurnDone(err string, stopped bool)
 	AskPermission(req PermRequest) (allowed bool, decidedBy string)
+	// DismissAsk answers the shown permission ask as nobody: the chat it
+	// belonged to is gone (a foreign reset), the waiter unblocks at once.
+	DismissAsk()
 	// Screenshot is the last drawn frame as plain text, "" before the
 	// first one; safe from any goroutine.
 	Screenshot() string

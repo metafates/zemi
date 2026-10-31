@@ -883,6 +883,8 @@ func (f *fakeUI) EditFile(_ context.Context, req EditRequest) error {
 func (f *fakeUI) Copy(text string)            { f.copied = text }
 func (f *fakeUI) Relaunch(dir, resume string) { f.relaunched, f.resumed = dir, resume }
 
+func (f *fakeUI) DismissAsk() {}
+
 func (f *fakeUI) AskPermission(req PermRequest) (bool, string) {
 	f.asked = append(f.asked, req)
 	if f.onAsk != nil {

@@ -1060,7 +1060,8 @@ func (*testUI) LayoutRects() map[string]Rect                        { return nil
 func (*testUI) KeyHelp() ([][2]string, [][2]string)                 { return nil, nil }
 func (*testUI) AgentStream()                                        {}
 func (*testUI) TurnDone(string, bool)                               {}
-func (*testUI) AskPermission(PermRequest) (bool, string)            { return false, tools.ByUser }
+func (*testUI) AskPermission(PermRequest) (bool, string) { return false, tools.ByUser }
+func (*testUI) DismissAsk() {}
 func (*testUI) Screenshot() string                                  { return "" }
 func (*testUI) ChatRow() int                                        { return 0 }
 func (*testUI) AskQuestion([]tools.Question) ([]tools.Answer, bool) { return nil, false }

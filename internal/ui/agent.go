@@ -107,6 +107,16 @@ func (a *App) TurnDone(err string, stopped bool) {
 // AskPermission implements hostapi.UIHooks. It blocks the caller (a tool
 // run on the turn goroutine) until the user answers the overlay; safe from
 // any goroutine via the hook channel + buffered answer, mirroring AskTrust.
+// DismissAsk answers the shown permission ask as nobody: the chat it
+// belonged to is gone (a foreign reset), so the waiter unblocks at the wipe
+// and the turn ends with its honest interrupt instead of on the next key.
+func (a *App) DismissAsk() {
+	a.await(func() tea.Cmd {
+		a.answerPerm(false, tools.ByNobody)
+		return nil
+	})
+}
+
 func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 	// Every field carries model input: strip escapes before the chrome.
 	req.Subject, req.Arg = sanitize.String(req.Subject), sanitize.String(req.Arg)

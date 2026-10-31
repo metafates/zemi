@@ -260,6 +260,11 @@ func (h *Host) ForeignResetEnded() {
 	// the chat the turn worked in is gone: its work would write rows a
 	// wiped log no longer holds, so the turn ends with it
 	h.AgentCancel()
+	// a shown ask belonged to the wiped chat: dismiss it, or it outlives
+	// the turn and a later answer runs a tool into the dead chat
+	if ui := h.hooks(); ui != nil {
+		ui.DismissAsk()
+	}
 	h.refreshMessages()
 	h.scroll(ScrollBottom, "")
 	h.refresh()
