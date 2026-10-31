@@ -2,13 +2,12 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/ipc"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
@@ -26,7 +25,7 @@ func shortSockDir(t *testing.T) string {
 	return dir
 }
 
-// runSend runs zemi send against a crafted peers dir and returns its output
+// runSend runs zemi send against this project's store and returns its output
 // and error, the way a script sees them.
 func runSend(t *testing.T, dirs config.Dirs, args ...string) (string, error) {
 	t.Helper()
@@ -39,126 +38,94 @@ func runSend(t *testing.T, dirs config.Dirs, args ...string) (string, error) {
 	return out.String(), err
 }
 
-// TestSendReadsPresence: the send loop tries fresh heartbeats first, probes
-// an aged one only when nothing fresh answered (mtime has writers other than
-// the window), and refuses honestly when no window answers.
-func TestSendReadsPresence(t *testing.T) {
+// TestSendDialsTheLease: the lease row names the one window a delivery may
+// reach; a row that moved between the read and the dial is re-read once, so
+// a handover in flight still delivers.
+func TestSendDialsTheLease(t *testing.T) {
 	dirs := config.Dirs{StateHome: t.TempDir(), ProjectDir: t.TempDir()}
-	peers := filepath.Join(dirs.StateHome, "peers",
-		filepath.Base(filepath.Dir(store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot()))))
-	if err := os.MkdirAll(peers, 0o700); err != nil {
+	dbPath := store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot())
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeHb := func(name, sock string, fresh bool) {
+	var db *store.DB
+	// claim plants the lease on a socket, the way a live window's boot does
+	claim := func(origin, sock string) {
 		t.Helper()
-		p := filepath.Join(peers, name)
-		body := `{"working":false}`
-		if sock != "" {
-			body = `{"working":false,"sock":"` + sock + `"}`
-		}
-		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if !fresh {
-			past := time.Now().Add(-hostapi.PeersTTL - time.Second)
-			if err := os.Chtimes(p, past, past); err != nil {
+		if db == nil {
+			d, err := store.Open(dbPath)
+			if err != nil {
 				t.Fatal(err)
 			}
+			db = d
+			t.Cleanup(func() { _ = d.Close() })
+		}
+		l, err := db.ReadLeader()
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			t.Fatal(err)
+		}
+		if _, err := db.ClaimLeader(origin, sock, l); err != nil {
+			t.Fatal(err)
 		}
 	}
-
-	t.Run("no window is an honest refusal", func(t *testing.T) {
-		_, err := runSend(t, dirs, "hello")
-		if err == nil || err.Error() != "no zemi window is live in "+perm.TildePath(dirs.TrustRoot()) {
-			t.Fatalf("refusal = %v, want the no-window error", err)
-		}
-	})
-
-	t.Run("a fresh live window is delivered", func(t *testing.T) {
+	// listen answers one request on a fresh socket and returns its path
+	listen := func(reply func() ipc.Reply) string {
+		t.Helper()
 		path := filepath.Join(shortSockDir(t), "w.sock")
 		ln, err := ipc.Listen(path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer ln.Close()
+		t.Cleanup(func() { ln.Close() })
 		go func() {
 			conn, err := ln.Accept()
 			if err != nil {
 				return
 			}
 			defer conn.Close()
-			if req, err := ipc.ReadRequest(conn); err == nil && req.Text == "hello" {
-				_ = ipc.WriteReply(conn, ipc.Reply{OK: true})
+			if _, err := ipc.ReadRequest(conn); err == nil {
+				_ = ipc.WriteReply(conn, reply())
 			}
 		}()
-		writeHb("live.json", path, true)
+		return path
+	}
+
+	t.Run("no writer is an honest refusal", func(t *testing.T) {
+		_, err := runSend(t, dirs, "hello")
+		if err == nil || err.Error() != "no zemi window is writing this chat in "+perm.TildePath(dirs.TrustRoot()) {
+			t.Fatalf("refusal = %v, want the no-writer error", err)
+		}
+	})
+
+	t.Run("the holder is delivered and names its live task", func(t *testing.T) {
+		sock := listen(func() ipc.Reply { return ipc.Reply{OK: true, Note: "writing the readme"} })
+		claim("a", sock)
+		out, err := runSend(t, dirs, "hello")
+		if err != nil || out != "delivered: a turn starts in the window\n  · writing the readme\n" {
+			t.Fatalf("deliver = %q, %v", out, err)
+		}
+	})
+
+	t.Run("a holder that will not answer names the handover", func(t *testing.T) {
+		claim("b", filepath.Join(shortSockDir(t), "gone.sock"))
+		_, err := runSend(t, dirs, "nobody")
+		if err == nil || err.Error() != "the writable window did not answer; it may be handing over - try again" {
+			t.Fatalf("refusal = %v, want the handover error", err)
+		}
+	})
+
+	t.Run("a row that moved under the dial is re-read once", func(t *testing.T) {
+		d := listen(func() ipc.Reply { return ipc.Reply{OK: true} })
+		c := listen(func() ipc.Reply {
+			// the holder hands the lease over, then refuses: the row the
+			// delivery read is stale the moment it answers
+			l, _ := db.ReadLeader()
+			_, _ = db.ClaimLeader("d", d, l)
+			return ipc.Reply{OK: false, Error: "another window writes this chat"}
+		})
+		claim("c", c)
 		out, err := runSend(t, dirs, "hello")
 		if err != nil || out != "delivered: a turn starts in the window\n" {
 			t.Fatalf("deliver = %q, %v", out, err)
-		}
-	})
-
-	t.Run("an aged heartbeat is probed before the refusal", func(t *testing.T) {
-		path := filepath.Join(shortSockDir(t), "w.sock")
-		ln, err := ipc.Listen(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer ln.Close()
-		go func() {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			defer conn.Close()
-			if req, err := ipc.ReadRequest(conn); err == nil && req.Text == "aged" {
-				_ = ipc.WriteReply(conn, ipc.Reply{OK: true, Queued: true})
-			}
-		}()
-		writeHb("aged.json", path, false)
-		out, err := runSend(t, dirs, "aged")
-		// two heartbeats by now (the first case's live.json is still there),
-		// and the aged window names no live task: one of the windows
-		if err != nil || out != "delivered: the message joined a running turn in one of the 2 live windows\n" {
-			t.Fatalf("deliver = %q, %v", out, err)
-		}
-	})
-
-	t.Run("several live windows and no live task read as one of the windows", func(t *testing.T) {
-		for _, stale := range []string{"live.json", "aged.json"} {
-			if err := os.Remove(filepath.Join(peers, stale)); err != nil && !os.IsNotExist(err) {
-				t.Fatal(err)
-			}
-		}
-		a := filepath.Join(shortSockDir(t), "a.sock")
-		ln, err := ipc.Listen(a)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer ln.Close()
-		go func() {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			defer conn.Close()
-			if req, err := ipc.ReadRequest(conn); err == nil && req.Text == "hello" {
-				_ = ipc.WriteReply(conn, ipc.Reply{OK: true})
-			}
-		}()
-		writeHb("one.json", a, true)
-		writeHb("two.json", filepath.Join(shortSockDir(t), "b.sock"), true) // live, but nothing answers there
-		out, err := runSend(t, dirs, "hello")
-		if err != nil || out != "delivered: a turn starts in one of the 2 live windows\n" {
-			t.Fatalf("deliver = %q, %v", out, err)
-		}
-	})
-
-	t.Run("a fresh dead window refuses", func(t *testing.T) {
-		writeHb("dead.json", filepath.Join(shortSockDir(t), "gone.sock"), true)
-		_, err := runSend(t, dirs, "nobody")
-		if err == nil || err.Error() != "no zemi window is live in "+perm.TildePath(dirs.TrustRoot()) {
-			t.Fatalf("refusal = %v, want the no-window error", err)
 		}
 	})
 }

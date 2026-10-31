@@ -2,24 +2,20 @@ package cli
 
 import (
 	"cmp"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"slices"
+	"io/fs"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/ipc"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
 )
 
-// sendDialWait bounds one window's dial; sendReplyWait bounds the round trip
+// sendDialWait bounds the leader's dial; sendReplyWait bounds the round trip
 // past the window's own read ceiling, so a command that asks a model still
 // gets its verdict.
 const (
@@ -30,54 +26,14 @@ const (
 func sendCommand(o *options) *cobra.Command {
 	return &cobra.Command{
 		Use:   "send <text...>",
-		Short: "deliver a prompt to a zemi window already running in this project",
-		Long:  "deliver a prompt to a zemi window already running in this project: a command runs as if typed, a message starts a turn or joins the running one; none is live here, and it fails",
+		Short: "deliver a prompt to the window writing this project's chat",
+		Long:  "deliver a prompt to the window writing this project's chat: a command runs as if typed, a message starts a turn or joins the running one; with no window writing, it fails",
 		Args:  minArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			text := strings.Join(args, " ")
-			key := filepath.Base(filepath.Dir(store.ProjectDBPath(o.dirs.StateHome, o.dirs.TrustRoot())))
-			peers := filepath.Join(o.dirs.StateHome, "peers", key)
-			entries, err := os.ReadDir(peers)
-			if err != nil {
-				return fmt.Errorf("no zemi window is live in %s", perm.TildePath(o.dirs.TrustRoot()))
-			}
-			type peer struct {
-				sock    string
-				fresh   bool
-				working bool
-			}
-			var heartbeats []peer
-			for _, e := range entries {
-				if filepath.Ext(e.Name()) != ".json" {
-					continue
-				}
-				var hb struct {
-					Sock    string `json:"sock"`
-					Working bool   `json:"working"`
-				}
-				raw, err := os.ReadFile(filepath.Join(peers, e.Name()))
-				if err != nil || json.Unmarshal(raw, &hb) != nil || hb.Sock == "" {
-					continue
-				}
-				fresh := false
-				if info, err := e.Info(); err == nil && time.Since(info.ModTime()) <= hostapi.PeersTTL {
-					fresh = true
-				}
-				heartbeats = append(heartbeats, peer{hb.Sock, fresh, hb.Working})
-			}
-			// a window at work takes the message first: a steer meant for the
-			// running turn should not land on an idle sibling whose heartbeat
-			// merely sorts ahead
-			slices.SortStableFunc(heartbeats, func(a, b peer) int {
-				if a.working != b.working {
-					if a.working {
-						return -1
-					}
-					return 1
-				}
-				return 0
-			})
-			// deliver prints the verdict and reports whether it happened; a
+			dbPath := store.ProjectDBPath(o.dirs.StateHome, o.dirs.TrustRoot())
+			nowhere := fmt.Errorf("no zemi window is writing this chat in %s", perm.TildePath(o.dirs.TrustRoot()))
+			// deliver prints the verdict and reports whether it happened; the
 			// window that refused names why
 			deliver := func(sock string) (bool, error) {
 				conn, err := ipc.Dial(sock, sendDialWait)
@@ -92,51 +48,52 @@ func sendCommand(o *options) *cobra.Command {
 				if !reply.OK {
 					return false, errors.New(cmp.Or(reply.Error, "the window refused this delivery"))
 				}
-				// several windows share the store: "the window" is honest only
-				// when it is named — by its live task when one runs, else by
-				// the count, since nothing on disk identifies a window
-				where := "the window"
-				if len(heartbeats) > 1 && reply.Note == "" {
-					where = fmt.Sprintf("one of the %d live windows", len(heartbeats))
-				}
 				switch {
 				case reply.Ran:
-					fmt.Fprintf(c.OutOrStdout(), "delivered: the command runs in %s\n", where)
+					fmt.Fprintf(c.OutOrStdout(), "delivered: the command runs in the window\n")
 				case reply.Queued:
-					fmt.Fprintf(c.OutOrStdout(), "delivered: the message joined a running turn in %s\n", where)
+					fmt.Fprintf(c.OutOrStdout(), "delivered: the message joined a running turn in the window\n")
 				default:
-					fmt.Fprintf(c.OutOrStdout(), "delivered: a turn starts in %s\n", where)
+					fmt.Fprintf(c.OutOrStdout(), "delivered: a turn starts in the window\n")
 				}
-				if reply.Note != "" && len(heartbeats) > 1 {
-					// several windows share the store: name the one that took it
+				if reply.Note != "" {
+					// the window names itself by its live task, when one runs
 					fmt.Fprintf(c.OutOrStdout(), "  · %s\n", reply.Note)
 				}
 				return true, nil
 			}
-			// fresh heartbeats first; an aged one is probed only when nothing
-			// fresh answered, since mtime has writers other than the window
-			// and a corpse fails its dial in ms
-			var lastErr error
-			for _, fresh := range []bool{true, false} {
-				for _, p := range heartbeats {
-					if p.fresh != fresh {
-						continue
-					}
-					ok, err := deliver(p.sock)
-					if ok {
-						return nil
-					}
-					// a dead heartbeat is the same "nothing to deliver to" as
-					// no heartbeat at all; only a real failure speaks for itself
-					if !errors.Is(err, ipc.ErrDead) {
-						lastErr = err
-					}
+			// the lease names the one window a delivery may reach: an
+			// unreadable store names itself, a missing row or file is no
+			// writer at all
+			read := func() (store.Leader, error) {
+				l, err := store.ReadLeaderAt(dbPath)
+				if errors.Is(err, store.ErrNotFound) || errors.Is(err, fs.ErrNotExist) {
+					return l, nowhere
+				}
+				return l, err
+			}
+			l, err := read()
+			if err != nil {
+				return err
+			}
+			ok, derr := deliver(l.Sock)
+			if ok {
+				return nil
+			}
+			// the first answer was a death or a refusal, and a handover swaps
+			// the row under a dial: read the lease once more, and a row that
+			// moved gets the delivery
+			if n, err := read(); err != nil {
+				return err
+			} else if n.Origin != l.Origin {
+				if ok, derr = deliver(n.Sock); ok {
+					return nil
 				}
 			}
-			if lastErr != nil {
-				return lastErr
+			if errors.Is(derr, ipc.ErrDead) {
+				return errors.New("the writable window did not answer; it may be handing over - try again")
 			}
-			return fmt.Errorf("no zemi window is live in %s", perm.TildePath(o.dirs.TrustRoot()))
+			return derr
 		},
 	}
 }
