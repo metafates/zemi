@@ -845,16 +845,17 @@ func messageRow(idx int, m ChatMessage) OverlayItem {
 }
 
 // markFor is the mark a row carries, so a failed call reads as one in the
-// list as it does in the chat.
+// list as it does in the chat: the call status leads, so a cancelled turn's
+// error row draws the chat's ■ and not the ✗ any error would.
 func markFor(m ChatMessage) MarkKind {
+	if k, ok := callMarks[m.Status]; ok {
+		return k
+	}
 	if m.Kind == RowError {
 		return tools.MarkErr
 	}
 	if m.Kind == RowNotice || m.Kind == RowShell {
 		return tools.MarkNote
-	}
-	if k, ok := callMarks[m.Status]; ok {
-		return k
 	}
 	return MarkKind("")
 }

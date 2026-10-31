@@ -1109,7 +1109,7 @@ func TestInterruptKeys(t *testing.T) {
 		{"esc esc with a busy job cancels it", false, false, true, false, "", []tea.KeyPressMsg{esc, esc}, false, false, "", ""},
 		{"esc in an overlay closes it", false, false, false, false, "", []tea.KeyPressMsg{box, esc, esc}, false, false, "", ""},
 		{"ctrl+c interrupts at once", true, false, false, false, "", []tea.KeyPressMsg{ctrlC}, true, false, "also this", "ctrl+c quit"},
-		{"ctrl+c clears a draft, up restores it", false, false, false, false, "draft", []tea.KeyPressMsg{ctrlC, up}, false, false, "draft", ""},
+		{"ctrl+c clears a draft, up recalls no thrown-away draft", false, false, false, false, "draft", []tea.KeyPressMsg{ctrlC, up}, false, false, "", ""},
 		{"ctrl+c clears a draft even mid-turn", true, false, false, false, "a draft", []tea.KeyPressMsg{ctrlC}, false, false, "", ""},
 		{"ctrl+c on an empty composer arms quit", false, false, false, false, "", []tea.KeyPressMsg{ctrlC}, false, true, "", "ctrl+c again to quit"},
 		{"a broken prefix replays", false, false, false, false, "abc", []tea.KeyPressMsg{ctrlE, x}, false, false, "abcx", ""},

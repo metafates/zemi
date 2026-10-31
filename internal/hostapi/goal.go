@@ -225,7 +225,7 @@ func (h *Host) stopGoal() error {
 		return Usagef("no goal to stop")
 	}
 	h.storeGoal(nil)
-	h.notice("Goal stopped", "")
+	h.notice(fmt.Sprintf("Goal stopped (%d %s) · %s", g.Turns, Plural(g.Turns, "check", "checks"), h.spentSince(g.Tokens, g.Cost)), "")
 	return nil
 }
 

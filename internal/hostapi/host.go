@@ -1376,7 +1376,9 @@ func (h *Host) OpenHelp() error {
 			aliases = append(aliases, OverlayItem{Text: b.Key, Desc: cmp.Or(b.Desc, "same as "+b.RHS.Move), Section: "Lists"})
 			continue
 		}
-		items = append(items, OverlayItem{Text: b.Key, Desc: desc, Section: "Keymaps"})
+		// a Lua keymap row copies whole, the Go ones' way: a plugin's long
+		// desc truncates in the list and its tail is what a reader wanted
+		items = append(items, OverlayItem{Text: b.Key, Desc: desc, Copy: b.Key + "  " + desc, Section: "Keymaps"})
 	}
 	for _, k := range lists {
 		items = append(items, OverlayItem{Text: k[0], Desc: k[1], Section: "Lists"})
