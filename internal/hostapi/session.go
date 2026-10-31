@@ -138,16 +138,7 @@ func (h *Host) stampLogSeqsLocked() {
 		// drops off this goroutine: a flush calls here under ag.mu, and tMu
 		// must never wait on it.
 		if h.reloadChatLocked() {
-			h.GoSafe("chat dropped by another window", func() {
-				h.chatDropped()
-				// the chat the turn worked in is gone: its work would write
-				// rows a wiped log no longer holds, so the turn ends with it
-				h.AgentCancel()
-				h.refreshMessages()
-				h.scroll(ScrollBottom, "")
-				h.refresh()
-				h.Notify(slog.LevelInfo, "Chat reset by another window", "this window reloaded from the shared log")
-			})
+			h.GoSafe("chat dropped by another window", h.ForeignResetEnded)
 		}
 		return
 	}
@@ -255,6 +246,33 @@ func (h *Host) stampReset(tr []ChatMessage) {
 // guard covers it. A log that shrank under this window, or whose row this
 // window stamped now reads differently, is another window's reset: the
 // window reloads whole, the way its own reset left it.
+// ChatWiped reports whether another window reset the shared log under this
+// window while its turn runs: the row the transcript last stamped no longer
+// is the row the store holds there. Read-only on purpose — the reload stays
+// on the flush path, whose lock order it needs; a count cannot see a wipe
+// whose regrown rows cover it, and a quiet hold has unstamped rows besides.
+func (h *Host) ChatWiped() bool {
+	if h.DB == nil {
+		return false
+	}
+	h.tMu.RLock()
+	defer h.tMu.RUnlock()
+	return h.logWipedLocked()
+}
+
+// ForeignResetEnded ends this window's work after another window reset the
+// shared log: the turn dies with the chat it ran in, the view reloads.
+func (h *Host) ForeignResetEnded() {
+	h.chatDropped()
+	// the chat the turn worked in is gone: its work would write rows a
+	// wiped log no longer holds, so the turn ends with it
+	h.AgentCancel()
+	h.refreshMessages()
+	h.scroll(ScrollBottom, "")
+	h.refresh()
+	h.Notify(slog.LevelInfo, "Chat reset by another window", "this window reloaded from the shared log")
+}
+
 func (h *Host) SyncChat() {
 	if h.DB == nil || h.DB.Origin == "" {
 		return
@@ -305,11 +323,7 @@ func (h *Host) SyncChat() {
 		// reads differently: another window reset, its regrown rows included
 		h.tMu.Unlock()
 		h.agents.mu.Unlock()
-		h.chatDropped()
-		h.refreshMessages()
-		h.scroll(ScrollBottom, "")
-		h.refresh()
-		h.Notify(slog.LevelInfo, "Chat reset by another window", "this window reloaded from the shared log")
+		h.ForeignResetEnded()
 		return
 	}
 	h.stampLogSeqsLocked()

@@ -112,6 +112,11 @@ func launch(o options) int {
 				if !host.AgentActive() {
 					host.ReloadIfChanged()
 					host.SyncChat()
+				} else if host.ChatWiped() {
+					// a quiet hold never flushes, so the tick is what ends a
+					// turn whose chat another window wiped — it must not run
+					// to completion in a chat that no longer exists
+					host.GoSafe("chat dropped by another window", host.ForeignResetEnded)
 				}
 			}
 		})
