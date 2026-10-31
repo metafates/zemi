@@ -108,9 +108,9 @@ func TestViewerWritesNothing(t *testing.T) {
 		})
 	}
 
-	b.RunShell("echo no") // !command writes user rows into the shared chat
+	b.RunShell("echo no") // RunShell, the shell-row writer, refuses on a viewer
 	if n, err := b.DB.LogCount(); err != nil || n != 0 {
-		t.Fatalf("the viewer's !command wrote %d log rows (err %v)", n, err)
+		t.Fatalf("the viewer's shell command wrote %d log rows (err %v)", n, err)
 	}
 
 	b.HoldPrompt("do this now") // a follower booted with -p

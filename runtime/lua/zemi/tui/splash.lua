@@ -60,9 +60,8 @@ end
 -- Discovery tips for a first session, one per hour. The pick happens when
 -- the module loads, so the splash's row never changes between renders.
 local TIPS = {
-	{ "!git status", "fill !git status", " runs in your shell; the output joins your next prompt" },
-	{ "@", "fill @", " attaches project files, dirs and skills to the prompt" },
 	{ "/btw ", "fill /btw ", " asks a side question the conversation does not keep" },
+	{ "@", "fill @", " attaches project files, dirs and skills to the prompt" },
 	{ "/goal ", "fill /goal ", " keeps working until a condition holds" },
 	{ "/review", "fill /review", " has several agents review your changes" },
 	{ "/messages", "fill /messages", " opens the message picker: read or copy" },

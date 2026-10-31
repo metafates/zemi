@@ -119,8 +119,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   `PipelineFor` the live session's, a subagent run its parent session's, so a run
   outliving its caller keeps the pad its prompt names, and a host tool's cut
   output (`truncOutput`: MCP, Lua and agent results, a `tool.post` rewrite) spills there too. Commands the model
-  starts run with the parent's environ (`Pipeline.cmdEnv`), as does the
-  user's `!command`. Writes in the pad settle like any write,
+  starts run with the parent's environ (`Pipeline.cmdEnv`). Writes in the pad settle like any write,
   and the read-only agent may write only there; the allowance is the pipeline's (`perm.InPad`),
   so `zemi.fs` follows it too.
   `write`

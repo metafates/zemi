@@ -482,7 +482,7 @@ func (h *Host) reloadChatLocked() bool {
 
 // stampable reports whether a transcript row comes from a log row the
 // stamping can name: the user's words, a reply's stretch, a tool call.
-// Notices, thoughts, errors and !commands draw rows the stamping pairs past:
+// Notices, thoughts, errors and shell commands draw rows the stamping pairs past:
 // the others read theirs back by seq in logRows, and a notice arrives
 // stamped by its own append.
 func stampable(m ChatMessage) bool {
@@ -494,14 +494,14 @@ func stampable(m ChatMessage) bool {
 
 // logRows converts log rows into the transcript rows the chat draws: a user
 // or agent message its text, a tool call and its echo one row, a work report
-// a notice naming the run, a thought, an error or a !command its own row.
+// a notice naming the run, a thought, an error or a shell command its own row.
 // Notes draw nothing: zoom reaches them.
 func logRows(rows []store.LogEntry) []ChatMessage {
 	return logRowsFor(rows, false)
 }
 
 // logRowsFor builds the transcript rows a log range draws. browse adds the
-// echoes nothing consumed — an attachment's content, a !command's full
+// echoes nothing consumed — an attachment's content, a shell command's full
 // output — as dim rows: the transcript folds them into the row they belong
 // to, the browser is where the log's whole truth lives.
 func logRowsFor(rows []store.LogEntry, browse bool) []ChatMessage {

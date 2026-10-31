@@ -124,10 +124,10 @@ func TestSplashTip(t *testing.T) {
 		{"init.lua failed", `init_error = "/cfg/init.lua:12: boom", model = ""`, "● Tip  init.lua:12 failed: /errors", "", false},
 		{"no model", `model = ""`, "● Tip  No model yet: export ANTHROPIC_API_KEY and start zemi again, or\npress enter on a provider in /model to paste its key", "", false},
 		{"untrusted", `trusted = false`, "● Tip  /trust lets zemi read this project's instructions and run code", "", false},
-		{"at home", `trusted = false, trustable = false`, "● Tip  !git status runs in your shell; the output joins your next prompt", "!git status", false},
+		{"at home", `trusted = false, trustable = false`, "● Tip  /btw  asks a side question the conversation does not keep", "/btw ", false},
 		{"no instruction file", `instructions = {}`, "● Tip  /init writes an AGENTS.md, so zemi knows this project", "/init", false},
 		{"other projects", `projects = { { path = "~/p", root = "/p", ago = "now" } }`, "● Tip  /projects switches to one, or type to stay here", "", true},
-		{"a first session", `projects = {}`, `● Tip  !git status runs in your shell; the output joins your next prompt`, "!git status", false},
+		{"a first session", `projects = {}`, `● Tip  /btw  asks a side question the conversation does not keep`, "/btw ", false},
 	}
 	for _, h := range []int{31, 23} {
 		app, _ := bootAgentApp(t, 100, h)

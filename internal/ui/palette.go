@@ -202,17 +202,6 @@ func (a *App) submitComposer() {
 		return
 	}
 	a.followStage()
-	// !command runs in the user's shell; the output joins the next message.
-	// A "!" with no command is an empty draft: the model never sees the glyph
-	if cmd, ok := strings.CutPrefix(text, "!"); ok {
-		if strings.TrimSpace(cmd) == "" {
-			return
-		}
-		a.composer.pushHistory(text)
-		a.clearComposer()
-		a.host.RunShell(cmd)
-		return
-	}
 	a.sendMessage(text)
 }
 

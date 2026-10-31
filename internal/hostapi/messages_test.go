@@ -875,7 +875,7 @@ func TestMessagesTurnsCountTheModel(t *testing.T) {
 }
 
 // TestLogRowsBrowseKeepsUnpairedEchoes: the transcript folds an attachment's
-// echo and a !command's full output into the row they belong to; the
+// echo and a shell command's full output into the row they belong to; the
 // browser, where the log's whole truth lives, draws what nothing consumed.
 // The logged block opens with the newline its writer joined it with - the
 // shape that drew blank rows before firstLine skipped it.

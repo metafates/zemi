@@ -237,8 +237,8 @@ applied one. A store made before goose only gains its version table: the baselin
   row however long. Every append commits in one transaction and wakes the builder. `Host.Note`
   appends a note row (`/note`), mid-turn included. A turn's readout rides its last reply
   row's meta (`chatLog.setReplyStat` at `TurnDone`, the model, tokens, wall time, ended clock
-  and the turn's whole thought), which `logRows` reads back; thought, error and `!command`
-  (`shell`) rows draw from it too, so a window rebuilt from the log holds every row the live
+  and the turn's whole thought), which `logRows` reads back; thought, error and
+  `shell` rows draw from it too, so a window rebuilt from the log holds every row the live
   one drew. The stamping pairs past those rows - they draw with their seq, not from the
   pairing - and the digest's thought falls back to the reply stat only where a log predates
   thought rows.

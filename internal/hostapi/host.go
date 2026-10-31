@@ -281,7 +281,7 @@ const (
 	RowMessage   RowKind = ""
 	RowReasoning RowKind = "reasoning"
 	RowTool      RowKind = "tool"
-	RowShell     RowKind = "shell" // a !command and its output
+	RowShell     RowKind = "shell" // a shell command row and its output
 	RowNotice    RowKind = "notice"
 	RowError     RowKind = "error"
 )

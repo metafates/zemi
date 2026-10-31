@@ -16,8 +16,6 @@ local groups = {
 	Accent = { fg = "accent" },
 	Dim = { fg = "dim" },
 	Rule = { fg = "rule" },
-	-- the composer frame while the draft goes to the shell, not the model
-	RuleShell = { link = "Warn" },
 	RuleCommand = { link = "Accent" },
 	Title = { fg = "accent", bold = true },
 	Literal = { fg = "literal" },
