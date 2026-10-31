@@ -1397,6 +1397,11 @@ func (h *Host) AgentCancel() {
 	if r != nil {
 		r.Cancel()
 	}
+	// the tools run on the scope's context: the stream's cancel alone leaves
+	// a shell child running to completion on a chat that no longer exists
+	if t := h.turn.Load(); t != nil {
+		t.cancel()
+	}
 	if t := h.turn.Load(); t != nil {
 		t.cancel()
 	}
