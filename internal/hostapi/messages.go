@@ -151,7 +151,9 @@ func (h *Host) withBrowseEchoes(p pickTr) pickTr {
 	merged := make([]ChatMessage, 0, len(p.tr)+len(extra))
 	ei := 0
 	for _, m := range p.tr {
-		for ei < len(extra) && (m.Seq == NoSeq || extra[ei].Seq < m.Seq) {
+		// an unstamped row's place in the log is unknown: extras slide past
+		// it only when a stamped row with a later seq names the spot
+		for ei < len(extra) && m.Seq != NoSeq && extra[ei].Seq < m.Seq {
 			merged = append(merged, extra[ei])
 			ei++
 		}

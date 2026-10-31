@@ -393,19 +393,20 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 				if t.Status != CallStopped {
 					continue
 				}
+				// a denied call never ran: the tool's refusal is the evidence —
+				// status alone collapses a denial and a mid-run cut into one
+				verb := "ran"
+				if strings.Contains(t.Output, "permission denied (user") {
+					verb = "waited on you"
+				}
 				name := string(tools.ToolName(t.Name))
 				if t.Label != "" {
 					// the label reads as what the call was, not its name:
-					// "while the shell call "second" ran", not "shell: second";
-					// a call the user denied never ran, and "waited" says so
-					verb := "ran"
-					if t.Status == CallStopped || t.Status == CallWait {
-						verb = "waited"
-					}
+					// "while the shell call "second" ran", not "shell: second"
 					row.Text = clipRunes(row.Text+"\nwhile the "+name+" call \""+t.Label+"\" "+verb, 400)
 					continue
 				}
-				row.Text = clipRunes(row.Text+"\nwhile the "+name+" call ran", 400)
+				row.Text = clipRunes(row.Text+"\nwhile the "+name+" call "+verb, 400)
 			}
 			// the turn's words came from the queue: the interrupt strands them
 			// unanswered, and the row says so
