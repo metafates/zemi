@@ -801,12 +801,16 @@ func TestPermissionDenyOneAtATime(t *testing.T) {
 	if app.permAsk.size != first.size {
 		t.Fatalf("the next prompt must open in the answered box: %+v, was %+v", app.permAsk.size, first.size)
 	}
+	// the answer swallowed the keys behind it (a paste's tail); a human's
+	// next key comes after the swallow window
+	app.askSwallow = time.Time{}
 	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	if a, b := <-res, <-res; a == b {
 		t.Fatalf("exactly one ask must be denied: %v %v", a, b)
 	}
 	waitPrompt(t, app, func() bool { return app.permAsk == nil })
 	app.permAsk = &permAskPrompt{} // answered, and the Refresh that drops it lost
+	app.askSwallow = time.Time{}
 	if app.Update(tea.KeyPressMsg{Code: 'x', Text: "x"}); app.permAsk != nil || app.composer.text != "x" {
 		t.Fatalf("an inert box with no ask waiting must give the keys back: %q", app.composer.text)
 	}
@@ -1290,6 +1294,7 @@ func TestPermissionPreview(t *testing.T) {
 	if plain := ansi.Strip(app.Frame()); !strings.Contains(plain, "int_test.go") || !strings.Contains(plain, "/opt/src/") || !strings.Contains(plain, "esc") {
 		t.Fatalf("target cut:\n%s", plain)
 	}
+	app.askSwallow = time.Time{}
 	app.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
 	<-done2
 }
@@ -2342,6 +2347,9 @@ func TestPermissionChoices(t *testing.T) {
 		var by string
 		go func() { ok, by = app.AskPermission(req); close(done) }()
 		waitPrompt(t, app, func() bool { return app.permAsk != nil })
+		// the previous answer swallowed the keys behind it (a paste's tail);
+		// a human's next key comes after the swallow window
+		app.askSwallow = time.Time{}
 		for _, k := range keys {
 			app.Update(k)
 		}
