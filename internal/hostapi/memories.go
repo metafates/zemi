@@ -119,7 +119,7 @@ func (h *Host) memoriesOverlay() Overlay {
 		ID: "memories", Title: "Memories", Origin: lua.OriginBuiltin,
 		// Follow holds the browsing-menu identity (esc closes the lot); the
 		// rows carry no anchor, so nothing follows the selection
-		Anchor: OverlayBottomRight, Follow: true, Empty: "The chat's view is empty.",
+		Anchor: OverlayBottomRight, Follow: true, KeepOrder: true, Empty: "The chat's view is empty.",
 	}
 	if h.DB == nil {
 		return o

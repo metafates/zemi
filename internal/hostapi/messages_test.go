@@ -805,6 +805,62 @@ func TestMessagesTurnsHoldTheEcho(t *testing.T) {
 	}
 }
 
+// TestMessagesTurnsHoldASteer: a user row that lands before the open turn
+// has a reply is a steer the running call picked up, not a new prompt — the
+// browser draws one exchange with one reply, the way the chat does.
+func TestMessagesTurnsHoldASteer(t *testing.T) {
+	t.Parallel()
+	rows := []ChatMessage{
+		{Role: fantasy.MessageRoleUser, Text: "hold the turn", Seq: 0},
+		{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "shell", Text: "sleep 20", Seq: 1},
+		{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "(no output)", Tool: "shell", Seq: 2},
+		{Role: fantasy.MessageRoleUser, Text: "steer now", Seq: 3},
+		{Role: fantasy.MessageRoleAssistant, Text: "the reply", Seq: 4},
+	}
+	turns := messagesTurns(pickTr{tr: rows})
+	if len(turns) != 1 {
+		t.Fatalf("turns = %d, want the steer held for the turn it joined", len(turns))
+	}
+	day := ""
+	head := turnSection(pickTr{tr: rows}, turns[0], &day)
+	if !strings.Contains(head, "1 reply") {
+		t.Fatalf("the exchange's head reads %q, want its one reply counted", head)
+	}
+}
+
+// TestMessagesTurnsSplitAtAnInterrupt: a prompt after a turn's interrupt is
+// its own exchange — the error row closes the one before it.
+func TestMessagesTurnsSplitAtAnInterrupt(t *testing.T) {
+	t.Parallel()
+	rows := []ChatMessage{
+		{Role: fantasy.MessageRoleUser, Text: "hold the turn", Seq: 0},
+		{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "shell", Text: "sleep 20", Seq: 1},
+		{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: "Interrupted", Seq: 2},
+		{Role: fantasy.MessageRoleUser, Text: "try again", Seq: 3},
+		{Role: fantasy.MessageRoleAssistant, Text: "the reply", Seq: 4},
+	}
+	turns := messagesTurns(pickTr{tr: rows})
+	if len(turns) != 2 {
+		t.Fatalf("turns = %d, want the prompt after the interrupt to open its own turn", len(turns))
+	}
+}
+
+// TestMessagesTurnsCountTheModel: an attach echo leading a turn is the
+// user's, and the turn's reply count is the model's alone.
+func TestMessagesTurnsCountTheModel(t *testing.T) {
+	t.Parallel()
+	rows := []ChatMessage{
+		{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "<file path=\"w.txt\">", Tool: "attach", Seq: 0},
+		{Role: fantasy.MessageRoleUser, Text: "read @w.txt", Seq: 1},
+		{Role: fantasy.MessageRoleAssistant, Text: "the words are words", Seq: 2},
+	}
+	turns := messagesTurns(pickTr{tr: rows})
+	day := ""
+	if head := turnSection(pickTr{tr: rows}, turns[0], &day); !strings.Contains(head, "1 reply") {
+		t.Fatalf("the turn's head reads %q, want one reply", head)
+	}
+}
+
 // TestLogRowsBrowseKeepsUnpairedEchoes: the transcript folds an attachment's
 // echo and a !command's full output into the row they belong to; the
 // browser, where the log's whole truth lives, draws what nothing consumed.

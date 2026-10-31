@@ -326,6 +326,22 @@ type msgTurn struct {
 	rows  []int
 }
 
+// turnOpen reports whether a turn's rows hold neither a model's words nor
+// an error: a user row landing in it is a steer the running call picked up,
+// while one after a reply or an interrupt opens its own exchange.
+func turnOpen(p pickTr, t *msgTurn) bool {
+	for _, idx := range append([]int{t.first}, t.rows...) {
+		r := p.at(idx)
+		if r.Kind == RowError {
+			return false
+		}
+		if r.Kind == "" && r.Role != fantasy.MessageRoleUser && strings.TrimSpace(r.Text) != "" {
+			return false
+		}
+	}
+	return true
+}
+
 // messagesTurns groups the conversation into turns: a user prompt opens one,
 // and everything after it until the next prompt belongs to it. Rows before
 // the first prompt (a resumed session's notes) join the first turn. The live
@@ -340,6 +356,16 @@ func messagesTurns(p pickTr) []msgTurn {
 	add := func(idx int) {
 		m := p.at(idx)
 		if m.Kind == "" && m.Role == fantasy.MessageRoleUser && strings.TrimSpace(m.Text) != "" {
+			// a user row that lands while the open turn holds neither reply
+			// nor error is a steer the running call picked up, not a new
+			// prompt: the exchange the chat draws is one
+			if len(turns) > 0 && turnOpen(p, &turns[len(turns)-1]) {
+				t := &turns[len(turns)-1]
+				t.rows = append(t.rows, pending...)
+				t.rows = append(t.rows, idx)
+				pending = nil
+				return
+			}
 			if len(pending) > 0 {
 				turns = append(turns, msgTurn{n: len(turns) + 1, first: pending[0], rows: append(slices.Clone(pending), idx)})
 				pending = nil
@@ -378,7 +404,7 @@ func messagesTurns(p pickTr) []msgTurn {
 func (h *Host) messagesList(p pickTr, at int) Overlay {
 	o := Overlay{
 		ID: "messages", Title: "Messages", Origin: lua.OriginBuiltin,
-		Anchor: OverlayBottomRight, Follow: true, Empty: "No messages yet.",
+		Anchor: OverlayBottomRight, Follow: true, KeepOrder: true, Empty: "No messages yet.",
 	}
 	h.msgMu.Lock()
 	old := slices.Clone(h.msgOld)
@@ -572,7 +598,9 @@ func turnSection(p pickTr, t msgTurn, prevDay *string) string {
 	// with no prompt row, and the refresh must read it, not die on it
 	for _, idx := range t.rows[min(1, len(t.rows)):] {
 		r := p.at(idx)
-		if r.Kind == "" && strings.TrimSpace(r.Text) != "" {
+		// a reply is the model's words: the user's own echo (an attach) and
+		// the user row itself do not count
+		if r.Kind == "" && r.Role != fantasy.MessageRoleUser && strings.TrimSpace(r.Text) != "" {
 			replies++
 		}
 	}
@@ -632,7 +660,7 @@ func (h *Host) messagesRailOverlay(p pickTr, first, at int) (Overlay, bool) {
 				// closes whole from any of its levels
 				ID:     "messages rail " + strconv.Itoa(first),
 				Title:  "Messages / Turn " + strconv.Itoa(t.n) + " activity",
-				Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Follow: true, Rail: first,
+				Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Follow: true, Rail: first, KeepOrder: true,
 			}
 			for _, idx := range e.run.rows {
 				if at > 0 && o.Selected == 0 && idx == at {
@@ -664,7 +692,7 @@ func (h *Host) messagesRailOverlaySeq(seq int64) (Overlay, bool) {
 	o := Overlay{
 		ID:     "messages rail #" + strconv.FormatInt(seq, 10),
 		Title:  "Messages / earlier activity",
-		Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Follow: true,
+		Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Follow: true, KeepOrder: true,
 	}
 	for _, m := range logRows(rows) {
 		if m.Kind != RowTool && m.Kind != RowReasoning {

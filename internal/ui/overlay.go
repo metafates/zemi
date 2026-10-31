@@ -75,6 +75,7 @@ type listFilter struct {
 	query         string
 	cursor        int      // rune offset into query, kept while it types
 	labels, texts []string // per row
+	keepOrder     bool     // the list's order is the meaning: no rank, no section words in the match
 	visible       []int
 	match         [][]int
 	selected      int
@@ -86,9 +87,10 @@ func (f *listFilter) apply() {
 	// the palette's order: a name match leads a description match, so Enter
 	// runs what the driver typed, not the alphabet's first hit. An empty
 	// query keeps the list's own order: with every score equal the rank
-	// would sort it by label length instead
+	// would sort it by label length instead. A list whose order is the
+	// meaning (a transcript browser) keeps Match's order under any query
 	hits := hostapi.Match(f.query, f.labels, f.texts)
-	if f.query != "" {
+	if f.query != "" && !f.keepOrder {
 		hits = hostapi.Rank(hits, f.labels, len(f.labels))
 	}
 	for _, h := range hits {
@@ -441,6 +443,7 @@ func (a *App) replaceOverlay(i int, o hostapi.Overlay) {
 	st := a.overlayState(o)
 	f := old.listFilter
 	f.labels, f.texts = st.labels, st.texts
+	f.keepOrder = o.KeepOrder
 	st.listFilter, st.size = f, old.size
 	// a live body moves under the reader as its work writes: the view stays
 	// where they scrolled, and on its tail while they did not
@@ -540,6 +543,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		o.Fields[i] = hostapi.Field{Name: sanitize.Line(f.Name), Value: sanitize.String(f.Value)}
 	}
 	st := overlayState{o: o, filterable: len(o.Items) >= filterMin}
+	st.listFilter.keepOrder = o.KeepOrder
 	if o.Input {
 		st.input.secret = o.Secret
 		st.input.insert(sanitize.String(o.Default))
@@ -565,7 +569,13 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		}
 		st.items = append(st.items, it)
 		st.labels = append(st.labels, it.label)
-		st.texts = append(st.texts, it.section+"  "+it.desc+"  "+item.Copy+"  "+item.Preview)
+		text := it.section + "  " + it.desc + "  " + item.Copy + "  " + item.Preview
+		if o.KeepOrder {
+			// a transcript browser matches its rows, not the section metadata
+			// above them: a turn number or clock matches nothing
+			text = it.desc + "  " + item.Copy + "  " + item.Preview
+		}
+		st.texts = append(st.texts, text)
 	}
 	if o.Phases {
 		marks := map[string][]hostapi.MarkKind{}

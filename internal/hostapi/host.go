@@ -144,6 +144,10 @@ type Overlay struct {
 	// keeps where the reader scrolled, and one who did not moves with the
 	// tail
 	Live bool
+	// KeepOrder marks a list whose order is the meaning (a transcript
+	// browser): a filter keeps Match's row order instead of ranking it, and
+	// matches the rows, not the section metadata above them
+	KeepOrder bool
 	// Phases heads each section with its rows' combined mark: failed,
 	// running, waiting, stopped or done
 	Phases bool
