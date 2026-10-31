@@ -293,7 +293,7 @@ func TestLoopStopNamesItsRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, func() error {
-		if got := h.LoopEndedWhy(); got != "Loop stopped (0 runs)" {
+		if got := h.LoopEndedWhy(); got != "Loop stopped (0 runs) · 0 tokens" {
 			return fmt.Errorf("ended why = %q", got)
 		}
 		return nil
