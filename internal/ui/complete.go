@@ -25,7 +25,7 @@ type wordCompleter struct {
 	open       bool
 	trigger    rune
 	start      int      // rune index of the trigger char in the composer
-	token      string   // query between the trigger and the cursor
+	token      string   // query between the trigger and the cursor, kind prefix included
 	files      []string // paths relative to the session cwd
 	bases      []string // each file's last element
 	matches    []hostapi.Hit
@@ -87,10 +87,11 @@ func (a *App) updateCompletion() tea.Cmd {
 	}
 	f.start, f.trigger, f.open, f.selected = i, r[i], true, 0
 	f.token = string(r[i+1 : cur])
+	kind, rest := hostapi.SplitKind(f.token)
 	if lua {
 		// until the sources answer, the rows they gave for a shorter word
 		// narrow, so a fast tab never takes a row the word left
-		f.extra = matchRows(f.extra, unquoteToken(f.token), true)
+		f.extra = matchRows(f.extra, unquoteToken(rest), true)
 		trigger, token, line := string(r[i]), f.token, string(r[:cur])
 		a.background(func() {
 			items := a.host.Complete(context.Background(), trigger, "", token, line)
@@ -98,7 +99,8 @@ func (a *App) updateCompletion() tea.Cmd {
 				if !f.open || a.composer.cursor > len(a.composer.runes()) || string(a.composer.runes()[:a.composer.cursor]) != line {
 					return // the draft moved on
 				}
-				f.extra = matchRows(candRows(items, ""), unquoteToken(token), false) // shown as the sources matched them
+				_, rest := hostapi.SplitKind(token)
+				f.extra = matchRows(candRows(items, ""), unquoteToken(rest), false) // shown as the sources matched them
 				f.trim()
 			})
 		})
@@ -128,21 +130,40 @@ func (a *App) updateCompletion() tea.Cmd {
 	f.rentities()
 	f.rematch()
 	a.repaths()
-	if _, _, ok := pathToken(f.token); ok {
-		if want := a.resolveDir(f.token); want != f.dirDir {
-			a.listDir(want)
+	// a kind other than file takes no paths: its filter leaves no row a
+	// listing could fill
+	if kind == "" || kind == "file" {
+		if _, _, ok := pathToken(rest); ok {
+			if want := a.resolveDir(rest); want != f.dirDir {
+				a.listDir(want)
+			}
 		}
 	}
 	// Rescan on every open so files created since show up; the old list
 	// stays until the new one lands. A path-headed token asks the listing,
 	// not the corpus, so the scan waits for a word that is a name - asked
-	// by the path it holds, quote frame aside.
-	if opening && !pathHeaded(unquoteToken(f.token)) {
+	// by the path it holds, quote frame aside. The corpus still feeds the
+	// ambiguity count under any filter.
+	if opening && !pathHeaded(unquoteToken(rest)) {
 		a.completion.scanning = true
 		a.completion.walkGen++
 		return a.scanFilesCmd(a.host.Session().CWD, a.completion.walkGen)
 	}
 	return nil
+}
+
+// quoteOpens reports whether a quote at r[i] opens the @ word's frame: it
+// stands right after the @, or after the word's kind prefix - @file:"my doc -
+// the two places the attach grammar reads a frame (attachRef).
+func quoteOpens(r []rune, start, i int) bool {
+	if i > 0 && r[i-1] == '@' {
+		return true
+	}
+	if i <= start || r[start] != '@' {
+		return false
+	}
+	kind, _ := hostapi.SplitKind(string(r[start+1 : i]))
+	return kind != ""
 }
 
 // closeQuotedWord ends the word a space is about to: an @ word holding an
@@ -160,18 +181,22 @@ func (a *App) closeQuotedWord() {
 	if i+1 >= c.cursor || r[i] != '@' {
 		return
 	}
-	q := r[i+1]
+	token := string(r[i+1 : c.cursor])
+	_, rest := hostapi.SplitKind(token)
+	if rest == "" {
+		return
+	}
+	q := rest[0]
 	if q != '"' && q != '\'' {
 		return
 	}
-	token := string(r[i+1 : c.cursor])
-	if strings.ContainsRune(token[1:], q) {
+	if strings.ContainsRune(rest[1:], rune(q)) {
 		return // the pair is closed already
 	}
 	if c.cursor < len(r) && r[c.cursor] != '\n' {
 		return // a mid-word cursor would split the word
 	}
-	w := unquoteToken(token)
+	w := unquoteToken(rest)
 	if w == "" {
 		return
 	}
@@ -209,7 +234,7 @@ func wordStart(r []rune, cur int) int {
 			if c == quote {
 				quote = 0
 			}
-		case (c == '"' || c == '\'') && i > 0 && r[i-1] == '@':
+		case (c == '"' || c == '\'') && quoteOpens(r, start, i):
 			quote = c
 		case strings.ContainsRune(" \t\n\f\r", c):
 			start = i + 1
@@ -248,7 +273,11 @@ func (f *wordCompleter) close() {
 }
 
 func (f *wordCompleter) count() int {
-	return len(f.extra) + len(f.skillRows) + len(f.entityRows) + len(f.paths) + len(f.matches)
+	n := len(f.skillRows) + len(f.entityRows) + len(f.paths) + len(f.matches)
+	if kind, _ := hostapi.SplitKind(f.token); kind == "" { // a kind filter is not a Lua source's
+		n += len(f.extra)
+	}
+	return n
 }
 
 // shown reports whether the popup is drawn and takes its keys: a Lua
@@ -264,15 +293,33 @@ func (f *wordCompleter) title() string {
 	return ""
 }
 
-// reskill narrows the fetched skills to the token.
+// reskill narrows the fetched skills to the token; a kind filter that is
+// not the skills' leaves them no rows.
 func (f *wordCompleter) reskill() {
-	f.skillRows = matchRows(candRows(f.skills, "Skills"), unquoteToken(f.token), true)
+	kind, rest := hostapi.SplitKind(f.token)
+	if kind != "" && kind != "skill" {
+		f.skillRows = nil
+		f.trim()
+		return
+	}
+	f.skillRows = matchRows(candRows(f.skills, "Skills"), unquoteToken(rest), true)
 	f.trim()
 }
 
-// rentities narrows the fetched workflows and agents to the token.
+// rentities narrows the fetched workflows and agents to the token; a kind
+// filter keeps only its own section, and the file and skill kinds none.
 func (f *wordCompleter) rentities() {
-	f.entityRows = matchRows(f.entities, unquoteToken(f.token), true)
+	kind, rest := hostapi.SplitKind(f.token)
+	f.entityRows = matchRows(f.entities, unquoteToken(rest), true)
+	if kind == "workflow" || kind == "agent" {
+		section := "Workflows"
+		if kind == "agent" {
+			section = "Agents"
+		}
+		f.entityRows = slices.DeleteFunc(f.entityRows, func(r listItem) bool { return r.section != section })
+	} else if kind != "" {
+		f.entityRows = nil
+	}
 	f.trim()
 }
 
@@ -417,12 +464,16 @@ func readDir(dir string) []string {
 func (a *App) repaths() {
 	f := &a.completion
 	f.paths = f.paths[:0]
-	dir, base, ok := pathToken(f.token)
-	if !ok || a.resolveDir(f.token) != f.dirDir {
+	kind, rest := hostapi.SplitKind(f.token)
+	if kind != "" && kind != "file" {
+		return
+	}
+	dir, base, ok := pathToken(rest)
+	if !ok || a.resolveDir(rest) != f.dirDir {
 		return
 	}
 	q := ""
-	if t := f.token; t != "" && (t[0] == '"' || t[0] == '\'') {
+	if t := rest; t != "" && (t[0] == '"' || t[0] == '\'') {
 		q = string(t[0])
 	}
 	hits := hostapi.Match(base, f.dirList, nil)
@@ -458,8 +509,13 @@ func (a *App) repaths() {
 // path-headed token asks the directory listing, not the corpus.
 func (f *wordCompleter) rematch() {
 	f.matches = f.matches[:0]
-	if _, _, ok := pathToken(f.token); !ok {
-		if f.token == "" {
+	kind, rest := hostapi.SplitKind(f.token)
+	if kind != "" && kind != "file" {
+		f.trim()
+		return
+	}
+	if _, _, ok := pathToken(rest); !ok {
+		if rest == "" {
 			f.matches = hostapi.Match("", f.files[:min(len(f.files), listMaxFiles)], nil)
 		} else {
 			// chunks of the tree match at once: scoring the thousands of hits
@@ -470,7 +526,7 @@ func (f *wordCompleter) rematch() {
 			var wg sync.WaitGroup
 			for c := range best {
 				wg.Go(func() {
-					best[c] = f.matchFiles(c*chunk, min(c*chunk+chunk, len(f.files)))
+					best[c] = f.matchFiles(c*chunk, min(c*chunk+chunk, len(f.files)), rest)
 				})
 			}
 			wg.Wait()
@@ -482,11 +538,11 @@ func (f *wordCompleter) rematch() {
 
 // matchFiles matches the token against files[lo:hi]: the best listMaxFiles
 // hits, indexed into files.
-func (f *wordCompleter) matchFiles(lo, hi int) []hostapi.Hit {
+func (f *wordCompleter) matchFiles(lo, hi int, token string) []hostapi.Hit {
 	files, bases := f.files[lo:hi], f.bases[lo:hi]
 	// a quoted token narrows by its path: the quote is the word's frame,
 	// not part of the name it asks for
-	token := unquoteToken(f.token)
+	token = unquoteToken(token)
 	names := hostapi.Match(token, bases, nil)
 	rest := slices.Clone(files) // blanked where the name matched: "" matches nothing
 	for _, h := range names {
@@ -542,13 +598,25 @@ func matchRows(rows []listItem, query string, narrow bool) []listItem {
 // its word ends in /, so the popup stays open and the listing follows the
 // word in, shell-tab style. A skill, workflow, agent or Lua-source row
 // keeps the trigger, which is its own; a project file becomes the host's
-// @ word for it.
+// @ word for it. A name another kind also answers is inserted with its
+// kind spelled out - @file:review - the word the expander forces; a name
+// one kind holds rides alone.
 func (a *App) acceptCompletion() {
 	f := &a.completion
 	if !f.open || f.selected >= f.count() {
 		return
 	}
-	n, mt, p, s := len(f.extra), len(f.matches), len(f.paths), len(f.skillRows)
+	n, mt, p, s := 0, len(f.matches), len(f.paths), len(f.skillRows)
+	kind, rest := hostapi.SplitKind(f.token)
+	if kind == "" { // a kind filter hides the Lua sources' rows
+		n = len(f.extra)
+	}
+	// a typed kind prefix rides every word an accept builds, so the popup
+	// keeps filtering as the walk goes on
+	pre := ""
+	if kind != "" {
+		pre = kind + ":"
+	}
 	switch sel := f.selected; {
 	case sel < n: // a Lua source's row: its trigger is its own
 		a.composer.replace(f.start+1, f.extra[sel].label+" ")
@@ -558,8 +626,8 @@ func (a *App) acceptCompletion() {
 		if strings.HasSuffix(rel, "/") { // a directory walks in
 			word := rel
 			q := byte(0)
-			if len(f.token) > 0 && (f.token[0] == '"' || f.token[0] == '\'') {
-				q = f.token[0] // the frame the word rode in on stays
+			if len(rest) > 0 && (rest[0] == '"' || rest[0] == '\'') {
+				q = rest[0] // the frame the word rode in on stays
 			} else if !hostapi.CanRef(word) {
 				q = '"'
 			}
@@ -569,11 +637,21 @@ func (a *App) acceptCompletion() {
 				}
 				word = string(q) + word
 			}
-			a.composer.replace(f.start+1, word)
+			a.composer.replace(f.start+1, pre+word)
 			a.updateCompletion()
 			return
 		}
-		a.composer.replace(f.start, a.host.AttachWord(filepath.Join(a.host.Session().CWD, rel))+" ")
+		ins := strings.TrimPrefix(a.host.AttachWord(filepath.Join(a.host.Session().CWD, rel)), "@")
+		// a bare name another kind answers spells its kind out, the word
+		// the expander forces, in place of the host's ./ escape
+		if !strings.ContainsAny(rel, `/\`) && f.claims(rel) > 1 {
+			ins = "file:" + rel
+			if !hostapi.CanRef(ins) {
+				q := hostapi.FrameQuote(rel)
+				ins = "file:" + string(q) + rel + string(q)
+			}
+		}
+		a.composer.replace(f.start, "@"+ins+" ")
 		f.close()
 	case sel < n+mt+p:
 		word := f.paths[sel-n-mt].label
@@ -593,7 +671,7 @@ func (a *App) acceptCompletion() {
 				}
 				word = string(q) + body
 			}
-			a.composer.replace(f.start+1, word)
+			a.composer.replace(f.start+1, pre+word)
 			a.updateCompletion()
 			return
 		}
@@ -609,15 +687,48 @@ func (a *App) acceptCompletion() {
 			}
 			word = string(q) + body + string(q) // a file closes the pair a directory leaves open
 		}
-		a.composer.replace(f.start+1, word+" ")
+		a.composer.replace(f.start+1, pre+word+" ")
 		f.close()
 	case sel < n+mt+p+s:
-		a.composer.replace(f.start+1, f.skillRows[sel-n-mt-p].label+" ")
+		a.composer.replace(f.start+1, f.kindWord("skill", f.skillRows[sel-n-mt-p].label)+" ")
 		f.close()
 	default:
-		a.composer.replace(f.start+1, f.entityRows[sel-n-mt-p-s].label+" ")
+		row := f.entityRows[sel-n-mt-p-s]
+		kind := "workflow"
+		if row.section == "Agents" {
+			kind = "agent"
+		}
+		a.composer.replace(f.start+1, f.kindWord(kind, row.label)+" ")
 		f.close()
 	}
+}
+
+// claims counts the kinds that answer a bare name: the file corpus, the
+// skills, and the workflows and agents each on their own.
+func (f *wordCompleter) claims(name string) int {
+	n := 0
+	if slices.Contains(f.bases, name) {
+		n++
+	}
+	if slices.ContainsFunc(f.skills, func(s hostapi.CompletionItem) bool { return s.Text == name }) {
+		n++
+	}
+	for _, r := range f.entities {
+		if r.label == name {
+			n++
+		}
+	}
+	return n
+}
+
+// kindWord is what an accept inserts for a row of kind: the name alone when
+// no other kind answers it, else kind:name - the word the expander reads as
+// forced to this kind.
+func (f *wordCompleter) kindWord(kind, name string) string {
+	if f.claims(name) > 1 {
+		return kind + ":" + name
+	}
+	return name
 }
 
 // fileCap is the rows the Files section may take while the Skills section
@@ -652,16 +763,21 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	note := func(text string) []hostapi.Segment {
 		return []hostapi.Segment{{Text: text, HL: hostapi.ChromeHint}}
 	}
+	kind, rest := hostapi.SplitKind(f.token)
 	if f.count() == 0 {
-		if f.scanning && len(f.files) == 0 && !pathHeaded(unquoteToken(f.token)) {
+		if f.scanning && len(f.files) == 0 && (kind == "" || kind == "file") && !pathHeaded(unquoteToken(rest)) {
 			return [][]hostapi.Segment{note("scanning files…")}
 		}
-		if f.dirPending != "" && f.dirPending == a.resolveDir(f.token) {
+		if f.dirPending != "" && f.dirPending == a.resolveDir(rest) {
 			return [][]hostapi.Segment{note("listing…")}
 		}
 		return emptyRows(noMatches, maxW)
 	}
-	items := slices.Grow(slices.Clone(f.extra), f.count())
+	var items []listItem
+	if kind == "" { // a kind filter is not a Lua source's
+		items = slices.Clone(f.extra)
+	}
+	items = slices.Grow(items, f.count())
 	for _, m := range f.matches {
 		items = append(items, listItem{label: f.files[m.Index], match: m.Pos, section: "Files", row: hostapi.OverlayItem{Tail: true}})
 	}

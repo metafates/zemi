@@ -947,6 +947,85 @@ func TestEntityCompletion(t *testing.T) {
 	}
 }
 
+// TestKindCompletion: a full kind prefix narrows the @ popup to its kind -
+// @file: the corpus, @skill: the skills, @workflow: and @agent: their
+// sections - where a partial prefix still suggests everything; an accept
+// spells the kind out only for a name another kind answers.
+func TestKindCompletion(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 20)
+	dir := filepath.Join(host.Dirs.ConfigHome, "skills", "lint")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: lint\ndescription: lint the tree\n---\n\nBody.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reloadUI(t, host, host.SkillsUserHooksStep())
+	// review: a file and the built-in workflow; lint: a file and the
+	// skill; solo.md: the files' alone
+	app.completion.setFiles([]string{"review", "lint", "solo.md"})
+	reopen := func(word string) {
+		r := []rune(word)
+		app.composer.text, app.composer.cursor = word, len(r)
+		app.updateCompletion()
+		for app.Pump() { // the fetched rows land through the queue
+		}
+	}
+	// a partial prefix suggests every kind
+	reopen("@l")
+	if len(app.completion.matches) == 0 || len(app.completion.skillRows) == 0 || len(app.completion.entityRows) == 0 {
+		t.Fatalf("a partial prefix narrowed: matches=%d skills=%d entities=%d",
+			len(app.completion.matches), len(app.completion.skillRows), len(app.completion.entityRows))
+	}
+	// a full prefix filters to its kind
+	reopen("@file:")
+	if len(app.completion.matches) != 3 || len(app.completion.skillRows) != 0 || len(app.completion.entityRows) != 0 || app.completion.paths != nil {
+		t.Fatalf("@file: matches=%d skills=%d entities=%d paths=%d",
+			len(app.completion.matches), len(app.completion.skillRows), len(app.completion.entityRows), len(app.completion.paths))
+	}
+	reopen("@skill:")
+	if len(app.completion.skillRows) == 0 || len(app.completion.matches) != 0 || len(app.completion.entityRows) != 0 {
+		t.Fatalf("@skill: skills=%d matches=%d entities=%d",
+			len(app.completion.skillRows), len(app.completion.matches), len(app.completion.entityRows))
+	}
+	reopen("@agent:")
+	if len(app.completion.entityRows) == 0 || slices.ContainsFunc(app.completion.entityRows, func(r listItem) bool { return r.section != "Agents" }) {
+		t.Fatalf("@agent: rows: %+v", app.completion.entityRows)
+	}
+	reopen("@workflow:")
+	if len(app.completion.entityRows) == 0 || slices.ContainsFunc(app.completion.entityRows, func(r listItem) bool { return r.section != "Workflows" }) {
+		t.Fatalf("@workflow: rows: %+v", app.completion.entityRows)
+	}
+	// an accept spells the kind out only where the name is shared
+	reopen("@review")
+	base := len(app.completion.extra) + len(app.completion.matches) + len(app.completion.paths) + len(app.completion.skillRows)
+	app.completion.selected = base // the workflow row under the file's name
+	app.acceptCompletion()
+	if got := app.composer.text; got != "@workflow:review " {
+		t.Fatalf("the shared workflow accepted %q", got)
+	}
+	reopen("@lint")
+	app.completion.selected = len(app.completion.extra) // the file row under the skill's name
+	app.acceptCompletion()
+	if got := app.composer.text; got != "@file:lint " {
+		t.Fatalf("the shared file accepted %q", got)
+	}
+	reopen("@lint")
+	base = len(app.completion.extra) + len(app.completion.matches) + len(app.completion.paths)
+	app.completion.selected = base // the skill row under the file's name
+	app.acceptCompletion()
+	if got := app.composer.text; got != "@skill:lint " {
+		t.Fatalf("the shared skill accepted %q", got)
+	}
+	// a name one kind holds rides alone
+	reopen("@solo.md")
+	app.completion.selected = len(app.completion.extra)
+	app.acceptCompletion()
+	if got := app.composer.text; got != "@solo.md " {
+		t.Fatalf("the unshared file accepted %q", got)
+	}
+}
+
 // TestCompletionWalksIn: accepting a directory candidate keeps the popup
 // open on the directory, in the frame the token typed, and a file accept
 // closes it with its space.

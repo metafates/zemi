@@ -2,10 +2,13 @@
 // file or directory - a project file, or any path outside it - is appended
 // to what the model receives, behind agent.AttachMarker, while the
 // transcript keeps the typed text. A name no path answers that names a
-// saved workflow or an agent attaches the hint that runs it. Images (png,
-// jpeg, gif, webp) travel as file parts for vision models. A file that is
-// too big, not text or not there gets a note saying so in place of its
-// content, so the model knows to reach for it with its tools.
+// saved workflow or an agent attaches the hint that runs it. A word may
+// spell its kind out - @file:x, @skill:x, @workflow:x, @agent:x - which
+// forces that kind: a forced miss attaches nothing, where a bare name
+// falls through to whatever answers it. Images (png, jpeg, gif, webp)
+// travel as file parts for vision models. A file that is too big, not
+// text or not there gets a note saying so in place of its content, so
+// the model knows to reach for it with its tools.
 
 package hostapi
 
@@ -68,9 +71,22 @@ func (h *Host) composeUserMessage(text string, images bool) fantasy.Message {
 }
 
 // attachRef finds what attaches: an @ word at a word start, quoted when the
-// path cannot ride a bare word. A quoted word's closing quote is optional,
-// so a word still being typed resolves too.
-var attachRef = regexp.MustCompile(`(?:^|\s)(?:@"([^"\n]+)"?|@'([^'\n]+)'?|@(\S+))`)
+// path cannot ride a bare word, and carrying its kind spelled out - the
+// prefixes SplitKind lists - which forces that kind. A quoted word's closing
+// quote is optional, so a word still being typed resolves too.
+var attachRef = regexp.MustCompile(`(?:^|\s)@(?:(file|skill|workflow|agent):)?(?:"([^"\n]+)"?|'([^'\n]+)'?|(\S+))`)
+
+// SplitKind splits an @ word's kind prefix from what follows it, the form
+// the expander forces and the popup filters by. A quote before the colon
+// shields the word: @"file:x names a file.
+func SplitKind(token string) (kind, rest string) {
+	for _, k := range []string{"file", "skill", "workflow", "agent"} {
+		if after, ok := strings.CutPrefix(token, k+":"); ok {
+			return k, after
+		}
+	}
+	return "", token
+}
 
 func overLimit(limit int64) string {
 	if limit >= 1<<20 {
@@ -100,18 +116,28 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 		// the word normalizes first: a quoted word unquotes (the grammar
 		// holds no quote), a bare one trims trailing sentence punctuation.
 		// Then the whole word names a skill, and a miss names a path.
-		word := m[3]
-		if m[1] != "" || m[2] != "" {
-			word = cmp.Or(m[1], m[2])
+		word := m[4]
+		if m[2] != "" || m[3] != "" {
+			word = cmp.Or(m[2], m[3])
 		} else {
 			word = strings.TrimRight(word, ".,;:!?)")
 		}
-		if s, ok := h.skillByName(word); ok {
+		kind := m[1]
+		// a spelled workflow or agent attaches its hint and nothing else
+		if kind == "workflow" || kind == "agent" {
+			h.attachEntity(&b, word, kind)
+			continue
+		}
+		if s, ok := h.skillByName(word); ok && (kind == "" || kind == "skill") {
 			// a skill attaches once, like a repeated @file
 			if !seen.Has(s.Name) {
 				seen.Add(s.Name)
 				h.attachSkill(&b, s)
 			}
+			continue
+		}
+		// a forced skill that misses is prose, not a fallthrough
+		if kind == "skill" {
 			continue
 		}
 		// a path, wherever it lives: the user named it, and what attaches
@@ -167,9 +193,12 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 		}
 		// a word no file or directory answers can name a saved workflow or
 		// an agent: an existing path always wins, and the mention attaches
-		// the hint that runs it in place of a file's body
+		// the hint that runs it in place of a file's body. A spelled file
+		// stays a file: its kind never takes an entity's place
 		if stat != nil {
-			h.attachEntity(&b, word)
+			if kind == "" {
+				h.attachEntity(&b, word, "")
+			}
 			continue
 		}
 		// the model reads the file, so opening a device has effects
@@ -235,31 +264,35 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 // definition attaches: not the entity's source, which is not what the user
 // asked the model to read, but the hint that runs it - what it is, and the
 // exact call. The words around the mention stay the request, in the typed
-// message. A name held by both kinds goes to the workflow.
-func (h *Host) attachEntity(b *strings.Builder, word string) {
-	for _, w := range h.workflows() {
-		if w.Name != word {
-			continue
+// message. A name held by both kinds goes to the workflow; kind forces one.
+func (h *Host) attachEntity(b *strings.Builder, word, kind string) {
+	if kind == "" || kind == "workflow" {
+		for _, w := range h.workflows() {
+			if w.Name != word {
+				continue
+			}
+			body := fmt.Sprintf("The user attached this saved workflow with @%s in the message above; run it for their request.", w.Name)
+			if w.Description != "" {
+				body += "\n\n" + w.Description
+			}
+			body += fmt.Sprintf("\n\nRun it with the workflow tool: workflow name=%q args=\"<the request, from the words around the mention>\" description=\"<a 3-6 word label>\". The script reads args as zemi.workflow.args.", w.Name)
+			b.WriteString(agent.AttachElement(fmt.Sprintf("workflow name=%q", w.Name), body))
+			return
 		}
-		body := fmt.Sprintf("The user attached this saved workflow with @%s in the message above; run it for their request.", w.Name)
-		if w.Description != "" {
-			body += "\n\n" + w.Description
-		}
-		body += fmt.Sprintf("\n\nRun it with the workflow tool: workflow name=%q args=\"<the request, from the words around the mention>\" description=\"<a 3-6 word label>\". The script reads args as zemi.workflow.args.", w.Name)
-		b.WriteString(agent.AttachElement(fmt.Sprintf("workflow name=%q", w.Name), body))
-		return
 	}
-	for _, d := range h.agentDefs() {
-		if d.Name != word {
-			continue
+	if kind == "" || kind == "agent" {
+		for _, d := range h.agentDefs() {
+			if d.Name != word {
+				continue
+			}
+			body := fmt.Sprintf("The user attached this agent with @%s in the message above; start it for their request.", d.Name)
+			if d.Description != "" {
+				body += "\n\n" + d.Description
+			}
+			body += fmt.Sprintf("\n\nStart it with the agent tool: agent agent=%q description=\"<a 3-5 word label>\" prompt=\"<the full task>\".", d.Name)
+			b.WriteString(agent.AttachElement(fmt.Sprintf("agent name=%q", d.Name), body))
+			return
 		}
-		body := fmt.Sprintf("The user attached this agent with @%s in the message above; start it for their request.", d.Name)
-		if d.Description != "" {
-			body += "\n\n" + d.Description
-		}
-		body += fmt.Sprintf("\n\nStart it with the agent tool: agent agent=%q description=\"<a 3-5 word label>\" prompt=\"<the full task>\".", d.Name)
-		b.WriteString(agent.AttachElement(fmt.Sprintf("agent name=%q", d.Name), body))
-		return
 	}
 }
 

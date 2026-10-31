@@ -811,6 +811,18 @@ func TestEntityAttachment(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "scout"), []byte("a file named scout"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// a skill and a file share a name, for the kinds forced apart; a file
+	// with a space rides a quoted kind word
+	writeSkill(t, h.userSkillsDir(), "solo", "a solo skill", "")
+	h.syncSkills()
+	for _, f := range []struct{ name, body string }{
+		{"solo", "a file named solo"},
+		{"my doc", "a doc with a space"},
+	} {
+		if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, f.name), []byte(f.body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	for _, c := range []struct{ name, text, want, not string }{
 		{
@@ -825,6 +837,13 @@ func TestEntityAttachment(t *testing.T) {
 		{"the agent hint names the call", "@lookout", `Start it with the agent tool: agent agent="lookout" description="<a 3-5 word label>" prompt="<the full task>"`, ""},
 		{"a name both kinds hold goes to the workflow", "@dual see it", "<workflow name=\"dual\">", "<agent name=\"dual\">"},
 		{"a path wins the name", "@scout read it", "<file path=\"scout\">\na file named scout", "<agent name=\"scout\">"},
+		{"a forced file takes the path", "@file:scout read it", "<file path=\"scout\">\na file named scout", "<agent name=\"scout\">"},
+		{"a forced agent takes the path's name", "@agent:scout read it", "<agent name=\"scout\">", "<file path=\"scout\">"},
+		{"a forced agent beats the workflow", "@agent:dual see it", "<agent name=\"dual\">", "<workflow name=\"dual\">"},
+		{"a forced workflow stays the workflow", "@workflow:dual see it", "<workflow name=\"dual\">", "<agent name=\"dual\">"},
+		{"a forced skill takes the skill", "@skill:solo see it", "<skill name=\"solo\">", "<file path=\"solo\">"},
+		{"a forced file beats the skill", "@file:solo see it", "<file path=\"solo\">", "<skill name=\"solo\">"},
+		{"a forced file rides quoted", "@file:\"my doc\" see it", "<file path=\"my doc\">", ""},
 	} {
 		got, _ := h.expandAttachments(c.text, true)
 		typed, tail := agent.CutAttached(got)
@@ -837,5 +856,12 @@ func TestEntityAttachment(t *testing.T) {
 	}
 	if got, _ := h.expandAttachments("@nosuch here", true); got != "@nosuch here" {
 		t.Errorf("a name nothing offers changed the message: %q", got)
+	}
+	// a forced kind that misses is prose: no fallthrough to what the bare
+	// name would have answered
+	for _, text := range []string{"@workflow:scout see it", "@skill:nosuch here", "@file:nosuch here", "@file:../gone"} {
+		if got, _ := h.expandAttachments(text, true); got != text {
+			t.Errorf("%q changed to %q", text, got)
+		}
 	}
 }
