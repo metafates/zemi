@@ -1905,6 +1905,31 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { { keys = { { key = 
 		t.Errorf("a key in the view: ran %q, %d open", ran, len(app.overlays))
 	}
 
+	// a row key the list keeps for itself is dropped, not named and never
+	// run: an overlay built in Go skips the parse that refuses one, and the
+	// list's move would swallow the key unseen
+	app.overlays, ran = nil, ""
+	app.openOverlay(hostapi.Overlay{
+		ID: "s", Origin: lua.OriginBuiltin,
+		Keys:  []hostapi.OverlayKey{{Key: "j", Desc: "jump", Run: "res 3"}},
+		Items: []hostapi.OverlayItem{{Text: "s1", Keys: []hostapi.ItemKey{{Key: "k", Desc: "Kill", Danger: true, Run: "res 4"}, {Key: "x", Desc: "Stop", Danger: true, Run: "res 5"}}}},
+	})
+	if foot := footer(); strings.Contains(foot, "jump") || strings.Contains(foot, "Kill") {
+		t.Errorf("a reserved key is named: %q", foot)
+	}
+	pressKeys(app, "j", "k", "k")
+	for app.Pump() {
+	}
+	if ran != "" || len(app.overlays) != 1 {
+		t.Fatalf("a reserved key ran: %q, %d open", ran, len(app.overlays))
+	}
+	pressKeys(app, "x", "x")
+	for app.Pump() {
+	}
+	if ran != "res 5" || len(app.overlays) != 0 {
+		t.Fatalf("a kept row key must run on its armed press: ran %q, %d open", ran, len(app.overlays))
+	}
+
 	// a destructive command typed without --yes selects its row and arms the
 	// key that runs it
 	app.overlays, ran = nil, ""

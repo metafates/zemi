@@ -223,7 +223,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 				if key := k.String(); utf8.RuneCountInString(key) != 1 || fn == nil {
 					L.RaiseError("zemi.ui.overlay.open: keys[%q] must be one character with { desc, fn }", key)
 				}
-				if strings.Contains(listOwnKeys, k.String()) {
+				if strings.Contains(ListOwnKeys, k.String()) {
 					L.RaiseError("zemi.ui.overlay.open: keys[%q] is the list's own key", k.String())
 				}
 				o.Keys = append(o.Keys, OverlayKey{Key: k.String(), Desc: rawString(L, spec, "desc"), Fn: fn})
@@ -679,9 +679,11 @@ func fieldList(kv ...string) []Field {
 // checked.
 func ParseOverlayItem(item any) (OverlayItem, error) { return parseItem(item, false) }
 
-// listOwnKeys are the one-character keys every list keeps for itself, so
-// no overlay key or hotkey may take them.
-const listOwnKeys = "jk/yY"
+// ListOwnKeys are the one-character keys every list keeps for itself, so
+// no overlay key or hotkey may take them: the list's move and copy would
+// swallow the key unseen. A Lua-authored overlay is refused one at parse;
+// the UI drops it from an overlay built in Go.
+const ListOwnKeys = "jk/yY"
 
 func parseItem(item any, action bool) (OverlayItem, error) {
 	m, ok := item.(map[string]any)
@@ -855,7 +857,7 @@ func parseKey(v any) (ItemKey, error) {
 	switch {
 	case k.Key == "":
 		err = errors.New("key is the character it answers to")
-	case utf8.RuneCountInString(k.Key) != 1 || strings.Contains(listOwnKeys, k.Key):
+	case utf8.RuneCountInString(k.Key) != 1 || strings.Contains(ListOwnKeys, k.Key):
 		err = fmt.Errorf("key must be one character other than j, k, /, y and Y, got %q", k.Key)
 	}
 	return k, err

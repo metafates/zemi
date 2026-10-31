@@ -537,6 +537,12 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	for i := range o.Keys { // a desc keeps its spaces, as a row's does: "pause " is as wide as "resume"
 		o.Keys[i].Key, o.Keys[i].Desc = sanitize.Line(o.Keys[i].Key), oneLine.Replace(sanitize.String(o.Keys[i].Desc))
 	}
+	// a key the list keeps for itself is dropped here, not named and never
+	// run: the move or the copy would swallow it unseen, and an overlay
+	// built in Go skips the parse that refuses one
+	o.Keys = slices.DeleteFunc(o.Keys, func(k hostapi.OverlayKey) bool {
+		return strings.Contains(hostapi.ListOwnKeys, k.Key)
+	})
 	// an item's fields reach the screen only as its detail view's, which is here
 	o.Fields = slices.Clone(o.Fields)
 	for i, f := range o.Fields {
@@ -548,6 +554,15 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		st.input.secret = o.Secret
 		st.input.insert(sanitize.String(o.Default))
 		return st
+	}
+	// a row key the list keeps for itself (or one no press can spell) is
+	// dropped here, not named and never run: the move or the copy would
+	// swallow it unseen, and an overlay built in Go skips the parse that
+	// refuses one. Views read the row from here too.
+	for i := range o.Items {
+		o.Items[i].Keys = slices.DeleteFunc(o.Items[i].Keys, func(k hostapi.ItemKey) bool {
+			return utf8.RuneCountInString(k.Key) != 1 || strings.Contains(hostapi.ListOwnKeys, k.Key)
+		})
 	}
 	for _, item := range o.Items {
 		// a desc keeps its runs of spaces: padded columns (a status word) stay put

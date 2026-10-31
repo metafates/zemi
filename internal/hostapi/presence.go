@@ -486,7 +486,7 @@ func (h *Host) windowItems() []OverlayItem {
 			Text:   text,
 			Desc:   desc,
 			Fields: fields,
-			Keys:   []ItemKey{{Key: "k", Desc: "kill", Danger: true, Run: "windows kill " + p.Origin}},
+			Keys:   []ItemKey{{Key: "x", Desc: "kill", Danger: true, Run: "windows kill " + p.Origin}},
 		})
 	}
 	return items

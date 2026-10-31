@@ -158,7 +158,7 @@ func TestWindowsListsTheSharingWindows(t *testing.T) {
 	if ov.Items[1].Text != "writing docs" || ov.Items[1].Desc != "pid 1234 · watching" {
 		t.Fatalf("the sibling row = %q, %q", ov.Items[1].Text, ov.Items[1].Desc)
 	}
-	if k := ov.Items[1].Keys[0]; k.Key != "k" || k.Run != "windows kill sib" || !k.Danger {
+	if k := ov.Items[1].Keys[0]; k.Key != "x" || k.Run != "windows kill sib" || !k.Danger {
 		t.Fatalf("the sibling's key = %+v", k)
 	}
 
