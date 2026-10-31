@@ -157,6 +157,14 @@ end
 ---@param m zemi.TranscriptRow
 ---@return boolean
 local function activity(m) return m.kind == "reasoning" or m.kind == "tool" end
+-- whether the next flush settles a call beside the thought: the digest then
+-- names the calls and no digest row stands for the thought alone
+local function settling(tools)
+	for _, t in ipairs(tools) do
+		if t.status ~= "run" and t.status ~= "wait" then return true end
+	end
+	return false
+end
 
 --- Whether a row is a notice: a burst of them draws as one block.
 ---@param m zemi.TranscriptRow
@@ -1228,11 +1236,12 @@ zemi.ui.widget.add({
 				-- streams): the digest row it will settle as stands here already,
 				-- so the settle shifts nothing. A thought the run above takes (a
 				-- call between), one a run's view places at its finish, and one
-				-- too short to name a digest draw nothing instead.
+				-- a flush settles beside its calls draw nothing instead: the
+				-- digest names the calls, not the thought.
 			elseif
 				tail_first == 0
 				and not ctx.view
-				and (ag.thought or 0) >= 0.05
+				and ((ag.thought or 0) >= 0.05 or not settling(tools))
 				and (ag.reasoning or ""):find("%S")
 			then
 				B.gap("activity")

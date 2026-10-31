@@ -648,6 +648,21 @@ func TestLoneThoughtDigestOpensItsText(t *testing.T) {
 	}
 }
 
+// TestShortThoughtFolds: a thought under the readout's 50ms still folds into
+// its digest — a run whose digest is empty draws its rail, a block no fold
+// row closes.
+func TestShortThoughtFolds(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 140, 30)
+	host.AppendMessage("user", "hold on")
+	appendReasoning(host, "both personas are still running", hostapi.TurnStat{})
+	appendReply(host, "holding for the two personas", hostapi.TurnStat{})
+	rows := chatRows(t, app, 138)
+	if !slices.Contains(rows, "· thought") || slices.ContainsFunc(rows, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
+		t.Fatalf("the short thought does not fold into its digest:\n%s", strings.Join(rows, "\n"))
+	}
+}
+
 // TestTurnStats: the readout rides only the reply that ends the exchange, and
 // each call counts its own diff.
 func TestTurnStats(t *testing.T) {

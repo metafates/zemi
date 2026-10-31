@@ -398,7 +398,10 @@ function M.digest(rows, first, last, cwd, home)
 			parts[#parts + 1] = M.count(#failed, "failed call", "failed calls")
 		end
 	end
-	if secs >= 0.05 then parts[#parts + 1] = M.thought(secs) end
+	-- a run whose only content is a thought still names it: a duration under
+	-- the readout's 50ms reads as the bare "thought", and an empty digest
+	-- would leave its rail standing, a block no fold row closes
+	if secs >= 0.05 or (#parts == 0 and reasoned) then parts[#parts + 1] = M.thought(secs) end
 	return table.concat(parts, " · ")
 end
 
