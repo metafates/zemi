@@ -62,6 +62,9 @@ func launch(o options) int {
 		return fail(err)
 	}
 	defer closeLog()
+	// the lease names this window a viewer before the first prompt is held:
+	// HoldPrompt claims the first turn's row, which a viewer must not write
+	host.OpenPeers()
 	app := ui.NewApp(host, log)
 	host.SetUIHooks(app)
 	// a prompt fills the transcript, so no splash offers projects

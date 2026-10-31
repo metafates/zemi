@@ -94,7 +94,10 @@ type agentHost struct {
 	targetsMu sync.RWMutex
 	targets   map[string]*modelTarget
 
-	active    bool
+	active bool
+	// writer: this window holds the lease, so only it may start turns, run the
+	// goal chain and write user rows. True until OpenPeers' claim loses it.
+	writer    bool
 	textBuf   string
 	reasonBuf string
 	// stretchMS holds the wall time of each reasoning stretch the turn has

@@ -590,6 +590,8 @@ type Host struct {
 	origin      string
 	peersPath   string                    // this window's heartbeat file, "" without a store
 	peers       atomic.Pointer[peersView] // the sibling windows the last beat read
+	lease       atomic.Pointer[string]    // the lease word the pill and the ctx read
+	leaseTTL    time.Duration             // lease staleness before a takeover; 0 reads peersTTL (tests narrow it)
 	sockLn      net.Listener              // the delivered-prompt socket, nil when not bound
 	sockDir     string                    // its private temp dir, removed on close
 	sockPath    string                    // the socket's path, advertised in the heartbeat
@@ -1075,6 +1077,10 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		return root
 	})
 	h.gitStatus = sync.OnceValue(func() string { return h.gitStatusSection(dirs.ProjectDir) })
+	// the lease defaults to this window: hosts with no presence (headless,
+	// tests) are their store's one window, and OpenPeers' claim demotes a real
+	// second window to a viewer
+	h.agents.writer = true
 	if dirs.StateHome != "" {
 		// keyed on the repository, not the launch directory: a subdirectory
 		// and a worktree are the same project, with the same sessions

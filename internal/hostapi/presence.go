@@ -3,7 +3,8 @@
 // the statusline can say how many windows share this chat, and answers a
 // socket a second zemi delivers prompts through. The file is the presence,
 // not the log: a log origin is per boot, so rows outlive their window, while
-// a heartbeat older than peersTTL names one that quit or died.
+// a heartbeat older than peersTTL names one that quit or died. Who may write
+// the chat is the lease's to say (lease.go); presence says who is watching.
 
 package hostapi
 
@@ -36,10 +37,10 @@ type peersView struct {
 	working int
 }
 
-// StartPeers writes this window's heartbeat, serves its socket, and refreshes
-// the peer view on one ticker for the process's life; a beat never waits on
-// the store.
-func (h *Host) StartPeers() {
+// OpenPeers sets this window's presence up and claims the lease, synchronously
+// before the first prompt: a prompt held for the first turn must already know
+// whether this window writes the chat, which the ticker would decide too late.
+func (h *Host) OpenPeers() {
 	if h.DB == nil || h.Dirs.StateHome == "" {
 		return
 	}
@@ -47,9 +48,21 @@ func (h *Host) StartPeers() {
 		filepath.Base(filepath.Dir(h.DB.Path())), h.origin+".json")
 	if err := os.MkdirAll(filepath.Dir(h.peersPath), 0o700); err != nil {
 		h.Log.Warn("peers dir not made", "origin", "boot", "error", err)
+		h.peersPath = ""
 		return
 	}
 	h.listenPeers()
+	h.claimLease()
+}
+
+// StartPeers writes this window's heartbeat, refreshes the peer view and
+// renews the lease on one ticker for the process's life; the socket and the
+// lease claim are already up (OpenPeers). The beat writes no store - the lease
+// renewal does, behind it on this goroutine.
+func (h *Host) StartPeers() {
+	if h.peersPath == "" {
+		return
+	}
 	h.beat() // the first view comes now, not at the first tick
 	h.GoSafe("peers", func() {
 		for range time.Tick(peersTick) {
@@ -59,6 +72,7 @@ func (h *Host) StartPeers() {
 			// gating the refresh on it left a sibling's working flag stale
 			// up to a minute while the file said false
 			h.refresh()
+			h.leaseTick()
 		}
 	})
 	h.GoSafe("peer hello", h.peerPoke)
@@ -241,10 +255,12 @@ func (h *Host) peerView() peersView {
 	return peersView{}
 }
 
-// ClosePeers drops this window's heartbeat and its socket: the pill names
-// only the windows that are here, and the socket answers nothing. The poke
-// may not land before the process exits, and then the ticker sweeps it.
+// ClosePeers releases the lease, drops this window's heartbeat and its socket:
+// the pill names only the windows that are here, and the socket answers
+// nothing. The poke may not land before the process exits, and then the ticker
+// sweeps it.
 func (h *Host) ClosePeers() {
+	h.releaseLease()
 	if h.sockLn != nil {
 		h.sockLn.Close()
 	}
