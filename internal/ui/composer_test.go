@@ -233,6 +233,31 @@ func TestCapNeverClamps(t *testing.T) {
 	}
 }
 
+// TestComposerKeepsHistoryHonest: a draft cleared with ctrl+c does not join
+// the prompt history — Up recalls the last prompt sent, and clearing a draft
+// equal to an old prompt does not reorder the recall.
+func TestComposerKeepsHistoryHonest(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	app.composer.pushHistory("sent prompt")
+	for _, r := range "fragment never sent" {
+		app.composerKey(string(r), tea.KeyPressMsg{Text: string(r)})
+	}
+	app.handleKey(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	app.composerKey("up", tea.KeyPressMsg{})
+	if app.composer.text != "sent prompt" {
+		t.Fatalf("up after a cleared draft recalls %q, want the last prompt sent", app.composer.text)
+	}
+	app.composerKey("down", tea.KeyPressMsg{})
+	for _, r := range "sent prompt again" {
+		app.composerKey(string(r), tea.KeyPressMsg{Text: string(r)})
+	}
+	app.handleKey(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	app.composerKey("up", tea.KeyPressMsg{})
+	if app.composer.text != "sent prompt" {
+		t.Fatalf("up after clearing a draft equal to an old prompt recalls %q, want the same prompt", app.composer.text)
+	}
+}
+
 // TestComposerRowMoves: up and down move by the visual row the composer
 // draws, so a wrapped line walks its own rows and history only recalls off
 // the drawn first or last row.

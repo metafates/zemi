@@ -250,7 +250,10 @@ func (h *Host) openGoal() error {
 	ui.OpenOverlay(Overlay{
 		ID: "goal", Title: "Goal", Origin: lua.OriginBuiltin,
 		Fields: []Field{{"goal", g.Condition}, {"running", running}, {"spent", h.spentSince(g.Tokens, g.Cost)}, {"last", g.Reason}},
-		Items:  []OverlayItem{{Text: "Stop the goal", Run: "goal stop", Verb: VerbStop}},
+		// stopping a standing intent is destructive: the row arms like any
+		// other danger row, so a bare Enter at the default selection cannot
+		// fire it
+		Items: []OverlayItem{{Text: "Stop the goal", Run: "goal stop", Verb: VerbStop, Danger: true}},
 	})
 	return nil
 }

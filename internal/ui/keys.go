@@ -463,11 +463,11 @@ func (a *App) draftCapToastNow() {
 // waits: pushToast's warn ttl.
 const capToastTTL = 8 * time.Second
 
-// clearDraft empties the draft the way ctrl+c does: one history entry up and
-// one ctrl+z back.
+// clearDraft empties the draft the way ctrl+c does: the text stays one
+// ctrl+z back and never joins the prompt history — Up still recalls the
+// last prompt sent, not a draft that was thrown away.
 func (a *App) clearDraft() {
 	a.seedHistory()
-	a.composer.pushHistory(a.composer.text)
 	prev := composerSnap{text: a.composer.text, cursor: a.composer.cursor}
 	a.clearComposer()
 	a.composer.snapshot(prev, false)
