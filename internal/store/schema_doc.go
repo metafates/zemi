@@ -19,6 +19,7 @@ var schemaPurpose = map[string]string{
 	"log":        "the eternal chat: one append-only row per message, seq its dense 0-based index",
 	"nodes":      "the summary tree: node(l, i) covers the 2^l messages from i*2^l on, one line each",
 	"view_lines": "the persisted view, oldest first; a line whose node is missing renders as a placeholder",
+	"leader":     "the lease: the one window that may write this project's chat",
 }
 
 // SchemaDoc renders the schema the embedded migrations build: one bullet per
