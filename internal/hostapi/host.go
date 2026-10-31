@@ -2097,8 +2097,8 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("jobs_running", glua.LNumber(h.jobsRunningCount()))
 	if pv := h.peerView(); pv.n > 0 {
 		tb.RawSetString("peers", glua.LNumber(pv.n))
-		tb.RawSetString("peers_working", glua.LNumber(pv.working))
 	}
+	tb.RawSetString("writer", glua.LString(h.WriterWord()))
 	if g, ok := h.Goal(); ok {
 		gt := L.CreateTable(0, 3)
 		gt.RawSetString("condition", glua.LString(clipLine(g.Condition, 48)))
@@ -2600,7 +2600,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.154.0"))
+	api.RawSetString("version", glua.LString("0.155.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

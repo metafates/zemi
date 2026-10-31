@@ -447,6 +447,10 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 		case a.composer.text == "" && placeholder != "":
 			if a.composerNote != "" {
 				placeholder = a.composerNote
+			} else if a.host != nil && a.host.IsViewer() {
+				// a viewer reads it here; a kept draft covers the cell, and the
+				// pill still names it
+				placeholder = "another window writes this chat…"
 			}
 			hint := []hostapi.Segment{{Text: placeholder, HL: "Dim"}}
 			if !focused {

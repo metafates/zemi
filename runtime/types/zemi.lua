@@ -868,7 +868,7 @@ function zemi.event.stats() end
 ---@field workflows_running integer Workflows of this session still running, paused ones included.
 ---@field jobs_running integer Background jobs (job_start, or a shell call that outlived its timeout) still running.
 ---@field peers? integer Other windows whose heartbeat under the state home is still fresh; absent when the window is alone.
----@field peers_working? integer How many of those run a turn right now.
+---@field writer "this"|"other"|"none" The lease: this window writes the chat, another one does, or none does yet.
 ---@field goal? zemi.GoalCtx The session's goal while one is set (/goal).
 ---@field loop? zemi.LoopCtx The session's loop while one runs (/loop).
 ---@field quit_armed boolean A second ctrl+c quits.

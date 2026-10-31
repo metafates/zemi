@@ -11,23 +11,20 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// TestPeersBeat: a beat counts the sibling heartbeats that are still fresh,
-// reads their working flag, and ignores what a stale, broken or half-written
-// file names.
+// TestPeersBeat: a beat counts the sibling heartbeats that are still fresh
+// and ignores what a stale, broken or half-written file names.
 func TestPeersBeat(t *testing.T) {
 	for _, c := range []struct {
-		name        string
-		files       map[string]string // sibling name -> body
-		age         time.Duration     // how old every sibling file is
-		wantN       int
-		wantWorking int
+		name  string
+		files map[string]string // sibling name -> body
+		age   time.Duration     // how old every sibling file is
+		wantN int
 	}{
-		{"alone", nil, 0, 0, 0},
-		{"one fresh peer", map[string]string{"aaaa.json": `{"working":false}`}, 0, 1, 0},
-		{"one at work", map[string]string{"aaaa.json": `{"working":true}`}, 0, 1, 1},
-		{"stale names no one", map[string]string{"aaaa.json": `{"working":true}`}, peersTTL + time.Second, 0, 0},
-		{"broken names no one", map[string]string{"aaaa.json": "not json"}, 0, 0, 0},
-		{"a half write is no peer", map[string]string{"aaaa.json.tmp": `{"working":true}`}, 0, 0, 0},
+		{"alone", nil, 0, 0},
+		{"one fresh peer", map[string]string{"aaaa.json": `{"working":false}`}, 0, 1},
+		{"stale names no one", map[string]string{"aaaa.json": `{"working":true}`}, peersTTL + time.Second, 0},
+		{"broken names no one", map[string]string{"aaaa.json": "not json"}, 0, 0},
+		{"a half write is no peer", map[string]string{"aaaa.json.tmp": `{"working":true}`}, 0, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h := newTestHostUI(t)
@@ -48,8 +45,8 @@ func TestPeersBeat(t *testing.T) {
 				}
 			}
 			h.beat()
-			if got := h.peerView(); got.n != c.wantN || got.working != c.wantWorking {
-				t.Fatalf("beat read %d peers, %d working, want %d and %d", got.n, got.working, c.wantN, c.wantWorking)
+			if got := h.peerView(); got.n != c.wantN {
+				t.Fatalf("beat read %d peers, want %d", got.n, c.wantN)
 			}
 		})
 	}
@@ -97,8 +94,8 @@ func TestPeersBeatRebuildsTheDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.beat()
-	if got := h.peerView(); got.n != 1 || got.working != 1 {
-		t.Fatalf("beat read %d peers, %d working, want 1 and 1", got.n, got.working)
+	if got := h.peerView(); got.n != 1 {
+		t.Fatalf("beat read %d peers, want 1", got.n)
 	}
 }
 

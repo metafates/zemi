@@ -31,10 +31,9 @@ const (
 const PeersTTL = peersTTL
 
 // peersView is the snapshot a render reads: the windows sharing this store
-// besides this one, and how many of them run a turn.
+// besides this one.
 type peersView struct {
-	n       int
-	working int
+	n int
 }
 
 // OpenPeers sets this window's presence up and claims the lease, synchronously
@@ -68,9 +67,7 @@ func (h *Host) StartPeers() {
 		for range time.Tick(peersTick) {
 			h.beat()
 			// unconditional: a beat another goroutine ran (a poke's hello)
-			// stores a snapshot this ticker's own last view never saw, and
-			// gating the refresh on it left a sibling's working flag stale
-			// up to a minute while the file said false
+			// stores a snapshot this ticker's own last view never saw
 			h.refresh()
 			h.leaseTick()
 		}
@@ -188,9 +185,8 @@ func (h *Host) beat() {
 		return
 	}
 	raw, _ := json.Marshal(struct {
-		Working bool   `json:"working"`
-		Sock    string `json:"sock,omitempty"` // where a second zemi delivers a prompt
-	}{Working: h.AgentActive(), Sock: h.sockPath})
+		Sock string `json:"sock,omitempty"` // where a second zemi delivers a prompt
+	}{Sock: h.sockPath})
 	tmp := h.peersPath + ".tmp"
 	if os.WriteFile(tmp, raw, 0o600) != nil {
 		// the peers dir can vanish under a running window (a cleanup, a
@@ -222,13 +218,10 @@ func (h *Host) beat() {
 			continue
 		}
 		var hb struct {
-			Working bool `json:"working"`
+			Sock string
 		}
 		if raw, err := os.ReadFile(filepath.Join(dir, name)); err == nil && json.Unmarshal(raw, &hb) == nil {
 			view.n++
-			if hb.Working {
-				view.working++
-			}
 		}
 	}
 	h.peers.Store(&view)

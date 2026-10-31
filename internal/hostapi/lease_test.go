@@ -28,8 +28,8 @@ func TestLeaseOneWindowWrites(t *testing.T) {
 		t.Fatalf("the first window writes: writer=%v word=%q", a.writerFlag(), a.WriterWord())
 	}
 	b := openClaimed(t, state, proj)
-	if b.writerFlag() || b.WriterWord() != writerOther {
-		t.Fatalf("the second window views: writer=%v word=%q", b.writerFlag(), b.WriterWord())
+	if b.writerFlag() || b.WriterWord() != writerOther || !b.IsViewer() {
+		t.Fatalf("the second window views: writer=%v word=%q viewer=%v", b.writerFlag(), b.WriterWord(), b.IsViewer())
 	}
 
 	b.leaseTick() // a live holder's beat is fresh: the viewer leaves it alone
@@ -39,8 +39,8 @@ func TestLeaseOneWindowWrites(t *testing.T) {
 
 	a.ClosePeers() // a clean close releases, so the survivor needs no TTL
 	b.leaseTick()
-	if !b.writerFlag() || b.WriterWord() != writerThis {
-		t.Fatalf("the survivor writes after the holder's close: writer=%v word=%q", b.writerFlag(), b.WriterWord())
+	if !b.writerFlag() || b.WriterWord() != writerThis || b.IsViewer() {
+		t.Fatalf("the survivor writes after the holder's close: writer=%v word=%q viewer=%v", b.writerFlag(), b.WriterWord(), b.IsViewer())
 	}
 }
 

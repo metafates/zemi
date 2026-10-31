@@ -157,6 +157,10 @@ func (h *Host) WriterWord() string {
 	return writerThis
 }
 
+// IsViewer reports whether another window writes this chat: the composer's
+// placeholder reads it.
+func (h *Host) IsViewer() bool { return h.WriterWord() == writerOther }
+
 // staleAfter is how old the holder's beat may be before a survivor takes the
 // lease over; 0 reads peersTTL, and a test narrows it to play a dead holder
 // without waiting one out.
