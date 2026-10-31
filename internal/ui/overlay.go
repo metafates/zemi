@@ -1041,7 +1041,8 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 			// a danger row's run confirms like enter does: the first press arms
 			st.armed = true
 			return nil
-		case r.Run != "" && o.OnSelect == nil:
+		case r.Run != "":
+			// a row's run is its own key even where enter opens a level
 			a.runOverlayRow(r)
 			return nil
 		}

@@ -268,7 +268,12 @@ local function builder(ctx, width)
 		-- leaves them out, or the drawn row runs past the region and the
 		-- terminal wraps it onto an unbarred line of its own
 		local room = waiting and width - 12 or width - 2
-		for i, segs in ipairs(zemi.ui.wrap(text, room)) do
+		local wrapped = zemi.ui.wrap(text, room)
+		-- a user row past the composer's own paste threshold folds: the model
+		-- read every line, the chat shows the head and names the way to the rest
+		local draw = #wrapped > 10 and 9 or #wrapped
+		for i, segs in ipairs(wrapped) do
+			if i > draw then break end
 			local row = { { text = "▌ ", hl = bar_hl, copy = false, hover = false, sticky = not waiting } }
 			if waiting and i == 1 then
 				-- the row is provisional: it is the queue's until the turn reads
@@ -281,6 +286,12 @@ local function builder(ctx, width)
 				row[#row + 1] = sg
 			end
 			push(row)
+		end
+		if #wrapped > draw then
+			push({
+				{ text = "▌ ", hl = bar_hl, copy = false, hover = false, sticky = not waiting },
+				{ text = "… +" .. (#wrapped - draw) .. " lines · ctrl+m to read", hl = "Dim", copy = false },
+			})
 		end
 		-- another window wrote this: name it under the message, the reply
 		-- readout's shape, so "who wrote this" reads off the row
