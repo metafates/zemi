@@ -268,9 +268,11 @@ applied one. A store made before goose only gains its version table: the baselin
   content). The corrected retry, the cooldown and the compaction dump carry the rest. The view is the
   persisted sawtooth (DESIGN §10.3): one line per message, then one batch past 128,000 bytes
   merges the most due pairs down to 64,000; the compaction view is the second sawtooth in
-  kv. A reset quiesces the builder - a fence: nothing
-  dispatches into the wipe and every build before it has landed, the wait bounded by
-  `quiesceWait` so a wedged provider call refuses the reset instead of wedging it. `/health`'s
+  kv. A reset quiesces the builder - a fence: the in-flight builds abort at
+  once (a reset deletes what they are building; no provider call is waited
+  out), nothing dispatches into the wipe, every build before it has landed, and the wait for
+  the aborts to unwind is bounded by `quiesceWait` so a provider wedged past its own
+  cancellation refuses the reset instead of wedging it. `/health`'s
   `chat builder`
   row reads the queue depths and the failed builds (`builderHealth`).
 - **One turn is one fresh call.** `runTurns` sets `History` to `[viewMessage]` (the persisted
@@ -385,9 +387,12 @@ applied one. A store made before goose only gains its version table: the baselin
   builder quiesced around `ResetLog`, which wipes the log, the nodes, the view lines and the
   compaction view whole and then vacuums and truncates the WAL so the text leaves
   the file; the todo list clears, every goal drops, and the transcript swaps to the empty
-  log. It refuses a live turn or run, and asks through `AskFirst`'s armed key or `--yes`. The
-  armed key's press runs the wipe on its own goroutine (not the UI's command worker), so a
-  builder wedged under the quiesce costs a toast, never a wedged UI.
+  log. It refuses a live turn or run, and asks through `AskFirst`'s armed key or `--yes`.
+  Between the last confirmation and the wipe sits no model call and no deferred step: the
+  quiesce aborts the builder's in-flight calls instead of waiting out their provider calls
+  (a provider wedged past its own cancellation still refuses at `quiesceWait`). The armed
+  key's press runs the wipe on its own goroutine (not the UI's command worker), so a
+  builder wedged past its abort costs a toast, never a wedged UI.
 - **Read-only agents** (`AgentDef.ReadOnly`) are enforced in
   `tools.Pipeline.check` (`Pipeline.ReadOnly`): every action denied - a write, a command, a
   Lua tool; reads and scratchpad writes pass. A subagent the plan builtin starts, or one

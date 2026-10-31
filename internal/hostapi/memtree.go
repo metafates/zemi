@@ -239,6 +239,8 @@ type memTree struct {
 	leafFlight int             // leaf calls in flight: the unbuilt lines a leaf waits behind
 	pending    int             // calls dispatched whose result has not applied yet
 	held       bool            // dispatch paused (a reset quiesces); guarded by callMu
+	callCtx    context.Context // the calls' scope, swapped by the quiesce that aborts them
+	callCancel context.CancelFunc
 	burst      chan struct{}   // closed when the burst's first response starts
 	force      chan compactReq // the overflow guard's one batch, acked when it ran
 	ready      atomic.Bool     // the boot gate: no dispatch before the config step ran
@@ -272,8 +274,9 @@ type builderHealth struct {
 	unbuilt, failed, queued, coolingUntil atomic.Int64
 }
 
-// quiesceWait bounds a reset's wait for the in-flight builds: a provider
-// call wedged past it must refuse the reset, never wedge it forever.
+// quiesceWait bounds a reset's wait for the aborted builds to unwind: a
+// provider wedged past its own cancellation must refuse the reset, never
+// wedge it forever.
 var quiesceWait = 15 * time.Second
 
 // newMemTree starts the builder worker on ctx; the caller's Close ends it.
@@ -290,6 +293,7 @@ func newMemTree(ctx context.Context, h *Host) *memTree {
 		results: make(chan buildResult),
 		built:   map[nodeID]int{},
 	}
+	b.callCtx, b.callCancel = context.WithCancel(ctx)
 	h.GoSafe("memtree", b.run)
 	return b
 }
@@ -353,15 +357,18 @@ func (b *memTree) Compact() int {
 	}
 }
 
-// quiesce stops dispatch and holds the fence: no build dispatches after it,
-// and every build dispatched before it has landed, so a reset's wipe runs
-// under no build. resume releases it. It returns an error when the fence
-// cannot hold - the host is closing, or an in-flight build outlived
-// quiesceWait (a wedged provider call refuses the reset instead of wedging
-// it) - and releases the gate itself then, so the caller must not cut.
+// quiesce stops dispatch and aborts the builds in flight - a reset deletes
+// what they are building, so no provider call is waited out - then holds
+// the fence: every build dispatched before it has landed, so a reset's wipe
+// runs under no build. resume releases it. It returns an error when the
+// fence cannot hold - the host is closing, or an aborted call outlived
+// quiesceWait (a provider wedged past its own cancellation refuses the
+// reset instead of wedging it) - and releases the gate itself then, so the
+// caller must not cut.
 func (b *memTree) quiesce() error {
 	b.callMu.Lock()
 	b.held = true
+	b.callCancel()
 	b.callMu.Unlock()
 	done := make(chan struct{})
 	b.h.GoSafe("memtree quiesce", func() {
@@ -373,6 +380,10 @@ func (b *memTree) quiesce() error {
 	select {
 	case <-done:
 	case <-timer.C:
+		// the wedge survives its cancellation: the dead scope must not
+		// carry the builds after the refusal, so the gate opens on a fresh
+		// one
+		b.freshCalls()
 		b.callMu.Lock()
 		b.held = false
 		b.callMu.Unlock()
@@ -380,11 +391,21 @@ func (b *memTree) quiesce() error {
 	case <-b.ctx.Done():
 		return errors.New("zemi is closing") // the process is going down with the builds
 	}
+	b.freshCalls()
 	// the zero result walks the fence: results are received in the order
 	// they were sent, so once the worker takes it, every build dispatched
 	// before the gate has applied
 	b.send(buildResult{})
 	return nil
+}
+
+// freshCalls swaps in a live call scope for the builds after an abort, under
+// the call lock: dispatch stays held while it runs, so no call reads the
+// new scope early.
+func (b *memTree) freshCalls() {
+	b.callMu.Lock()
+	b.callCtx, b.callCancel = context.WithCancel(b.ctx)
+	b.callMu.Unlock()
 }
 
 func (b *memTree) resume() {
@@ -728,7 +749,7 @@ func (b *memTree) dispatchLeaf() bool {
 	// the prompt reads the compaction view, worker-owned state: build it
 	// here, before the call goroutine exists
 	prompt := b.leafPrompt(seq, string(e.Kind), e.Text)
-	first, wait, ok := b.takeSlot()
+	ctx, first, wait, ok := b.takeSlot()
 	if !ok { // quiesced: the resume's rebuild requeues the leaf
 		b.endLeaf()
 		return false
@@ -736,7 +757,7 @@ func (b *memTree) dispatchLeaf() bool {
 	b.h.GoSafe("memtree leaf", func() {
 		defer b.calls.Done()
 		defer b.endLeaf()
-		text, err := b.build(nodeID{0, seq}, prompt, first, wait)
+		text, err := b.build(ctx, nodeID{0, seq}, prompt, first, wait)
 		b.send(buildResult{leaf: true, seq: seq, text: text, err: err})
 	})
 	return true
@@ -775,13 +796,13 @@ func (b *memTree) dispatchMerge() bool {
 		// the join's prompt reads the compaction view, worker-owned state:
 		// build it here, before the call goroutine exists
 		prompt := b.mergePrompt(a, c)
-		first, wait, ok := b.takeSlot()
+		ctx, first, wait, ok := b.takeSlot()
 		if !ok { // quiesced: the resume's rebuild requeues the pair
 			return false
 		}
 		b.h.GoSafe("memtree merge", func() {
 			defer b.calls.Done()
-			text, err := b.build(parent, prompt, first, wait)
+			text, err := b.build(ctx, parent, prompt, first, wait)
 			b.send(buildResult{parent: parent, text: text, err: err})
 		})
 		return true
@@ -807,7 +828,22 @@ func (b *memTree) apply(r buildResult) {
 	}
 	b.callMu.Lock()
 	b.pending--
+	aborted := b.held
 	b.callMu.Unlock()
+	if r.err != nil && (aborted || errors.Is(r.err, context.Canceled)) {
+		// the quiesce cancelled this call mid-flight: no failure to carry,
+		// but the retry keeps the line covered when the reset is refused -
+		// a wipe's rebuild clears the list, and requeue drops rewound rows.
+		// The canceled identity catches an abort unwinding past the bound,
+		// after the gate already opened
+		if r.leaf {
+			b.leafRetry = append(b.leafRetry, r.seq)
+		} else {
+			b.mergeRetry = append(b.mergeRetry, r.parent)
+		}
+		b.coolDown(r.err) // a no-op for a cancellation; a rate-limited failure under the fence still cools
+		return
+	}
 	b.scanned = false
 	id := nodeID{0, r.seq}
 	if !r.leaf {
@@ -1141,8 +1177,9 @@ func (b *memTree) dumpEmpty(id nodeID, model string, res *fantasy.AgentResult) {
 // shortest fitting line kept. retry is nil on purpose: the retry path stomps
 // the shared h.agents.retryAt a turn is counting down, and a builder burst
 // would stomp it constantly. first and wait come from the slot takeCall
-// dispatch already made synchronously.
-func (b *memTree) build(id nodeID, prompt string, first bool, wait chan struct{}) (string, error) {
+// dispatch already made synchronously; ctx is the call's own scope, the one
+// a quiesce cancels to abort it.
+func (b *memTree) build(ctx context.Context, id nodeID, prompt string, first bool, wait chan struct{}) (string, error) {
 	defer b.endCall(first)
 	ref := b.h.modelRef(compactRole)
 	model, err := b.h.resolveTurnModel(ref)
@@ -1150,7 +1187,7 @@ func (b *memTree) build(id nodeID, prompt string, first bool, wait chan struct{}
 		return "", err
 	}
 	if !first {
-		if err := b.waitBurst(wait); err != nil {
+		if err := b.waitBurst(ctx, wait); err != nil {
 			return "", err
 		}
 	}
@@ -1197,7 +1234,7 @@ func (b *memTree) build(id nodeID, prompt string, first bool, wait chan struct{}
 	// usually already in it), or the miss named on the prompt itself.
 	resampled := false
 	for range buildTryMax {
-		res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(chatSystem)).Stream(b.ctx, fantasy.AgentStreamCall{
+		res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(chatSystem)).Stream(ctx, fantasy.AgentStreamCall{
 			Messages:        convo,
 			MaxOutputTokens: &maxOut,
 			MaxRetries:      &buildMaxRetries,
@@ -1252,12 +1289,15 @@ func (b *memTree) build(id nodeID, prompt string, first bool, wait chan struct{}
 
 // takeSlot admits one build to the shared slots synchronously, so dispatch
 // and the quiesce fence count the call from the moment dispatch decides it,
-// and reports the burst a non-first call waits behind.
-func (b *memTree) takeSlot() (first bool, wait chan struct{}, ok bool) {
+// and reports the burst a non-first call waits behind. The context it hands
+// back is the call's own scope: the same lock that admits the call pins the
+// scope it runs on, so a quiesce cannot cancel past an admitted call and
+// leave it running on a scope the fence no longer counts.
+func (b *memTree) takeSlot() (ctx context.Context, first bool, wait chan struct{}, ok bool) {
 	b.callMu.Lock()
 	defer b.callMu.Unlock()
 	if b.held { // quiesced for a reset: no call dispatches into the wipe
-		return false, nil, false
+		return nil, false, nil, false
 	}
 	b.calls.Add(1) // the fence counts the call from here, before the spawn
 	b.flight++
@@ -1266,21 +1306,21 @@ func (b *memTree) takeSlot() (first bool, wait chan struct{}, ok bool) {
 		b.burst = make(chan struct{})
 		first = true
 	}
-	return first, b.burst, true
+	return b.callCtx, first, b.burst, true
 }
 
 // waitBurst holds a non-first call until the burst's first response started:
 // two calls writing one cache entry pay for it twice (the spec's
 // prefix-write wait).
-func (b *memTree) waitBurst(wait chan struct{}) error {
+func (b *memTree) waitBurst(ctx context.Context, wait chan struct{}) error {
 	if wait == nil { // the burst already opened
 		return nil
 	}
 	select {
 	case <-wait:
 		return nil
-	case <-b.ctx.Done():
-		return b.ctx.Err()
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 

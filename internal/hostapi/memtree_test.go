@@ -35,7 +35,9 @@ var errBuildFails = errors.New("compaction failed")
 // when set, answers every call with a function of its own prompt instead of
 // the script - the real fake's compaction shape. think answers with the
 // script as reasoning and no text, the reasoning-only reply, until the
-// conversation holds an assistant turn - the carryover's own shape.
+// conversation holds an assistant turn - the carryover's own shape. wedge
+// parks a gated call deaf to its context: nothing aborts it, and a release
+// past a cancellation answers with it - the abort that lands late.
 type treeModel struct {
 	mu        sync.Mutex
 	replies   []string
@@ -48,6 +50,7 @@ type treeModel struct {
 	rate      atomic.Bool
 	burn      atomic.Bool
 	think     atomic.Bool
+	wedge     atomic.Bool
 	finish    fantasy.FinishReason
 	compact   func([]fantasy.Message) string
 }
@@ -60,10 +63,17 @@ func (m *treeModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Stre
 	m.convo = append(m.convo, slices.Clone(call.Prompt))
 	m.mu.Unlock()
 	if gate != nil && i >= m.gateAfter {
-		select {
-		case <-gate:
-		case <-ctx.Done():
-			return nil, ctx.Err()
+		if m.wedge.Load() {
+			<-gate
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+		} else {
+			select {
+			case <-gate:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 		}
 	}
 	if m.rate.Load() {
@@ -754,7 +764,7 @@ func TestBurstGate(t *testing.T) {
 	// waiter takes a non-first slot and waits it out in its own goroutine,
 	// its pairing and endCall in one place
 	waiter := func() <-chan struct{} {
-		f, wait, ok := b.takeSlot()
+		_, f, wait, ok := b.takeSlot()
 		if !ok {
 			t.Fatal("takeSlot refused with the gate open")
 		}
@@ -768,12 +778,12 @@ func TestBurstGate(t *testing.T) {
 			defer close(done)
 			defer b.calls.Done()
 			defer b.endCall(false)
-			_ = b.waitBurst(wait)
+			_ = b.waitBurst(context.Background(), wait)
 		}()
 		return done
 	}
 
-	first, _, ok := b.takeSlot()
+	_, first, _, ok := b.takeSlot()
 	paired = 1
 	if !ok || !first {
 		t.Fatal("the first slot is not the burst's first call")
@@ -803,7 +813,7 @@ func TestBurstGate(t *testing.T) {
 	// a first call that ends without responding opens its burst too: no
 	// caller waits for a response that never comes
 	release(true)
-	again, _, ok := b.takeSlot()
+	_, again, _, ok := b.takeSlot()
 	paired = 1
 	if !ok || !again {
 		t.Fatal("the slot after the burst closed is not a first call")
@@ -822,19 +832,20 @@ func TestBurstGate(t *testing.T) {
 	}
 }
 
-// TestResetFencesTheBuilder: a reset's quiesce holds the gate - the build
-// in flight when it starts lands before the wipe, none dispatch after it -
-// and the fresh message that takes the wiped seq 0 gets its own node, not a
-// stale summary of the wiped ones.
-func TestResetFencesTheBuilder(t *testing.T) {
-	t.Parallel()
+// TestResetAbortsTheInFlightBuild: the builds a reset interrupts are
+// building what the wipe deletes, so a confirmed reset aborts them instead
+// of waiting out their provider calls. The armed key's press lands the
+// wipe behind a call that never answers and resolves no model itself, the
+// abort reaches no error list, and the fresh message that takes the wiped
+// seq 1 gets its own node, not a stale summary of the wiped ones.
+func TestResetAbortsTheInFlightBuild(t *testing.T) {
 	h, cl, m := newTree(t, strings.Repeat("s", 400))
 	m.gate = make(chan struct{})
 	m.gateAfter = 1 // the first build runs through, the second holds
 	if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
 		t.Fatal(err)
 	}
-	// the second message's build starts and holds in flight
+	// the second message's build starts and holds in flight, deaf to nothing
 	if _, err := cl.User(strings.Repeat("y", 600), ""); err != nil {
 		t.Fatal(err)
 	}
@@ -844,30 +855,37 @@ func TestResetFencesTheBuilder(t *testing.T) {
 		}
 		return nil
 	})
-	reset := make(chan error, 1)
-	go func() {
-		reset <- h.ResetChat(true)
-	}()
-	// the quiesce waits behind the in-flight build; release it only then
+	// a reset that waited for the held build would refuse at this bound
+	old := quiesceWait
+	quiesceWait = 2 * time.Second
+	defer func() { quiesceWait = old }()
+	// nothing of the reset itself may reach a provider
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return nil, errors.New("the reset resolved a model")
+	}
+	// the armed key's press: the wipe leaves the command path at once and
+	// aborts the held build on its own goroutine; the gate never opens
+	reset := slices.IndexFunc(h.chatCommands(), func(c *Command) bool { return c.Name == "reset" })
+	if err := h.chatCommands()[reset].GoFn(h, "", true); err != nil {
+		t.Fatal(err)
+	}
 	waitFor(t, func() error {
-		cl.tree.callMu.Lock()
-		defer cl.tree.callMu.Unlock()
-		if !cl.tree.held || cl.tree.flight == 0 {
-			return errors.New("the reset has not quiesced behind the in-flight build")
+		note, err := h.DB.LogTail(1)
+		if err != nil || len(note) != 1 || note[0].Kind != store.KindNote ||
+			note[0].Text != "the chat was reset" {
+			return errors.New("the wipe has not landed")
 		}
 		return nil
 	})
-	close(m.gate)
-	select {
-	case err := <-reset:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("the reset did not finish behind a gated build")
+	// the abort is not a failure to carry: no builder error reaches /errors
+	h.errs.mu.RLock()
+	noise := slices.ContainsFunc(h.errs.entries, func(e errEntry) bool { return e.kind == "chat builder" })
+	h.errs.mu.RUnlock()
+	if noise {
+		t.Fatal("the reset's abort reached the error list")
 	}
 	// a fresh message takes seq 1, behind the reset's note: its node is its
-	// own words, and no stale summary of the wiped ones may land over it
+	// own words, and no aborted summary of the wiped ones may land over it
 	if _, err := cl.User("fresh words", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -930,19 +948,110 @@ func TestResetRebuilds(t *testing.T) {
 	}
 }
 
-// TestResetRefusesAWedgedBuilder: a build wedged past quiesceWait refuses
-// the reset instead of wedging it, releases the gate, and the builder
-// dispatches again over the log it kept.
+// TestResetRefusesAWedgedBuilder: a build wedged past the abort - a
+// provider deaf to its own cancellation - refuses the reset instead of
+// wedging it. The armed key's press returns without waiting for the wipe:
+// the fence is up and the log whole right after it, and the refusal lands
+// on the wipe's own goroutine behind the bound. The build the abort did
+// settle - the one held behind the wedge's burst - is carried in the retry
+// list, so the kept log's line does not stay an unbuilt placeholder
+// behind the wedge.
 func TestResetRefusesAWedgedBuilder(t *testing.T) {
 	h, cl, m := newTree(t, strings.Repeat("s", 400))
-	m.gate = make(chan struct{}) // the build never returns
+	m.gate = make(chan struct{})
+	m.gateAfter = 0     // every call parks on the gate
+	m.wedge.Store(true) // and never hears the abort's cancellation
 	defer close(m.gate)
 	if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := cl.User(strings.Repeat("y", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	// the first build parks inside the provider call; the second, held
+	// behind its burst, is the one the abort settles
 	waitFor(t, func() error {
-		if m.callCount() == 0 {
-			return errors.New("the build has not started")
+		cl.tree.callMu.Lock()
+		flight := cl.tree.flight
+		cl.tree.callMu.Unlock()
+		if m.callCount() < 1 {
+			return errors.New("the wedged build has not started")
+		}
+		if flight < 2 {
+			return errors.New("the second build has not taken its slot")
+		}
+		return nil
+	})
+	old := quiesceWait
+	quiesceWait = 2 * time.Second
+	defer func() { quiesceWait = old }()
+	// the armed key's press, through the command the overlay carries: it
+	// returns without waiting, so the fence is up and the log still whole -
+	// a press that waited for the wipe would return behind a refusal that
+	// already opened the gate
+	reset := slices.IndexFunc(h.chatCommands(), func(c *Command) bool { return c.Name == "reset" })
+	if err := h.chatCommands()[reset].GoFn(h, "", true); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		cl.tree.callMu.Lock()
+		held := cl.tree.held
+		cl.tree.callMu.Unlock()
+		if !held {
+			return errors.New("the fence never went up after the press")
+		}
+		return nil
+	})
+	if n, _ := h.DB.LogCount(); n != 2 {
+		t.Fatalf("%d log rows under the fence, want the two it held", n)
+	}
+	// the aborted hearing build is carried, not lost: /health's builder row
+	// counts it as a failed build waiting to retry
+	waitFor(t, func() error {
+		if cl.tree.health.failed.Load() != 1 {
+			return errors.New("the aborted build reached no retry list")
+		}
+		return nil
+	})
+	// the bound refuses the reset on the wipe's own goroutine: the gate
+	// opens, the log is kept whole, and the toast names the refusal
+	waitFor(t, func() error {
+		cl.tree.callMu.Lock()
+		held := cl.tree.held
+		cl.tree.callMu.Unlock()
+		if held {
+			return errors.New("the bound has not refused the reset")
+		}
+		h.errs.mu.RLock()
+		refused := slices.ContainsFunc(h.errs.entries, func(e errEntry) bool {
+			return e.kind == "command" && strings.Contains(e.msg, "did not settle")
+		})
+		h.errs.mu.RUnlock()
+		if !refused {
+			return errors.New("the refusal reached no toast")
+		}
+		if n, _ := h.DB.LogCount(); n != 2 {
+			return errors.New("the refused reset touched the log")
+		}
+		return nil
+	})
+}
+
+// TestResetCarriesALateAbort: a build that unwinds past the bound -
+// after the refusal already opened the gate - is caught by its canceled
+// identity, not the fence: it reaches no error list, and its line waits in
+// the retry list like any failed build's.
+func TestResetCarriesALateAbort(t *testing.T) {
+	h, cl, m := newTree(t, strings.Repeat("s", 400))
+	m.gate = make(chan struct{})
+	m.gateAfter = 0     // every call parks on the gate
+	m.wedge.Store(true) // deaf until the gate opens
+	if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() error {
+		if m.callCount() < 1 {
+			return errors.New("the wedged build has not started")
 		}
 		return nil
 	})
@@ -952,49 +1061,21 @@ func TestResetRefusesAWedgedBuilder(t *testing.T) {
 	if err := h.ResetChat(true); err == nil || !strings.Contains(err.Error(), "did not settle") {
 		t.Fatalf("reset under a wedged build = %v, want the bound's refusal", err)
 	}
-	if n, _ := h.DB.LogCount(); n != 1 {
-		t.Fatalf("%d log rows after the refused reset, want the one it held", n)
-	}
-	cl.tree.callMu.Lock()
-	held := cl.tree.held
-	cl.tree.callMu.Unlock()
-	if held {
-		t.Fatal("the refused reset left the builder fenced")
-	}
-}
-
-// TestResetConfirmLeavesTheWorker: the armed key's press returns at once -
-// the wipe runs on its own goroutine behind the quiesce, so the UI's worker
-// never sits on a wedged builder - and lands once the build settles.
-func TestResetConfirmLeavesTheWorker(t *testing.T) {
-	h, cl, m := newTree(t, strings.Repeat("s", 400))
-	m.gate = make(chan struct{})
-	if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
-		t.Fatal(err)
-	}
+	// past the bound the gate is open: the abort that lands now is carried
+	// by its identity, with no failure to record
+	close(m.gate)
 	waitFor(t, func() error {
-		if m.callCount() == 0 {
-			return errors.New("the build has not started")
+		if cl.tree.health.failed.Load() != 1 {
+			return errors.New("the late abort reached no retry list")
 		}
 		return nil
 	})
-	// the armed key's press runs the command the overlay carries, confirm set
-	reset := slices.IndexFunc(h.chatCommands(), func(c *Command) bool { return c.Name == "reset" })
-	if err := h.chatCommands()[reset].GoFn(h, "", true); err != nil {
-		t.Fatal(err)
+	h.errs.mu.RLock()
+	noise := slices.ContainsFunc(h.errs.entries, func(e errEntry) bool { return e.kind == "chat builder" })
+	h.errs.mu.RUnlock()
+	if noise {
+		t.Fatal("a late abort reached the error list")
 	}
-	// back at once: the wipe is still waiting on the hung build, so nothing
-	// has moved
-	if n, _ := h.DB.LogCount(); n != 1 {
-		t.Fatalf("%d log rows right after the armed press, want the wipe still quiescing", n)
-	}
-	close(m.gate) // the build lands, and the wipe behind it
-	waitFor(t, func() error {
-		if n, _ := h.DB.LogCount(); n != 1 {
-			return errors.New("the wipe has not landed behind the build")
-		}
-		return nil
-	})
 }
 
 // TestBuilderEmptyReplyLadder: a capped compaction reply is the reply budget,

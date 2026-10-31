@@ -14,7 +14,9 @@ import (
 
 // ResetChat wipes the eternal chat and starts it over (/reset): the log,
 // every summary node and view line go, VACUUM reclaims the file, and the
-// next message is seq 0. It refuses mid-turn and while any run lives.
+// next message is seq 0. It refuses mid-turn and while any run lives; once
+// confirmed it waits on nothing - the builder's in-flight calls are
+// aborted, not waited out, and no model is resolved on its path.
 func (h *Host) ResetChat(yes bool) error {
 	if h.DB == nil || h.chat == nil {
 		return Usagef("no chat log in this boot")
@@ -39,8 +41,10 @@ func (h *Host) ResetChat(yes bool) error {
 	err := func() error {
 		h.cutMu.Lock()
 		defer h.cutMu.Unlock()
-		// the builder first: quiesced, so no build lands over the wipe, and
-		// resumed whatever the wipe did
+		// the builder first: its in-flight calls abort - a reset deletes
+		// what they are building, so none is waited out - its dispatch
+		// holds until the wipe is done, and it resumes whatever the wipe
+		// left
 		if err := h.chat.quiesce(); err != nil {
 			return err
 		}
