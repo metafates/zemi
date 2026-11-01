@@ -52,7 +52,7 @@ func sendCommand(o *options) *cobra.Command {
 				case reply.Ran:
 					fmt.Fprintf(c.OutOrStdout(), "delivered: the command runs in the window\n")
 				case reply.Parked:
-					fmt.Fprintf(c.OutOrStdout(), "parked: the window does not write this chat yet; the message sends once the write comes to it\n")
+					fmt.Fprintf(c.OutOrStdout(), "parked: the message sends once this window writes the chat\n")
 				case reply.Queued:
 					fmt.Fprintf(c.OutOrStdout(), "delivered: the message joined a running turn in the window\n")
 				default:
@@ -93,7 +93,7 @@ func sendCommand(o *options) *cobra.Command {
 				}
 			}
 			if errors.Is(derr, ipc.ErrDead) {
-				return fmt.Errorf("%w: the lease names a window that does not answer - a hand-over may be mid-flight, or it died without releasing; a window opened on this project claims the write within a beat", ipc.ErrDead)
+				return fmt.Errorf("%w: the window that writes this chat did not answer; it may be handing over, or it died. A window opened on this project takes the chat within seconds", ipc.ErrDead)
 			}
 			return derr
 		},

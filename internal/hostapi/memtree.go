@@ -93,7 +93,7 @@ var errEmptyTwice = fmt.Errorf("%w - the model returned no line twice", errEmpty
 
 // errWiped: the log shrank under the builder's cursor - the writing window's
 // /reset. The run loop answers it with a rebuild.
-var errWiped = errors.New("the chat was reset by the writable window")
+var errWiped = errors.New("the chat was reset by another window")
 
 // rateLimited says whether a build failed on the provider's rate limit:
 // fantasy wraps the refusal in its retry error. Such a build cools down and

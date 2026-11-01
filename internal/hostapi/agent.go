@@ -1153,7 +1153,7 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 		if len(ag.steering) > 0 {
 			h.armQueueDrain()
 			h.Notify(slog.LevelInfo, "Queue resumes on its own",
-				fmt.Sprintf("%d queued %s run once you have been away a moment; esc interrupts them.",
+				fmt.Sprintf("%d queued %s run after a couple of minutes; esc interrupts them.",
 					len(ag.steering), Plural(len(ag.steering), "message", "messages")))
 		}
 	} else {

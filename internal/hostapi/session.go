@@ -269,7 +269,7 @@ func (h *Host) WriterResetEnded() {
 	h.refreshMessages()
 	h.scroll(ScrollBottom, "")
 	h.refresh()
-	h.Notify(slog.LevelInfo, "Chat reset by the writable window", "this window reloaded from the shared log")
+	h.Notify(slog.LevelInfo, "Another window reset the chat", "this window reloaded it")
 }
 
 // SyncChat pulls what other windows appended to the shared log into this
@@ -395,7 +395,7 @@ func (h *Host) SyncChat() {
 			h.composerMu.Lock()
 			h.draftToasted = draft
 			h.composerMu.Unlock()
-			h.Notify(slog.LevelInfo, "The writable window sent a message", "your draft is kept")
+			h.Notify(slog.LevelInfo, "Another window sent a message", "your draft is kept")
 		}
 	}
 }

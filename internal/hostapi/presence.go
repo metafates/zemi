@@ -526,7 +526,7 @@ func (h *Host) killWindow(origin string, yes bool) error {
 	}
 	p := rows[row]
 	if p.PID == 0 {
-		return errors.New("that window's heartbeat names no process to kill")
+		return errors.New("no process to kill for that window")
 	}
 	if !yes {
 		return AskFirst("windows kill "+origin+" --yes", "", func(confirm string) error {
@@ -536,8 +536,11 @@ func (h *Host) killWindow(origin string, yes bool) error {
 	if err := killPeer(p.PID); err != nil {
 		return fmt.Errorf("could not kill pid %d: %w", p.PID, err)
 	}
-	h.Notify(slog.LevelWarn, "Window killed",
-		fmt.Sprintf("%s (pid %d) was told to quit; the write comes here as its lease frees", cmp.Or(p.Task, "that window"), p.PID))
+	body := fmt.Sprintf("%s (pid %d) is closing", cmp.Or(p.Task, "that window"), p.PID)
+	if !h.writerFlag() {
+		body += "; this window takes over the chat"
+	}
+	h.Notify(slog.LevelWarn, "Window killed", body)
 	// the killed window releases its lease as it exits: look for it once
 	// before the ticker does
 	h.GoSafe("lease nudge", func() {
@@ -553,13 +556,20 @@ func (h *Host) openKillConfirm(p PeerRow, confirm string) error {
 	if err != nil {
 		return err
 	}
+	detail := fmt.Sprintf("The window (pid %d) closes; its unsent drafts go with it.", p.PID)
+	if !h.writerFlag() {
+		detail += " This window takes over the chat."
+	}
+	text := "Kill the window"
+	if p.Task != "" {
+		text += " on " + p.Task
+	}
 	ui.OpenOverlay(Overlay{
 		ID: "windows kill", Title: "Kill", Origin: lua.OriginBuiltin, Confirm: confirm,
 		Items: []OverlayItem{{
-			Text: "Kill the window on " + cmp.Or(p.Task, "nothing"),
-			Detail: fmt.Sprintf("The zemi process (pid %d) is told to quit; its unsent drafts go with it. "+
-				"Its lease comes free as it exits, and this window takes the write at its next beat.", p.PID),
-			Keys: []ItemKey{{Key: "x", Desc: "kill", Danger: true, Run: "windows kill " + p.Origin}},
+			Text:   text,
+			Detail: detail,
+			Keys:   []ItemKey{{Key: "x", Desc: "kill", Danger: true, Run: "windows kill " + p.Origin}},
 		}},
 	})
 	return nil

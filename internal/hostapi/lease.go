@@ -152,8 +152,8 @@ func (h *Host) parkForHandover(text string) {
 	ag.mu.Unlock()
 	h.refresh()
 	h.requestWrite()
-	h.Notify(slog.LevelInfo, "Queued for the write",
-		"the writing window hands the chat over at its next step; /windows kill takes it sooner")
+	h.Notify(slog.LevelInfo, "Message queued",
+		"the window that writes the chat hands it over soon; /windows kill takes it sooner")
 }
 
 // requestWrite asks the window that holds the write to hand it over. It is
@@ -191,8 +191,8 @@ func (h *Host) yieldWrite(origin, sock string) {
 		if ag.yield == nil {
 			ag.yield = &yieldAsk{origin: origin, sock: sock}
 			ag.mu.Unlock()
-			h.Notify(slog.LevelInfo, "A window asks for the write",
-				"this turn ends at its next step and the chat is handed over")
+			h.Notify(slog.LevelInfo, "Another window asks for the chat",
+				"this turn ends soon and the chat moves there")
 		} else {
 			ag.mu.Unlock()
 		}

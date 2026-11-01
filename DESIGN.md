@@ -2908,8 +2908,8 @@ was the hardest correctness surface, and the spec has none).
   last confirmation and the wipe sits no model call and no deferred step;
   the armed key's press runs the wipe on its own goroutine, so the UI's
   worker never sits on it, and the toast names the outcome. A window whose
-  log shrinks under it - the writing window's reset - toasts "Chat reset by
-  the writable window" and reloads whole.
+  log shrinks under it - the writing window's reset - toasts "Another
+  window reset the chat" and reloads whole.
 
 ### 10.7 Skills
 

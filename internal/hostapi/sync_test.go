@@ -235,7 +235,7 @@ func TestSyncChatPullsTheOtherWindow(t *testing.T) {
 	if _, err := a.DB.GetKV("goal"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("the goal's kv row survived the writer's reset: %v", err)
 	}
-	if got := ui.titles(); len(got) == 0 || got[len(got)-1] != "Chat reset by the writable window" {
+	if got := ui.titles(); len(got) == 0 || got[len(got)-1] != "Another window reset the chat" {
 		t.Fatalf("a's toasts after the writer's reset = %q", got)
 	}
 	sendTurns(t, a, ma, "fresh after the reset")
@@ -279,7 +279,7 @@ func TestSyncChatToastsADraftCollision(t *testing.T) {
 	a.SetComposerSnapshot("a draft", 6)
 	sendTurns(t, b, mb, "from b")
 	a.SyncChat()
-	if got := ui.titles(); len(got) != 1 || got[0] != "The writable window sent a message" {
+	if got := ui.titles(); len(got) != 1 || got[0] != "Another window sent a message" {
 		t.Fatalf("a's toasts = %q, want the one collision toast", got)
 	}
 	a.SyncChat()
@@ -333,7 +333,7 @@ func TestSyncChatReloadsARegrownReset(t *testing.T) {
 	if len(got) != 6 || !strings.Contains(got[0], "r1") || !strings.Contains(got[4], "r3") {
 		t.Fatalf("a's window after the regrown reset = %q, want b's fresh chat", got)
 	}
-	if got := ui.titles(); !slices.Contains(got, "Chat reset by the writable window") {
+	if got := ui.titles(); !slices.Contains(got, "Another window reset the chat") {
 		t.Fatalf("a's toasts = %q, want the reset one", got)
 	}
 	// the window keeps working: a's next turn lands on the fresh chat and stamps
@@ -453,7 +453,7 @@ func TestSyncChatReloadsUnderTheTurn(t *testing.T) {
 		t.Fatalf("a's window under the turn = %q, want the fresh chat with the turn's row", got)
 	}
 	waitFor(t, func() error {
-		if !slices.Contains(ui.titles(), "Chat reset by the writable window") {
+		if !slices.Contains(ui.titles(), "Another window reset the chat") {
 			return errors.New("the reset toast has not landed")
 		}
 		return nil
