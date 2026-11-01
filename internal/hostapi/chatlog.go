@@ -339,6 +339,16 @@ func splitMarked(row store.LogEntry) bool {
 	return json.Unmarshal([]byte(row.MetaJSON), &m) == nil && m.Split
 }
 
+// rowID is the call id a split unit's chunks share, from its meta: the unit
+// key where siblings of different calls sit side by side.
+func rowID(row store.LogEntry) string {
+	var m struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal([]byte(row.MetaJSON), &m)
+	return m.ID
+}
+
 // toolLeaf renders a tool call's line mechanically: the tool and the first
 // path- or command-shaped value of its input.
 // NOTE: sparser than a model line, and the subject is the first plausible

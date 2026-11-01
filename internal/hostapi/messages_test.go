@@ -798,6 +798,65 @@ func TestStampPairsASplitMessage(t *testing.T) {
 	}
 }
 
+// TestStampPairsASplitToolInput: a tool input over the chat split logs as
+// sibling rows while the transcript holds the call's one row. The probe
+// recomputes the row's summary from the store's text: read as one chunk, the
+// cut JSON cannot match, and the false wipe cancels the live turn as if the
+// user interrupted it. The sibling chunk, paired by kind alone, would steal
+// the next call's row.
+func TestStampPairsASplitToolInput(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	full := `{"path":"/tmp/plan.md","content":"` + strings.Repeat("x", 9000) + `"}`
+	meta := withSplit(`{"id":"call-1","tool":"write"}`)
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Text: toolSummary("write", full)})
+	if _, err := h.DB.AppendLog(store.KindTool, full[:8000], meta, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.DB.AppendLog(store.KindTool, full[8000:], meta, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	h.stampLogSeqs()
+	if tr := h.Session().Transcript; tr[0].Seq != 0 {
+		t.Fatalf("the call's row names its first chunk: %d", tr[0].Seq)
+	}
+	h.tMu.RLock()
+	from := h.stampFrom
+	h.tMu.RUnlock()
+	if from != 2 {
+		t.Fatalf("the cursor walked past the sibling: %d", from)
+	}
+	// the split must not read as another window's wipe: the false wipe ends
+	// the turn as if the user interrupted it
+	h.tMu.Lock()
+	wiped := h.logWipedLocked()
+	h.tMu.Unlock()
+	if wiped {
+		t.Fatal("the split tool input's row reads as another window's wipe")
+	}
+	// a later call pairs with its own row: the sibling rides the first chunk
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Text: toolSummary("read", `{"path":"/tmp/x"}`)})
+	read, err := h.DB.AppendLog(store.KindTool, `{"path":"/tmp/x"}`, `{"id":"call-2","tool":"read"}`, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.stampLogSeqs()
+	if tr := h.Session().Transcript; tr[1].Seq != read {
+		t.Fatalf("the next call's row names its own chunk, not the sibling: %d", tr[1].Seq)
+	}
+	// the rebuild folds a unit's chunks and keeps side-by-side calls apart
+	unit := func(seq int64, id, text string) store.LogEntry {
+		return store.LogEntry{
+			Seq: seq, Kind: store.KindTool, Text: text,
+			MetaJSON: `{"id":"` + id + `","split":true,"tool":"write"}`,
+		}
+	}
+	folded := logRows([]store.LogEntry{unit(0, "a", "A1"), unit(1, "a", "A2"), unit(2, "b", "B1"), unit(3, "b", "B2")})
+	if len(folded) != 2 || folded[0].Text != "A1A2" || folded[1].Text != "B1B2" {
+		t.Fatalf("the rebuild folds each call's chunks, side by side apart: %+v", folded)
+	}
+}
+
 // TestTheSettleKeepsAFoldedReplyWhole: the settle writes its readout onto a
 // split reply's last sibling, over the fold mark its meta holds - a rebuild
 // folds the reply into one row that still wears the readout, where a

@@ -208,6 +208,16 @@ func (h *Host) stampLogSeqsLocked() {
 		if m.Seq != row.Seq {
 			stamps = append(stamps, stamp{at: w, seq: row.Seq})
 		}
+		if row.Kind == store.KindTool && splitMarked(row) {
+			// the input split into chunks that pair with nothing: the
+			// siblings ride the row their first chunk named, by the shared
+			// call id
+			for i+1 < len(rows) && splitMarked(rows[i+1]) && rows[i+1].Kind == row.Kind &&
+				rowID(rows[i+1]) == rowID(row) {
+				i++
+				consumed++
+			}
+		}
 		w++
 		consumed++
 	}
@@ -420,6 +430,19 @@ func (h *Host) logWipedLocked() bool {
 	if err != nil {
 		return true // the cursor names a seq the log no longer holds
 	}
+	if splitMarked(row) {
+		// the row is one chunk of a message the transcript holds whole:
+		// identity speaks the unit's text, the chunks joined the way a
+		// rebuild folds them
+		if rest, err := h.DB.LogFrom(m.Seq+1, stampBatch); err == nil {
+			for _, r := range rest {
+				if !splitMarked(r) || r.Kind != row.Kind || rowID(r) != rowID(row) {
+					break
+				}
+				row.Text += r.Text
+			}
+		}
+	}
 	return !logRowMatches(row, m)
 }
 
@@ -549,7 +572,8 @@ func logRowsFor(rows []store.LogEntry, browse bool) []ChatMessage {
 			// holds one row for it, so the rebuild folds them back together
 			var b strings.Builder
 			b.WriteString(row.Text)
-			for i+1 < len(rows) && splitMarked(rows[i+1]) && rows[i+1].Kind == row.Kind {
+			for i+1 < len(rows) && splitMarked(rows[i+1]) && rows[i+1].Kind == row.Kind &&
+				rowID(rows[i+1]) == rowID(row) {
 				i++
 				b.WriteString(rows[i].Text)
 			}
