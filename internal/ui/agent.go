@@ -85,7 +85,7 @@ func (a *App) choosePerm(c permChoice) {
 	}
 	if c.tell {
 		a.host.DenyWaitingAsks()
-		a.composerNote = "tell zemi what to do instead…" // the draft is theirs to write
+		a.composerNote = "Tell zemi what to do instead…" // the draft is theirs to write
 	}
 	a.answerPerm(c.ok, c.by)
 	if c.tell && a.host.AgentActive() {
