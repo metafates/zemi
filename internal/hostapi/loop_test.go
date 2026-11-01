@@ -287,6 +287,9 @@ func TestLoopEveryAlias(t *testing.T) {
 func TestLoopStopNamesItsRuns(t *testing.T) {
 	t.Parallel()
 	h, _ := newLoopHost(t)
+	h.agents.mu.Lock()
+	h.claim() // hold the agent: the first fire retries on a clock that never ticks, so no run lands before the stop
+	h.agents.mu.Unlock()
 	if err := h.SetLoop("5m count rivers"); err != nil {
 		t.Fatal(err)
 	}
