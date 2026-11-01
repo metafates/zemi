@@ -262,9 +262,9 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 		h.Log.Debug("no verdict", "origin", "goal", "reply", clipRunes(reply, 200))
 		ev, reason = goalPaused, "the check gave no verdict"
 		announced = "Goal check gave no verdict; still watching"
-	default:
-		g.PausedTold = ""
 	}
+	// every field write stays under the agents lock: Goal copies the struct
+	// there, and the check runs on the turn goroutine beside it
 	ag := h.agents
 	ag.mu.Lock()
 	if ag.goal != g {
@@ -280,21 +280,21 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 		// a degraded check is not a pause: the overview names it the row does
 		g.Reason = reason + "; still watching"
 	}
+	if err == nil && ok {
+		g.PausedTold = ""
+	}
+	// the pill stays armed and the next turn re-checks, so a pause that
+	// answers the same every turn draws its row once
+	skip := ev == goalPaused && g.PausedTold == reason
+	if ev == goalPaused {
+		g.PausedTold = reason
+	}
 	if ev == goalMet {
 		ag.goal = nil
 		ag.mu.Unlock()
 		h.unstoreGoal(g)
 	} else {
 		ag.mu.Unlock()
-	}
-	skip := false
-	if ev == goalPaused {
-		// the pill stays armed and the next turn re-checks, so a pause that
-		// answers the same every turn draws its row once
-		if g.PausedTold == reason {
-			skip = true
-		}
-		g.PausedTold = reason
 	}
 	if skip {
 		return ""
