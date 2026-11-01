@@ -529,6 +529,7 @@ type listItem struct {
 	more        [][]hostapi.Segment
 	segs        []hostapi.Segment   // the label styled; label keeps its plain text
 	match       []int               // byte offsets of the label's runes a filter matched
+	score       int                 // the match's rank in the popup's preselection, 0 for none
 	row         hostapi.OverlayItem // an overlay row's fields (overlayState)
 }
 

@@ -635,6 +635,44 @@ func TestCompletionCycles(t *testing.T) {
 	}
 }
 
+// TestCompletionPreselectsItsBestMatch: the sections keep their order but
+// the cursor lands on the word's best match - a skill the word spells beats
+// a file it matches only as a subsequence - so tab takes what the word
+// meant, not whichever section lists first.
+func TestCompletionPreselectsItsBestMatch(t *testing.T) {
+	app, host := bootAgentApp(t, 80, 20)
+	dir := filepath.Join(host.Dirs.ConfigHome, "skills", "ast-grep")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: ast-grep\ndescription: structural search\n---\n\nBody.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reloadUI(t, host, host.SkillsUserHooksStep())
+	app.completion.setFiles([]string{"contrast-grep.py", "README.md"})
+	app.composer.text, app.composer.cursor = "@", 1
+	app.updateCompletion()
+	if app.completion.selected != 0 {
+		t.Fatalf("an empty token keeps the first row: selected=%d", app.completion.selected)
+	}
+	r := []rune("@ast-grep")
+	app.composer.text, app.composer.cursor = string(r), len(r)
+	app.updateCompletion()
+	for app.Pump() { // the fetched rows land through the queue
+	}
+	f := &app.completion
+	if len(f.matches) != 1 || len(f.skillRows) != 1 {
+		t.Fatalf("rows: matches=%d skills=%d", len(f.matches), len(f.skillRows))
+	}
+	if at := len(f.extra) + len(f.matches) + len(f.paths); f.selected != at {
+		t.Fatalf("the cursor sits on row %d, want the skill at %d", f.selected, at)
+	}
+	app.acceptCompletion()
+	if got := app.composer.text; got != "@ast-grep " {
+		t.Fatalf("tab took %q", got)
+	}
+}
+
 // TestCompletionScan: the popup's own walk lists the project's files,
 // ignored ones included, and skips .git and the build directories - a
 // hidden venv with the visible one, dotfiles listed.

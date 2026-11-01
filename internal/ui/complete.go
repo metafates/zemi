@@ -92,6 +92,7 @@ func (a *App) updateCompletion() tea.Cmd {
 		// until the sources answer, the rows they gave for a shorter word
 		// narrow, so a fast tab never takes a row the word left
 		f.extra = matchRows(f.extra, unquoteToken(rest), true)
+		f.trim()
 		trigger, token, line := string(r[i]), f.token, string(r[:cur])
 		a.background(func() {
 			items := a.host.Complete(context.Background(), trigger, "", token, line)
@@ -498,7 +499,7 @@ func (a *App) repaths() {
 		for kk := range h.Pos {
 			h.Pos[kk] += len(q) + len(dir)
 		}
-		f.paths = append(f.paths, listItem{label: word, match: h.Pos, section: "Files", row: hostapi.OverlayItem{Tail: true}})
+		f.paths = append(f.paths, listItem{label: word, match: h.Pos, score: pickScore(h), section: "Files", row: hostapi.OverlayItem{Tail: true}})
 	}
 	f.trim()
 }
@@ -582,9 +583,9 @@ func matchRows(rows []listItem, query string, narrow bool) []listItem {
 	hits := hostapi.Match(query, labels, nil)
 	out := make([]listItem, 0, len(rows))
 	for i, r := range rows {
-		r.match = nil
+		r.match, r.score = nil, 0
 		if len(hits) > 0 && hits[0].Index == i {
-			r.match, hits = hits[0].Pos, hits[1:]
+			r.match, r.score, hits = hits[0].Pos, pickScore(hits[0]), hits[1:]
 		} else if narrow {
 			continue
 		}
@@ -747,13 +748,56 @@ func (f *wordCompleter) fileCap() int {
 	return max(n, 0)
 }
 
+// pickScore is a matched row's number in the popup's preselection: a prefix
+// match leads any subsequence, the same lead Rank gives the Files section.
+func pickScore(h hostapi.Hit) int {
+	if h.Prefix {
+		return h.Score + 1<<30
+	}
+	return h.Score
+}
+
+// pick moves the cursor to the best match among the rows the token kept: the
+// sections keep their order, and the cursor names the word's best match - a
+// skill it spells, say, over a file it barely matches - so the row tab takes
+// is the one the word meant. Every rebuild re-picks: rows that land after
+// their fetch change what the index the cursor holds points at.
+func (f *wordCompleter) pick() {
+	at, best, i := 0, 0, 0
+	note := func(score int) {
+		if score > best {
+			at, best = i, score
+		}
+		i++
+	}
+	kind, _ := hostapi.SplitKind(f.token)
+	if kind == "" { // a kind filter is not a Lua source's
+		for _, r := range f.extra {
+			note(r.score)
+		}
+	}
+	for _, m := range f.matches {
+		note(pickScore(m))
+	}
+	for _, r := range f.paths {
+		note(r.score)
+	}
+	for _, r := range f.skillRows {
+		note(r.score)
+	}
+	for _, r := range f.entityRows {
+		note(r.score)
+	}
+	f.selected = max(0, min(at, f.count()-1))
+}
+
 // trim clips the file matches and the path rows to the rows fileCap lets
 // show, so the selection can only land on a row the popup drew.
 func (f *wordCompleter) trim() {
 	n := f.fileCap()
 	f.matches = f.matches[:min(len(f.matches), n)]
 	f.paths = f.paths[:min(len(f.paths), n)]
-	f.selected = max(0, min(f.selected, f.count()-1))
+	f.pick()
 }
 
 // completionRows renders the popup's list, at most room rows of at most
