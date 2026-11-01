@@ -1926,7 +1926,7 @@ second between. The pushed turn never owns the watching window: its
 `AgentActive` stays false, so its sync tick still runs and its composer
 still refuses; the snapshot's clocks advance from the frame's arrival
 between pushes, and a takeover drops the watch whole. `/windows` lists the siblings off the same heartbeats -
-origin, process, what each says it is on, the holder named - and its
+origin, process, terminal, what each says it is on, the holder named - and its
 `kill <origin>` tells the process to quit (asks first): the killed
 window's clean exit releases its lease, and the killer takes the write
 on its next tick. The beat and the freshness window stay as the backstop

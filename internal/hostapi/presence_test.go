@@ -138,7 +138,7 @@ func TestWindowsListsTheSharingWindows(t *testing.T) {
 	f := h.hooks().(*fakeUI)
 	dir := filepath.Dir(h.peersPath)
 	for name, body := range map[string]string{
-		"sib.json": `{"pid":1234,"task":"writing docs"}`,
+		"sib.json": `{"pid":1234,"task":"writing docs","term":"ghostty"}`,
 		"old.json": `{"task":"from an older zemi"}`,
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
@@ -158,7 +158,7 @@ func TestWindowsListsTheSharingWindows(t *testing.T) {
 	if ov.Items[1].Text != "from an older zemi" || ov.Items[1].Desc != "watching" {
 		t.Fatalf("the pidless row = %q, %q", ov.Items[1].Text, ov.Items[1].Desc)
 	}
-	if ov.Items[2].Text != "writing docs" || ov.Items[2].Desc != "pid 1234 · watching" {
+	if ov.Items[2].Text != "writing docs" || ov.Items[2].Desc != "pid 1234 · ghostty · watching" {
 		t.Fatalf("the sibling row = %q, %q", ov.Items[2].Text, ov.Items[2].Desc)
 	}
 	if k := ov.Items[2].Keys[0]; k.Key != "x" || k.Run != "windows kill sib" || !k.Danger {
@@ -173,7 +173,7 @@ func TestWindowsListsTheSharingWindows(t *testing.T) {
 	if won, err := h.DB.ClaimLeader("sib", "", store.Leader{}); err != nil || !won {
 		t.Fatalf("the sibling did not take the lease: won=%v err=%v", won, err)
 	}
-	if got := h.windowItems()[2].Desc; got != "pid 1234 · writes this chat" {
+	if got := h.windowItems()[2].Desc; got != "pid 1234 · ghostty · writes this chat" {
 		t.Fatalf("the holder's row = %q, want the write named", got)
 	}
 

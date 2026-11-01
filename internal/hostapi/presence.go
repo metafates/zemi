@@ -48,11 +48,18 @@ type peersView struct {
 }
 
 // PeerRow is one sibling window as /windows lists it: its per-boot id, its
-// process, and its own words for what it is on.
+// process, its terminal, and its own words for what it is on.
 type PeerRow struct {
 	Origin string
 	PID    int
 	Task   string
+	Term   string
+}
+
+// termName names the terminal this window runs in: the program when it says
+// one, the terminal type otherwise.
+func termName() string {
+	return cmp.Or(os.Getenv("TERM_PROGRAM"), os.Getenv("TERM"))
 }
 
 // OpenPeers sets this window's presence up and claims the lease, synchronously
@@ -373,7 +380,8 @@ func (h *Host) beat() {
 		Sock string `json:"sock,omitempty"` // where a second zemi delivers a prompt
 		Pid  int    `json:"pid,omitempty"`  // the process, for /windows kill
 		Task string `json:"task,omitempty"` // what it is on, one clipped line
-	}{Sock: h.sockPath, Pid: os.Getpid(), Task: clipLine(h.agentsTask(), 60)})
+		Term string `json:"term,omitempty"` // the terminal it runs in, for /windows
+	}{Sock: h.sockPath, Pid: os.Getpid(), Task: clipLine(h.agentsTask(), 60), Term: termName()})
 	tmp := h.peersPath + ".tmp"
 	if os.WriteFile(tmp, raw, 0o600) != nil {
 		// the peers dir can vanish under a running window (a cleanup, a
@@ -408,11 +416,12 @@ func (h *Host) beat() {
 			Sock string `json:"sock"`
 			Pid  int    `json:"pid"`
 			Task string `json:"task"`
+			Term string `json:"term"`
 		}
 		if raw, err := os.ReadFile(filepath.Join(dir, name)); err == nil && json.Unmarshal(raw, &hb) == nil {
 			view.n++
 			view.rows = append(view.rows, PeerRow{
-				Origin: strings.TrimSuffix(name, ".json"), PID: hb.Pid, Task: hb.Task,
+				Origin: strings.TrimSuffix(name, ".json"), PID: hb.Pid, Task: hb.Task, Term: hb.Term,
 			})
 		}
 	}
@@ -486,29 +495,45 @@ func (h *Host) windowItems() []OverlayItem {
 		role = "writes this chat"
 	}
 	task := cmp.Or(h.agentsTask(), "idle")
+	self := []string{"pid " + strconv.Itoa(os.Getpid())}
+	if term := termName(); term != "" {
+		self = append(self, term)
+	}
+	self = append(self, "this window", role)
+	pid := strconv.Itoa(os.Getpid())
+	fields := append(fieldList("origin", h.origin, "task", task), Field{Name: "pid", Value: pid})
+	if term := termName(); term != "" {
+		fields = append(fields, Field{Name: "term", Value: term})
+	}
 	items := []OverlayItem{{
-		Text: task,
-		Desc: "pid " + strconv.Itoa(os.Getpid()) + " · this window · " + role,
-		Fields: append(fieldList("origin", h.origin, "task", task),
-			Field{Name: "pid", Value: strconv.Itoa(os.Getpid())}),
+		Text:   task,
+		Desc:   strings.Join(self, " · "),
+		Fields: fields,
 	}}
 	for _, p := range h.peerView().rows {
 		role := "watching"
 		if p.Origin == leader {
 			role = "writes this chat"
 		}
-		desc := role
+		parts := []string{}
 		if p.PID != 0 {
-			desc = "pid " + strconv.Itoa(p.PID) + " · " + role
+			parts = append(parts, "pid "+strconv.Itoa(p.PID))
 		}
+		if p.Term != "" {
+			parts = append(parts, p.Term)
+		}
+		parts = append(parts, role)
 		text := cmp.Or(p.Task, "idle")
 		fields := fieldList("origin", p.Origin, "task", text)
 		if p.PID != 0 {
 			fields = append(fields, Field{Name: "pid", Value: strconv.Itoa(p.PID)})
 		}
+		if p.Term != "" {
+			fields = append(fields, Field{Name: "term", Value: p.Term})
+		}
 		items = append(items, OverlayItem{
 			Text:   text,
-			Desc:   desc,
+			Desc:   strings.Join(parts, " · "),
 			Fields: fields,
 			Keys:   []ItemKey{{Key: "x", Desc: "kill", Danger: true, Run: "windows kill " + p.Origin}},
 		})
@@ -536,9 +561,9 @@ func (h *Host) killWindow(origin string, yes bool) error {
 	if err := killPeer(p.PID); err != nil {
 		return fmt.Errorf("could not kill pid %d: %w", p.PID, err)
 	}
-	body := fmt.Sprintf("%s (pid %d) is closing", cmp.Or(p.Task, "that window"), p.PID)
+	body := fmt.Sprintf("closed window %d", p.PID)
 	if !h.writerFlag() {
-		body += "; this window takes over the chat"
+		body += "; this window writes now"
 	}
 	h.Notify(slog.LevelWarn, "Window killed", body)
 	// the killed window releases its lease as it exits: look for it once
@@ -556,9 +581,9 @@ func (h *Host) openKillConfirm(p PeerRow, confirm string) error {
 	if err != nil {
 		return err
 	}
-	detail := fmt.Sprintf("The window (pid %d) closes; its unsent drafts go with it.", p.PID)
+	detail := fmt.Sprintf("window %d closes; its unsent drafts go with it.", p.PID)
 	if !h.writerFlag() {
-		detail += " This window takes over the chat."
+		detail += " This window writes next."
 	}
 	text := "Kill the window"
 	if p.Task != "" {
