@@ -427,8 +427,9 @@ func TestPromptBudget(t *testing.T) {
 	// NOTE: chars, not tokens (about 4.3 per o200k token): the owner's limit
 	// is 10k tokens. The ceiling is today's size rounded up to the next 500,
 	// so any real growth is a decision; raise it only with a reason. The
-	// last raise added the chat view section (the log is the memory).
-	const ceiling = 27500
+	// last raise declared the todos tool's items synonym, so a model that
+	// learned another harness's name stops losing a round trip to it.
+	const ceiling = 28000
 	if n > ceiling {
 		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)
 	}

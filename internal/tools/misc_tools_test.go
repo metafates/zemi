@@ -98,9 +98,17 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 		t.Fatalf("an explicit cancel is not a drop: %+v", resp)
 	}
 
+	// the name other harnesses taught models writes the same list
+	resp = call(t, todos, `{"items":[{"content":"y","status":"pending"},{"content":"a","status":"in_progress"}]}`)
+	if resp.IsError || len(stored) != 2 || stored[1].Content != "a" || resp.Content != "updated todos: 0/2 done" {
+		t.Fatalf("items writes the list: stored %+v, %+v", stored, resp)
+	}
+
 	for _, bad := range []struct{ in, want string }{
 		{`{"todos":[{"content":"","status":"pending"}]}`, "todo 1: content is required"},
 		{`{"todos":[{"content":"x","status":"pending"},{"content":"x","status":"nope"}]}`, "todo 2: status must be"},
+		// a name the schema does not declare still refuses, naming what it takes
+		{`{"tasks":[{"content":"x","status":"pending"}]}`, `unknown field "tasks" (have items, todos)`},
 		// a non-object item never reaches the run: the typed decode refuses it
 		// (the modal verb is Go's, randomized per process)
 		{`{"todos":["not-an-object"]}`, `invalid tool input: json: `},

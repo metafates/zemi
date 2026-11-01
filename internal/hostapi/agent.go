@@ -1724,18 +1724,23 @@ func toolSummary(tool, input string) string {
 	if len(m) == 0 { // an empty call says nothing: "{}" is noise
 		return ""
 	}
-	if _, ok := m["todos"]; ok {
+	if _, ok := m["todos"]; ok || m["items"] != nil {
 		var in struct {
 			Todos []store.Todo `json:"todos"`
+			Items []store.Todo `json:"items"`
 		}
 		_ = json.Unmarshal([]byte(input), &in) // the map decoded, so this does too
+		list := in.Todos
+		if list == nil {
+			list = in.Items
+		}
 		done := 0
-		for _, td := range in.Todos {
+		for _, td := range list {
 			if td.Status == store.TodoDone {
 				done++
 			}
 		}
-		return fmt.Sprintf("%d %s, %d done", len(in.Todos), Plural(len(in.Todos), "todo", "todos"), done)
+		return fmt.Sprintf("%d %s, %d done", len(list), Plural(len(list), "todo", "todos"), done)
 	}
 	if qs, ok := m["questions"].([]any); ok && len(qs) > 0 {
 		q, _ := qs[0].(map[string]any)

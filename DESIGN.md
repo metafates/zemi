@@ -1386,7 +1386,8 @@ nearest instruction file not already in the prompt, once per session),
 `todos` (a list the user watches: an item left `in_progress` when the claim ends
 goes back to `pending`, so nothing reads as running while the agent is idle;
 a fresh list of two or more pending items points the model at running their
-independent parts as parallel agent calls), `question` (1-4 questions in one overlay, options or a typed
+independent parts as parallel agent calls; the list rides `todos`, and an
+`items` key is read as the same list, the name other harnesses taught models), `question` (1-4 questions in one overlay, options or a typed
 answer, and a note the user may add to a pick; the result is one JSON
 document, each answer a string, a multi-select's array, or null when left
 open, which its `open` field tells the model to decide), `plan` (shows the plan in its own scrollable popup for approval, taken from the call's

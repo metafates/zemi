@@ -29,6 +29,8 @@ import (
 // todosArgs is the todos tool's input and its schema source.
 type todosArgs struct {
 	Todos []todoItem `json:"todos,omitempty"`
+	// the name other harnesses taught models; runTodos reads it as todos
+	Items []todoItem `json:"items,omitempty" desc:"the same list as todos"`
 }
 
 // todoItem is one list entry as the todos tool reads it.
@@ -39,6 +41,9 @@ type todoItem struct {
 }
 
 func runTodos(ctx context.Context, p *Pipeline, in todosArgs) (fantasy.ToolResponse, error) {
+	if in.Todos == nil {
+		in.Todos = in.Items
+	}
 	out, dropped, ok, err := parseTodos(in.Todos)
 	// a run whose host wired no todo hook has no list to write or read
 	if p.TodosRead == nil || ok && p.TodosWrite == nil {
