@@ -535,6 +535,48 @@ func TestSyncChatCarriesALateReadout(t *testing.T) {
 	t.Fatalf("the writer's reply never spliced: %q", windowText(a))
 }
 
+// TestSyncChatCarriesALateReadoutOntoAFoldedReply: a split reply's row names
+// its first chunk while its readout settles on its last - a window that
+// spliced the folded row bare still finds the readout when it lands.
+func TestSyncChatCarriesALateReadoutOntoAFoldedReply(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a, _ := newWindow(t, state, proj)
+	b, _ := newWindow(t, state, proj)
+	full := strings.Repeat("z", 8100)
+	if _, err := b.DB.AppendLog("agent", full[:8000], `{"split":true}`, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	last, err := b.DB.AppendLog("agent", full[8000:], `{"split":true}`, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.stampLogSeqs() // the pairing buffers the writer's rows before the readout lands
+	a.SyncChat()     // the splice folds them into the one bare row
+	bare := false
+	for _, m := range a.Session().Transcript {
+		if m.Text == full {
+			bare = m.Stat == nil
+		}
+	}
+	if !bare {
+		t.Fatalf("the folded row spliced with its readout already: %q", windowText(a))
+	}
+	if err := b.DB.SetLogMeta(last, `{"turn_ms":7000,"out":50}`); err != nil {
+		t.Fatal(err)
+	}
+	a.SyncChat()
+	for _, m := range a.Session().Transcript {
+		if m.Text != full {
+			continue
+		}
+		if m.Stat == nil || m.Stat.ElapsedMS != 7000 {
+			t.Fatalf("the folded reply drew stat=%+v, want the late readout", m.Stat)
+		}
+		return
+	}
+	t.Fatalf("the writer's folded reply never spliced: %q", windowText(a))
+}
+
 // TestSyncChatSplicesAFailedCall: a call another window failed draws
 // failed here too - the splice builds the round's rows together, so the tool
 // row pairs with its echo instead of defaulting to a success.

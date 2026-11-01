@@ -798,6 +798,41 @@ func TestStampPairsASplitMessage(t *testing.T) {
 	}
 }
 
+// TestTheSettleKeepsAFoldedReplyWhole: the settle writes its readout onto a
+// split reply's last sibling, over the fold mark its meta holds - a rebuild
+// folds the reply into one row that still wears the readout, where a
+// wholesale swap would drop the mark and draw the reply as two.
+func TestTheSettleKeepsAFoldedReplyWhole(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	full := strings.Repeat("y", 8100)
+	if _, err := h.DB.AppendLog(store.KindUser, "ask", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	first, err := h.DB.AppendLog(store.KindAgent, full[:8000], withSplit(""), "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	last, err := h.DB.AppendLog(store.KindAgent, full[8000:], withSplit(""), "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.DB.SetLogMeta(last, `{"turn_ms":7000,"out":50}`); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := h.DB.LogFrom(first, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	folded := logRows(rows)
+	if len(folded) != 1 || folded[0].Text != full {
+		t.Fatalf("the settled reply still folds into one row: %+v", folded)
+	}
+	if folded[0].Stat == nil || folded[0].Stat.ElapsedMS != 7000 || folded[0].Stat.Out != 50 {
+		t.Fatalf("the folded reply lost its readout: %+v", folded[0].Stat)
+	}
+}
+
 // TestMessagesTurnsHoldTheEcho: an attachment's echo logs before the message
 // it rode, and the turn grouping follows it there — the file reads under the
 // exchange that received it, not the one before.

@@ -554,6 +554,9 @@ func logRowsFor(rows []store.LogEntry, browse bool) []ChatMessage {
 				b.WriteString(rows[i].Text)
 			}
 			row.Text = b.String()
+			// the readout settles on the group's last sibling: the folded
+			// row carries it, not the bare meta its first chunk holds
+			row.MetaJSON = rows[i].MetaJSON
 		}
 		switch row.Kind {
 		case store.KindUser:
@@ -704,6 +707,9 @@ func replyMeta(meta string) *TurnStat {
 	if json.Unmarshal([]byte(meta), &m) != nil {
 		return nil
 	}
+	if m == (replyStat{}) {
+		return nil // the split mark rides a split reply's meta alone, before its readout lands
+	}
 	return &TurnStat{Model: m.Model, ElapsedMS: m.TurnMS, Out: m.Out, ThoughtMS: m.ThoughtMS, Ended: m.Ended}
 }
 
@@ -712,14 +718,34 @@ func replyMeta(meta string) *TurnStat {
 // does, its readout only at its turn's end, so a window that spliced the row
 // in between would draw it without its telemetry forever. tMu held.
 func (h *Host) watchMetaLocked() {
-	fresh, err := h.DB.LogFrom(h.metaWatch[0], int(h.metaWatch[len(h.metaWatch)-1]-h.metaWatch[0])+1)
+	// a split reply's readout settles on its last sibling, past the seq its
+	// row names: the read reaches the log's end or it stops short of it
+	count, err := h.DB.LogCount()
+	if err != nil || count < h.metaWatch[0] {
+		return
+	}
+	fresh, err := h.DB.LogFrom(h.metaWatch[0], int(count-h.metaWatch[0])+1)
 	if err != nil {
 		return
 	}
 	read := make(map[int64]*TurnStat, len(fresh))
+	start := int64(-1)
 	for _, row := range fresh {
-		if stat := replyMeta(row.MetaJSON); stat != nil {
+		stat := replyMeta(row.MetaJSON)
+		if stat != nil {
 			read[row.Seq] = stat
+		}
+		if row.Kind != store.KindAgent || !splitMarked(row) {
+			start = -1
+			continue
+		}
+		if start < 0 {
+			start = row.Seq
+		}
+		// the transcript's row names the group's first chunk, the readout
+		// settles on its last: let the watched row find it
+		if stat != nil {
+			read[start] = stat
 		}
 	}
 	if len(read) > 0 {
@@ -740,9 +766,8 @@ func (h *Host) watchMetaLocked() {
 		}
 		h.metaWatch = slices.DeleteFunc(h.metaWatch, func(seq int64) bool { return read[seq] != nil })
 	}
-	// NOTE: a readout that never lands (its writer died before the settle, a
-	// split reply leaves its earlier stretches bare) stays watched; the cap
-	// bounds that to the last 64 replies
+	// NOTE: a readout that never lands (its writer died before the settle)
+	// stays watched; the cap bounds that to the last 64 replies
 	if len(h.metaWatch) > 64 {
 		h.metaWatch = h.metaWatch[len(h.metaWatch)-64:]
 	}

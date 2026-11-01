@@ -143,8 +143,11 @@ func (s *DB) LogCount() (int64, error) {
 
 // SetLogMeta fills one log row's meta_json after the append: the turn stat
 // its reply row gains when the turn ends. The text and the seq never move.
+// The write merges over the meta the row holds: a split reply's last sibling
+// carries the fold mark there, and a wholesale swap would drop it and redraw
+// one message as many rows.
 func (s *DB) SetLogMeta(seq int64, metaJSON string) error {
-	if _, err := s.db.Exec(`UPDATE log SET meta_json = ? WHERE seq = ?`, nullString(metaJSON), seq); err != nil {
+	if _, err := s.db.Exec(`UPDATE log SET meta_json = json_patch(COALESCE(meta_json, '{}'), ?) WHERE seq = ?`, metaJSON, seq); err != nil {
 		return fmt.Errorf("store: set log meta: %w", err)
 	}
 	return nil
