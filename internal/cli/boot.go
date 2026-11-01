@@ -139,14 +139,16 @@ func launch(o options) int {
 		}
 	}()
 
-	// Closing the terminal sends SIGHUP, which ends the process without
-	// running the cleanup below, and jobs and servers would outlive zemi.
-	// SIGTERM is not here: bubbletea quits on it and p.Run returns, which
-	// restores the terminal and reaches the cleanup anyway.
+	// Closing the terminal sends SIGHUP, which ends the process before the
+	// cleanup below: drop this window's presence first, so the siblings see it
+	// close at once, and jobs and servers never outlive zemi. SIGTERM is not
+	// here: bubbletea quits on it and p.Run returns, which restores the
+	// terminal and reaches the cleanup anyway.
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGHUP)
 	go func() {
 		<-sig
+		host.ClosePeers()
 		proc.KillAll()
 		os.Exit(130)
 	}()

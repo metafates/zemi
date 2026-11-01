@@ -254,6 +254,30 @@ func TestWindowsClosesTheOthers(t *testing.T) {
 	}
 }
 
+// TestACloseTellsTheSiblingsAtOnce: a window's close pokes its siblings in
+// the closing call, and the poked survivor takes the write at once - no
+// ticker runs here, so the poke is the only path the takeover has.
+func TestACloseTellsTheSiblingsAtOnce(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	a := openClaimed(t, state, proj) // the writer
+	b, _ := newWindow(t, state, proj)
+	b.OpenPeers() // a viewer over the same store
+	b.beat()      // its heartbeat is what the closing window dials
+	if b.writerFlag() {
+		t.Fatal("the second window opened as the writer")
+	}
+	a.ClosePeers()
+	waitForWithin(t, 2*time.Second, func() error {
+		if !b.writerFlag() {
+			return fmt.Errorf("the survivor still watches")
+		}
+		return nil
+	})
+	if _, err := os.Stat(a.peersPath); !os.IsNotExist(err) {
+		t.Fatalf("the close left the heartbeat behind: %v", err)
+	}
+}
+
 // TestPeerDelivery: a second zemi delivers a prompt over the window's socket.
 // Idle, the message starts a turn; mid-turn, it joins the steering queue; the
 // reply tells the sender which happened.

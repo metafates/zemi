@@ -183,6 +183,9 @@ func (h *Host) servePeer(conn net.Conn) {
 	if req.Hello {
 		_ = ipc.WriteReply(conn, ipc.Reply{OK: true})
 		h.beat()
+		// a sibling just arrived or left: read the lease now, so a closed
+		// window's write moves at once instead of at the next tick
+		h.leaseTick(false)
 		h.refresh()
 		return
 	}
@@ -456,8 +459,8 @@ func (h *Host) peerView() peersView {
 
 // ClosePeers releases the lease, drops this window's heartbeat and its socket:
 // the pill names only the windows that are here, and the socket answers
-// nothing. The poke may not land before the process exits, and then the ticker
-// sweeps it.
+// nothing. The poke waits its round out - the caller is on its way out, and a
+// poke left to a goroutine can die with the process.
 func (h *Host) ClosePeers() {
 	h.releaseLease()
 	if h.sockLn != nil {
@@ -469,7 +472,24 @@ func (h *Host) ClosePeers() {
 	if h.peersPath != "" {
 		_ = os.Remove(h.peersPath)
 	}
-	h.GoSafe("peer poke", h.peerPoke)
+	h.closePoke(500 * time.Millisecond)
+}
+
+// closePoke tells the sibling windows this one left, and waits out the round:
+// a terminal closed by hand must vanish from their lists at once, not at the
+// next tick. The budget bounds the whole round; a sibling that cannot answer
+// in it is swept by its ticker.
+func (h *Host) closePoke(budget time.Duration) {
+	deadline := time.Now().Add(budget)
+	for _, sock := range h.siblingSocks() {
+		wait := min(time.Until(deadline), 300*time.Millisecond)
+		conn, err := ipc.Dial(sock, wait)
+		if err != nil {
+			continue
+		}
+		_, _ = ipc.RoundTrip(conn, &ipc.Request{Hello: true}, wait)
+		_ = conn.Close()
+	}
 }
 
 // OpenWindows runs /windows: the other zemi windows sharing this chat, each
