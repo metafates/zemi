@@ -1,7 +1,9 @@
 package hostapi
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -130,14 +132,17 @@ func TestPeersBeatPrunesTheStale(t *testing.T) {
 }
 
 // TestWindowsListsTheSharingWindows: /windows reads the sibling heartbeats
-// into rows, names the lease's holder among them, and the kill asks first; a
-// window nobody holds and a heartbeat without a process refuse.
+// into rows, names the lease's holder among them, ages each window, and the
+// kill asks first; a window nobody holds and a heartbeat without a process
+// refuse.
 func TestWindowsListsTheSharingWindows(t *testing.T) {
 	proj, state := t.TempDir(), t.TempDir()
 	h := openClaimed(t, state, proj)
 	f := h.hooks().(*fakeUI)
 	dir := filepath.Dir(h.peersPath)
 	for name, body := range map[string]string{
+		"aged.json": fmt.Sprintf(`{"pid":4321,"task":"an old friend","term":"wezterm","since":%d}`,
+			time.Now().Add(-15*time.Minute).UnixMilli()),
 		"sib.json": `{"pid":1234,"task":"writing docs","term":"ghostty"}`,
 		"old.json": `{"task":"from an older zemi"}`,
 	} {
@@ -149,19 +154,28 @@ func TestWindowsListsTheSharingWindows(t *testing.T) {
 		t.Fatal(err)
 	}
 	ov := f.overlays()[len(f.overlays())-1]
-	if ov.ID != "windows" || len(ov.Items) != 3 {
-		t.Fatalf("overlay = %s over %d items, want windows over 3", ov.ID, len(ov.Items))
+	if ov.ID != "windows" || len(ov.Items) != 4 {
+		t.Fatalf("overlay = %s over %d items, want windows over 4", ov.ID, len(ov.Items))
+	}
+	if k := ov.Keys[0]; k.Key != "X" || k.Run != "windows close-others" || !k.Danger {
+		t.Fatalf("the list's key = %+v", k)
 	}
 	if ov.Items[0].Text != "idle" || !strings.Contains(ov.Items[0].Desc, "this window · writes this chat") {
 		t.Fatalf("this window's row = %q, %q", ov.Items[0].Text, ov.Items[0].Desc)
 	}
-	if ov.Items[1].Text != "from an older zemi" || ov.Items[1].Desc != "watching" {
-		t.Fatalf("the pidless row = %q, %q", ov.Items[1].Text, ov.Items[1].Desc)
+	if strings.Contains(ov.Items[0].Desc, "ago") {
+		t.Fatalf("a window just opened carries no age: %q", ov.Items[0].Desc)
 	}
-	if ov.Items[2].Text != "writing docs" || ov.Items[2].Desc != "pid 1234 · ghostty · watching" {
-		t.Fatalf("the sibling row = %q, %q", ov.Items[2].Text, ov.Items[2].Desc)
+	if ov.Items[1].Text != "an old friend" || ov.Items[1].Desc != "pid 4321 · wezterm · 15m ago · watching" {
+		t.Fatalf("the aged row = %q, %q", ov.Items[1].Text, ov.Items[1].Desc)
 	}
-	if k := ov.Items[2].Keys[0]; k.Key != "x" || k.Run != "windows kill sib" || !k.Danger {
+	if ov.Items[2].Text != "from an older zemi" || ov.Items[2].Desc != "watching" {
+		t.Fatalf("the pidless row = %q, %q", ov.Items[2].Text, ov.Items[2].Desc)
+	}
+	if ov.Items[3].Text != "writing docs" || ov.Items[3].Desc != "pid 1234 · ghostty · watching" {
+		t.Fatalf("the sibling row = %q, %q", ov.Items[3].Text, ov.Items[3].Desc)
+	}
+	if k := ov.Items[3].Keys[0]; k.Key != "x" || k.Run != "windows kill sib" || !k.Danger {
 		t.Fatalf("the sibling's key = %+v", k)
 	}
 
@@ -173,7 +187,7 @@ func TestWindowsListsTheSharingWindows(t *testing.T) {
 	if won, err := h.DB.ClaimLeader("sib", "", store.Leader{}); err != nil || !won {
 		t.Fatalf("the sibling did not take the lease: won=%v err=%v", won, err)
 	}
-	if got := h.windowItems()[2].Desc; got != "pid 1234 · ghostty · writes this chat" {
+	if got := h.windowItems()[3].Desc; got != "pid 1234 · ghostty · writes this chat" {
 		t.Fatalf("the holder's row = %q, want the write named", got)
 	}
 
@@ -189,6 +203,54 @@ func TestWindowsListsTheSharingWindows(t *testing.T) {
 	}
 	if err := h.OpenWindows("kill old", true); err == nil || !strings.Contains(err.Error(), "no process to kill") {
 		t.Fatalf("a pidless window's kill err = %v", err)
+	}
+}
+
+// TestWindowsClosesTheOthers: close-others ends every sibling process at
+// once, asks first, and a window with nothing to close says so.
+func TestWindowsClosesTheOthers(t *testing.T) {
+	proj, state := t.TempDir(), t.TempDir()
+	h := openClaimed(t, state, proj)
+	f := h.hooks().(*fakeUI)
+	if err := h.OpenWindows("close-others", true); err == nil || !strings.Contains(err.Error(), "no other windows") {
+		t.Fatalf("a lone window's close-others err = %v", err)
+	}
+	dir := filepath.Dir(h.peersPath)
+	var dead []<-chan struct{}
+	for _, name := range []string{"a.json", "b.json"} {
+		sleep := exec.Command("sleep", "30")
+		if err := sleep.Start(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = sleep.Process.Kill() })
+		d := make(chan struct{})
+		go func() { _ = sleep.Wait(); close(d) }()
+		dead = append(dead, d)
+		body := fmt.Sprintf(`{"pid":%d,"task":"a window"}`, sleep.Process.Pid)
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.beat()
+	if err := h.OpenWindows("close-others", false); err != nil {
+		t.Fatal(err)
+	}
+	ask := f.overlays()[len(f.overlays())-1]
+	if ask.ID != "windows close" || ask.Confirm != "windows close-others --yes" {
+		t.Fatalf("the ask = %s armed with %q", ask.ID, ask.Confirm)
+	}
+	if err := h.OpenWindows("close-others", true); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range dead {
+		select {
+		case <-d:
+		case <-time.After(2 * time.Second):
+			t.Fatal("a sibling process survived the close")
+		}
+	}
+	if got := f.notified(); !strings.Contains(got[len(got)-1], "closed 2 windows") {
+		t.Fatalf("the notice = %q", got)
 	}
 }
 

@@ -582,6 +582,7 @@ type Host struct {
 	// pairing tells its rows apart by; pendRows buffers the other windows'
 	// rows the pairing passed, for SyncChat to splice in.
 	origin     string
+	boot       time.Time                 // when this window opened, for the /windows age
 	peersPath  string                    // this window's heartbeat file, "" without a store
 	peers      atomic.Pointer[peersView] // the sibling windows the last beat read
 	lease      atomic.Pointer[string]    // the lease word the pill and the ctx read

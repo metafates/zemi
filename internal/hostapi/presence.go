@@ -48,12 +48,23 @@ type peersView struct {
 }
 
 // PeerRow is one sibling window as /windows lists it: its per-boot id, its
-// process, its terminal, and its own words for what it is on.
+// process, its terminal, how long it has been open, and its own words for
+// what it is on.
 type PeerRow struct {
 	Origin string
 	PID    int
 	Task   string
 	Term   string
+	Since  int64 // when it opened, unix ms; 0 names a heartbeat from an older zemi
+}
+
+// windowAge is how long a window has been open, in the chat's own "15m ago";
+// "" under a minute and when no start is named.
+func windowAge(ms int64) string {
+	if ms <= 0 || ago(ms) == "now" {
+		return ""
+	}
+	return ago(ms)
 }
 
 // termName names the terminal this window runs in: the program when it says
@@ -69,6 +80,7 @@ func (h *Host) OpenPeers() {
 	if h.DB == nil || h.Dirs.StateHome == "" {
 		return
 	}
+	h.boot = time.Now()
 	h.peersPath = filepath.Join(h.Dirs.StateHome, "peers",
 		filepath.Base(filepath.Dir(h.DB.Path())), h.origin+".json")
 	if err := os.MkdirAll(filepath.Dir(h.peersPath), 0o700); err != nil {
@@ -377,11 +389,12 @@ func (h *Host) beat() {
 		return
 	}
 	raw, _ := json.Marshal(struct {
-		Sock string `json:"sock,omitempty"` // where a second zemi delivers a prompt
-		Pid  int    `json:"pid,omitempty"`  // the process, for /windows kill
-		Task string `json:"task,omitempty"` // what it is on, one clipped line
-		Term string `json:"term,omitempty"` // the terminal it runs in, for /windows
-	}{Sock: h.sockPath, Pid: os.Getpid(), Task: clipLine(h.agentsTask(), 60), Term: termName()})
+		Sock  string `json:"sock,omitempty"`  // where a second zemi delivers a prompt
+		Pid   int    `json:"pid,omitempty"`   // the process, for /windows kill
+		Task  string `json:"task,omitempty"`  // what it is on, one clipped line
+		Term  string `json:"term,omitempty"`  // the terminal it runs in, for /windows
+		Since int64  `json:"since,omitempty"` // when it opened, unix ms, for the /windows age
+	}{Sock: h.sockPath, Pid: os.Getpid(), Task: clipLine(h.agentsTask(), 60), Term: termName(), Since: h.boot.UnixMilli()})
 	tmp := h.peersPath + ".tmp"
 	if os.WriteFile(tmp, raw, 0o600) != nil {
 		// the peers dir can vanish under a running window (a cleanup, a
@@ -413,19 +426,24 @@ func (h *Host) beat() {
 			continue
 		}
 		var hb struct {
-			Sock string `json:"sock"`
-			Pid  int    `json:"pid"`
-			Task string `json:"task"`
-			Term string `json:"term"`
+			Sock  string `json:"sock"`
+			Pid   int    `json:"pid"`
+			Task  string `json:"task"`
+			Term  string `json:"term"`
+			Since int64  `json:"since"`
 		}
 		if raw, err := os.ReadFile(filepath.Join(dir, name)); err == nil && json.Unmarshal(raw, &hb) == nil {
 			view.n++
 			view.rows = append(view.rows, PeerRow{
-				Origin: strings.TrimSuffix(name, ".json"), PID: hb.Pid, Task: hb.Task, Term: hb.Term,
+				Origin: strings.TrimSuffix(name, ".json"), PID: hb.Pid, Task: hb.Task, Term: hb.Term, Since: hb.Since,
 			})
 		}
 	}
 	h.peers.Store(&view)
+	// an open /windows list reads the change now, not at its next keypress
+	if ui := h.hooks(); ui != nil {
+		ui.RefreshOverlay("windows", h.windowsOverlay)
+	}
 }
 
 // peerView is the last snapshot the ticker read.
@@ -464,21 +482,31 @@ func (h *Host) OpenWindows(args string, confirm bool) error {
 	if origin, ok := strings.CutPrefix(rest, "kill "); ok {
 		return h.killWindow(strings.TrimSpace(origin), yes)
 	}
+	if rest == "close-others" {
+		return h.closeOthers(yes)
+	}
 	if rest != "" {
-		return Usagef("usage: /windows [kill <origin>]")
+		return Usagef("usage: /windows [kill <origin> | close-others]")
 	}
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
 	h.beat() // the list reads the siblings now, not at the last tick
+	ui.OpenOverlay(h.windowsOverlay())
+	return nil
+}
+
+// windowsOverlay is the /windows list. The beat refreshes it while it is
+// open, so a window that arrives or leaves shows at once.
+func (h *Host) windowsOverlay() Overlay {
 	build := h.windowItems
-	ui.OpenOverlay(Overlay{
+	return Overlay{
 		ID: "windows", Title: "Windows", Origin: lua.OriginBuiltin,
 		Items: build(), Reload: build,
+		Keys:  []OverlayKey{{Key: "X", Desc: "close others", Run: "windows close-others", Danger: true}},
 		Empty: "No other zemi windows share this chat.",
-	})
-	return nil
+	}
 }
 
 // windowItems is the /windows list: this window first, then one row per
@@ -498,6 +526,9 @@ func (h *Host) windowItems() []OverlayItem {
 	self := []string{"pid " + strconv.Itoa(os.Getpid())}
 	if term := termName(); term != "" {
 		self = append(self, term)
+	}
+	if age := windowAge(h.boot.UnixMilli()); age != "" {
+		self = append(self, age)
 	}
 	self = append(self, "this window", role)
 	pid := strconv.Itoa(os.Getpid())
@@ -521,6 +552,9 @@ func (h *Host) windowItems() []OverlayItem {
 		}
 		if p.Term != "" {
 			parts = append(parts, p.Term)
+		}
+		if age := windowAge(p.Since); age != "" {
+			parts = append(parts, age)
 		}
 		parts = append(parts, role)
 		text := cmp.Or(p.Task, "idle")
@@ -595,6 +629,74 @@ func (h *Host) openKillConfirm(p PeerRow, confirm string) error {
 			Text:   text,
 			Detail: detail,
 			Keys:   []ItemKey{{Key: "x", Desc: "kill", Danger: true, Run: "windows kill " + p.Origin}},
+		}},
+	})
+	return nil
+}
+
+// killableRows is the sibling view without the heartbeats that name no
+// process: what a kill can reach.
+func (h *Host) killableRows() []PeerRow {
+	return slices.DeleteFunc(slices.Clone(h.peerView().rows), func(p PeerRow) bool { return p.PID == 0 })
+}
+
+// closeOthers ends every sibling window at once. The ask comes first, like
+// every kill; the armed press and a typed --yes skip it.
+func (h *Host) closeOthers(yes bool) error {
+	rows := h.killableRows()
+	if len(rows) == 0 {
+		return errors.New("no other windows share this chat")
+	}
+	if !yes {
+		return AskFirst("windows close-others --yes", "", h.openCloseOthersConfirm)
+	}
+	closed := 0
+	var errs []error
+	for _, p := range rows {
+		if err := killPeer(p.PID); err != nil {
+			errs = append(errs, fmt.Errorf("pid %d: %w", p.PID, err))
+			continue
+		}
+		closed++
+	}
+	if closed == 0 {
+		return errors.Join(errs...)
+	}
+	noun := "windows"
+	if closed == 1 {
+		noun = "window"
+	}
+	body := fmt.Sprintf("closed %d %s", closed, noun)
+	if !h.writerFlag() {
+		body += "; this window writes now"
+	}
+	h.Notify(slog.LevelWarn, "Windows closed", body)
+	// the killed windows release their leases as they exit: look for it once
+	// before the ticker does
+	h.GoSafe("lease nudge", func() {
+		time.Sleep(300 * time.Millisecond)
+		h.leaseTick(false)
+	})
+	return errors.Join(errs...)
+}
+
+// openCloseOthersConfirm is the ask closing the rest opens: one row, its key
+// armed.
+func (h *Host) openCloseOthersConfirm(confirm string) error {
+	ui, err := h.Screen()
+	if err != nil {
+		return err
+	}
+	detail := fmt.Sprintf("%d windows close; their unsent drafts go with them.", len(h.killableRows()))
+	if !h.writerFlag() {
+		detail += " This window writes next."
+	}
+	ui.OpenOverlay(Overlay{
+		ID: "windows close", Title: "Close others", Origin: lua.OriginBuiltin, Confirm: confirm,
+		Items: []OverlayItem{{
+			Text:   "Close the other windows",
+			Detail: detail,
+			Keys:   []ItemKey{{Key: "x", Desc: "close", Danger: true, Run: "windows close-others"}},
 		}},
 	})
 	return nil
