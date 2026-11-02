@@ -528,7 +528,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 					a.host.GoSafe("reload", a.host.Reload) // off the UI goroutine, as the typed /reload
 				}
 			}
-		} else if w := a.host.Widgets.Get(under.Widget); w == nil || w.OnClick == nil {
+		} else if !a.clickable(under.Widget) {
 			break
 		}
 		spans, ok := at(func(s hostapi.Segment) bool { return s.Click == under.Click && s.Widget == under.Widget })
@@ -623,6 +623,16 @@ func (a *App) itemSpans(y int, same func(hostapi.Segment) bool) []cellSpan {
 	return spans
 }
 
+// clickable says whether a widget takes clicks itself: a shipped one with a Go
+// handler, or a Lua one with on_click.
+func (a *App) clickable(id string) bool {
+	if w := a.widgetByID(id); w != nil {
+		return w.onClick != nil
+	}
+	w := a.host.Widgets.Get(id)
+	return w != nil && w.OnClick != nil
+}
+
 // clickWidget runs the on_click of the widget that drew s on the background
 // worker, like a keymap. The click leaves the region it acts in off its
 // tail: the rows that widget redraws move under the reader, and a following
@@ -645,10 +655,9 @@ func (a *App) clickWidget(s hostapi.Segment, x, y int) {
 		"mods":   map[string]any{"shift": p.mod.Contains(tea.ModShift), "ctrl": p.mod.Contains(tea.ModCtrl), "alt": p.mod.Contains(tea.ModAlt)},
 	}
 	if w := a.widgetByID(s.Widget); w != nil {
-		// a shipped widget's click is Go: it runs here, like a Go pill's
-		if w.onClick != nil {
-			w.onClick(ev)
-		} else {
+		// a shipped widget's click is Go: it takes the ids it knows here, like a
+		// Go pill's, and the rest run as commands
+		if w.onClick == nil || !w.onClick(a, ev) {
 			a.runClick(ev)
 		}
 		a.Refresh()

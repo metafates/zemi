@@ -19,7 +19,7 @@ type widget struct {
 	priority float64
 	wrap     bool
 	render   func(*hostapi.ScreenState) ([][]hostapi.Segment, bool)
-	onClick  func(ev map[string]any)
+	onClick  func(a *App, ev map[string]any) bool
 }
 
 // widgetByID is the shipped widget with that id, nil for none.
@@ -89,6 +89,6 @@ func (a *App) regionWidgets(region string) []regionWidget {
 
 // shippedWidgets is the screen zemi draws: the splash, the statusline, the
 // composer's rule and the chat, one per region.
-func shippedWidgets() []*widget {
-	return append([]*widget{splashWidget(), workingWidget()}, statuslineWidgets()...)
+func shippedWidgets(host *hostapi.Host) []*widget {
+	return append([]*widget{chatWidget(host), splashWidget(), workingWidget()}, statuslineWidgets()...)
 }

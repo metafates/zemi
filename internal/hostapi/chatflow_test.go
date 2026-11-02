@@ -627,7 +627,7 @@ func (m slowThought) Stream(ctx context.Context, call fantasy.Call) (fantasy.Str
 }
 
 // TestResumedWindowKeepsTheTurn: the turn's readout and thought ride the
-// log's reply row, so the window a restart rebuilds from the log draws both,
+// log's reply row, so the window a restart rebuilds from the log keeps both,
 // as the live one did.
 func TestResumedWindowKeepsTheTurn(t *testing.T) {
 	clock := &fakeClock{now: testEpoch}
@@ -678,12 +678,6 @@ func TestResumedWindowKeepsTheTurn(t *testing.T) {
 	if thought.Kind != RowReasoning || thought.Text != "thinking it over." ||
 		thought.Stat == nil || thought.Stat.ThoughtMS != 3000 || thought.Seq == 0 {
 		t.Fatalf("the rebuilt thought row is not the one the turn drew: %+v", thought)
-	}
-	got := widgetText(t, h, "chat", 80, UIState{})
-	for _, want := range []string{"thought 3.0s", "acme-gateway/big", "895 out"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("the resumed window lost %q:\n%s", want, got)
-		}
 	}
 }
 
@@ -745,11 +739,11 @@ func TestResumedWindowNamesADeadTail(t *testing.T) {
 	}
 }
 
-// TestResumedWindowDrawsTheZoomAndDatePreviews: a zoom row's preview is the
-// opened line's text, its child address and the second child behind the
-// click; a date row reads the compact local stamp, and a failed zoom's
-// error draws once.
-func TestResumedWindowDrawsTheZoomAndDatePreviews(t *testing.T) {
+// TestResumedZoomAndDateRowsKeepTheirHeads: a zoom row's summary is the line
+// it named, in the id+n shape the chat reads, and its result keeps the opened
+// child for the row to preview; a date row's summary is its id and its result
+// the compact local stamp, not the provider's RFC3339Nano one.
+func TestResumedZoomAndDateRowsKeepTheirHeads(t *testing.T) {
 	h := newTestHostUI(t, &fakeClock{now: testEpoch})
 	h.SetUIHooks(&fakeUI{})
 	seed := func(tool, input, output string, ok bool) {
@@ -768,41 +762,31 @@ func TestResumedWindowDrawsTheZoomAndDatePreviews(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.SetTranscript(logRows(rows))
-	lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("chat"), 80, 40, UIState{Rail: 1})
-	if err != nil {
-		t.Fatal(err)
+	tr := h.Session().Transcript
+	if len(tr) != 3 {
+		t.Fatalf("the rebuilt window holds %d rows, want the three calls: %+v", len(tr), tr)
 	}
-	var b strings.Builder
-	for _, l := range lines {
-		b.WriteString(SegsText(l))
-		b.WriteString("\n")
+	if tr[0].Text != "16032+8" || tr[1].Text != "16033" || tr[2].Text != "9+8" {
+		t.Fatalf("the rows' summaries are %q, %q, %q, want the id+n shapes", tr[0].Text, tr[1].Text, tr[2].Text)
 	}
-	got := b.String()
-	if !strings.Contains(got, "zoom 16032+8") || strings.Contains(got, `{"id"`) ||
-		!strings.Contains(got, "date 16033") {
-		t.Fatalf("the rows' heads are not the id+n summaries:\n%s", got)
-	}
-	if !strings.Contains(got, "Rate-limit fixed: real quotas (big 50000)") ||
-		strings.Contains(got, "16032+4|") || strings.Contains(got, "second child line") {
-		t.Fatalf("the zoom preview is not the first child's text alone:\n%s", got)
+	if want := "16032+4|Rate-limit fixed: real quotas (big 50000)\n16034+2|second child line"; tr[0].Output != want {
+		t.Fatalf("the zoom row keeps %q, want the opened child", tr[0].Output)
 	}
 	at, err := time.Parse(time.RFC3339Nano, "2026-10-29T11:03:12.487654321Z")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got, at.Local().Format(previewStamp)) || strings.Contains(got, "T11:03") {
-		t.Fatalf("the date preview is not the compact local stamp:\n%s", got)
+	if want := at.Local().Format(previewStamp); tr[1].Output != want {
+		t.Fatalf("the date row reads %q, want the compact local %q", tr[1].Output, want)
 	}
-	// the refusal draws twice with the rail open, the digest's summary and
-	// the failed row's own output; folded, the digest is the only trace
-	if n := strings.Count(got, "no line 9+8 in a chat of 10 messages"); n != 2 {
-		t.Fatalf("the failed zoom's error drew %d times:\n%s", n, got)
+	if tr[2].Status != CallErr || tr[2].Output != "no line 9+8 in a chat of 10 messages" {
+		t.Fatalf("the failed zoom row = %+v", tr[2])
 	}
 }
 
 // TestResumedWindowKeepsTheFailuresAndCommands: a failed turn's error row and
-// a shell command row land in the log, so the window a restart rebuilds from the
-// log draws them as the live one did.
+// a shell command row land in the log, so the window a restart rebuilds from
+// the log keeps them as the live one did.
 func TestResumedWindowKeepsTheFailuresAndCommands(t *testing.T) {
 	t.Parallel()
 	h := newTestHostUI(t)
@@ -855,10 +839,6 @@ func TestResumedWindowKeepsTheFailuresAndCommands(t *testing.T) {
 	}
 	if gotShell == nil || gotShell.Text != liveShell.Text || gotShell.Detail != liveShell.Detail || gotShell.Status != liveShell.Status {
 		t.Fatalf("the rebuilt shell row is not the one the command drew: %+v want %+v", gotShell, liveShell)
-	}
-	got := widgetText(t, h, "chat", 80, UIState{})
-	if !strings.Contains(got, firstLine(liveErr.Text)) || !strings.Contains(got, liveShell.Text) {
-		t.Fatalf("the resumed window lost the failure or the command:\n%s", got)
 	}
 }
 

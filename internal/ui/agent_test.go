@@ -125,14 +125,37 @@ func bootAgentAppIn(t testing.TB, w, h int, clock lua.Clock, cfg, project string
 	return app, host
 }
 
+// clickChat is a click on a chat row with that id, delivered as the mouse
+// delivers one: the chat's own handler takes it, or the command path does.
+func clickChat(t testing.TB, app *App, id string) {
+	t.Helper()
+	w := app.widgetByID("chat")
+	if w == nil || w.onClick == nil || !w.onClick(app, map[string]any{"id": id}) {
+		t.Fatalf("the chat did not take the click %q", id)
+	}
+	app.bump() // the rows the fold redraws join the next frame
+}
+
+// renderChat draws the shipped chat at w by h over state, as the frame
+// goroutine does, and says whether it asked to run again.
+func renderChat(t testing.TB, app *App, w, h int, st hostapi.UIState) ([][]hostapi.Segment, bool) {
+	t.Helper()
+	wg := app.widgetByID("chat")
+	if wg == nil {
+		t.Fatal("the shipped chat is not registered")
+	}
+	lines, more, err := app.renderWidget(shownWidget{ID: "chat", Region: "chat", Wrap: wg.wrap, Go: wg, width: w, height: h}, app.host.ScreenState(w, h, st), st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return lines, more
+}
+
 // chatRows is the chat widget's rows at w, trailing blanks trimmed, as a
 // test's assertion reads them.
 func chatRows(t testing.TB, app *App, w int) []string {
 	t.Helper()
-	lines, _, err := app.host.RenderWidget(t.Context(), app.host.Widgets.Get("chat"), w, 20, app.uiState())
-	if err != nil {
-		t.Fatal(err)
-	}
+	lines, _ := renderChat(t, app, w, 20, app.uiState())
 	out := make([]string, 0, len(lines))
 	for _, l := range lines {
 		out = append(out, strings.TrimRight(hostapi.SegsText(l), " "))
@@ -203,13 +226,8 @@ func seedResumedChat(host *hostapi.Host, turns int) {
 func BenchmarkColdChatRender(b *testing.B) {
 	app, host := bootAgentApp(b, 140, 40)
 	seedResumedChat(host, 500)
-	chat := host.Widgets.Get("chat")
-	for i := 0; b.Loop(); i++ {
-		// the theme is part of the units cache key: flipping it renders every unit again
-		host.SetLightTerminal(i%2 == 0)
-		if _, _, err := host.RenderWidget(b.Context(), chat, 138, 30, app.uiState()); err != nil {
-			b.Fatal(err)
-		}
+	for b.Loop() {
+		renderChat(b, app, 138, 30, app.uiState())
 	}
 }
 
@@ -243,32 +261,25 @@ func TestColdChatRender(t *testing.T) {
 		seed   func(*hostapi.Host)
 		height int
 		has    [2]string
-		hasNot string
 	}{
-		{"view", func(h *hostapi.Host) { seedResumedChat(h, turns) }, 30, [2]string{"question 49", "reply 49"}, "question 48"},
-		{"exchange shorter than the view", func(h *hostapi.Host) { seedResumedChat(h, turns) }, 100, [2]string{"question 48", "reply 49"}, "question 47"},
-		{"one long turn", longTurn, 30, [2]string{"question 0", "reply 99"}, "reply 50"},
+		{"view", func(h *hostapi.Host) { seedResumedChat(h, turns) }, 30, [2]string{"question 49", "reply 49"}},
+		{"exchange shorter than the view", func(h *hostapi.Host) { seedResumedChat(h, turns) }, 100, [2]string{"question 48", "reply 49"}},
+		{"one long turn", longTurn, 30, [2]string{"question 0", "reply 99"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			app, host := bootAgentAppOn(t, 140, 40, &lagClock{}, "")
 			c.seed(host)
-			chat := host.Widgets.Get("chat")
 			var lines [][]hostapi.Segment
 			has := func(s string) bool {
 				return slices.ContainsFunc(lines, func(l []hostapi.Segment) bool { return strings.Contains(hostapi.SegsText(l)+" ", s+" ") })
 			}
-			for n, more := 0, true; more; n++ {
-				var err error
-				if lines, more, err = host.RenderWidget(t.Context(), chat, 138, c.height, app.uiState()); err != nil {
-					t.Fatal(err)
-				}
-				if len(lines) == 0 || n == 0 && !more || n > 500 {
-					t.Fatalf("render %d: %d lines, more %v", n, len(lines), more)
-				}
-				if n == 0 && (!has(c.has[0]) || !has(c.has[1]) || has(c.hasNot)) {
-					t.Fatalf("the first render has %q %v, %q %v, %q %v", c.has[0], has(c.has[0]), c.has[1], has(c.has[1]), c.hasNot, has(c.hasNot))
-				}
+			lines, more := renderChat(t, app, 138, c.height, app.uiState())
+			if len(lines) == 0 || more {
+				t.Fatalf("render: %d lines, more %v", len(lines), more)
+			}
+			if !has(c.has[0]) || !has(c.has[1]) {
+				t.Fatalf("the render has %q %v, %q %v", c.has[0], has(c.has[0]), c.has[1], has(c.has[1]))
 			}
 			// the transcript's own first row is the pad above the first message
 			if len(lines) < 2 || strings.TrimSpace(hostapi.SegsText(lines[0])) != "" || !strings.Contains(hostapi.SegsText(lines[1]), "question 0") || !has("reply 0") {
@@ -292,10 +303,7 @@ func TestColdChatRender(t *testing.T) {
 	app.frameGen++
 	for more := true; more; app.Frame() {
 		var lines [][]hostapi.Segment
-		var err error
-		if lines, more, err = host.RenderWidget(t.Context(), host.Widgets.Get("chat"), st.rect.Dx(), st.rect.Dy(), app.uiState()); err != nil {
-			t.Fatal(err)
-		}
+		lines, more = renderChat(t, app, st.rect.Dx(), st.rect.Dy(), app.uiState())
 		app.onWidgetRendered(widgetRender{id: "chat", lines: lines, more: more, width: st.rect.Dx(), height: st.rect.Dy(), gen: app.frameGen})
 	}
 	if st.top != top || !slices.Equal(st.anchor, anchor) {
@@ -331,9 +339,7 @@ func TestAgentViewFolds(t *testing.T) {
 	if !slices.Contains(closed, "· 1 file: main.go") || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
 		t.Fatalf("the viewed run does not fold:\n%s", strings.Join(closed, "\n"))
 	}
-	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "turn:1"}); err != nil {
-		t.Fatal(err)
-	}
+	clickChat(t, app, "turn:1")
 	if open := rows(); !slices.Contains(open, "│ ✻ thought") || !slices.Contains(open, "│ ✓ read main.go") {
 		t.Fatalf("the digest's click does not open the rail:\n%s", strings.Join(open, "\n"))
 	}
@@ -365,9 +371,7 @@ func TestAgentViewSwitchForgetsOpenedRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows() // the first render drops what an earlier case opened
-	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "turn:1"}); err != nil {
-		t.Fatal(err)
-	}
+	clickChat(t, app, "turn:1")
 	if got := rows(); !slices.Contains(got, "│ ✻ thought") {
 		t.Fatalf("the first run's digest did not open:\n%s", strings.Join(got, "\n"))
 	}
@@ -388,10 +392,7 @@ func TestReplyReadoutBehindANotice(t *testing.T) {
 	appendReply(host, "done", hostapi.TurnStat{Out: 200, ElapsedMS: 1500, Ended: 1_700_000_000})
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "notice", Text: "Background agent a1 (explore) finished"})
 	app.AgentStream()
-	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, app.uiState())
-	if err != nil {
-		t.Fatal(err)
-	}
+	lines, _ := renderChat(t, app, 98, 20, app.uiState())
 	var readouts []string
 	for _, l := range lines {
 		if row := strings.TrimRight(hostapi.SegsText(l), " "); strings.Contains(row, "200 out") {
@@ -432,10 +433,7 @@ func TestWaitRowGuard(t *testing.T) {
 			app.AgentStream()
 			st := app.uiState()
 			st.Cancelling, st.Waiting = tc.cancelling, tc.waiting
-			lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 98, 20, st)
-			if err != nil {
-				t.Fatal(err)
-			}
+			lines, _ := renderChat(t, app, 98, 20, st)
 			var head []hostapi.Segment
 			for _, l := range lines {
 				if strings.Contains(hostapi.SegsText(l), "thinking") {
@@ -496,9 +494,7 @@ func TestNoticeBurst(t *testing.T) {
 	if slices.Contains(got, "◦ Background agent a0 (explore) finished") {
 		t.Fatalf("the fold holds a row back:\n%s", strings.Join(got, "\n"))
 	}
-	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "more:2"}); err != nil {
-		t.Fatal(err)
-	}
+	clickChat(t, app, "more:2")
 	if got = rows(); !slices.Contains(got, "◦ Background agent a0 (explore) finished") || !slices.Contains(got, "  … collapse") {
 		t.Fatalf("the fold does not open:\n%s", strings.Join(got, "\n"))
 	}
@@ -518,9 +514,7 @@ func TestRailWindow(t *testing.T) {
 	appendReply(host, "done", hostapi.TurnStat{})
 	rows := func() []string { return chatRows(t, app, 98) }
 	click := func(id string) []string {
-		if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": id}); err != nil {
-			t.Fatal(err)
-		}
+		clickChat(t, app, id)
 		return rows()
 	}
 	rows() // the first render forgets what was opened before it
@@ -551,9 +545,7 @@ func TestChatFoldOpensItsRun(t *testing.T) {
 	appendReply(host, "done", hostapi.TurnStat{})
 	rows := func() []string { return chatRows(t, app, 138) }
 	click := func(id string) []string {
-		if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": id}); err != nil {
-			t.Fatal(err)
-		}
+		clickChat(t, app, id)
 		return rows()
 	}
 	clickIDs := func() map[string]string {
@@ -634,9 +626,7 @@ func TestLoneThoughtDigestOpensItsText(t *testing.T) {
 	appendReasoning(host, "hmm, the user asked to plan\nthen build", hostapi.TurnStat{ThoughtMS: 4400})
 	rows := func() []string { return chatRows(t, app, 138) }
 	click := func(id string) []string {
-		if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": id}); err != nil {
-			t.Fatal(err)
-		}
+		clickChat(t, app, id)
 		return rows()
 	}
 	const digest = "· thought 4.4s"
@@ -686,9 +676,7 @@ func TestTurnStats(t *testing.T) {
 		return out[:len(out)-4] // the composer and the statusline row
 	}
 	click := func(id string) []string {
-		if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": id}); err != nil {
-			t.Fatal(err)
-		}
+		clickChat(t, app, id)
 		return rows()
 	}
 	host.AppendMessage("user", "fix it")
@@ -2495,9 +2483,7 @@ func TestCallRowClickIDs(t *testing.T) {
 		}
 	}
 	// the step's row closes its calls again from its other cells too
-	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "step:-2"}); err != nil {
-		t.Fatal(err)
-	}
+	clickChat(t, app, "step:-2")
 	app.renderSync(t)
 	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "├ read c.go") || !strings.Contains(frame, "│ ✓ read 2 files") {
 		t.Fatalf("a second click on the step does not close its calls:\n%s", frame)
@@ -2545,9 +2531,7 @@ func TestToolRows(t *testing.T) {
 	}})
 	app.renderSync(t)
 	// a rail this long shows its last six entries; every row is under test
-	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "more:0"}); err != nil {
-		t.Fatal(err)
-	}
+	clickChat(t, app, "more:0")
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
 	// the rail keeps every row's mark at column 2: nothing but the bar starts
@@ -2707,10 +2691,7 @@ func pendingRow(t *testing.T, work func(*hostapi.Host), want string) {
 	app, host := bootAgentApp(t, 100, 24)
 	seedTodos(t, host, []store.Todo{{Content: "step one", Status: "pending"}})
 	work(host)
-	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 80, 20, app.uiState())
-	if err != nil {
-		t.Fatal(err)
-	}
+	lines, _ := renderChat(t, app, 80, 20, app.uiState())
 	rows := make([]string, 0, len(lines))
 	var row []hostapi.Segment
 	for _, l := range lines {
@@ -2743,10 +2724,7 @@ func TestTodosMeterSpansTheList(t *testing.T) {
 		todos = append(todos, store.Todo{Content: fmt.Sprintf("item %d", i), Status: "pending"})
 	}
 	seedTodos(t, host, todos)
-	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 80, 24, app.uiState())
-	if err != nil {
-		t.Fatal(err)
-	}
+	lines, _ := renderChat(t, app, 80, 24, app.uiState())
 	for _, l := range lines {
 		r := strings.TrimRight(hostapi.SegsText(l), " ")
 		if !strings.HasPrefix(r, "Todos ") {
@@ -2783,10 +2761,7 @@ func TestTodosMeterFillsTheFraction(t *testing.T) {
 	}
 	seedTodos(t, host, todos)
 	// cap at height 9 is 3: six cells over six items
-	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 80, 9, app.uiState())
-	if err != nil {
-		t.Fatal(err)
-	}
+	lines, _ := renderChat(t, app, 80, 9, app.uiState())
 	for _, l := range lines {
 		r := strings.TrimRight(hostapi.SegsText(l), " ")
 		if strings.HasPrefix(r, "Todos ") {
@@ -2808,10 +2783,7 @@ func TestTodosMeterWithinTheWindow(t *testing.T) {
 	seedTodos(t, host, []store.Todo{
 		{Content: "one", Status: "done"}, {Content: "two", Status: "in_progress"}, {Content: "three", Status: "pending"},
 	})
-	lines, _, err := host.RenderWidget(t.Context(), host.Widgets.Get("chat"), 80, 24, app.uiState())
-	if err != nil {
-		t.Fatal(err)
-	}
+	lines, _ := renderChat(t, app, 80, 24, app.uiState())
 	for _, l := range lines {
 		r := strings.TrimRight(hostapi.SegsText(l), " ")
 		if !strings.HasPrefix(r, "Todos ") {

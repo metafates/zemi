@@ -23,7 +23,7 @@ func statuslineWidgets() []*widget {
 		{
 			id: "statusline.scroll", region: "statusline.left", priority: 100, render: statusScroll,
 			// its id is the scroll target, not a command's name
-			onClick: func(map[string]any) {},
+			onClick: func(*App, map[string]any) bool { return true },
 		},
 		{id: "statusline.quit", region: "statusline.left", priority: 110, render: statusQuit},
 

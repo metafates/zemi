@@ -5,9 +5,7 @@ package hostapi
 // shift while the epoch holds and no flush wipes the chat's cache.
 
 import (
-	"context"
 	"fmt"
-	"strings"
 	"testing"
 
 	"charm.land/fantasy"
@@ -44,10 +42,6 @@ func TestHeadCut(t *testing.T) {
 	}
 }
 
-// TestLiveAppendTrims: a row appended mid-turn (the plan ask's row, through
-// appendAfterLive) trims at the same bound the settled appends do and
-// advances the cut with it, so the window never holds past chatWindowRows
-// and the chat's rebased keys keep reading the rows they name.
 // TestDropHeldRowAfterTheTrimShedsIt: the held row's slot is its landing
 // index minus the head cut. Once the trim sheds the row itself, no index is
 // the hold's to remove - a re-sent same-text message at the stale slot
@@ -117,66 +111,9 @@ func TestDropHeldRowAfterTheTrimShedsIt(t *testing.T) {
 	t.Fatal("the resent message died to the held prompt's stale base")
 }
 
-// TestLiveAppendTrimKeepsTheChat: the plan row's appendAfterLive trims
-// mid-stream, while the live stretch is open - the interleaving the settled
-// trim pin does not cover. The render walks the window top-down, so the top
-// row names the transcript head: after the trim the cached units must name
-// the rows the shifted keys now index, not the rows they indexed before.
-func TestLiveAppendTrimKeepsTheChat(t *testing.T) {
-	h, _ := newWindow(t, t.TempDir(), t.TempDir())
-	for i := range 600 {
-		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: fmt.Sprintf("question %d", i)})
-		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: fmt.Sprintf("reply %d", i)})
-	}
-	chat := h.Widgets.Get("chat")
-	if chat == nil {
-		t.Fatal("no chat widget after boot")
-	}
-	render := func() []string {
-		t.Helper()
-		lines, more, err := h.RenderWidget(context.Background(), chat, 138, 40, UIState{Time: "12:00", Frame: 1})
-		if err != nil {
-			t.Fatal(err)
-		}
-		for more {
-			if lines, more, err = h.RenderWidget(context.Background(), chat, 138, 40, UIState{Time: "12:00", Frame: 1}); err != nil {
-				t.Fatal(err)
-			}
-		}
-		var out []string
-		for _, row := range lines {
-			if s := strings.TrimSpace(SegsText(row)); s != "" {
-				out = append(out, s)
-			}
-		}
-		return out
-	}
-	first := func(rows []string) string {
-		for _, s := range rows {
-			return s
-		}
-		return ""
-	}
-	before := first(render())
-	tr := h.Session().Transcript
-	if want := tr[0].Text; before != want && !strings.Contains(before, want) {
-		t.Fatalf("the top row drew %q, want the transcript head %q", before, want)
-	}
-	// the live stretch is open while the plan ask's row lands
-	ag := h.agents
-	ag.mu.Lock()
-	ag.textBuf = "streaming reply text"
-	ag.mu.Unlock()
-	h.appendAfterLive(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: "the plan row"})
-	after := first(render())
-	tr = h.Session().Transcript
-	if want := tr[0].Text; after != want && !strings.Contains(after, want) {
-		t.Fatalf("after the mid-stream trim the top row drew %q, want the new head %q", after, want)
-	}
-}
-
-// TestLiveAppendTrims: the live append past the bound trims through the same
-// helper as the settled path - the window holds the bound and the cut moves.
+// TestLiveAppendTrims: a row appended mid-turn (the plan ask's row, through
+// appendAfterLive) trims through the same helper as the settled path - the
+// window holds the bound and the cut moves with it.
 func TestLiveAppendTrims(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHost(t)

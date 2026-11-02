@@ -3,7 +3,5 @@
 -- require("zemi.tui"); every registration here is replaceable by user
 -- config (origin precedence: user > builtin > plugin > project).
 
-require("zemi.tui.chat")
-
 ---@class zemi.tui
 return {}

@@ -448,9 +448,8 @@ func TestMessagesLiveCalls(t *testing.T) {
 		t.Fatalf("live-only rail = %+v ok=%v", ro.Items, ok)
 	}
 
-	// the chat draws the run the picker's rail opens whole: the negative
-	// anchor reaches the ctx, and with more live calls than a rail keeps
-	// none stands behind an earlier row - the walk bands a row per call
+	// the negative anchor reaches the ctx, so the chat draws the live-only run
+	// whole; that drawing is the chat's, pinned in internal/ui
 	calls := []StreamTool{
 		{ID: "c3", Name: "job_read", Input: "job-1", Label: "step 3", Status: CallRun},
 		{ID: "c4", Name: "edit", Input: "f1.go", Label: "step 4", Status: CallOK},
@@ -470,18 +469,6 @@ func TestMessagesLiveCalls(t *testing.T) {
 		t.Fatal(err)
 	} else if got := SegsText(lines[0]); got != "-1" {
 		t.Fatalf("the picker's rail reads %q in the ctx, want -1", got)
-	}
-	full := widgetText(t, h, "chat", 98, UIState{Rail: ro.Rail})
-	if strings.Contains(full, "earlier") {
-		t.Error("the live-only run drew folded behind an earlier row")
-	}
-	for i := 3; i <= 10; i++ {
-		if !strings.Contains(full, "step "+strconv.Itoa(i)) {
-			t.Errorf("step %d drew no row", i)
-		}
-	}
-	if open := widgetText(t, h, "chat", 98, UIState{}); !strings.Contains(open, "earlier") {
-		t.Error("the live rail kept every call with no rail open")
 	}
 
 	// the turn idle, the calls settle into the transcript and turn 2 folds

@@ -34,6 +34,14 @@ var ruleState = struct {
 	after int
 }{}
 
+// setRowsAfterPending is the chat's report of the rows it drew below its
+// pending row: the rule carries that row only once it left the view.
+func setRowsAfterPending(n int) {
+	ruleState.Lock()
+	ruleState.after = n
+	ruleState.Unlock()
+}
+
 // workingWidget is the rule above the composer.
 func workingWidget() *widget {
 	return &widget{id: "working", region: "working", priority: 10, render: workingRule}

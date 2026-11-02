@@ -402,9 +402,7 @@ func TestChatScrollAnchorsThroughRelayout(t *testing.T) {
 		t.Fatalf("resize moved the view from %q to %q", want, got)
 	}
 
-	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "turn:2"}); err != nil {
-		t.Fatal(err)
-	}
+	clickChat(t, app, "turn:2")
 	app.renderSync(t)
 	if got := visible(app.Frame()); got != want {
 		t.Fatalf("unfolding a digest moved the view from %q to %q", want, got)
@@ -868,9 +866,7 @@ func TestChatStickyDigest(t *testing.T) {
 	}
 	app.renderSync(t)                                 // the first render forgets what was opened before it
 	for _, id := range []string{"turn:2", "more:2"} { // the run open, and whole
-		if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": id}); err != nil {
-			t.Fatal(err)
-		}
+		clickChat(t, app, id)
 	}
 	for _, c := range []struct {
 		at   string
@@ -893,9 +889,7 @@ func TestChatStickyDigest(t *testing.T) {
 		t.Fatalf("the click on the digest's pin left top %d with %q under the prompt", st.top, hostapi.SegsText(row))
 	}
 
-	if err := host.ClickWidget(t.Context(), "chat", map[string]any{"id": "turn:2"}); err != nil {
-		t.Fatal(err)
-	}
+	clickChat(t, app, "turn:2")
 	if got := pins("answer 2"); !slices.EqualFunc(got, []string{prompt}, strings.HasPrefix) {
 		t.Fatalf("with the run folded the pins read %q", got)
 	}

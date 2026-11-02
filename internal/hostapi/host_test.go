@@ -1064,29 +1064,6 @@ func TestOverlayCallbackErrorsRecorded(t *testing.T) {
 	}
 }
 
-// TestChatCountsTheRowsBelowItsPendingRow: the chat draws its pending row
-// above the todo list and says how many rows sit below it, so the rule carries
-// the row only once that block scrolled out of view too.
-func TestChatCountsTheRowsBelowItsPendingRow(t *testing.T) {
-	t.Parallel()
-	h := newTestHostUI(t)
-	h.AppendMessage("user", "hi")
-	defer h.Busy("Answering the side question", func() {})()
-	render := func() {
-		t.Helper()
-		if _, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("chat"), 80, 40, UIState{}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	render()
-	runUser(t, h.RT, `assert(require("zemi.tui.text").rows_after_pending == 0, "without todos the pending row is the last")`)
-	h.todoMu.Lock()
-	h.todoSID, h.todos = h.AgentSessionID(), []store.Todo{{Content: "a thing", Status: "pending"}}
-	h.todoMu.Unlock()
-	render()
-	runUser(t, h.RT, `assert(require("zemi.tui.text").rows_after_pending > 0, "the todo block sits below the pending row")`)
-}
-
 // TestProjectEmojiPool: every marker emoji holds the pool's criteria - one
 // codepoint with no joiner, selector, modifier, regional indicator, keycap or
 // combining mark; emoji presentation, curated from Unicode's emoji-variants

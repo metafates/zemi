@@ -280,7 +280,7 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 		fadeKeys: map[float64]string{},
 		scrolls:  map[string]*scrollState{},
 		lastSel:  map[string]string{},
-		widgets:  shippedWidgets(),
+		widgets:  shippedWidgets(host),
 		timeStr:  "--:--",
 		now:      time.Now,
 		focused:  true,
@@ -929,9 +929,12 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 	// the chat drew the run a closing list had open: the list can go now, and
 	// the frame that shows it gone shows the run folded. The chat is the
 	// widget in the default scroll's region; the node's id is the layout's.
+	if id := a.railClose; id != "" {
+		println("RAILCLOSE pending", id, "gen", msg.gen, "want", a.railGen, "widget", msg.id)
+	}
 	if id := a.railClose; id != "" && msg.gen >= a.railGen {
 		if st := a.scrolls[a.scrollDef]; st != nil {
-			if w := a.host.Widgets.Get(msg.id); w != nil && w.Region == st.region {
+			if region, ok := a.widgetRegion(msg.id); ok && region == st.region {
 				a.railClose = ""
 				a.closeOverlays(id)
 			}
@@ -978,6 +981,17 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 	}
 	a.caches[msg.id] = c
 	a.frameDirty = true // the new lines join the next View though the generation stood still
+}
+
+// widgetRegion is the region a widget draws in, shipped or Lua.
+func (a *App) widgetRegion(id string) (string, bool) {
+	if w := a.widgetByID(id); w != nil {
+		return w.region, true
+	}
+	if w := a.host.Widgets.Get(id); w != nil {
+		return w.Region, true
+	}
+	return "", false
 }
 
 // renderStaleWidgetsCmd renders, as ui-class requests, the widgets rendered
@@ -1484,9 +1498,9 @@ func (a *App) scrolledUp(widget string) bool {
 // the rows a click has it redraw (a digest opening over its rail, a thought
 // unrolling) grow under the reader's place instead of scrolling it away.
 func (a *App) leaveTail(widget string) {
-	if w := a.host.Widgets.Get(widget); w != nil {
+	if region, ok := a.widgetRegion(widget); ok {
 		for _, st := range a.scrolls {
-			if st.region == w.Region {
+			if st.region == region {
 				st.follow, st.focus = false, 0
 			}
 		}
