@@ -147,20 +147,20 @@ func workingRule(e *eyes, st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 		ticks = []workingPart{{line: plain(clock(ag.Elapsed)), worth: 5}}
 		if ag.Retry != nil {
 			state = "error"
-			why := ""
-			if ag.Retry.Why != "" {
-				why = " · " + clipText(ag.Retry.Why, 60)
-			}
 			// the reason and countdown outlast the key hint and the clock: a
 			// narrow rule keeps the state the eyes alone cannot name
 			next := "retrying now"
 			if ag.Retry.NextIn > 0 {
 				next = "next try in " + duration(ag.Retry.NextIn.Seconds(), true)
 			}
-			ticks = []workingPart{
-				{line: plain(next + why), worth: 7},
-				{line: plain("elapsed " + clock(ag.Elapsed)), worth: 5},
+			// the cause is clipped to the cells the countdown leaves, so a long
+			// reason narrows instead of starving the whole rule of any state
+			keep := max(st.Width-3-3-segsCells(plain(next))-8, 10)
+			ticks = []workingPart{{line: plain(next), worth: 6}}
+			if why := clipText(ag.Retry.Why, keep); why != "" {
+				ticks = append(ticks, workingPart{line: plain(why), worth: 7})
 			}
+			ticks = append(ticks, workingPart{line: plain("elapsed " + clock(ag.Elapsed)), worth: 5})
 		}
 		if st.Editing != "" {
 			state, ticks = "idle", nil
