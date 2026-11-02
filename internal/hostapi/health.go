@@ -382,20 +382,6 @@ func (h *Host) goHealthRows() []HealthRow {
 		add(HealthOK, "lua", "runtime healthy")
 	}
 
-	// a widget in a region no node draws is the first thing a relayout breaks
-	drawn := DefaultLayout.regions()
-	var undrawn []string
-	for _, w := range h.Widgets.List() {
-		if !drawn.Has(w.Region) {
-			undrawn = append(undrawn, w.ID+" ("+w.Region+")")
-		}
-	}
-	if len(undrawn) > 0 {
-		add(HealthWarn, "layout", "the layout draws no region for: "+strings.Join(undrawn, ", "))
-	} else {
-		add(HealthOK, "layout", "every widget's region is drawn")
-	}
-
 	var loads []pluginLoad
 	if p := h.pluginLoads.Load(); p != nil {
 		loads = *p

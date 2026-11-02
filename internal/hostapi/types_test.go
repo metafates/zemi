@@ -2,7 +2,6 @@ package hostapi
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"maps"
 	"os"
@@ -12,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
 	"github.com/yuin/gopher-lua/parse"
 
@@ -59,7 +57,7 @@ func TestTypesCoverAPI(t *testing.T) {
 	for ns, members := range bootedNamespaces(t, true) {
 		for _, member := range members {
 			path := ns + "." + member
-			// zemi.ui.widget.add covers the widget sub-table
+			// zemi.ui.overlay.open covers the overlay sub-table
 			if !declared[path] && !declared[trimLast(path)] {
 				t.Errorf("runtime/types/zemi.lua does not annotate %s", path)
 			}
@@ -75,7 +73,7 @@ func TestTypesDeclareNothingExtra(t *testing.T) {
 		live[ns] = true
 		for _, member := range members {
 			live[ns+"."+member] = true
-			live[ns+"."+trimLast(member)] = true // zemi.ui.widget, from widget.add
+			live[ns+"."+trimLast(member)] = true // zemi.ui.overlay, from overlay.open
 		}
 	}
 	for _, m := range reAnnotatedFn.FindAllStringSubmatch(typesSource(t), -1) {
@@ -259,8 +257,8 @@ func bootedNamespaces(t *testing.T, other bool) map[string][]string {
 	return out
 }
 
-// trimLast drops the last dotted segment ("zemi.ui.widget.add" ->
-// "zemi.ui.widget").
+// trimLast drops the last dotted segment ("zemi.ui.overlay.open" ->
+// "zemi.ui.overlay").
 func trimLast(path string) string {
 	if i := strings.LastIndex(path, "."); i > 0 {
 		return path[:i]
@@ -292,17 +290,13 @@ func TestTypesEnums(t *testing.T) {
 		{"zemi.TodoStatus", "", strs(store.TodoStatuses)},
 		{"zemi.ToolVerdict", "", strs(tools.PreVerdicts)},
 		{"zemi.SkillSource", "", strs(skill.Sources)},
-		{"zemi.Role", "", strs([]fantasy.MessageRole{fantasy.MessageRoleUser, fantasy.MessageRoleAssistant})},
 		{"zemi.HealthLevel", "", strs(healthLevels)},
 		{"zemi.NArgs", "", strs(nargsSpecs)},
 		{"zemi.ScrollAction", "", strs(scrollActions)},
 		{"zemi.OverlayAnchor", "", strs(overlayAnchors)},
-		{"zemi.RowKind", "", strs(rowKinds)},
-		{"zemi.CallStatus", "", strs(callStatuses)},
 		{"zemi.MarkKind", "", strs(slices.Collect(maps.Keys(Marks)))},
 		{"zemi.TurnEnd", "", strs(turnEnds)},
 		{"zemi.Waiting", "", strs(waitings)},
-		{"zemi.RunStatus", "", strs(runStatuses)},
 		{"zemi.SettingKind", "", strs(config.Kinds)},
 	} {
 		if c.alias != "" {
@@ -340,33 +334,6 @@ func TestTypesHostActions(t *testing.T) {
 		}
 	}
 	assertSameNames(t, "zemi.HostAction", annotatedAlias(t, "zemi.HostAction"), live)
-}
-
-// TestTypesWidgetCtx: every key a render's ctx holds is annotated, and every
-// annotated field that is not optional reads non-nil (the lazy ones too).
-func TestTypesWidgetCtx(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	var fields strings.Builder
-	for _, m := range regexp.MustCompile(`(?m)^---@field ([a-z_]+)(\??) `).FindAllStringSubmatch(annotatedClass(t, "zemi.WidgetCtx"), -1) {
-		fmt.Fprintf(&fields, "%s = %t, ", m[1], m[2] == "?")
-	}
-	runUser(t, r, `
-		local fields = { `+fields.String()+` }
-		zemi.ui.widget.add({ id = "types", region = "header", render = function(ctx)
-			local raw = {}
-			for k in pairs(ctx) do raw[#raw + 1] = k end
-			for _, k in ipairs(raw) do
-				assert(fields[k] ~= nil, "zemi.WidgetCtx does not annotate ctx." .. k)
-			end
-			for k, optional in pairs(fields) do
-				assert(optional or ctx[k] ~= nil, "zemi.WidgetCtx annotates ctx." .. k .. ", which ctx does not set")
-			end
-			return {}
-		end })`)
-	if _, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("types"), 40, 10, UIState{}); err != nil {
-		t.Fatal(err)
-	}
 }
 
 // annotatedClass is the block of `---@field` lines under `---@class name`.

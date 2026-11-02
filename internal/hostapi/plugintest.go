@@ -117,7 +117,7 @@ func (t *PluginTest) Step() lua.BootStep {
 		g.L.Get(-1).(*glua.LTable).ForEach(tb.RawSet)
 		g.L.Pop(1)
 		for name, fn := range map[string]glua.LGFunction{
-			"run": t.runCmd, "keys": t.keys, "tool": t.tool, "render": t.render, "click": t.click,
+			"run": t.runCmd, "keys": t.keys, "tool": t.tool,
 			"emit": t.emit, "answer": t.answer, "advance": t.advance, "complete": t.complete, "set": t.set,
 		} {
 			tb.RawSetString(name, lua.Suspending(g.L, g.L.NewFunction(func(L *glua.LState) int {
@@ -539,55 +539,6 @@ func (t *PluginTest) tool(L *glua.LState) int {
 			return nil, errors.New(reply.Content)
 		}
 		return func(*glua.LState) []glua.LValue { return []glua.LValue{glua.LString(reply.Content)} }, nil
-	})
-}
-
-func (t *PluginTest) widget(L *glua.LState, driver string) *Widget {
-	return t.own(L, driver, "widget", L.CheckString(1), t.h.Widgets.List(), func(w *Widget) (string, bool) { return w.ID, t.mine(w.Path) })
-}
-
-// render is test.render(id [, ctx]): the widget's lines as text, then as
-// segments, drawn the way a frame draws them with ctx's fields over the
-// test zemi's.
-// NOTE: one widget at a time; the whole screen's layout is the goldens'.
-func (t *PluginTest) render(L *glua.LState) int {
-	w := t.widget(L, "render")
-	over := L.OptTable(2, nil)
-	width, height := 80, 1
-	if over != nil {
-		if n, ok := opt[glua.LNumber](L, over, "width"); ok {
-			width = int(n)
-		}
-		if n, ok := opt[glua.LNumber](L, over, "height"); ok {
-			height = int(n)
-		}
-	}
-	return t.drive(L, "render", "", func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
-		lines, _, err := t.h.renderWidget(ctx, w, width, height, UIState{Time: t.h.now().Format(ClockLayout)}, over)
-		if err != nil {
-			return nil, raiseError("render " + w.ID + ": " + luaErrText(err))
-		}
-		return func(L *glua.LState) []glua.LValue {
-			text := make([]string, len(lines))
-			for i, line := range lines {
-				text[i] = SegsText(line)
-			}
-			return []glua.LValue{lua.FromGo(L, text), linesTable(L, lines)}
-		}, nil
-	})
-}
-
-// click is test.click(id, click): the widget's on_click for a segment's
-// click id, as a left click.
-func (t *PluginTest) click(L *glua.LState) int {
-	w := t.widget(L, "click")
-	id := L.CheckString(2)
-	if w.OnClick == nil {
-		raise(L, "test.click: widget %s has no on_click", w.ID)
-	}
-	ev := map[string]any{"id": id, "x": 0, "y": 0, "clicks": 1, "button": "left", "mods": map[string]any{"shift": false, "ctrl": false, "alt": false}}
-	return t.drive(L, "click", "", func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
-		return nil, errText(t.h.ClickWidget(ctx, w.ID, ev))
 	})
 }
 

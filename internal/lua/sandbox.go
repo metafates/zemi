@@ -26,7 +26,7 @@ type Sandbox struct {
 }
 
 // Guard runs before a guarded Go function with the member it belongs to
-// ("config.set", "ui.widget.add", "win:send") and raises to refuse.
+// ("config.set", "ui.overlay.open", "win:send") and raises to refuse.
 type Guard func(L *glua.LState, member string)
 
 // SetGuard sets the guard every namespace member runs through; it is read
@@ -711,7 +711,7 @@ func (s *Sandbox) CheckIntegrity() error {
 }
 
 // NamespaceMembers lists every registered namespace with its member paths,
-// descending into member tables ("widget.add" under zemi.ui). It is
+// descending into member tables ("overlay.open" under zemi.ui). It is
 // what the API surface actually is, so the shipped type annotations can be
 // checked against it instead of against a hand-kept list.
 func (s *Sandbox) NamespaceMembers() map[string][]string {

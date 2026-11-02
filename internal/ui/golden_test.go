@@ -47,15 +47,6 @@ func TestGoldenFrame(t *testing.T) {
 zemi.keymap.set("ctrl+t", function()
   zemi.notify({ title = "rebound", body = "ctrl+t pressed" })
 end, { desc = "notify on rebound ctrl+t" })
-
-zemi.ui.widget.add({
-  id = "user.status",
-  region = "statusline.left",
-  priority = 90,
-  render = function(ctx)
-    return { { { text = "[rebound]", hl = "Dim" } } }
-  end,
-})
 `
 	if err := os.WriteFile(filepath.Join(cfg, "init.lua"), []byte(initLua), 0o600); err != nil {
 		t.Fatal(err)
@@ -75,13 +66,16 @@ zemi.ui.widget.add({
 
 	steps := []lua.BootStep{
 		host.NamespacesStep(),
-		lua.RequireStep("zemi.tui"),
 		lua.LoadFileStep("init", filepath.Join(cfg, "init.lua"), lua.OriginUser),
 	}
 	if err := rt.Boot(ctx, steps); err != nil {
 		t.Fatalf("boot: %v", err)
 	}
 
+	// a plugin's own statusline segment, as the golden pins it
+	addWidget(app, &widget{id: "user.status", region: "statusline.left", priority: 90, render: func(*hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+		return [][]hostapi.Segment{{{Text: "[rebound]", HL: "Dim"}}}, false
+	}})
 	app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	app.Update(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}) // rebound insert-mode key fires the toast
 
@@ -100,7 +94,7 @@ func (a *App) renderSync(tb testing.TB) {
 			var lines [][]hostapi.Segment
 			var err error
 			state := a.uiState()
-			if lines, more, err = a.renderWidget(w, a.host.ScreenState(w.width, w.height, state), state); err != nil {
+			if lines, more, err = a.renderWidget(w, a.host.ScreenState(w.width, w.height, state)); err != nil {
 				tb.Fatalf("render widget %s: %v", w.ID, err)
 			}
 			a.onWidgetRendered(widgetRender{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: gen})

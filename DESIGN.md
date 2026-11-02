@@ -390,8 +390,7 @@ calls blank the user's global filter drivers too.
 Load order is a list of boot steps: host `zemi.*` namespaces
 -> builtin commands (main's own plus every domain
 file's: note, skills, agents, jobs, call, messages, memories, workflow,
-mcp, lsp, plugins, config, projects) -> the
-shipped Lua UI (`require("zemi.tui")`) -> the project trust
+mcp, lsp, plugins, config, projects) -> the project trust
 decision (the prompt above; before any config that may start an MCP
 server) -> plugins (each enabled plugin's `.zemi/init.lua`, sorted by name) ->
 user `init.lua` -> user skills' enable hooks -> the chat builder's
@@ -751,8 +750,7 @@ the binary's API version is `zemi.api.version`.
   failures never raise; misuse (bad arguments, a call a render may not
   make) and a permission gate that does not allow always raise.
 - **One verb per job**: `add` registers (`zemi.command`, `zemi.tool`,
-  `zemi.provider`, `zemi.health`, `zemi.mcp`, `zemi.lsp`, `zemi.ui.widget`,
-  `zemi.ui.theme`, `zemi.config`), `set`
+  `zemi.provider`, `zemi.health`, `zemi.mcp`, `zemi.lsp`, `zemi.config`), `set`
   writes a value, `get` and `list` read back, `del` removes and reports
   whether it did (`zemi.state.del` reports only a store failure). A new call
   takes the verb its shape already has, so the
@@ -1508,14 +1506,6 @@ children keep running until a job object is used.
 ### 6.6 UI
 
 ```lua
--- A statusline segment
-zemi.ui.widget.add({
-	id = "clock", region = "statusline.right", priority = 10,
-	render = function(ctx)   -- ctx: { width, session, agent, time, ... }
-		return { { { text = ctx.time, hl = "Dim" } } }  -- lines of segments
-	end,
-})
-
 -- Overlays (modals/pickers) with their own keymaps
 zemi.ui.overlay.open({
 	id = "model-picker", title = "Model",
@@ -1543,10 +1533,9 @@ UI extensibility contract:
 
 - The screen is a layout tree of regions (`header`, `chat`, `working`, `composer`,
   `statusline`, or any name) that Lua sets with `zemi.ui.layout.set`
-  and Go solves and paints every frame (§8), plus an overlay stack. The shipped chat and statusline are default Lua registrations
-  in `runtime/lua/zemi/tui/` (one module per part), replaceable by id. The module is
-  `zemi.tui`, since `require("zemi.ui")` returns the frozen host namespace, whose `theme`
-  and `layout` members would also shadow `theme.lua` and `layout.lua`. The composer is
+  and Go solves and paints every frame (§8), plus an overlay stack. The screen itself - the
+  splash, the chat, the composer's rule and the statusline - is Go (`internal/ui`), so a plugin
+  shows what it has to say through overlays, toasts, the composer, keymaps and commands. The composer is
   Go-owned and zemi's own editor (`internal/ui/composer.go`; there is no
   bubbles dependency): visual wrapping, a large paste folded into a
   token, submitted-message history, `ctrl+z` undo, and a
@@ -1682,8 +1671,7 @@ UI extensibility contract:
   takes the grey of its lightness and a foreground the ANSI color its
   lightness (a grey) or hue falls in, bright when light, stepping to the
   grey past its background when the two would be one color. `zemi.ui.hl.get(group)` reads
-  a group back resolved, and `zemi.ui.widget.del(id)` removes a widget
-  shipped ones included. `zemi.ui.hl.set` restyles a group for every theme
+  a group back resolved. `zemi.ui.hl.set` restyles a group for every theme
   and `ui.theme` picks one, from any origin: the last write stands.
 - Key routing: bubbletea key -> normalized string -> Go-reserved cancel
   trigger -> Go-owned chrome (trust prompt, permission asks,
@@ -2160,7 +2148,7 @@ view; a reset's wipe drops the row with the chat.
   the most rows it could take (its max or the box's cells), not its last height, which
   would never let it shrink. A widget that pads to the whole region, the splash,
   needs the region to itself: while it shows, the chat yields to it
-  (`zemi.tui.text.empty_chat`) and the splash draws the pending row in its own
+  (`internal/ui/textfmt.go`'s `emptyChat`) and the splash draws the pending row in its own
   block, on a row it keeps either way - a row of the chat's there would overflow
   the region and the viewport would scroll the splash up as the boot's work
   comes and goes.
@@ -2171,12 +2159,9 @@ view; a reset's wipe drops the row with the chat.
   bump it when they return, and `zemi.ui.redraw()` bumps it on demand (a
   repeating timer calls it itself, so an idle tick costs nothing). A
   widget a message resized renders on that message instead, so no frame
-  draws lines rendered for another size. A render's ctx builds `transcript`, `agent`, `todos`, `recent`,
-  `projects` and `instructions` on first read: over a 500-row transcript a widget that reads only scalars renders
-  in under 20 µs instead of 1 ms (`BenchmarkWidgetCtx`). A line table a
-  widget returned is never changed by it: Go converts one it saw in the last
-  render only once and wraps it only once per width, so a frame of a
-  streaming reply over 500 turns costs 1.5 ms, not 40
+  draws lines rendered for another size. A frame's screen state builds `todos`, `recent`, `projects` and `instructions` on first
+  read, so a widget that reads only scalars pays for none of them. A widget's rows are wrapped
+  only once per width, so a frame of a streaming reply over 500 turns costs 1.5 ms, not 40
   (`BenchmarkStreamingFrame`). A render returning `true` as a second result
   runs again next frame, that widget alone: the chat fills a long chat
   window that way, latest messages first, 30 ms at a time but never less
@@ -2466,7 +2451,7 @@ view; a reset's wipe drops the row with the chat.
   (`workflow:<run id>`, its view, stepping the same way) and the job a
   call handed off to (`job:<id>`, its output); the splash's rows switch to a
   project, and its tip's keys run their command or fill the composer (a `fill
-  <text>` click id, which `zemi.tui.text`'s `run_click` puts there). The stuck
+  <text>` click id, which the chat's `runClick` puts there). The stuck
   and errors pills stay Go-drawn, since they report a broken
   Lua layer that could not draw its own alarm; a click on
   errors opens `/errors`, on stuck reloads. A drag selects inside the pane

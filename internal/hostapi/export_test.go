@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -289,11 +288,9 @@ func TestToolSummary(t *testing.T) {
 	}
 }
 
-// TestCost: Go's fmtCost and the widgets' text.cost agree, and a cost under
-// half a cent reads as one, not as free.
+// TestCost: a cost under half a cent reads as one, not as free.
 func TestCost(t *testing.T) {
 	t.Parallel()
-	r := newTestHostUI(t).RT
 	for _, c := range []struct {
 		usd  float64
 		want string
@@ -301,9 +298,7 @@ func TestCost(t *testing.T) {
 		if got := fmtCost(c.usd); got != c.want {
 			t.Errorf("fmtCost(%v) = %q, want %q", c.usd, got, c.want)
 		}
-		runUser(t, r, fmt.Sprintf(`local got = require("zemi.tui.text").cost(%v); assert(got == %q, tostring(got))`, c.usd, c.want))
 	}
-	runUser(t, r, `assert(require("zemi.tui.text").cost(0) == nil, "no cost reads as one")`)
 }
 
 // TestContextPct: /cost and the statusline read one percent, and 79.5 is

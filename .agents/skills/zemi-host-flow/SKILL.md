@@ -143,8 +143,7 @@ init.lua. A `/config` verb that opens a screen refuses without one; only `config
 ## Architecture and control flow
 
 `main.go` is the entry alone; the front end lives in `internal/cli`. Boot order (each step is a `lua.BootStep`, see `bootSteps` in internal/cli/boot.go),
-and the order matters: host namespaces (`zemi.*`) -> builtin commands ->
-`require("zemi.tui")` (shipped theme, widgets and keymaps, one module each) -> project
+and the order matters: host namespaces (`zemi.*`) -> builtin commands -> project
 trust (`trustGate.step`, before any config that can start an MCP server) -> plugins -> user
 `init.lua` -> user skill hooks -> the chat builder's release (its dispatch
 waits for this step, when a model first exists) -> markdown commands
@@ -346,7 +345,7 @@ applied one. A store made before goose only gains its version table: the baselin
   starts, so a step's reasoning is a row of its own before the call that follows it rather than
   waiting for the next step or the turn's end with the run's digest. It moves only the calls that
   finished, so none settles early, and
-  moves both sides under `ag.mu`, which the widget ctx reads them under (`liveView`), so no
+  moves both sides under `ag.mu`, which the screen state reads them under (`liveView`), so no
   frame draws a row twice or not at all; `TurnDone` settles a call still open as stopped after
   an interrupt and as failed after an error.
 - **Provider text shape.** Model responses carry `fantasy.TextContent`, stored messages

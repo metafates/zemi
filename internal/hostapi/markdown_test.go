@@ -3,6 +3,7 @@ package hostapi
 import (
 	"cmp"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -10,33 +11,37 @@ import (
 
 func TestMarkdown(t *testing.T) {
 	t.Parallel()
-	_, r := newTestHost(t)
-	runUser(t, r, `
-		local function join(line)
-			local s = ""
-			for _, seg in ipairs(line) do s = s .. seg.text end
-			return s
-		end
-		local lines = zemi.ui.markdown("# Title\n\nsome **bold** text that wraps\n", 16)
-		local got = {}
-		for i, l in ipairs(lines) do got[i] = join(l) end
-		-- the wrapped row keeps its space and is soft: a copy rejoins it
-		local want = { "Title", "", "some bold text ", "that wraps" }
-		assert(lines[3][#lines[3]].soft_wrap, "wrapped row not marked soft")
-		assert(#got == #want, "lines: " .. table.concat(got, "|"))
-		for i = 1, #want do
-			assert(got[i] == want[i], "line " .. i .. ": " .. got[i])
-		end
-		assert(lines[1][1].hl:find("^sgr:") ~= nil, "heading hl=" .. tostring(lines[1][1].hl))
-		local bold
-		for _, seg in ipairs(lines[3]) do
-			if seg.text == "bold" then bold = seg end
-		end
-		assert(bold and bold.hl ~= lines[3][1].hl, "bold run not split out")
-
-		local esc = zemi.ui.markdown("a\27[31mb", 20)
-		assert(join(esc[1]) == "ab", "escape leaked: " .. join(esc[1]))
-	`)
+	h, _ := newTestHost(t)
+	join := func(line []Segment) string {
+		var b strings.Builder
+		for _, s := range line {
+			b.WriteString(s.Text)
+		}
+		return b.String()
+	}
+	lines := h.Markdown("# Title\n\nsome **bold** text that wraps\n", 16)
+	// the wrapped row keeps its space and is soft: a copy rejoins it
+	want := []string{"Title", "", "some bold text ", "that wraps"}
+	got := make([]string, len(lines))
+	for i, l := range lines {
+		got[i] = join(l)
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("lines = %q, want %q", got, want)
+	}
+	if last := lines[2][len(lines[2])-1]; !last.Soft {
+		t.Errorf("wrapped row not marked soft: %+v", last)
+	}
+	if hl := lines[0][0].HL; !strings.HasPrefix(hl, "sgr:") {
+		t.Errorf("heading hl = %q, want a style group", hl)
+	}
+	bold := slices.IndexFunc(lines[2], func(s Segment) bool { return s.Text == "bold" })
+	if bold < 0 || lines[2][bold].HL == lines[2][0].HL {
+		t.Errorf("bold run not split out: %+v", lines[2])
+	}
+	if esc := h.Markdown("a\x1b[31mb", 20); join(esc[0]) != "ab" {
+		t.Errorf("escape leaked: %q", join(esc[0]))
+	}
 }
 
 // TestMarkdownSplitRender: a long reply renders its settled prefix from the

@@ -13,21 +13,10 @@ local function poll()
 	missing = not ok and err or nil
 end
 
-zemi.health.add("demo", function() return missing and { level = "warn", detail = missing } or "reading the branch" end)
-
-zemi.ui.widget.add({
-	id = "demo.branch",
-	region = "statusline.right",
-	priority = 50,
-	render = function() return M.branch and { { { text = M.branch, hl = "Dim", click = "branch" } } } or {} end,
-	on_click = function() zemi.notify.info(M.branch, "Branch") end,
-})
-
-zemi.ui.widget.add({
-	id = "demo.cost",
-	region = "statusline.right",
-	render = function(ctx) return { { string.format("%d cents", ctx.usage.cost * 100) } } end,
-})
+zemi.health.add("demo", function()
+	if missing then return { level = "warn", detail = missing } end
+	return M.branch and "on branch " .. M.branch or "no branch"
+end)
 
 zemi.config.add("interval", {
 	kind = "number",

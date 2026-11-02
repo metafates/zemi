@@ -134,20 +134,15 @@ func TestGitBranch(t *testing.T) {
 		}
 	})
 
-	t.Run("reaches the ctx", func(t *testing.T) {
+	t.Run("reaches the screen state", func(t *testing.T) {
 		t.Parallel()
-		h, r := newTestHost(t)
+		h, _ := newTestHost(t)
 		root := repoWithHead(t, "ref: refs/heads/main\n")
 		if err := os.CopyFS(h.Dirs.ProjectDir, os.DirFS(root)); err != nil {
 			t.Fatal(err)
 		}
-		runUser(t, r, `zemi.ui.widget.add({ id = "br", region = "header", render = function(ctx) return { { { text = ctx.branch } } } end })`)
-		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("br"), 20, 1, UIState{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := SegsText(lines[0]); got != "main" {
-			t.Fatalf("ctx.branch = %q, want main", got)
+		if got := h.ScreenState(20, 1, UIState{}).Branch; got != "main" {
+			t.Fatalf("the screen state's branch = %q, want main", got)
 		}
 	})
 }

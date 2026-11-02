@@ -304,8 +304,7 @@ func regionWidth(n *hostapi.LayoutNode, w int) int {
 type shownWidget struct {
 	ID, Region    string
 	Wrap          bool
-	Lua           *hostapi.Widget // a Lua widget, nil for a Go one
-	Go            *widget         // a Go widget, nil for a Lua one
+	Go            *widget
 	width, height int
 }
 
@@ -324,7 +323,7 @@ func (a *App) shownWidgets() []shownWidget {
 			regions.Add(region)
 		}
 		for _, wg := range a.regionWidgets(region) {
-			out = append(out, shownWidget{ID: wg.ID, Region: wg.Region, Wrap: wg.Wrap, Lua: wg.Lua, Go: wg.Go, width: w, height: h})
+			out = append(out, shownWidget{ID: wg.ID, Region: wg.Region, Wrap: wg.Wrap, Go: wg.Go, width: w, height: h})
 		}
 	}
 	var walk func(l laid)

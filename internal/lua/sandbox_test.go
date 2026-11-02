@@ -182,37 +182,37 @@ func TestSandboxProtectedGlobals(t *testing.T) {
 func TestSandboxDeepNamespaceProtection(t *testing.T) {
 	sb := newTestSandbox(t)
 	ui := sb.L.NewTable()
-	widget := sb.L.NewTable()
-	widget.RawSetString("add", sb.L.NewFunction(func(L *glua.LState) int { return 0 }))
-	ui.RawSetString("widget", widget)
+	overlay := sb.L.NewTable()
+	overlay.RawSetString("open", sb.L.NewFunction(func(L *glua.LState) int { return 0 }))
+	ui.RawSetString("overlay", overlay)
 	if err := sb.RegisterNamespace("zemi.ui", ui, nil); err != nil {
 		t.Fatal(err)
 	}
 	mustRun(t, sb, `
-		assert(type(zemi.ui.widget) == "table", "nested namespace not readable")
-		assert(type(zemi.ui.widget.add) == "function", "nested member not readable")
+		assert(type(zemi.ui.overlay) == "table", "nested namespace not readable")
+		assert(type(zemi.ui.overlay.open) == "function", "nested member not readable")
 	`)
-	wantRaise(t, sb, `zemi.ui.widget.add = "fake"`, "cannot modify frozen")
-	wantRaise(t, sb, `zemi.ui.widget.new = 1`, "cannot modify frozen")
+	wantRaise(t, sb, `zemi.ui.overlay.open = "fake"`, "cannot modify frozen")
+	wantRaise(t, sb, `zemi.ui.overlay.new = 1`, "cannot modify frozen")
 	// a typo names the members instead of "attempt to call a nil value"
-	wantRaise(t, sb, `zemi.ui.widget.adds()`, `zemi.ui.widget has no member "adds" (add)`)
+	wantRaise(t, sb, `zemi.ui.overlay.opens()`, `zemi.ui.overlay has no member "opens" (open)`)
 	wantRaise(t, sb, `local x = zemi.iu`, `zemi has no member "iu" (ui)`)
 	// pairs lists members as an index reads them, never the real table
 	mustRun(t, sb, `
 		local names = {}
 		for k, v in pairs(zemi.ui) do names[#names + 1] = k .. "=" .. type(v) end
-		assert(table.concat(names, ",") == "widget=table", table.concat(names, ","))
+		assert(table.concat(names, ",") == "overlay=table", table.concat(names, ","))
 		for k in pairs(zemi) do assert(k == "ui", k) end
 		local _, state = pairs(zemi.ui)
 		assert(state == zemi.ui and next(state) == nil, "pairs handed out the real table")
 		local plain = setmetatable({ a = 1 }, { __index = { b = 2 } })
 		for k in pairs(plain) do assert(k == "a", k) end
 	`)
-	wantRaise(t, sb, `local _, s = pairs(zemi.ui); s.widget = 1`, "cannot modify frozen")
-	wantRaise(t, sb, `for _, w in pairs(zemi.ui) do w.add = 1 end`, "cannot modify frozen")
-	wantRaise(t, sb, `local f = pairs(zemi.ui); local _, w = f(); w.add = 1`, "cannot modify frozen")
+	wantRaise(t, sb, `local _, s = pairs(zemi.ui); s.overlay = 1`, "cannot modify frozen")
+	wantRaise(t, sb, `for _, w in pairs(zemi.ui) do w.open = 1 end`, "cannot modify frozen")
+	wantRaise(t, sb, `local f = pairs(zemi.ui); local _, w = f(); w.open = 1`, "cannot modify frozen")
 	mustRun(t, sb, `
-		assert(type(zemi.ui.widget.add) == "function",
+		assert(type(zemi.ui.overlay.open) == "function",
 			"nested member changed despite refused write")
 	`)
 	if err := sb.CheckIntegrity(); err != nil {

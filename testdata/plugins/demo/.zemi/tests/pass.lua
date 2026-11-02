@@ -10,40 +10,32 @@ local wttr = test.stub("lua.http.get", "https://wttr.in/*", { body = body })
 local sent = test.stub("lua.agent.send")
 local snips = require("./lib/snips")
 
-test("the widget draws the branch git reports", function()
-	local text, lines = test.render("demo.branch")
-	test.eq(text, { "main" })
-	test.eq(lines[1][1], { text = "main", hl = "Dim", click = "branch" })
+local function health(name)
+	for _, r in ipairs(zemi.health.list()) do
+		if r.name == name then return r end
+	end
+end
+
+test("the health row names the branch git reports", function()
+	test.eq(health("demo").detail, "on branch main")
 	test.eq(git[1].args, { "rev-parse", "--abbrev-ref", "HEAD" })
 end)
 
 test("a checkout shows on the next poll", function()
 	branch = "fix-login"
 	test.advance(29999)
-	test.eq(test.render("demo.branch"), { "main" })
+	test.eq(health("demo").detail, "on branch main")
 	test.advance(1)
-	test.eq(test.render("demo.branch"), { "fix-login" })
+	test.eq(health("demo").detail, "on branch fix-login")
 	test.eq(os.date("!%Y-%m-%d %H:%M:%S"), "2026-01-01 00:00:30")
 end)
 
-test("outside a repository the widget draws nothing", function()
+test("outside a repository the health row says so", function()
 	---@type string?
 	branch = nil
 	test.advance(30000)
-	test.eq(test.render("demo.branch"), {})
+	test.eq(health("demo").detail, "no branch")
 end)
-
-test("a click on the branch toasts it", function()
-	local before = zemi.notify.list()
-	assert(test.click("demo.branch", "branch"))
-	test.neq(zemi.notify.list(), before)
-	test.eq(zemi.notify.list()[1].body, "main")
-end)
-
-test(
-	"the cost widget reads the usage a session would have",
-	function() test.eq(test.render("demo.cost", { usage = { cost = 0.5 } }), { "50 cents" }) end
-)
 
 test("a picked snippet goes to the agent", function()
 	snips.add("review", "Review the diff")
@@ -150,7 +142,7 @@ end)
 test("gated calls fail closed, the stub answers first", function()
 	test.eq(
 		test.raises(function() zemi.http.get("https://example.com/") end),
-		'.zemi/tests/pass.lua:152: lua.http.get https://example.com/: no test.stub answers it; add test.stub("lua.http.get", "https://example.com/*", { status = 200, body = "..." })'
+		'.zemi/tests/pass.lua:144: lua.http.get https://example.com/: no test.stub answers it; add test.stub("lua.http.get", "https://example.com/*", { status = 200, body = "..." })'
 	)
 end)
 
@@ -160,7 +152,6 @@ test("drivers reach only what the plugin registered", function()
 		{ test.keys, "ctrl+x h", "ctrl+x h is not a Lua key binding" },
 		{ test.keys, "ctrl+x r", "ctrl+x r is not a Lua key binding" },
 		{ test.run, "help", "/help is not a command of plugin demo; it registered /demo" },
-		{ test.render, "chat", "chat is not a widget of plugin demo; it registered demo.branch, demo.cost" },
 		{ test.tool, "read", "read is not a tool of plugin demo; it registered weather_now" },
 	}) do
 		test.raises(function() c[1](c[2]) end, c[3])
@@ -204,6 +195,6 @@ test("the interval setting moves the poll", function()
 	assert(test.set("interval", 10000))
 	branch = "fix-login"
 	test.advance(10000)
-	test.eq(test.render("demo.branch"), { "fix-login" })
+	test.eq(health("demo").detail, "on branch fix-login")
 	test.raises(function() test.set("ui.mouse", false) end, "ui.mouse is not a setting of plugin demo")
 end)

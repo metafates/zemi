@@ -79,7 +79,7 @@ func TestMessagesHomeLoadsPages(t *testing.T) {
 	app := NewApp(host, log)
 	host.SetUIHooks(app)
 	app.CaptureHooks()
-	if err := rt.Boot(t.Context(), []lua.BootStep{host.NamespacesStep(), lua.RequireStep("zemi.tui")}); err != nil {
+	if err := rt.Boot(t.Context(), []lua.BootStep{host.NamespacesStep()}); err != nil {
 		t.Fatalf("boot: %v", err)
 	}
 	if err := host.OpenMessages(); err != nil {

@@ -30,7 +30,7 @@ func TestReloadKeepsTheFrame(t *testing.T) {
 		}
 		return nil
 	}}
-	steps := append([]lua.BootStep{straddle}, host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.tui"))
+	steps := append([]lua.BootStep{straddle}, host.NamespacesStep(), host.BuiltinCommandsStep())
 	errc := make(chan error, 1)
 	go func() { errc <- host.ForceReload(t.Context(), steps) }()
 	select {

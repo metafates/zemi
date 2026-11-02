@@ -144,29 +144,6 @@ func TestCommandCaseCollision(t *testing.T) {
 	}
 }
 
-func TestWidgetRegistry(t *testing.T) {
-	r := &WidgetRegistry{}
-	for _, w := range []*Widget{{ID: "x", Region: "r"}, {ID: "x", Render: noopFn}} {
-		if _, err := r.Add(w); err == nil {
-			t.Fatalf("%+v: a widget needs a region and a render", w)
-		}
-	}
-	// InRegion orders by priority ascending, ties by id, stable across calls.
-	for id, p := range map[string]float64{"clock": 1, "lo": 2, "mid": 2.5, "hi": 9, "a.tie": 9} {
-		r.Add(&Widget{ID: id, Region: "statusline.left", Render: noopFn, Priority: p})
-	}
-	for range 20 {
-		inRegion := r.InRegion("statusline.left")
-		if len(inRegion) != 5 || inRegion[0].ID != "clock" || inRegion[1].ID != "lo" || inRegion[2].ID != "mid" || inRegion[3].ID != "a.tie" || inRegion[4].ID != "hi" {
-			t.Fatalf("InRegion order = %+v", inRegion)
-		}
-	}
-	r.Purge()
-	if len(r.List()) != 0 {
-		t.Fatal("Purge must clear widgets")
-	}
-}
-
 func TestEventRegistry(t *testing.T) {
 	r := &EventRegistry{}
 	mk := func(event, id string, origin lua.Origin) *EventHandler {
@@ -234,17 +211,6 @@ func TestPluginOwnership(t *testing.T) {
 			return ops{
 				func(o lua.Origin, p string) error {
 					_, err := r.Add(&Command{Name: "x", Fn: noopFn, Origin: o, Path: p})
-					return err
-				},
-				func(o lua.Origin, p string) (bool, error) { return r.Remove("x", o, p) },
-			}
-		}},
-		{"widget", func() ops {
-			r := &WidgetRegistry{}
-			r.owner = owner
-			return ops{
-				func(o lua.Origin, p string) error {
-					_, err := r.Add(&Widget{ID: "x", Region: "r", Render: noopFn, Origin: o, Path: p})
 					return err
 				},
 				func(o lua.Origin, p string) (bool, error) { return r.Remove("x", o, p) },

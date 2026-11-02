@@ -9,7 +9,7 @@ test("eq on a string", function()
 	test.eq(test.tool("weather_now", { city = "Oslo" }), "Oslo: 21C, sunny")
 end)
 
-test("eq on a table", function() test.eq(test.render("demo.branch"), { "fix-login" }) end)
+test("eq on a table", function() test.eq({ "main" }, { "fix-login" }) end)
 
 test("a call no stub answers", function() test.eq(test.tool("weather_now", { city = "Oslo" }), "Oslo: 21C, Sunny") end)
 
@@ -18,10 +18,7 @@ test("a callback that fails", function()
 	test.advance(30000)
 end)
 
-test("a render that fails", function()
-	local ctx = { usage = {} }
-	test.render("demo.cost", ctx)
-end)
+test("a command that raises", function() test.eq(test.run("demo", "add"), true) end)
 
 test("a case that never settles", function()
 	local function again() zemi.timer.after(0, again) end
@@ -42,7 +39,7 @@ end)
 
 test("eq on lines", function() test.eq("one\ntwo\nthree", "one\ntwo\nthree!") end)
 
-test("contains", function() test.contains(test.render("demo.cost", { usage = { cost = 0.5 } })[1], "dollars") end)
+test("contains", function() test.contains("50 cents", "dollars") end)
 
 test("raises that did not raise", function()
 	test.raises(function() end, "city")

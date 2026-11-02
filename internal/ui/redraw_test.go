@@ -42,10 +42,7 @@ func TestProgressReport(t *testing.T) {
 func TestRedrawAfterCallbacks(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 10)
-	runLua(t, app, `
-local n = 0
-zemi.ui.widget.add({ id = "n", region = "header", render = function() return { { { text = "n=" .. n } } } end })
-zemi.event.on("user.tick", function() zemi.timer.after(0, function() n = 10 end) end)`)
+	runLua(t, app, `zemi.event.on("user.tick", function() zemi.timer.after(0, function() zemi.notify.info("ran", "Tick") end) end)`)
 	// Read before the timer exists: its refresh can land while runLua still pumps.
 	gen := app.frameGen
 	runLua(t, app, `zemi.event.emit("user.tick")`)
@@ -56,7 +53,7 @@ zemi.event.on("user.tick", function() zemi.timer.after(0, function() n = 10 end)
 		for app.Pump() {
 		}
 	}
-	if frame := app.screen(t); !strings.Contains(frame, "n=10") {
+	if frame := app.screen(t); !strings.Contains(frame, "Tick") {
 		t.Fatalf("frame after the timer:\n%s", frame)
 	}
 

@@ -608,9 +608,6 @@ func (h *Host) pluginProvides() map[string][]string {
 	for _, t := range h.luaTools.list() {
 		add(t.Path, "tool "+t.Name)
 	}
-	for _, w := range h.Widgets.List() {
-		add(w.Path, "widget "+w.ID)
-	}
 	for _, k := range h.Keymaps.List() {
 		add(k.Path, "keymap "+k.Key)
 	}

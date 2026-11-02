@@ -93,17 +93,12 @@ func TestHealthActionCoversRuns(t *testing.T) {
 func TestHealthChecks(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	runUser(t, h.RT, `
-		zemi.ui.widget.add({ id = "lost", region = "nowhere", render = function() return {} end })`)
 	got := map[string]HealthRow{}
 	for _, c := range h.HealthRows() {
 		got[c.Name] = c
 	}
-	if d := got["layout"].Detail; !strings.Contains(d, "lost") {
-		t.Errorf("layout row %q", d)
-	}
 	for name, level := range map[string]string{
-		"store": "ok", "model": "error", "skills": "ok", "lua": "ok", "mcp": "ok", "layout": "warn",
+		"store": "ok", "model": "error", "skills": "ok", "lua": "ok", "mcp": "ok",
 	} {
 		if string(got[name].Level) != level {
 			t.Errorf("%s = %+v, want level %s", name, got[name], level)

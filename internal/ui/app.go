@@ -929,9 +929,6 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 	// the chat drew the run a closing list had open: the list can go now, and
 	// the frame that shows it gone shows the run folded. The chat is the
 	// widget in the default scroll's region; the node's id is the layout's.
-	if id := a.railClose; id != "" {
-		println("RAILCLOSE pending", id, "gen", msg.gen, "want", a.railGen, "widget", msg.id)
-	}
 	if id := a.railClose; id != "" && msg.gen >= a.railGen {
 		if st := a.scrolls[a.scrollDef]; st != nil {
 			if region, ok := a.widgetRegion(msg.id); ok && region == st.region {
@@ -983,15 +980,13 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 	a.frameDirty = true // the new lines join the next View though the generation stood still
 }
 
-// widgetRegion is the region a widget draws in, shipped or Lua.
+// widgetRegion is the region a widget draws in.
 func (a *App) widgetRegion(id string) (string, bool) {
-	if w := a.widgetByID(id); w != nil {
-		return w.region, true
+	w := a.widgetByID(id)
+	if w == nil {
+		return "", false
 	}
-	if w := a.host.Widgets.Get(id); w != nil {
-		return w.Region, true
-	}
-	return "", false
+	return w.region, true
 }
 
 // renderStaleWidgetsCmd renders, as ui-class requests, the widgets rendered
@@ -1027,7 +1022,7 @@ func (a *App) renderStaleWidgetsCmd(sizeOnly bool) tea.Cmd {
 		out := make(widgetsRenderedMsg, 0, len(stale))
 		for _, w := range stale {
 			screen := a.host.ScreenState(w.width, w.height, st)
-			lines, more, err := a.renderWidget(w, screen, st)
+			lines, more, err := a.renderWidget(w, screen)
 			out = append(out, widgetRender{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: gen, seq: seq, err: err})
 		}
 		return out
@@ -1485,9 +1480,9 @@ func (a *App) rowsBelow() int {
 
 // scrolledUp reports whether the region a widget draws in is off its tail.
 func (a *App) scrolledUp(widget string) bool {
-	w := a.host.Widgets.Get(widget)
+	region, ok := a.widgetRegion(widget)
 	for _, st := range a.scrolls {
-		if w != nil && st.region == w.Region && !st.follow {
+		if ok && st.region == region && !st.follow {
 			return true
 		}
 	}

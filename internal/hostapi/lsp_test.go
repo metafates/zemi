@@ -289,7 +289,7 @@ func TestLSPReload(t *testing.T) {
 
 // TestLSPRealLuaLS runs the installed lua-language-server under the live
 // backend on a local plugin in an untrusted project: zemi's types reach it,
-// so a widget spec missing a field is an error, and the demo plugin, sound
+// so an overlay spec missing a field is an error, and the demo plugin, sound
 // code, has none (the Error severities in zemi's .luarc.json).
 func TestLSPRealLuaLS(t *testing.T) {
 	t.Parallel()
@@ -313,7 +313,7 @@ func TestLSPRealLuaLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	bad := filepath.Join(plugin, ".zemi", "lua", "bad.lua")
-	os.WriteFile(bad, []byte("zemi.ui.widget.add({ id = \"x\", render = function() return {} end })\n"), 0o644)
+	os.WriteFile(bad, []byte("zemi.ui.overlay.open({ title = \"x\" })\n"), 0o644)
 	// the first check, which starts the server, finds it: a server that just
 	// started indexes the project first, so ask until it publishes
 	var got string
@@ -322,7 +322,7 @@ func TestLSPRealLuaLS(t *testing.T) {
 		if !ok {
 			return errors.New("no diagnostics yet")
 		}
-		if !strings.Contains(out, "error ") || !strings.Contains(out, "region") {
+		if !strings.Contains(out, "error ") || !strings.Contains(out, "id") {
 			return fmt.Errorf("the planted spec: %q", out)
 		}
 		got = out

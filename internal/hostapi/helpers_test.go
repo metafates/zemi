@@ -156,7 +156,7 @@ func newWindow(t *testing.T, stateHome, projectDir string) (*Host, *replyStubMod
 	h.SetUIHooks(&fakeUI{})
 	m := replyStub(t, h, "ok")
 	t.Cleanup(h.Close)
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.tui")}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
 	return h, m

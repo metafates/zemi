@@ -3,8 +3,6 @@ package hostapi
 import (
 	"fmt"
 	"slices"
-
-	"github.com/metafates/zemi/internal/set"
 )
 
 // SizeKind is how a layout node claims cells along its parent box's axis.
@@ -107,34 +105,6 @@ type LayoutFloat struct {
 type Layout struct {
 	Root   *LayoutNode
 	Floats []LayoutFloat
-}
-
-// walkNodes visits the layout's tree nodes, parents before children.
-func (l *Layout) walkNodes(visit func(*LayoutNode)) {
-	var walk func(n *LayoutNode)
-	walk = func(n *LayoutNode) {
-		visit(n)
-		for _, c := range n.Children {
-			walk(c)
-		}
-	}
-	walk(l.Root)
-}
-
-// regions are the region names the layout places, hidden nodes included.
-func (l *Layout) regions() set.Set[string] {
-	out := set.Set[string]{}
-	l.walkNodes(func(n *LayoutNode) {
-		for _, r := range []string{n.Region, n.Left, n.Right, n.Top} {
-			if r != "" {
-				out.Add(r)
-			}
-		}
-	})
-	for _, f := range l.Floats {
-		out.Add(f.Region)
-	}
-	return out
 }
 
 // Rect is a node's cells on the last frame, 0-based.

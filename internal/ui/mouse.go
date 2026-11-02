@@ -21,7 +21,6 @@ import (
 	"github.com/charmbracelet/x/ansi/kitty"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/proc"
 )
 
@@ -623,14 +622,10 @@ func (a *App) itemSpans(y int, same func(hostapi.Segment) bool) []cellSpan {
 	return spans
 }
 
-// clickable says whether a widget takes clicks itself: a shipped one with a Go
-// handler, or a Lua one with on_click.
+// clickable says whether a widget takes clicks itself: one with a handler.
 func (a *App) clickable(id string) bool {
-	if w := a.widgetByID(id); w != nil {
-		return w.onClick != nil
-	}
-	w := a.host.Widgets.Get(id)
-	return w != nil && w.OnClick != nil
+	w := a.widgetByID(id)
+	return w != nil && w.onClick != nil
 }
 
 // clickWidget runs the on_click of the widget that drew s on the background
@@ -654,25 +649,12 @@ func (a *App) clickWidget(s hostapi.Segment, x, y int) {
 		"button": button,
 		"mods":   map[string]any{"shift": p.mod.Contains(tea.ModShift), "ctrl": p.mod.Contains(tea.ModCtrl), "alt": p.mod.Contains(tea.ModAlt)},
 	}
-	if w := a.widgetByID(s.Widget); w != nil {
-		// a shipped widget's click is Go: it takes the ids it knows here, like a
-		// Go pill's, and the rest run as commands
-		if w.onClick == nil || !w.onClick(a, ev) {
-			a.runClick(ev)
-		}
-		a.Refresh()
-		return
+	// a widget's click takes the ids it knows itself and the rest run as
+	// commands, like a Go pill's
+	if w := a.widgetByID(s.Widget); w == nil || w.onClick == nil || !w.onClick(a, ev) {
+		a.runClick(ev)
 	}
-	a.background(func() {
-		err := a.host.ClickWidget(context.Background(), s.Widget, ev)
-		a.Refresh()
-		switch {
-		case err == nil, lua.Dropped(err):
-		default:
-			a.host.RecordError("click", s.Widget, err.Error())
-			a.Notify(slog.LevelError, "Could not handle the click on "+s.Widget, err.Error())
-		}
-	})
+	a.Refresh()
 }
 
 // openURL is where a clicked link goes; a test swaps it.

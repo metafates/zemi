@@ -67,51 +67,6 @@ func (h *Host) uiAsk(L *glua.LState, api string, o Overlay, cb *glua.LFunction) 
 
 func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
-	widget := L.NewTable()
-	widget.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
-		tb, ok := L.Get(1).(*glua.LTable)
-		if !ok {
-			L.RaiseError("zemi.ui.widget.add: expected a spec table")
-		}
-		onlyTableKeys(L, tb, "zemi.ui.widget.add", "id", "region", "priority", "wrap", "render", "on_click")
-		w := &Widget{
-			ID:     rawString(L, tb, "id"),
-			Region: rawString(L, tb, "region"),
-			Wrap:   rawBool(L, tb, "wrap"),
-			Origin: h.RT.CurrentOrigin(L),
-			Path:   h.RT.CurrentPath(L),
-			Gen:    h.currentGen(),
-		}
-		if n, ok := opt[glua.LNumber](L, tb, "priority"); ok {
-			w.Priority = float64(n)
-		}
-		w.Render, _ = opt[*glua.LFunction](L, tb, "render")
-		w.OnClick, _ = opt[*glua.LFunction](L, tb, "on_click")
-		if _, err := h.Widgets.Add(w); err != nil {
-			L.RaiseError("zemi.ui.widget.add: %v", err)
-		}
-		h.refresh()
-		return 0
-	}))
-	widget.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		ok, err := h.Widgets.Remove(L.CheckString(1), h.RT.CurrentOrigin(L), h.RT.CurrentPath(L))
-		if err != nil {
-			L.RaiseError("zemi.ui.widget.del: %v", err)
-		}
-		h.refresh()
-		L.Push(glua.LBool(ok))
-		return 1
-	}))
-	widget.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		var rows []any
-		for _, w := range h.Widgets.List() {
-			rows = append(rows, map[string]any{"id": w.ID, "region": w.Region, "priority": w.Priority, "origin": string(w.Origin)})
-		}
-		L.Push(lua.FromGo(L, rows))
-		return 1
-	}))
-	tb.RawSetString("widget", widget)
-
 	overlay := L.NewTable()
 	overlay.RawSetString("open", L.NewFunction(func(L *glua.LState) int {
 		tb, ok := L.Get(1).(*glua.LTable)
@@ -140,7 +95,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		case *glua.LTable:
 			v, err := lua.ToGo(body)
 			if err == nil {
-				o.BodySegs, err = convertSegments(v, "")
+				o.BodySegs, err = convertSegments(v)
 			}
 			if err != nil {
 				L.RaiseError("zemi.ui.overlay.open: body: %v", err)
@@ -326,23 +281,6 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		marks.RawSetString(string(k), mt)
 	}
 	tb.RawSetString("marks", marks)
-
-	tb.RawSetString("markdown", L.NewFunction(func(L *glua.LState) int {
-		L.Push(linesTable(L, h.Markdown(L.CheckString(1), L.CheckInt(2))))
-		return 1
-	}))
-	tb.RawSetString("highlight", L.NewFunction(func(L *glua.LState) int {
-		L.Push(linesTable(L, h.Highlight(L.CheckString(1), L.CheckString(2), L.OptInt(3, 0))))
-		return 1
-	}))
-	tb.RawSetString("wrap", L.NewFunction(func(L *glua.LState) int {
-		L.Push(linesTable(L, WrapText(L.CheckString(1), L.CheckInt(2))))
-		return 1
-	}))
-	tb.RawSetString("diff", L.NewFunction(func(L *glua.LState) int {
-		L.Push(linesTable(L, DiffRows(L.CheckString(1), L.CheckInt(2))))
-		return 1
-	}))
 
 	// screenshot() -> the drawn screen as plain text, or nil, err. zemi
 	// reads its own UI with it instead of asking what the user sees.
@@ -729,7 +667,7 @@ func (h *Host) renderItems(L *glua.LState, id string, fn *glua.LFunction, items 
 				var line any
 				if line, err = lua.ToGo(v); err == nil {
 					var rows [][]Segment
-					if rows, err = convertSegments([]any{line}, ""); err == nil {
+					if rows, err = convertSegments([]any{line}); err == nil {
 						item.Row = rows[0]
 					}
 				}
@@ -829,44 +767,3 @@ func (h *Host) ActiveTheme() *Theme {
 
 // SetLightTerminal records whether the terminal's background is light.
 func (h *Host) SetLightTerminal(light bool) { h.lightTerm.Store(light) }
-
-// linesTable is segment rows as zemi.Line tables.
-func linesTable(L *glua.LState, lines [][]Segment) *glua.LTable {
-	// NewTable reserves 32 array and 32 hash slots, which a long chat
-	// pays for once per segment
-	out := L.CreateTable(len(lines), 0)
-	for _, line := range lines {
-		row := L.CreateTable(len(line), 0)
-		for _, s := range line {
-			seg := L.CreateTable(0, 4)
-			seg.RawSetString("text", glua.LString(s.Text))
-			if s.HL != "" {
-				seg.RawSetString("hl", glua.LString(s.HL))
-			}
-			if s.NoCopy {
-				seg.RawSetString("copy", glua.LFalse)
-			}
-			if s.Soft {
-				seg.RawSetString("soft_wrap", glua.LTrue)
-			}
-			switch s.Pin {
-			case PinNone:
-			case PinTurn:
-				seg.RawSetString("sticky", glua.LTrue)
-			case PinSection:
-				seg.RawSetString("sticky", glua.LString("section"))
-			case PinEnd:
-				seg.RawSetString("sticky", glua.LString("end"))
-			}
-			if s.Click != "" {
-				seg.RawSetString("click", glua.LString(s.Click))
-			}
-			if s.Link != "" {
-				seg.RawSetString("link", glua.LString(s.Link))
-			}
-			row.Append(seg)
-		}
-		out.Append(row)
-	}
-	return out
-}

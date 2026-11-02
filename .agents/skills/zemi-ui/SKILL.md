@@ -1,6 +1,6 @@
 ---
 name: zemi-ui
-description: "Load before changing the TUI or anything the user sees: internal/ui, runtime/lua/zemi/tui, the layout spec, keymaps and the composer, overlays, mouse and hit testing, widgets and themes."
+description: "Load before changing the TUI or anything the user sees: internal/ui, the layout spec, keymaps and the composer, overlays, mouse and hit testing, widgets and themes."
 ---
 
 # The TUI
@@ -116,13 +116,11 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   `App.bump`, which wakes it, and all stale widgets render as one message; a widget a message
   resized (a composer newline, a resize) renders on that message, so no frame draws lines
   rendered for another size. A render's ctx
-  builds `transcript`, `agent`, `todos`, `recent`, `projects`, `regions` and `instructions` on first read (`widgetCtxTable`,
-  `BenchmarkWidgetCtx`): keep new expensive fields lazy, and cache one that reads disk or the
-  store (`recentSessions`, `splashProjects`, `instructionsCached`). A widget never changes a line table
-  it returned: `Widget.tableSegments` converts one it saw last render only once and
-  `widgetCache.lineRows` wraps it once per width, and `Host.Session` shares the transcript
+  builds `todos`, `recent`, `projects`, `regions` and `instructions` on first read (`Host.ScreenState`): keep new expensive fields lazy, and cache one that reads disk or the
+  store (`recentSessions`, `splashProjects`, `instructionsCached`). A widget's rows are wrapped once per
+  width and cached, and `Host.Session` shares the transcript
   rows, which are appended or replaced whole, never written in place. A render returning
-  `true` second runs again next frame and wakes the tick, which is how `chat.lua` fills a
+  `true` second runs again next frame and wakes the tick, which is how the chat fills a
   long chat under a 30 ms budget, latest units first, each render at least a full view topped
   with the prompt the view pins (rendered out of order when the view does not reach it), so a
   loaded machine draws the view whole; a region scrolled up keeps the last
@@ -135,7 +133,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   when more run), the working rule draws
   `ctx.busy[1]`, and the same double esc
   (`CancelBusy`, never `zemi.agent.cancel`) cancels every entry that has a cancel func.
-  An empty session has one such row and no chat rows: `zemi.tui.text.empty_chat` is the
+  An empty session has one such row and no chat rows: `internal/ui/textfmt.go`'s `emptyChat` is the
   one predicate both widgets read, the chat yielding the region and `splash.lua` drawing
   the pending row on a row its block reserves, since the splash pads to the whole region
   and a row of the chat's would scroll it out of the top as boot work starts and ends.

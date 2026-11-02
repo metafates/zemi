@@ -757,7 +757,6 @@ func (a *App) closeOverlayByID(id string) {
 		return st.o.ID == id || strings.HasPrefix(st.o.ID, id+" ") || strings.HasPrefix(st.o.ID, id+detailSuffix)
 	}
 	if a.rail != 0 && a.railClose == "" && slices.ContainsFunc(a.overlays, func(st overlayState) bool { return st.o.Rail != 0 && closes(st) }) {
-		println("RAILCLOSE set", id)
 		a.railClose, a.railGen = id, a.frameGen
 		a.syncRail()
 		return

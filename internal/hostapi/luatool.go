@@ -69,7 +69,7 @@ var luaReadOnly = set.Of(
 	"project.root", "project.trusted", "provider.list",
 	"session.id", "session.todos",
 	"skills.list", "state.get", "tool.describe", "tool.list",
-	"ui.focus.get", "ui.hl.get", "ui.layout.get", "ui.layout.rects", "ui.markdown", "ui.highlight", "ui.diff", "ui.wrap", "ui.width", "ui.screenshot", "ui.theme.get", "ui.theme.list", "ui.widget.list",
+	"ui.focus.get", "ui.hl.get", "ui.layout.get", "ui.layout.rects", "ui.width", "ui.screenshot", "ui.theme.get", "ui.theme.list",
 	"workflow.list", "job:wait", "http:wait", "tool:wait",
 )
 
@@ -251,12 +251,8 @@ func (h *Host) runModelLua(ctx context.Context, src, rel string) (string, error)
 
 // guardLua is the guard every Go function exposed to Lua runs through: code
 // from an unapproved Lua tool run may call only luaReadOnly and
-// luaDelegated, and a widget render, which runs every frame, only the
-// luaReadOnly members other than fs.* and a handle's wait.
+// luaDelegated.
 func (h *Host) guardLua(L *glua.LState, member string) {
-	if h.rendering.Load() && (!luaReadOnly.Has(member) || strings.HasPrefix(member, "fs.") || strings.HasSuffix(member, ":wait")) {
-		L.RaiseError("zemi.%s is not allowed during widget render (render must be pure)", member)
-	}
 	if luaReadOnly.Has(member) || luaDelegated.Has(member) {
 		return
 	}

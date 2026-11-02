@@ -16,7 +16,7 @@ description: "Load before changing internal/lua or its Lua sandbox, a zemi.* nam
    sandbox's `coroutine.resume` raises for it: only the driver resumes a task.
 2. **Watchdog / hot mode.** A wedged request trips the watchdog; after a grace period the
    runtime goes "hot" - every Lua request fails fast until force-reload builds a fresh `LState`
-   (generation). All registrations (keymaps, widgets, events, timers, jobs, Lua tools) are
+   (generation). All registrations (keymaps, events, timers, jobs, Lua tools) are
    generation-tagged (`hostapi.Gen`) and purged before replay,
    so never keep a pointer into an old generation. `ForceReload` refuses an init.lua that does
    not parse (the old generation stays), and `tool.pre` and `permission.request` vetoes wait out a reload, so a turn is never checked
@@ -29,7 +29,7 @@ description: "Load before changing internal/lua or its Lua sandbox, a zemi.* nam
    on itself (the `/quit` hang). Wrap such calls in a goroutine, like `App.Quit` does. Blocking
    hooks (`AskPermission`, `AskTrust`, `AskQuestion`, `AskPlan`) must only run on non-UI
    goroutines.
-4. **UI-critical Lua handlers (keymaps, widget render, event handlers) must be fast** (~10 ms).
+4. **UI-critical Lua handlers (keymaps, event handlers) must be fast** (~10 ms).
    Long work belongs in `zemi.job` / `zemi.http` / `zemi.timer`. `wait()` suspends a task (a
    Lua tool's `execute`, a Lua command, a keymap function, an overlay callback, an
    `on_done`/`on_exit`, a `tool.post` handler, `Runtime.Eval`) and raises
@@ -90,7 +90,7 @@ keys are `plugin:<name>:<key>`, its state principal and its overlay badge `plugi
 (`Host.principal` raises for plugin code with no file of its plugin on the stack). Registries
 enforce the one collision rule left (`mayReplace`, which every add and remove runs): **the last
 registration wins**, except that one plugin can neither replace nor remove another's command,
-keymap, widget, theme, event handler, tool, completion source, health row or config watch. No
+keymap, theme, event handler, tool, completion source, health row or config watch. No
 origin can emit host-owned events. A plugin's manifest (`uses`) is the capability model: a gated
 call a plugin makes without its declared word is refused, and registering a
 `permission.request` handler or calling `zemi.perm.ask` needs `perm`. When adding a registry,
@@ -143,7 +143,7 @@ skips them): the second is EmmyLua's, which reads a lua-language-server severity
 value and drops the whole config, zemi's library included. `/workflows` writes both in
 `<state>/scratch` before it opens a run's script. `TestTypes*` keep it
 honest: every API member annotated, nothing annotated that zemi dropped, and the
-`zemi.EventName`, `zemi.HostAction` and `zemi.WidgetCtx` aliases pinned to their Go sources, like
+`zemi.EventName` and `zemi.HostAction` aliases pinned to their Go sources, like
 each constant table (`enumTable`, keyed by the value upper-cased) and the alias that types the
 fields taking one (`TestTypesEnums`), and every other closed set Lua sees (a Go `type X string`
 with a slice of its values) as a multi-line `---|` alias (`TestTypesLayoutKinds` for the layout

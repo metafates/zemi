@@ -2,6 +2,7 @@ package ui
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
@@ -62,10 +63,9 @@ func TestRelaunch(t *testing.T) {
 func TestFadeSparesTheWidgetCache(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 20)
-	runLua(t, app, `
-zemi.ui.widget.add({ id = "notes.wide", region = "chat", priority = 20, wrap = true, render = function()
-  return { { { text = string.rep("word ", 14) } } }
-end })`)
+	addWidget(app, &widget{id: "notes.wide", region: "chat", priority: 20, wrap: true, render: func(*hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+		return [][]hostapi.Segment{{{Text: strings.Repeat("word ", 14)}}}, false
+	}})
 	app.screen(t)
 	before := app.Frame()
 	app.openOverlay(hostapi.Overlay{

@@ -357,9 +357,9 @@ func pathClasses(dirs config.Dirs) lua.PathClasses {
 }
 
 // coreSteps is the head of the boot order (DESIGN §5): the namespaces and
-// the builtin commands before the TUI modules load.
+// the builtin commands, before the plugins and the config.
 func coreSteps(h *hostapi.Host, cmds []*hostapi.Command) []lua.BootStep {
-	return []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(cmds...), lua.RequireStep("zemi.tui")}
+	return []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(cmds...)}
 }
 
 // bootSteps is the boot order (DESIGN §5): trust is what runs before the

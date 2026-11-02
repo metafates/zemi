@@ -81,7 +81,7 @@ type Fn func(L *glua.LState) ([]any, error)
 
 type request struct {
 	class Class
-	// name is what the request runs ("hook tool.pre", "widget render"),
+	// name is what the request runs ("hook tool.pre", "overlay reload"),
 	// so a slow or wedged handler names itself in the warn and the error.
 	name    string
 	fn      Fn

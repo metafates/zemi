@@ -45,8 +45,6 @@ const (
 	RunCancelled RunStatus = "cancelled"
 )
 
-var runStatuses = []RunStatus{RunRunning, RunQueued, RunDone, RunWarn, RunFailed, RunCancelled}
-
 // RunMarks are the Marks a run's or an agent's status word draws, as the
 // chat marks a call: queued and paused wait, running spins.
 var RunMarks = map[string]MarkKind{

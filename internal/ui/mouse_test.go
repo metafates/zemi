@@ -247,15 +247,18 @@ func TestHoverTargets(t *testing.T) {
 		appendReasoning(app.host, "first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
 	}
 	widgets := func(app *App) {
-		src := `zemi.ui.widget.add({ id = "a", region = "statusline.left", priority = 90, on_click = function() end,
-			render = function() return {{{ text = "clickme", click = "go" }}} end })
-		zemi.ui.widget.add({ id = "b", region = "statusline.left", priority = 91,
-			render = function() return {{{ text = "noclick", click = "go" }}} end })
-		zemi.ui.widget.add({ id = "c", region = "statusline.left", priority = 89, on_click = function() end,
-			render = function() return {{{ text = "quiet", hl = "Dim", click = "go", hover = false }}} end })`
-		if err := app.host.RT.ExecuteChunk(t.Context(), src, "w.lua", lua.OriginUser); err != nil {
-			t.Fatal(err)
+		one := func(id string, priority float64, seg hostapi.Segment, click bool) *widget {
+			w := &widget{id: id, region: "statusline.left", priority: priority, render: func(*hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+				return [][]hostapi.Segment{{seg}}, false
+			}}
+			if click {
+				w.onClick = func(*App, map[string]any) bool { return true }
+			}
+			return w
 		}
+		addWidget(app, one("a", 90, hostapi.Segment{Text: "clickme", Click: "go"}, true))
+		addWidget(app, one("b", 91, hostapi.Segment{Text: "noclick", Click: "go"}, false))
+		addWidget(app, one("c", 89, hostapi.Segment{Text: "quiet", HL: "Dim", Click: "go", NoHover: true}, true))
 	}
 	for _, c := range []struct {
 		name string

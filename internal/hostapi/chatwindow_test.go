@@ -9,25 +9,15 @@ import (
 	"testing"
 
 	"charm.land/fantasy"
-
-	"github.com/metafates/zemi/internal/lua"
 )
 
 func TestHeadCut(t *testing.T) {
 	t.Parallel()
 	h := newTestHostUI(t)
-	if err := h.RT.ExecuteChunk(t.Context(),
-		`zemi.ui.widget.add({ id = "probe", region = "statusline.right", render = function(ctx) return { { { text = string.format("%d|%d", ctx.transcript_cut, ctx.transcript_epoch) } } } end })`,
-		"probe.lua", lua.OriginUser); err != nil {
-		t.Fatal(err)
-	}
 	probe := func() string {
 		t.Helper()
-		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("probe"), 60, 1, UIState{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return SegsText(lines[0])
+		st := h.ScreenState(60, 1, UIState{})
+		return fmt.Sprintf("%d|%d", st.TranscriptCut, st.TranscriptEpoch)
 	}
 	for i := range chatWindowRows + 5 {
 		h.AppendMessage("user", fmt.Sprintf("row %d", i))

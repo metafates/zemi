@@ -68,7 +68,7 @@ type msgLog struct {
 
 // RecordMessage keeps one print or zemi.log line for /messages. The file
 // log holds them all, but it is per launch and the agent may not read it,
-// so a print from a keymap, a widget render or a timer would otherwise be
+// so a print from a keymap, a timer or an event handler would otherwise be
 // invisible while zemi runs.
 func (h *Host) RecordMessage(source, text string) {
 	l := &h.msgs

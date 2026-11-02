@@ -270,22 +270,6 @@ func TestKeySequences(t *testing.T) {
 	}
 }
 
-// TestWidgets: a project origin adds and removes its widget, del reports
-// whether there was one. A priority between two others stays between.
-func TestWidgets(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	runUser(t, r, `zemi.ui.widget.add({ id = "w", region = "header", priority = 41.5, render = function() return {} end })
-		assert(zemi.ui.widget.list()[1].priority == 41.5)`)
-	if err := r.ExecuteChunk(t.Context(), `zemi.ui.widget.del("w")`, "p.lua", lua.OriginProject); err != nil || h.Widgets.Get("w") != nil {
-		t.Fatalf("project code removed a user widget: %v", err)
-	}
-	if err := r.ExecuteChunk(t.Context(), `zemi.ui.widget.add({ id = "x", region = "statusline.left", render = function() return {} end })`, "p.lua", lua.OriginProject); err != nil || h.Widgets.Get("x") == nil {
-		t.Fatalf("project code added a widget: %v", err)
-	}
-	runUser(t, r, `assert(zemi.ui.widget.del("x") == true and zemi.ui.widget.del("x") == false)`)
-}
-
 // TestPurgeStopsLuaWork: a reload stops the jobs, agents and workflows Lua
 // started, which would otherwise run on with nobody left to hear from them.
 func TestPurgeStopsLuaWork(t *testing.T) {

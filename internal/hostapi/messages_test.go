@@ -373,9 +373,6 @@ func TestMessagesLiveCalls(t *testing.T) {
 	h := newTestHostUI(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	runUser(t, h.RT, `zemi.ui.widget.add({ id = "railprobe", region = "header", render = function(ctx)
-		return { { { text = tostring(ctx.rail) } } }
-	end })`)
 	h.AppendMessage("user", "watch the dev server")
 	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "shell", Text: "npm run dev", Label: "start the dev server", Status: CallBG, Job: "job-1", Output: "started job-1"})
 	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: "job_read", Text: "job-1", Status: CallOK, Output: "job-1: running"})
@@ -448,8 +445,8 @@ func TestMessagesLiveCalls(t *testing.T) {
 		t.Fatalf("live-only rail = %+v ok=%v", ro.Items, ok)
 	}
 
-	// the negative anchor reaches the ctx, so the chat draws the live-only run
-	// whole; that drawing is the chat's, pinned in internal/ui
+	// the negative anchor reaches the screen state, so the chat draws the
+	// live-only run whole; that drawing is the chat's, pinned in internal/ui
 	calls := []StreamTool{
 		{ID: "c3", Name: "job_read", Input: "job-1", Label: "step 3", Status: CallRun},
 		{ID: "c4", Name: "edit", Input: "f1.go", Label: "step 4", Status: CallOK},
@@ -465,10 +462,8 @@ func TestMessagesLiveCalls(t *testing.T) {
 	if !ok || ro.Rail != -1 {
 		t.Fatalf("live-only rail = %+v ok=%v", ro, ok)
 	}
-	if lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("railprobe"), 20, 1, UIState{Rail: ro.Rail}); err != nil {
-		t.Fatal(err)
-	} else if got := SegsText(lines[0]); got != "-1" {
-		t.Fatalf("the picker's rail reads %q in the ctx, want -1", got)
+	if got := h.ScreenState(20, 1, UIState{Rail: ro.Rail}).Rail; got != -1 {
+		t.Fatalf("the picker's rail reads %d in the screen state, want -1", got)
 	}
 
 	// the turn idle, the calls settle into the transcript and turn 2 folds

@@ -52,7 +52,7 @@ func resolved(t testing.TB, p string) string {
 // ones, in the order main.go runs them.
 func reloadUI(t testing.TB, host *hostapi.Host, extra ...lua.BootStep) {
 	t.Helper()
-	steps := []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep(), lua.RequireStep("zemi.tui")}
+	steps := []lua.BootStep{host.NamespacesStep(), host.BuiltinCommandsStep()}
 	if err := host.ForceReload(t.Context(), append(steps, extra...)); err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func bootAgentAppIn(t testing.TB, w, h int, clock lua.Clock, cfg, project string
 	host.SetUIHooks(app)
 	app.CaptureHooks()
 
-	steps := []lua.BootStep{host.NamespacesStep(), lua.RequireStep("zemi.tui")}
+	steps := []lua.BootStep{host.NamespacesStep()}
 	if err := rt.Boot(ctx, steps); err != nil {
 		t.Fatalf("boot: %v", err)
 	}
@@ -136,6 +136,11 @@ func clickChat(t testing.TB, app *App, id string) {
 	app.bump() // the rows the fold redraws join the next frame
 }
 
+// addWidget registers a Go widget on the app, as shippedWidgets does at boot.
+func addWidget(app *App, w *widget) {
+	app.widgets = append(app.widgets, w)
+}
+
 // renderChat draws the shipped chat at w by h over state, as the frame
 // goroutine does, and says whether it asked to run again.
 func renderChat(t testing.TB, app *App, w, h int, st hostapi.UIState) ([][]hostapi.Segment, bool) {
@@ -144,7 +149,7 @@ func renderChat(t testing.TB, app *App, w, h int, st hostapi.UIState) ([][]hosta
 	if wg == nil {
 		t.Fatal("the shipped chat is not registered")
 	}
-	lines, more, err := app.renderWidget(shownWidget{ID: "chat", Region: "chat", Wrap: wg.wrap, Go: wg, width: w, height: h}, app.host.ScreenState(w, h, st), st)
+	lines, more, err := app.renderWidget(shownWidget{ID: "chat", Region: "chat", Wrap: wg.wrap, Go: wg, width: w, height: h}, app.host.ScreenState(w, h, st))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3013,13 +3018,15 @@ func TestStreamEventsCoalesce(t *testing.T) {
 func TestWidgetErrorRecordedOnce(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 20)
+	addWidget(app, &widget{id: "bad", region: "statusline.right", render: func(*hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+		panic("boom")
+	}})
 	run := func(src string) {
 		t.Helper()
 		if err := host.RT.ExecuteChunk(t.Context(), src, "w.lua", lua.OriginUser); err != nil {
 			t.Fatal(err)
 		}
 	}
-	run(`zemi.ui.widget.add({ id = "bad", region = "statusline.right", render = function() error("boom") end })`)
 	for range 10 {
 		for app.Pump() {
 		}

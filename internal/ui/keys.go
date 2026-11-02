@@ -104,7 +104,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// Keymaps (zemi.keymap.set) take single keys and bound sequences;
 	// printable keys stay with the composer, and an open popup keeps its
 	// keys. The composer is Go-drawn, so typing must not bump the frame
-	// generation: that would re-render every Lua widget on every keystroke.
+	// generation: that would re-render every widget on every keystroke.
 	if top == noModal && key != "ctrl+c" {
 		if a.palette.open || a.completion.shown() {
 			return a.composerKey(key, msg)

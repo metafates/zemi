@@ -1,6 +1,6 @@
 # Keys and UI
 
-Everything on screen but the composer and the Go-drawn prompts is a Lua widget. The shipped UI is readable source in the tui directory the system prompt names: `theme.lua`, `layout.lua`, `keymaps.lua`, the widgets in `statusline.lua`, `working.lua`, `chat.lua` and `splash.lua`, the module `init.lua` that hands them out, and the helpers they share in `text.lua`, `snail.lua` and `knot.lua`. Read the one you change. Restyling the shipped UI (a replaced widget, `hl.set`, a theme pick, the layout) is user config, in init.lua.
+The screen is drawn in Go (`internal/ui`): the splash, the chat, the composer's rule and the statusline. A plugin adds nothing to it directly.
 
 ## Keys
 
@@ -16,66 +16,6 @@ A key is a non-printable key or a sequence that starts with one (`"ctrl+x s"`; `
 
 Lists, popups and prompts keep their keys (`/help` lists them): up, down, j, k, ctrl+p and ctrl+n move, ctrl+d and ctrl+u move half a page, scroll a box's text, or scroll the chat half a view, a typed line included (its own text stays; in a prompt or a filter's line ctrl+u kills back to the line's start instead). The composer popups keep j, k, home and end for the draft. `list = true` adds a key for a move (`"up"`, `"down"`, `"pgup"`, `"pgdown"`, `"home"`, `"end"`, `"ctrl+d"`, `"ctrl+u"`); it is one non-printable key other than enter, esc, tab, shift+tab, space and backspace, and elsewhere the key stays what it was (ctrl+j still scrolls the chat), as it does while a line types when the move is home or end.
 
-## Widgets
-
-A widget registered with a shipped id replaces it; a new id adds one.
-
-Shipped ids: `splash` and `chat` (region `chat`); `working` (the composer frame's top rule: the mascot one cell in from its left corner; at its right end the job the user waits on, the interrupt key, or in an agent view `esc back` with the run it shows, and the clock); in `statusline.left` `statusline.quit`, `statusline.cwd`, `statusline.goal`, `statusline.loop`, `statusline.agents`, `statusline.jobs`, `statusline.keys`, `statusline.scroll`; in `statusline.right` `statusline.model`, `statusline.effort`, `statusline.context`, `statusline.cost`, `statusline.hints` (the `/` and `@` keys, until the first message). zemi draws a separator between the statusline widgets that draw, so each returns its text alone. Each side fills from its outer edge inward in rising priority (the right side from the right edge), and a short row drops the highest first. So a lasting widget takes a low priority and one that comes and goes a high one, where it moves nothing, and a widget one above a shipped one's priority (`zemi.ui.widget.list()` has them) sits just inside it.
-
-Rules for `render(ctx)`:
-
-- `ctx` is a `zemi.WidgetCtx` (the types list every field): `width`, `height`, `transcript`, `agent`, `usage`, `frame` and `ended` are the common ones.
-- It returns lines of segments `{ text, hl }`, `{}` for none. A segment may add `click = "id"` (the widget's `on_click(ev)` gets it as `ev.id`), `effect = "shimmer"` or, on a `zemi.ui.marks.spin` glyph, `effect = "spin"` (the UI steps the spinner), `copy = false` (decoration a selection skips), `hover = false` (a clickable row hovering does not restyle), `soft_wrap = true` (the line continues on the next row) and, on a row's first segment, `anchor = <transcript index>` (the chat stamps every row of a unit's message with its first index, a reply's readout aside: a list opened with `follow` scrolls the chat to the row its selected item names this way and bands the whole message) and `sticky = true` (the row heads what follows: a scrolled region pins it over its first row while it is above the view, drawn in the `Pinned` group, as the chat does with a prompt; `sticky = "section"` heads a part of that and pins under it, down to the row marked `sticky = "end"`, as the chat does with an opened run).
-- It is pure and fast: only read-only calls (`config.get`, `state.get`, `ui.width`, `session.todos`, ...) work in it, and not `zemi.fs` or a handle's `wait`; anything else raises, and it has about 10 ms (stopped at the 1 s hard ceiling). Slow work runs in a `zemi.job` or `zemi.timer` callback that sets a local the render reads; job, http and one-shot timer callbacks redraw when they return.
-- A widget redraws only when something else does. One that changes on its own calls `zemi.ui.redraw` from `zemi.timer.every`.
-- Returning the same line table again is free; never change one after returning it. With more work than fits, return what is ready and `true` as a second result, and zemi renders it again next frame (the chat fills a long log window this way, 30 ms a render at most).
-- Colors are theme groups: `Accent`, `Dim`, `Rule`, `Title`, `Literal`, `Danger`, `Warn`, `Ok`, and the rest in `theme.lua`, each linking to one of them or naming a palette role, or the knot ramp's `Knot0`..`Knot31`, which take `{ shade = i / 31 }` and run through the theme's rule, accent and literal.
-- A replacement statusline widget keeps its click with `on_click = function(ev) zemi.command.run(ev.id) end`. A replacement chat keeps agent rows (`zemi.command.run("agents", "view " .. row.run)`) and the folding: `require("zemi.tui.chat").click` is the shipped chat's `on_click`, keyed by its click ids (`turn:<idx>` a digest, `more:<idx>` what a fold row hides, `step:<idx>` its calls, `call:<idx>` a call's or a thought's own view, which `/call <idx>` opens by itself - the rail never expands one - `agent:<run id>` and `workflow:<run id>` a run's view, `job:<id>` a handed-off job's output). A click leaves the tail of the scrolled region its widget draws in, so the rows it redraws (a digest opening over its rail) grow under the reader's place instead of scrolling it away; `zemi.ui.scroll.bottom` brings the tail back.
-
-```lua
--- a tip of your own in place of the default splash's
-local default = require("zemi.tui")
-local text = require("zemi.tui.text")
-zemi.ui.widget.add({
-	id = "splash",
-	region = "chat",
-	priority = 5,
-	render = function(ctx)
-		if not text.empty_chat(ctx) then return {} end
-		local rows = default.splash(ctx)
-		for i, row in ipairs(rows) do
-			if row[1] and row[1].text == "● Tip  " then
-				rows[i] = { row[1], row[2], { text = "hack the planet", hl = "Dim" } }
-				-- a default tip that wraps goes on in the next row: blank it, keeping the row
-				if rows[i + 1] and rows[i + 1][2] then rows[i + 1] = { { text = "" } } end
-				break
-			end
-		end
-		return rows
-	end,
-})
-
--- the git branch: a job fills a local, the widget reads it
-local branch = ""
-zemi.ui.widget.add({
-	id = "statusline.branch",
-	region = "statusline.right",
-	priority = 50,
-	render = function() return { { { text = branch, hl = "Dim" } } } end,
-})
-local function poll()
-	zemi.job.start({
-		cmd = "git",
-		args = { "rev-parse", "--abbrev-ref", "HEAD" },
-		on_exit = function(res) branch = res.stdout:gsub("%s+$", "") end,
-	})
-end
-poll()
-zemi.timer.every(30000, poll)
-```
-
-Keep such state in a local, not `zemi.state`: that store is shared by every project, so a branch kept there shows in the wrong repository.
-
 ## Colors and themes
 
 A theme is one line of colors: `zemi.ui.theme.add("mine", { bg = "#1e1e2e", fg = "#cdd6f4", accent = "#89b4fa", ok = "#a6e3a1", warn = "#f9e2af", danger = "#f38ba8" })`, then `zemi.config.set("ui.theme", "mine")`. zemi derives the rest (`literal`, `dim`, `rule`, `panel`, `band`, `addbg`, `delbg`, `well`; give any to pin it), keeps `panel` and `band` near `bg`, and moves a color too faint to read on any of the three. To port a Ghostty theme (`ghostty +list-themes`, files in its `themes` directory), copy its `background` as `bg`, `foreground` as `fg` and `palette = 0..15` in order as `ansi = { ... }` (16 colors) in place of the four hues, as `theme.lua` does for the shipped ports: whorl, catppuccin, tokyonight, gruvbox, nord, dracula, solarized, rose-pine, kanagawa, one, everforest and github. A `<name>-light` theme beside it draws on a light terminal when it is registered. `/theme` picks one with the list open: enter on a row repaints the screen in it, so you can try the next. Groups name a role (`fg = "accent"`), hex or an ANSI color name and are defined once for every theme: `zemi.ui.hl.set("Accent", { fg = "#c4a7e7" })` replaces one, and groups that link to it follow (`Snail`, the mascot's shell, links to `Accent`: set it to recolor the snail alone), while those naming the role themselves (`Title`) do not, so a recolor everywhere is a theme's `accent`.
@@ -85,18 +25,7 @@ A theme is one line of colors: `zemi.ui.theme.add("mine", { bg = "#1e1e2e", fg =
 `zemi.ui.layout.set({ root, floats })` in init.lua replaces `layout.lua` whole (the types file has every field). A `box` (`dir = "row"` or `"col"`, `sep`) holds `region`s, the one `composer` (with `frame = true` its square frame's `top`, `left` and `right` rules hold regions: the shipped layout puts only `working`, the mascot, in its `top`, and keeps the statusline on a bar below the box; `placeholder` is the dim text an empty draft shows), a statusline `bar` and `spacer`s. Each is sized in cells, `"N%"`, `"fill"` (with `weight`) or `"content"` (a region, a bar or the composer in a col only), with `min`, `max`, `hidden` and `collapse`. `stage = true` marks where prompts, overlays and toasts go (the shipped stage is the box holding the chat: a box centers on it and the toasts hug its right edge); `floats` draw a region over the tree. A hidden or collapsed child takes no `sep`. `zemi.ui.scroll(action, id)` moves a scrolled node from a click or a handler; a `top` or `bottom` issued before the node's rows arrive lands on them at the next layout, and `top` stays there until the node scrolls again.
 
 ```lua
--- statusline on top, a todo sidebar left of the chat
-zemi.ui.widget.add({
-	id = "user.todos",
-	region = "sidebar",
-	render = function(ctx)
-		local rows = {}
-		for _, td in ipairs(ctx.todos) do
-			rows[#rows + 1] = { { text = td.content, hl = "Dim" } }
-		end
-		return #rows > 0 and rows or { { { text = "no todos" } } }
-	end,
-})
+-- statusline on top, a sidebar left of the chat
 local layout = {
 	root = {
 		kind = "box",

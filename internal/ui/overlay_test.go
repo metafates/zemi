@@ -513,12 +513,12 @@ func TestBootFailedBox(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 90, 24)
 	host.PurgeGeneration() // what a failed boot leaves behind: no theme, no widgets
-	app.SignalBoot(errors.New("boot step zemi.tui: zemi/tui/init.lua:12: attempt to call a nil value (global 'pending')"))
+	app.SignalBoot(errors.New("boot step init.lua: init.lua:12: attempt to call a nil value (global 'pending')"))
 	for app.Pump() {
 	}
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
-	for _, want := range []string{"Boot failed", "boot step zemi.tui:", "The whole traceback is in the log", "c copy the error", "q quit"} {
+	for _, want := range []string{"Boot failed", "boot step init.lua:", "The whole traceback is in the log", "c copy the error", "q quit"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the box does not say %q:\n%s", want, frame)
 		}

@@ -38,19 +38,19 @@ Reading files needs no declaration, and neither does the plugin's own state or i
 
 `/plugin new` and `/plugin modify` send you here, or the user asked for a plugin or a change to one. A plugin is checked by its tests, never by trying it in this session.
 
-1. New: unless the request already says, ask with the `question` tool what the plugin should do and where it shows up (a command, a key, a statusline widget, a tool the model calls, an event handler, a theme), and whether anything that runs on its own (a timer, an event handler that acts, a network call, a message to the agent) should be on from the start. In one Lua tool script, check that zemi does not do it already: `zemi.config.schema()`, `zemi.command.list()`, `zemi.keymap.list()`, `zemi.ui.widget.list()` (id, region, priority) and `zemi.tool.list()`. If a setting, a builtin tool (a todo list, for one - `todos` ships with zemi), a command, a prompt command (`commands/<name>.md`) or a workflow does the job, offer that instead. A change: read the plugin's files first (the prompt names its directory) and ask only if the request is unclear.
+1. New: unless the request already says, ask with the `question` tool what the plugin should do and where it shows up (a command, a key, a picker, a tool the model calls, an event handler, a theme), and whether anything that runs on its own (a timer, an event handler that acts, a network call, a message to the agent) should be on from the start. In one Lua tool script, check that zemi does not do it already: `zemi.config.schema()`, `zemi.command.list()`, `zemi.keymap.list()` and `zemi.tool.list()`. If a setting, a builtin tool (a todo list, for one - `todos` ships with zemi), a command, a prompt command (`commands/<name>.md`) or a workflow does the job, offer that instead. A change: read the plugin's files first (the prompt names its directory) and ask only if the request is unclear.
 2. Say in one message what you will write. A new plugin takes a name nothing registers yet and is `.zemi/init.lua`, `.zemi/lua/<name>/init.lua`, `.zemi/tests/<topic>.lua`, `.zemi/plugin.json` (`{"version": "0.1.0", "description": "<one line>", "uses": [...]}`, the version the user sees in `/plugin` and the names it calls, `uses` above), a `README.md` naming its commands, keys and settings, and `stylua.toml` (below). Write `.zemi/init.lua` first: that write creates the plugin and is the one the user approves, so it shows them the code.
-3. A widget or a key: read `ui.md` first (placement by priority, clicks, render rules). Write the code and its tests together, indented with tabs: each thing the user can see gets a case, and a fix starts with the case that fails without it. Read `lua.md` only for API you do not know (waiting on a job, HTTP or a model); for what a widget's render gets, grep `@class zemi.WidgetCtx` in the types file and read that block.
-4. Run `<zemi> plugin test <name>` with the shell tool and fix until it passes, `<zemi>` being the path the zemi skill ends with ("This zemi runs from"): a bare `zemi` may be an older one on PATH. Name the plugin, not its path. The tests are the check: do not try the plugin in this session (`zemi.command.run`, keys, `zemi.ui.screenshot()`, widget listings) unless the user asks, and write the tests even then.
-5. Then, once, `return zemi.errors.list()` in a Lua tool script: the tool reloads the changed plugin first and its result starts with what failed to load. It shows a clash with another plugin (a key or an id that plugin holds); a clash with the user's own config raises nothing, since the later registration wins and the plugin silently replaces that command, key, widget or theme. Fix a `plugin <name>:` error and go back to 4.
+3. A command, key or picker: read `ui.md` first (overlays, toasts, the composer). Write the code and its tests together, indented with tabs: each thing the user can see gets a case, and a fix starts with the case that fails without it. Read `lua.md` only for API you do not know (waiting on a job, HTTP or a model); for an overlay's items, grep `@class zemi.OverlayItem` in the types file and read that block.
+4. Run `<zemi> plugin test <name>` with the shell tool and fix until it passes, `<zemi>` being the path the zemi skill ends with ("This zemi runs from"): a bare `zemi` may be an older one on PATH. Name the plugin, not its path. The tests are the check: do not try the plugin in this session (`zemi.command.run`, keys, `zemi.ui.screenshot()`) unless the user asks, and write the tests even then.
+5. Then, once, `return zemi.errors.list()` in a Lua tool script: the tool reloads the changed plugin first and its result starts with what failed to load. It shows a clash with another plugin (a key or an id that plugin holds); a clash with the user's own config raises nothing, since the later registration wins and the plugin silently replaces that command, key or theme. Fix a `plugin <name>:` error and go back to 4.
 6. Tell the user what it registered or what changed, that `/plugin` turns it off, and which README lines they may add to init.lua. Do not add them yourself.
 
-`.zemi/init.lua` registers what the plugin is for, with defaults, so it works the moment it loads with no line in the user's init.lua: its commands, its widgets (rendering `{}` until they have something to say), its tool, its settings, and keys only where `zemi.keymap.get(key)` is nil. Every option that is a bool, a number, a string or one of a list is a setting, `zemi.config.add(key, { kind, default, desc, choices })`, which /config lists under the plugin's name and keeps across starts. The plugin's code reads and watches it by the bare key; the user's init.lua sets it as `plugins.<name>.<key>` with `zemi.config.set`. What the user did not ask for stays off behind a bool setting that defaults to false, which the user turns on in /config: timers and polling beyond what its own widgets need, event handlers that act (sending to the agent, vetoing a submit or a tool call), network calls, a key someone else holds. Plugins load before the user's init.lua, so read a setting where it is used (the timer tick, the handler, `app.ready`), or watch it (`zemi.config.watch`) to start and stop what it controls; a value read at load misses init.lua's. A plugin never writes its settings. A setting never holds a secret (a token, a password): the store keeps it in plain text and any code and the model can read it. `setup(opts)` is only for what a setting cannot hold: a function, a table, or a key the user passes from `zemi.env.get`.
+`.zemi/init.lua` registers what the plugin is for, with defaults, so it works the moment it loads with no line in the user's init.lua: its commands, its tool, its settings, its health rows, and keys only where `zemi.keymap.get(key)` is nil. Every option that is a bool, a number, a string or one of a list is a setting, `zemi.config.add(key, { kind, default, desc, choices })`, which /config lists under the plugin's name and keeps across starts. The plugin's code reads and watches it by the bare key; the user's init.lua sets it as `plugins.<name>.<key>` with `zemi.config.set`. What the user did not ask for stays off behind a bool setting that defaults to false, which the user turns on in /config: timers and polling beyond what it needs, event handlers that act (sending to the agent, vetoing a submit or a tool call), network calls, a key someone else holds. Plugins load before the user's init.lua, so read a setting where it is used (the timer tick, the handler, `app.ready`), or watch it (`zemi.config.watch`) to start and stop what it controls; a value read at load misses init.lua's. A plugin never writes its settings. A setting never holds a secret (a token, a password): the store keeps it in plain text and any code and the model can read it. `setup(opts)` is only for what a setting cannot hold: a function, a table, or a key the user passes from `zemi.env.get`.
 
 `.zemi/init.lua`:
 
 ```lua
--- the git branch in the statusline
+-- the git branch in /health
 require("branch")
 ```
 
@@ -59,7 +59,7 @@ require("branch")
 ```json
 {
   "version": "0.1.0",
-  "description": "the git branch in the statusline",
+  "description": "the git branch in /health",
   "uses": ["job"]
 }
 ```
@@ -82,15 +82,9 @@ local function poll()
 end
 
 zemi.health.add("branch", function()
-	return missing and { level = "warn", detail = missing } or "reading the branch"
+	if missing then return { level = "warn", detail = missing } end
+	return branch == "" and "no branch" or "on branch " .. branch
 end)
-
-zemi.ui.widget.add({
-	id = "branch",
-	region = "statusline.right",
-	priority = 50,
-	render = function() return branch == "" and {} or { { { text = branch, hl = "Dim" } } } end,
-})
 
 zemi.config.add("interval", {
 	kind = "number",
@@ -132,7 +126,7 @@ enabled = false
 
 ## Identity and permissions
 
-Identity: a plugin's code runs as the plugin wherever it is called from, its `setup()` in the user's init.lua included. A command, keymap, widget, theme, tool, completion source or health row another plugin registered first (by name) is refused, with both named in `/errors`; anything else replaces what it finds, so prefix ids with the plugin name and bind only keys nothing else uses. Its `zemi.state` keys are its own (stored under `plugin:<name>:`) and go when it is deleted or installed again, like the settings the user picked for it; turned off, it keeps both, and init.lua's `zemi.config.set` lines for its settings do nothing. Its modules sit under `.zemi/lua/<name>/` and any code can require them; a module table is one instance per session, so keep a secret in a local. Plugins reach each other over `user.*` events - `zemi.event.emit("user.<plugin>.done", { id = id })` from any origin, heard by every `zemi.event.on("user.<plugin>.done", fn)`; the payload is copied the way JSON copies, so each key arrives as a string. Prefix the name with the plugin's (two plugins emitting `user.done` hear each other's events), and `zemi.event.list({ name = ... })` shows what actually fired.
+Identity: a plugin's code runs as the plugin wherever it is called from, its `setup()` in the user's init.lua included. A command, keymap, theme, tool, completion source or health row another plugin registered first (by name) is refused, with both named in `/errors`; anything else replaces what it finds, so prefix ids with the plugin name and bind only keys nothing else uses. Its `zemi.state` keys are its own (stored under `plugin:<name>:`) and go when it is deleted or installed again, like the settings the user picked for it; turned off, it keeps both, and init.lua's `zemi.config.set` lines for its settings do nothing. Its modules sit under `.zemi/lua/<name>/` and any code can require them; a module table is one instance per session, so keep a secret in a local. Plugins reach each other over `user.*` events - `zemi.event.emit("user.<plugin>.done", { id = id })` from any origin, heard by every `zemi.event.on("user.<plugin>.done", fn)`; the payload is copied the way JSON copies, so each key arrives as a string. Prefix the name with the plugin's (two plugins emitting `user.done` hear each other's events), and `zemi.event.list({ name = ... })` shows what actually fired.
 
 Permissions: the manifest declares what the plugin calls, and enabling it grants exactly that. A call the declaration covers runs, and one it does not is refused, naming the line to add: `lua.http.get https://x: plugin jira declares no "http"; add "http" to uses in .zemi/plugin.json`. Never an ask: the manifest is the decision the user made. A read-only agent changes nothing, its writes included. The one capability that widens the gate itself is `perm`: with it the plugin may register a `permission.request` handler and call `zemi.perm.ask`, so its code can deny or force the ask overlay on actions of its choosing - that is why it is declared, and why a handler cannot wait for an answer (50 ms). Enabling grants nothing else: the declaration is the whole gate. A call no `uses` name covers - `zemi.provider.add`, `zemi.lsp.add`, the composer, settings, the theme, the layout, a model - is not origin-gated at all; what changes the machine still passes the tool pipeline's gate. A key comes through `setup({ key = zemi.env.get("NAME") })` in the user's init.lua.
 
@@ -170,7 +164,7 @@ local res = zemi.classify.ask({
 
 `state` is the data to judge and goes to the model as data, not as prose the plugin wrote; a state never carries instructions that matter, and the strategies tell the model so. A question is `type` (`bool`, `choice` or `score`), `instructions` in one line, and `criteria`: a bool's `{ ["true"] = "...", ["false"] = "...", }`, a choice's `{ label = "what it means" }`, or a score's levels lowest first. The answer for a bool is `{ value, probability }`; `choice` gives `{ choice, probabilities, confidence }`, `score` gives `{ score, confidence }`. `res.strategy` says who answered (`protocol`, `logprobs` or `schema`); the last one has no probabilities, so `probability` and `confidence` are absent there. Keep the state small and ask one question per answer you need.
 
-`wait()` suspends only a task, so an event handler cannot call it: there, ask with `on_done = function(res, err) ... end` and the answer arrives as a task - set the setting, refresh the widget, send to the agent, all from the callback. A new ask while one runs is yours to settle: keep the handle and `:cancel()` the stale one.
+`wait()` suspends only a task, so an event handler cannot call it: there, ask with `on_done = function(res, err) ... end` and the answer arrives as a task - set the setting, notify, send to the agent, all from the callback. A new ask while one runs is yours to settle: keep the handle and `:cancel()` the stale one.
 
 A failure is a state, not a crash: the handle's `:wait()` returns `nil, err` when no strategy answered (a key not exported, a provider down, a model that cannot answer the question), so the plugin reports it in a `zemi.health.add` row.
 
@@ -233,7 +227,7 @@ end, { nargs = "+", desc = "summarize a file into the composer" })
 
 ## Style
 
-So a plugin looks like zemi: colors are theme groups (`Accent`, `Dim`, `Ok`, `Warn`, `Danger`, ...), never hex, so the user's theme applies. No state change adds or removes a row: status goes in a statusline widget that renders `{}` when there is nothing to say (with a high priority, since it comes and goes) or in a toast (`zemi.notify`), whose title says what happened like zemi's own: "Plugin installed" with the name in the body, "Could not reach the server" with the cause in the body. A tool's call row is zemi's own, labeled by a string `about` parameter, with `run:progress(text)` for the running line. Slow work goes in a `wait` inside a task or a job's `on_exit`, never in a render.
+So a plugin looks like zemi: colors are theme groups (`Accent`, `Dim`, `Ok`, `Warn`, `Danger`, ...), never hex, so the user's theme applies. No state change adds or removes a row: status goes in a health row (`zemi.health.add`) while it matters or in a toast (`zemi.notify`), whose title says what happened like zemi's own: "Plugin installed" with the name in the body, "Could not reach the server" with the cause in the body. A tool's call row is zemi's own, labeled by a string `about` parameter, with `run:progress(text)` for the running line. Slow work goes in a `wait` inside a task or a job's `on_exit`, never on the key path.
 
 ## Developing one
 
@@ -255,8 +249,6 @@ test(name, fn)                  a case, at the file's top level
 test.run(cmd, args?)            the plugin's command as typed -> true | nil, err
 test.keys("ctrl+x d")           what the plugin bound a key sequence to -> true | nil, err
 test.tool(name, input)          the model's call of the plugin's tool -> output | nil, err
-test.render(id, ctx?)           a widget's lines as text, then as segments (width 80, height 1)
-test.click(id, click)           the widget's on_click for a segment's click id
 test.emit(event, ev?)           a host event to the plugin's handlers
                                 -> a vetoable event answers the verdict table,
                                 { decision = "deny" | "ask" | "rewrite" | "halt",
@@ -281,22 +273,28 @@ Prefer `eq` with the exact value: `neq` passes on any wrong one. Reply fields an
 local test = zemi.test
 local git = test.stub("lua.job.start", "git rev-parse *", { stdout = "main\n" })
 
-test("the widget shows the branch git reports", function()
-	test.eq(test.render("branch"), { "main" })
+local function row()
+	for _, r in ipairs(zemi.health.list()) do
+		if r.name == "branch" then return r end
+	end
+end
+
+test("the health row names the branch git reports", function()
+	test.eq(row().detail, "on branch main")
 	test.eq(git[1].args, { "rev-parse", "--abbrev-ref", "HEAD" })
 end)
 
 test("a checkout shows on the next poll", function()
 	test.stub("lua.job.start", "git rev-parse *", { stdout = "fix-login\n" })
 	test.advance(30000)
-	test.eq(test.render("branch"), { "fix-login" })
+	test.eq(row().detail, "on branch fix-login")
 end)
 
 test("the interval setting moves the poll", function()
 	assert(test.set("interval", 10000))
-	test.stub("lua.job.start", "git rev-parse *", { stdout = "fix-login\n" })
+	test.stub("lua.job.start", "git rev-parse *", { stdout = "trunk\n" })
 	test.advance(10000)
-	test.eq(test.render("branch"), { "fix-login" })
+	test.eq(row().detail, "on branch trunk")
 end)
 ```
 

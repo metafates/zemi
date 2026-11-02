@@ -28,7 +28,7 @@ func renderAt(t testing.TB, app *App, id string, st *hostapi.ScreenState) [][]ho
 	if w == nil {
 		t.Fatalf("the shipped %s is not registered", id)
 	}
-	lines, _, err := app.renderWidget(shownWidget{ID: id, Region: w.region, Wrap: w.wrap, Go: w, width: st.Width, height: st.Height}, st, app.uiState())
+	lines, _, err := app.renderWidget(shownWidget{ID: id, Region: w.region, Wrap: w.wrap, Go: w, width: st.Width, height: st.Height}, st)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,5 +304,21 @@ func TestPendingRowCarriesOnlyOnceItLeavesTheView(t *testing.T) {
 	}
 	if got := rule(after + 1); !strings.Contains(got, label) {
 		t.Fatalf("the rule dropped the pending row past all %d rows below it: %q", after, got)
+	}
+}
+
+// TestRelPath: a row writes a path under the working directory relative to
+// it and one elsewhere under home from ~.
+func TestRelPath(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ in, cwd, home, want string }{
+		{"/h/me/p/a.go", "~/p", "/h/me", "a.go"},
+		{"cat /h/me/.x/b /h/me/p/c", "~/p", "/h/me", "cat ~/.x/b c"},
+		{"/h/meta/a", "~/p", "/h/me", "/h/meta/a"},
+		{"/tmp/p/a.go", "/tmp/p", "/h/me", "a.go"},
+	} {
+		if got := relPath(c.in, c.cwd, c.home); got != c.want {
+			t.Errorf("relPath(%q, %q, %q) = %q, want %q", c.in, c.cwd, c.home, got, c.want)
+		}
 	}
 }

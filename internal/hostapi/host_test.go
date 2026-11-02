@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -45,8 +44,8 @@ func newTestHost(t *testing.T) (*Host, *lua.Runtime) {
 	return h, r
 }
 
-// newTestHostUI is newTestHost with the shipped theme, widgets and keymaps
-// loaded, and a state dir; a clock given moves only when the test moves it.
+// newTestHostUI is newTestHost with a state dir; a clock given moves only
+// when the test moves it.
 func newTestHostUI(t *testing.T, clock ...lua.Clock) *Host {
 	t.Helper()
 	log := slog.New(slog.DiscardHandler)
@@ -54,7 +53,7 @@ func newTestHostUI(t *testing.T, clock ...lua.Clock) *Host {
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()})
 	h.ReleaseBuilder() // tests stub the model and boot no config
 	t.Cleanup(h.Close)
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.tui")}); err != nil {
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
 	return h
@@ -196,7 +195,7 @@ func TestNamespaceVersion(t *testing.T) {
 	t.Parallel()
 	_, r := newTestHost(t)
 	runUser(t, r, `
-		assert(zemi.api.version == "0.157.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.158.0", "version=" .. tostring(zemi.api.version))
 		assert(not pcall(function() return zemi.test end), "zemi.test outside zemi plugin test")
 		assert(zemi.project.trusted() == false and zemi.project.root() ~= "", "zemi.project")
 		assert(zemi.ui.width("日本") == 4, "zemi.ui.width counts cells")
@@ -448,101 +447,6 @@ func TestKeymapFromLua(t *testing.T) {
 	}
 	if b := h.Keymaps.Lookup("ctrl+g"); b == nil || b.Origin != lua.OriginUser {
 		t.Fatalf("ctrl+g = %+v", b)
-	}
-}
-
-// waitedCtx says when somebody starts waiting on it: Runtime.Do reads Done
-// only after its request is queued.
-type waitedCtx struct {
-	context.Context
-	waited chan struct{}
-}
-
-func (c *waitedCtx) Done() <-chan struct{} {
-	select {
-	case c.waited <- struct{}{}:
-	default:
-	}
-	return c.Context.Done()
-}
-
-// TestRenderGuardOnlyWhileRendering: a render queued behind other Lua does
-// not make that Lua look like render code.
-func TestRenderGuardOnlyWhileRendering(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	runUser(t, r, `zemi.ui.widget.add({ id = "w", region = "header", render = function() return {} end })`)
-	w := h.Widgets.List()[0]
-	rendered := make(chan struct{})
-	ctx := &waitedCtx{Context: t.Context(), waited: make(chan struct{}, 1)}
-	if _, err := r.Do(t.Context(), lua.ClassIO, 0, 0, "test", func(L *glua.LState) ([]any, error) {
-		go func() {
-			defer close(rendered)
-			h.RenderWidget(ctx, w, 40, 10, UIState{})
-		}()
-		<-ctx.waited // the render is now queued behind this request
-		if h.rendering.Load() {
-			t.Error("render guard raised while the render only waited in the queue")
-		}
-		return nil, nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	<-rendered
-}
-
-// TestRenderAllowlist pins the render guard (DESIGN §4): a widget render
-// may call the luaReadOnly readers, and any other call, a wait or a disk
-// read raises naming it; a clean render comes back sanitized.
-func TestRenderAllowlist(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	cases := []struct{ call, refused string }{
-		{`zemi.config.get("ui.mouse")`, ""},
-		{`zemi.perm.ask({ subject = "fs.write" })`, "perm.ask"},
-		{`zemi.agent.run({ prompt = "x" })`, "agent.run"},
-		{`zemi.skills.enable("x")`, "skills.enable"},
-		{`zemi.config.watch("ui.mouse", function() end)`, "config.watch"},
-		{`zemi.ui.scroll("bottom")`, "ui.scroll"},
-		{`zemi.fs.read("x")`, "fs.read"},
-		{`job:wait(1000)`, "job:wait"},
-	}
-	src := `local job = zemi.job.start({ cmd = "true" })` + "\n"
-	for i, c := range cases {
-		src += fmt.Sprintf("zemi.ui.widget.add({ id = %q, region = \"header\", render = function() %s return {} end })\n", strconv.Itoa(i), c.call)
-	}
-	src += `zemi.ui.widget.add({ id = "clean", region = "header", render = function()
-		return {{{text = "a\27[31mb", hl = "Dim"}, {text = "chrome", hl = "Host:BtnSel"}}}
-	end })`
-	runUser(t, r, src)
-	widgets := map[string]*Widget{}
-	for _, w := range h.Widgets.List() {
-		widgets[w.ID] = w
-	}
-	for i, c := range cases {
-		_, _, err := h.RenderWidget(t.Context(), widgets[strconv.Itoa(i)], 40, 10, UIState{})
-		if want := "zemi." + c.refused + " is not allowed during widget render"; c.refused == "" && err != nil ||
-			c.refused != "" && (err == nil || !strings.Contains(err.Error(), want)) {
-			t.Errorf("%s: err = %v", c.call, err)
-		}
-	}
-
-	lines, _, err := h.RenderWidget(t.Context(), widgets["clean"], 40, 10, UIState{})
-	if err != nil {
-		t.Fatalf("clean render: %v", err)
-	}
-	if len(lines) != 1 || len(lines[0]) != 2 {
-		t.Fatalf("clean render shape = %#v", lines)
-	}
-	if hl := lines[0][1].HL; hl != "" {
-		t.Fatalf("Go chrome hl survived Lua: %q", hl)
-	}
-	seg := lines[0][0]
-	if seg.Text != "ab" || strings.ContainsRune(seg.Text, '\x1b') {
-		t.Fatalf("segment text = %q (escape not sanitized)", seg.Text)
-	}
-	if seg.HL != "Dim" {
-		t.Fatalf("segment hl = %q, want Dim", seg.HL)
 	}
 }
 
@@ -950,58 +854,6 @@ func TestStoreKeyedOnRepo(t *testing.T) {
 	}
 }
 
-func TestClickWidget(t *testing.T) {
-	const widget = `zemi.ui.widget.add({
-		id = "w", region = "statusline.left",
-		render = function() return {{{ text = "go", click = "probe" }, { text = " plain" }}} end,
-		on_click = function(ev) assert(zemi.command.run(ev.id, ev.button)) end,
-	})`
-	for _, tc := range []struct {
-		name    string
-		origin  lua.Origin
-		stale   bool
-		wantErr string
-	}{
-		{"user handler runs with the id", lua.OriginUser, false, ""},
-		{"reload drops the click", lua.OriginUser, true, "reloaded"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			h, r := newTestHost(t)
-			ran := make(chan string, 1)
-			h.Commands.Add(&Command{Name: "probe", NArgs: "?", GoFn: func(_ *Host, args string, confirm bool) error { ran <- args; return nil }, Origin: lua.OriginBuiltin})
-			if err := r.ExecuteChunk(t.Context(), widget, "w.lua", tc.origin); err != nil {
-				t.Fatal(err)
-			}
-			lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("w"), 40, 10, UIState{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got := lines[0]; got[0].Click != "probe" || got[0].Widget != "w" || got[1].Click != "" || got[1].Widget != "" {
-				t.Fatalf("segments = %+v", got)
-			}
-			if tc.stale {
-				h.gen.Add(1)
-			}
-			err = h.ClickWidget(t.Context(), "w", map[string]any{"id": "probe", "button": "left"})
-			if tc.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatalf("err = %v, want %q", err, tc.wantErr)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if args := <-ran; args != "left" {
-				t.Fatalf("command args = %q", args)
-			}
-		})
-	}
-}
-
-// TestShortOutput: a long result keeps its first lines, which say what
-// failed, and its last ones, with the drop counted between them.
 func TestShortOutput(t *testing.T) {
 	var lines []string
 	for i := range 30 {

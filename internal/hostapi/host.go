@@ -281,8 +281,6 @@ const (
 	RowError     RowKind = "error"
 )
 
-var rowKinds = []RowKind{RowMessage, RowReasoning, RowTool, RowShell, RowNotice, RowError}
-
 // CallStatus is where a tool call, or a !command, stands on its row.
 type CallStatus string
 
@@ -296,8 +294,6 @@ const (
 	CallBG        CallStatus = "bg"        // its work goes on in the background
 	CallCancelled CallStatus = "cancelled" // an error row: the turn was interrupted
 )
-
-var callStatuses = []CallStatus{CallWait, CallRun, CallOK, CallWarn, CallErr, CallStopped, CallBG, CallCancelled}
 
 // Mark is a row's state mark: a glyph one cell wide and its theme group.
 type Mark struct{ Glyph, HL string }
@@ -523,8 +519,8 @@ type Host struct {
 
 	Keymaps  *KeymapRegistry
 	Commands *CommandRegistry
-	Widgets  *WidgetRegistry
-	Events   *EventRegistry
+
+	Events *EventRegistry
 
 	// initErr surfaces store-open failures at the namespaces boot step.
 	initErr error
@@ -541,8 +537,6 @@ type Host struct {
 	ui   UIHooks
 
 	gen atomic.Int64
-
-	rendering atomic.Bool
 
 	tMu      sync.RWMutex // transcript lock; agents.mu is always taken first, never under this one
 	session  *Session
@@ -574,36 +568,6 @@ type Host struct {
 
 	// origin is this window's writer id, what its log rows carry
 	origin string
-
-	// usageCtx caches ctx.usage and ctx.context between renders: both are
-	// pure functions of the snapshot's tallies, which move only when a
-	// response lands, so most frames of a turn reuse the tables. The Lua
-	// actor goroutine fills it, like the renders, and the gen stamp drops
-	// tables an older generation's LState built.
-	usageCtx struct {
-		gen            Gen
-		in, out        int64
-		cost           float64
-		last, window   int64
-		priced         bool
-		usage, context *glua.LTable
-	}
-
-	// transcriptRows caches ctx.transcript's row subtables between renders: a
-	// settled row's fields never change, so a long session builds only the
-	// rows a turn appended. The Lua actor goroutine fills it, like the
-	// renders, and the gen stamp drops tables an older generation's LState
-	// built. epoch, edit and rev are the counters any transcript change moves
-	// (setTranscript, joinReasoning, markRunRow, agentRun.touch); rows also
-	// compare by value, so nothing a counter missed is served stale.
-	transcriptRows struct {
-		gen         Gen
-		epoch, edit int64
-		rev         uint64
-		cut         int64
-		prev        []ChatMessage
-		rows        []*glua.LTable
-	}
 
 	// trEpoch changes whenever the transcript is replaced (new, resume,
 	// reset), so the chat widget can cache the rows of settled messages.
@@ -966,7 +930,6 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		Stderr:    os.Stderr,
 		Keymaps:   &KeymapRegistry{},
 		Commands:  &CommandRegistry{},
-		Widgets:   &WidgetRegistry{},
 		Events:    &EventRegistry{},
 		session:   &Session{CWD: dirs.ProjectDir},
 		watches:   &watchReg{},
@@ -990,7 +953,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		h.Providers.PaceDir = filepath.Join(dirs.StateHome, "pace")
 	}
 	h.Builtin.Store(&agent.Catalog{})
-	h.Keymaps.owner, h.Commands.owner, h.Widgets.owner, h.Events.owner, h.luaTools.owner, h.watches.owner = h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf
+	h.Keymaps.owner, h.Commands.owner, h.Events.owner, h.luaTools.owner, h.watches.owner = h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf
 	h.jobs.OnChange = func() {
 		h.refresh()
 		h.watchJobs()
@@ -1553,8 +1516,6 @@ func (h *Host) logHandlerError(hd *EventHandler, err error) {
 	h.RecordError("event", hd.Event, err.Error())
 }
 
-// widget rendering
-
 // Effect is an animation the UI applies to a segment's text.
 type Effect string
 
@@ -1634,132 +1595,8 @@ const (
 	FillWell               // a well's lifted half, over the panel: what a command answered
 )
 
-// RenderWidget runs a widget's Lua render at the cells its layout node gives
-// it and returns sanitized segment lines (DESIGN §6.6, §8). more is render's
-// second result: the lines are what its time allowed and it wants to run
-// again, which is how a long chat draws its latest rows first.
-func (h *Host) RenderWidget(ctx context.Context, w *Widget, width, height int, state UIState) (lines [][]Segment, more bool, err error) {
-	return h.renderWidget(ctx, w, width, height, state, nil)
-}
-
-// renderWidget is RenderWidget with over's fields set over the ctx render
-// gets, which is how test.render supplies what a session would.
-func (h *Host) renderWidget(ctx context.Context, w *Widget, width, height int, state UIState, over *glua.LTable) (lines [][]Segment, more bool, err error) {
-	linesAny, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, "widget render", func(L *glua.LState) ([]any, error) {
-		// a frame queued before a reload holds the old generation's function
-		if w.Gen != h.currentGen() {
-			return nil, lua.ErrReloaded
-		}
-		// the purity guard holds only while render runs, not while this
-		// request waits in the queue behind other Lua (boot code behind the
-		// trust prompt)
-		h.rendering.Store(true)
-		defer h.rendering.Store(false)
-		ctxTb, done := h.widgetCtxTable(L, h.ScreenState(width, height, state))
-		defer done()
-		if over != nil {
-			over.ForEach(ctxTb.RawSet)
-		}
-		rets, err := h.callFn(L, luaCaller{gen: w.Gen, origin: w.Origin, path: w.Path}, w.Render, 2, ctxTb)
-		if err != nil {
-			return nil, err
-		}
-		ret, more := rets[0], rets[1] == glua.LTrue
-		if lines, ok := w.tableSegments(ret); ok {
-			return []any{lines, more}, nil
-		}
-		v, err := lua.ToGo(ret)
-		if err != nil {
-			return nil, err
-		}
-		return []any{v, more}, nil
-	})
-	if err != nil || linesAny[0] == nil {
-		return nil, false, err
-	}
-	more = linesAny[1].(bool)
-	if lines, ok := linesAny[0].([][]Segment); ok {
-		return lines, more, nil
-	}
-	lines, err = convertSegments(linesAny[0], w.ID)
-	return lines, more, err
-}
-
-// isList reports whether t holds exactly the keys 1..n, the tables ToGo
-// turns into a list, and n.
-func isList(t *glua.LTable) (int, bool) {
-	keys := 0
-	t.ForEach(func(_, _ glua.LValue) { keys++ })
-	return keys, keys == t.Len()
-}
-
-// tableSegments converts the usual render result, a list of lines of
-// segments, without marshaling it through ToGo; ok is false for every other
-// shape, which convertSegments handles and names in its errors. A line table
-// seen in the last render keeps its segments: a widget must not change a
-// line it already returned (a long chat returns the same thousands each
-// frame). Interpreter goroutine only.
-func (w *Widget) tableSegments(v glua.LValue) (out [][]Segment, ok bool) {
-	top, isTable := v.(*glua.LTable)
-	if !isTable {
-		return nil, false
-	}
-	n, list := isList(top)
-	if !list || n == 0 {
-		return nil, false
-	}
-	if w.spare == nil {
-		w.spare = make(map[*glua.LTable][]Segment, n)
-	}
-	seen := w.spare
-	clear(seen)
-	out = make([][]Segment, 0, n)
-	for i := 1; i <= n; i++ {
-		lt, isTable := top.RawGetInt(i).(*glua.LTable)
-		if !isTable {
-			return nil, false
-		}
-		line, hit := w.lines[lt]
-		if !hit {
-			m, list := isList(lt)
-			if !list || m == 0 {
-				return nil, false
-			}
-			line = make([]Segment, 0, m)
-			for j := 1; j <= m; j++ {
-				switch c := lt.RawGetInt(j).(type) {
-				case glua.LString:
-					line = append(line, Segment{Text: sanitize.Row(string(c))})
-				case *glua.LTable:
-					if c.Len() > 0 {
-						return nil, false
-					}
-					line = append(line, segment(func(k string) any {
-						switch f := c.RawGetString(k).(type) {
-						case glua.LString:
-							return string(f)
-						case glua.LBool:
-							return bool(f)
-						case glua.LNumber:
-							return float64(f)
-						default:
-							return nil
-						}
-					}, w.ID))
-				default:
-					return nil, false
-				}
-			}
-		}
-		seen[lt] = line
-		out = append(out, line)
-	}
-	w.lines, w.spare = seen, w.lines
-	return out, true
-}
-
 // segment builds one segment from a { text = ... } table's fields.
-func segment(field func(string) any, widget string) Segment {
+func segment(field func(string) any) Segment {
 	seg := Segment{}
 	if t, ok := field("text").(string); ok {
 		seg.Text = sanitize.Row(t)
@@ -1791,27 +1628,12 @@ func segment(field func(string) any, widget string) Segment {
 		seg.Pin = PinEnd
 	}
 	if id, ok := field("click").(string); ok && id != "" {
-		seg.Click, seg.Widget = id, widget
+		seg.Click = id
 	}
 	if l, ok := field("link").(string); ok {
 		seg.Link = linkOf(l)
 	}
 	return seg
-}
-
-// ClickWidget runs the on_click of widget id with ev under the widget's
-// origin, like a keymap. The handler is looked up at click time because the
-// frame that drew the id may predate a reload.
-func (h *Host) ClickWidget(ctx context.Context, id string, ev map[string]any) error {
-	_, err := h.RT.Do(ctx, lua.ClassUI, 0, 0, "widget click", func(L *glua.LState) ([]any, error) {
-		w := h.Widgets.Get(id)
-		if w == nil || w.OnClick == nil || w.Gen != h.currentGen() {
-			return nil, lua.ErrReloaded
-		}
-		_, err := h.callFn(L, luaCaller{gen: w.Gen, origin: w.Origin, path: w.Path}, w.OnClick, 0, lua.FromGo(L, ev))
-		return nil, err
-	})
-	return err
 }
 
 // Chrome groups are the Go styles of prompts and other host chrome
@@ -1851,7 +1673,7 @@ func UserHL(hl string) string {
 }
 
 // luaShape names a marshaled Lua value the way the author wrote it: a Go
-// type name in a widget error tells them nothing (DESIGN §6.0).
+// type name in a Lua error tells them nothing (DESIGN §6.0).
 func luaShape(v any) string {
 	switch t := v.(type) {
 	case nil:
@@ -1890,7 +1712,7 @@ func oneLine(v any) (any, error) {
 			return []any{t}, nil
 		case string:
 			if len(t) > 1 {
-				return nil, errors.New(`widget render returned a list of strings: write { { "a", "b" } } for one line, { { "a" }, { "b" } } for two`)
+				return nil, errors.New(`a body of strings and lines: write { { "a", "b" } } for one line, { { "a" }, { "b" } } for two`)
 			}
 			return []any{t}, nil
 		}
@@ -1898,7 +1720,7 @@ func oneLine(v any) (any, error) {
 	return v, nil
 }
 
-func convertSegments(v any, widget string) ([][]Segment, error) {
+func convertSegments(v any) ([][]Segment, error) {
 	v, err := oneLine(v)
 	if err != nil {
 		return nil, err
@@ -1908,13 +1730,13 @@ func convertSegments(v any, widget string) ([][]Segment, error) {
 		ok = true // Lua's {} marshals as an empty map: no lines
 	}
 	if !ok {
-		return nil, fmt.Errorf("widget render must return a list of lines, got %s", luaShape(v))
+		return nil, fmt.Errorf("an overlay body must be a list of lines, got %s", luaShape(v))
 	}
 	out := make([][]Segment, 0, len(rows))
 	for _, row := range rows {
 		cells, ok := row.([]any)
 		if !ok {
-			return nil, fmt.Errorf("widget line must be a list of segments, got %s", luaShape(row))
+			return nil, fmt.Errorf("an overlay line must be a list of segments, got %s", luaShape(row))
 		}
 		line := make([]Segment, 0, len(cells))
 		for _, cell := range cells {
@@ -1922,9 +1744,9 @@ func convertSegments(v any, widget string) ([][]Segment, error) {
 			case string:
 				line = append(line, Segment{Text: sanitize.Row(c)})
 			case map[string]any:
-				line = append(line, segment(func(k string) any { return c[k] }, widget))
+				line = append(line, segment(func(k string) any { return c[k] }))
 			default:
-				return nil, fmt.Errorf("widget segment must be a string or a { text = ... } table, got %s", luaShape(cell))
+				return nil, fmt.Errorf("an overlay segment must be a string or a { text = ... } table, got %s", luaShape(cell))
 			}
 		}
 		out = append(out, line)
@@ -1955,14 +1777,13 @@ const (
 
 var waitings = []Waiting{WaitApproval, WaitPlan, WaitAnswer}
 
-// ClockLayout formats UIState.Time, the wall clock widgets show; clock in
-// zemi.tui.text spells it for Lua.
+// ClockLayout formats UIState.Time, the wall clock the screen shows.
 const ClockLayout = "15:04"
 
 // StampLayout dates a session in an export and in zemi sessions.
 const StampLayout = time.DateOnly + " " + ClockLayout
 
-// UIState is the context snapshot passed to widget renders.
+// UIState is the frame's state, passed in with every render.
 type UIState struct {
 	Time  string // the wall clock in ClockLayout, stepped once a minute
 	Frame int    // the 50ms frame clock the spinner, eyes and shimmer step on
@@ -1979,167 +1800,6 @@ type UIState struct {
 	// Regions are the regions the layout draws this frame, replaced whole
 	// when the set moves, so comparing two states sees it
 	Regions *set.Set[string]
-}
-
-// widgetCtxTable turns a frame's ScreenState into the ctx table a Lua widget
-// renders with. The fields that read the store or disk are filled on first
-// read, so a widget that never reads them does not pay for them, and read nil
-// once the render returned, so a ctx kept in an upvalue pins nothing. done
-// ends it.
-func (h *Host) widgetCtxTable(L *glua.LState, st *ScreenState) (tb *glua.LTable, done func()) {
-	tb = L.CreateTable(0, 32)
-	tb.RawSetString("width", glua.LNumber(st.Width))
-	tb.RawSetString("time", glua.LString(st.Time))
-	tb.RawSetString("frame", glua.LNumber(st.Frame))
-	tb.RawSetString("ended", glua.LString(st.Ended))
-	tb.RawSetString("height", glua.LNumber(st.Height))
-	tb.RawSetString("quit_armed", glua.LBool(st.QuitArmed))
-	tb.RawSetString("interrupt_armed", glua.LBool(st.InterruptArmed))
-	tb.RawSetString("key_seq", glua.LString(st.KeySeq))
-	tb.RawSetString("rows_below", glua.LNumber(st.RowsBelow))
-	tb.RawSetString("cancelling", glua.LBool(st.Cancelling))
-	tb.RawSetString("editing", glua.LString(st.Editing))
-	tb.RawSetString("waiting", glua.LString(st.Waiting))
-	tb.RawSetString("version", glua.LString(st.Version))
-	tb.RawSetString("cwd", glua.LString(st.CWD))
-	tb.RawSetString("home", glua.LString(st.Home))
-	tb.RawSetString("project", glua.LString(st.Project))
-	tb.RawSetString("branch", glua.LString(st.Branch))
-	tb.RawSetString("trusted", glua.LBool(st.Trusted))
-	tb.RawSetString("init_error", glua.LString(st.InitError))
-	tb.RawSetString("init_path", glua.LString(h.initPath()))
-	tb.RawSetString("model_hint", glua.LString(st.ModelHint))
-	tb.RawSetString("model", glua.LString(st.Model))
-	tb.RawSetString("effort", glua.LString(st.Effort))
-	tb.RawSetString("agent_active", glua.LBool(st.AgentActive))
-	tb.RawSetString("agents_running", glua.LNumber(st.AgentsRunning))
-	tb.RawSetString("workflows_running", glua.LNumber(st.WorkflowsRunning))
-	tb.RawSetString("jobs_running", glua.LNumber(st.JobsRunning))
-	tb.RawSetString("transcript_count", glua.LNumber(st.TranscriptCount))
-	tb.RawSetString("transcript_epoch", glua.LNumber(st.TranscriptEpoch))
-	tb.RawSetString("transcript_cut", glua.LNumber(st.TranscriptCut))
-	tb.RawSetString("transcript_edit", glua.LNumber(st.TranscriptEdit))
-	tb.RawSetString("view_revision", glua.LNumber(st.ViewRevision))
-	if st.Rail != 0 {
-		tb.RawSetString("rail", glua.LNumber(st.Rail))
-	}
-	if st.View != nil {
-		v := L.CreateTable(0, 4)
-		v.RawSetString("id", glua.LString(st.View.ID))
-		v.RawSetString("agent", glua.LString(st.View.Agent))
-		v.RawSetString("description", glua.LString(st.View.Description))
-		v.RawSetString("status", glua.LString(st.View.Status))
-		tb.RawSetString("view", v)
-	}
-	if len(st.Busy) > 0 {
-		b := L.CreateTable(len(st.Busy), 0)
-		for _, j := range st.Busy {
-			e := L.CreateTable(0, 3)
-			e.RawSetString("label", glua.LString(j.Label))
-			e.RawSetString("elapsed", glua.LNumber(j.Elapsed.Seconds()))
-			e.RawSetString("cancellable", glua.LBool(j.Cancellable))
-			b.Append(e)
-		}
-		tb.RawSetString("busy", b)
-	}
-	if g := st.Goal; g != nil {
-		gt := L.CreateTable(0, 3)
-		gt.RawSetString("condition", glua.LString(g.Condition))
-		gt.RawSetString("turns", glua.LNumber(g.Turns))
-		gt.RawSetString("reason", glua.LString(g.Reason))
-		tb.RawSetString("goal", gt)
-	}
-	if l := st.Loop; l != nil {
-		lt := L.CreateTable(0, 4)
-		lt.RawSetString("prompt", glua.LString(l.Prompt))
-		lt.RawSetString("every", glua.LNumber(l.Every.Seconds()))
-		lt.RawSetString("next", glua.LNumber(l.Next.Unix()))
-		lt.RawSetString("runs", glua.LNumber(l.Runs))
-		tb.RawSetString("loop", lt)
-	}
-	u := L.CreateTable(0, 5)
-	u.RawSetString("in", glua.LNumber(st.Usage.In))
-	u.RawSetString("out", glua.LNumber(st.Usage.Out))
-	u.RawSetString("total", glua.LNumber(st.Usage.Total))
-	u.RawSetString("cost", glua.LNumber(st.Usage.Cost))
-	u.RawSetString("priced", glua.LBool(st.Usage.Priced))
-	tb.RawSetString("usage", u)
-	c := L.CreateTable(0, 3)
-	c.RawSetString("tokens", glua.LNumber(st.Context.Tokens))
-	c.RawSetString("window", glua.LNumber(st.Context.Window))
-	c.RawSetString("pct", glua.LNumber(st.Context.Pct))
-	tb.RawSetString("context", c)
-
-	lazy := map[string]func(L *glua.LState) glua.LValue{
-		"todos": func(L *glua.LState) glua.LValue {
-			todos := L.NewTable()
-			for _, td := range st.Todos() {
-				row := L.NewTable()
-				row.RawSetString("content", glua.LString(sanitize.String(td.Content)))
-				row.RawSetString("status", glua.LString(td.Status))
-				row.RawSetString("active_form", glua.LString(sanitize.String(td.ActiveForm)))
-				todos.Append(row)
-			}
-			return todos
-		},
-		"regions": func(L *glua.LState) glua.LValue {
-			out := L.NewTable()
-			if st.Regions != nil {
-				for r := range *st.Regions {
-					out.RawSetString(r, glua.LTrue)
-				}
-			}
-			return out
-		},
-		"agent": func(L *glua.LState) glua.LValue { return agentTable(L, st.Agent) },
-		"transcript": func(L *glua.LState) glua.LValue {
-			return h.transcriptTable(L, st.TranscriptEpoch, st.TranscriptEdit, st.ViewRevision, st.Transcript, st.TranscriptCut)
-		},
-		"log_count": func(L *glua.LState) glua.LValue { return glua.LNumber(st.LogRows()) },
-		"instructions": func(L *glua.LState) glua.LValue {
-			files, ok := st.Instructions()
-			if !ok {
-				return glua.LNil
-			}
-			out := L.CreateTable(len(files), 0)
-			for _, p := range files {
-				out.Append(glua.LString(p))
-			}
-			return out
-		},
-		"trustable": func(L *glua.LState) glua.LValue { return glua.LBool(st.Trustable) },
-		"projects": func(L *glua.LState) glua.LValue {
-			ps := st.Projects()
-			if ps == nil {
-				return glua.LNil
-			}
-			out := L.CreateTable(len(ps), 0)
-			for _, p := range ps {
-				row := L.CreateTable(0, 3)
-				row.RawSetString("path", glua.LString(p.Path))
-				row.RawSetString("root", glua.LString(p.Root))
-				row.RawSetString("ago", glua.LString(p.Ago))
-				out.Append(row)
-			}
-			return out
-		},
-	}
-	live := true
-	mt := L.NewTable()
-	mt.RawSetString("__index", L.NewFunction(func(L *glua.LState) int {
-		key, _ := L.Get(2).(glua.LString)
-		build := lazy[string(key)]
-		if !live || build == nil {
-			L.Push(glua.LNil)
-			return 1
-		}
-		v := build(L)
-		L.CheckTable(1).RawSetString(string(key), v)
-		L.Push(v)
-		return 1
-	}))
-	L.SetMetatable(tb, mt)
-	return tb, func() { live = false }
 }
 
 // instructionsCached is ctx.instructions: the project's instruction files,
@@ -2171,118 +1831,6 @@ func (h *Host) instructionsCached() []string {
 	return h.instr
 }
 
-// agentTable is ctx.agent: the live turn.
-func agentTable(L *glua.LState, a AgentState) *glua.LTable {
-	at := L.CreateTable(0, 12)
-	at.RawSetString("active", glua.LBool(a.Active))
-	at.RawSetString("model", glua.LString(a.Model))
-	at.RawSetString("text", glua.LString(a.Text))
-	at.RawSetString("reasoning", glua.LString(a.Reasoning))
-	at.RawSetString("thinking", glua.LBool(a.Thinking))
-	steering := L.CreateTable(len(a.Steering), 0)
-	for _, s := range a.Steering {
-		q := L.CreateTable(0, 1)
-		q.RawSetString("text", glua.LString(s))
-		steering.Append(q)
-	}
-	at.RawSetString("steering", steering)
-	at.RawSetString("thought", glua.LNumber(a.Thought.Seconds()))
-	at.RawSetString("elapsed", glua.LNumber(a.Elapsed.Seconds()))
-	at.RawSetString("checking_goal", glua.LBool(a.CheckingGoal))
-	if r := a.Retry; r != nil {
-		retry := L.CreateTable(0, 3)
-		retry.RawSetString("attempt", glua.LNumber(r.Attempt))
-		retry.RawSetString("why", glua.LString(r.Why))
-		retry.RawSetString("next_in", glua.LNumber(r.NextIn.Seconds()))
-		at.RawSetString("retry", retry)
-	}
-	toolsTb := L.CreateTable(len(a.Tools), 0)
-	for _, t := range a.Tools {
-		row := L.CreateTable(0, 9)
-		row.RawSetString("name", glua.LString(t.Name))
-		row.RawSetString("input", glua.LString(t.Input))
-		row.RawSetString("status", glua.LString(t.Status))
-		row.RawSetString("detail", glua.LString(t.Detail))
-		row.RawSetString("run", glua.LString(t.Run))
-		row.RawSetString("job", glua.LString(t.Job))
-		row.RawSetString("label", glua.LString(sanitize.String(t.Label)))
-		row.RawSetString("elapsed", glua.LNumber(t.Elapsed.Seconds()))
-		row.RawSetString("diff", glua.LString(sanitize.String(t.Diff)))
-		row.RawSetString("output", glua.LString(t.Output))
-		toolsTb.Append(row)
-	}
-	at.RawSetString("tools", toolsTb)
-	return at
-}
-
-// chatRow is one transcript row as ctx.transcript carries it.
-func chatRow(L *glua.LState, m ChatMessage) *glua.LTable {
-	row := L.CreateTable(0, 17)
-	row.RawSetString("role", glua.LString(m.Role))
-	row.RawSetString("kind", glua.LString(m.Kind))
-	row.RawSetString("text", glua.LString(m.Text))
-	row.RawSetString("tool", glua.LString(m.Tool))
-	row.RawSetString("status", glua.LString(m.Status))
-	row.RawSetString("detail", glua.LString(m.Detail))
-	row.RawSetString("run", glua.LString(m.Run))
-	row.RawSetString("job", glua.LString(m.Job))
-	row.RawSetString("label", glua.LString(sanitize.String(m.Label)))
-	row.RawSetString("diff", glua.LString(sanitize.String(m.Diff)))
-	row.RawSetString("output", glua.LString(m.Output))
-	if m.Stat != nil {
-		row.RawSetString("in", glua.LNumber(m.Stat.In))
-		row.RawSetString("out", glua.LNumber(m.Stat.Out))
-		row.RawSetString("thought", glua.LNumber(float64(m.Stat.ThoughtMS)/1000))
-		row.RawSetString("elapsed", glua.LNumber(float64(m.Stat.ElapsedMS)/1000))
-		row.RawSetString("ended", glua.LNumber(m.Stat.Ended))
-		row.RawSetString("model", glua.LString(m.Stat.Model))
-	}
-	return row
-}
-
-// transcriptTable is ctx.transcript. epoch, edit and rev are the stamps read
-// beside the transcript snapshot in widgetCtxTable: a changed transcript
-// moves one, a longer one reuses the prefix, and an unchanged row reuses its
-// table where a changed one is rebuilt.
-func (h *Host) transcriptTable(L *glua.LState, epoch, edit int64, rev uint64, transcript []ChatMessage, cut int64) *glua.LTable {
-	tr := L.CreateTable(len(transcript), 0)
-	c := &h.transcriptRows
-	n := len(transcript)
-	// The head cut shifts every row down one place per row shed: the cache
-	// reads at the shifted index, so a trim converts only what left the
-	// window and what joined, not the whole window again. skip >= 0 reads
-	// ahead of every write, so the arrays move in place.
-	skip := cut - c.cut
-	if c.gen != h.currentGen() || c.epoch != epoch || c.edit != edit || c.rev != rev || skip < 0 || skip > int64(len(c.rows)) {
-		c.prev, c.rows, skip = slices.Clone(transcript), make([]*glua.LTable, n), 0
-	} else {
-		switch d := n - len(c.rows); {
-		case d > 0:
-			prev := make([]ChatMessage, n)
-			copy(prev, c.prev)
-			c.prev, c.rows = prev, append(c.rows, make([]*glua.LTable, d)...)
-		case d < 0:
-			c.prev, c.rows = c.prev[:n], c.rows[:n]
-		}
-	}
-	c.gen, c.epoch, c.edit, c.rev, c.cut = h.currentGen(), epoch, edit, rev, cut
-	for i, m := range transcript {
-		if j := i + int(skip); j < len(c.rows) {
-			if row := c.rows[j]; row != nil && c.prev[j] == m {
-				if j != i {
-					c.rows[i], c.prev[i] = row, m
-				}
-				tr.Append(row)
-				continue
-			}
-		}
-		row := chatRow(L, m)
-		c.rows[i], c.prev[i] = row, m
-		tr.Append(row)
-	}
-	return tr
-}
-
 // usageTable is the session token tally for widgets (DESIGN §8): totals
 // across all turns of this session. priced says the conversation's model
 // declares prices, however the tally gathered it: the statusline's cost
@@ -2296,20 +1844,6 @@ func usageTable(L *glua.LState, s StreamSnapshot, priced bool) *glua.LTable {
 	u.RawSetString("cost", glua.LNumber(s.SessionCost))
 	u.RawSetString("priced", glua.LBool(priced))
 	return u
-}
-
-// usageTables is ctx.usage and ctx.context through the between-renders cache:
-// rebuilt when a tally, the priced flag or the generation moves, reused
-// while they hold.
-func (h *Host) usageTables(L *glua.LState, s StreamSnapshot, priced bool) (*glua.LTable, *glua.LTable) {
-	c := &h.usageCtx
-	if c.gen == h.currentGen() && c.priced == priced && c.in == s.SessionIn && c.out == s.SessionOut &&
-		c.cost == s.SessionCost && c.last == s.LastIn && c.window == s.CtxWindow {
-		return c.usage, c.context
-	}
-	c.gen, c.in, c.out, c.cost, c.last, c.window, c.priced = h.currentGen(), s.SessionIn, s.SessionOut, s.SessionCost, s.LastIn, s.CtxWindow, priced
-	c.usage, c.context = usageTable(L, s, priced), contextTable(L, s)
-	return c.usage, c.context
 }
 
 // contextPct is how full the model's context window is, in percent; 0 when
@@ -2493,7 +2027,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.157.0"))
+	api.RawSetString("version", glua.LString("0.158.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 
@@ -2688,7 +2222,6 @@ func (h *Host) PurgeGeneration() {
 	h.agents.targetsMu.Unlock()
 	h.Keymaps.Purge()
 	h.Commands.Purge()
-	h.Widgets.Purge()
 	h.Events.Purge()
 	h.purgeWatches()
 	h.hookReg.purge(h.currentGen())
