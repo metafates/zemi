@@ -267,6 +267,25 @@ func oneName(calls []entry) string {
 // nothing streams until they end and their row says what holds the turn.
 var waits = map[string]bool{"agent": true, "workflow": true}
 
+// gateStopped is a call the permission gate stopped: denied or dismissed, the
+// reader's own act. An interrupted call's stop the turn's own row tells.
+func gateStopped(e entry) bool {
+	return e.status == hostapi.CallStopped &&
+		(strings.HasPrefix(e.output, "permission denied (user") || strings.HasPrefix(e.output, "The user dismissed"))
+}
+
+// stoppedWhy is a gate stop as the digest names it, the unfolded row's wording.
+func stoppedWhy(output string) string {
+	switch {
+	case strings.HasPrefix(output, "permission denied (user"):
+		return "denied by you"
+	case strings.HasPrefix(output, "The user dismissed"):
+		return "dismissed by you"
+	default:
+		return "stopped"
+	}
+}
+
 // counted is whether a call counts: a family counts it and it went well.
 func counted(e entry) bool {
 	if e.kind != hostapi.RowTool || e.status != hostapi.CallOK {
@@ -469,7 +488,7 @@ func diffstat(diff string) []hostapi.Segment {
 }
 
 // digest is what rows first..last of a turn fold into, the chat's digest row:
-// "1 command · run the tests", what it did then what the model said about the
+// "1 command: run the tests", what it did then what the model said about the
 // first call, or "6 files, 8 commands · thought 8s"; "" when it holds neither,
 // so its rail stays.
 func digest(rows []entry, first, last int, cwd, home string) string {
@@ -484,9 +503,10 @@ func digest(rows []entry, first, last int, cwd, home string) string {
 			reasoned = true
 		case digests(m):
 			calls = append(calls, m)
-		case m.kind == hostapi.RowTool && m.status == hostapi.CallErr:
+		case m.kind == hostapi.RowTool && (m.status == hostapi.CallErr || gateStopped(m)):
 			// a failed call leaves no count, so the digest says it did: the
-			// model's reply repeating the error is otherwise the only trace
+			// model's reply repeating the error is otherwise the only trace.
+			// A call the gate stopped is the reader's own act, same story.
 			fails = append(fails, m)
 		case m.kind == hostapi.RowNotice:
 			works = append(works, m)
@@ -553,6 +573,10 @@ func digest(rows []entry, first, last int, cwd, home string) string {
 		switch {
 		case len(fails) == 1 && len(calls) == 0:
 			name := lower(cmp.Or(verb[fails[0].name()], title(fails[0].name())))
+			if fails[0].status == hostapi.CallStopped {
+				parts = append(parts, name+" "+stoppedWhy(fails[0].output))
+				break
+			}
 			// the row's output is the refusal; the input summary only says what
 			// was attempted. The "error: " stamp is model-facing.
 			why := fails[0].output
@@ -569,7 +593,20 @@ func digest(rows []entry, first, last int, cwd, home string) string {
 				parts = append(parts, name+" failed")
 			}
 		case len(fails) > 0:
-			parts = append(parts, count(len(fails), "failed call", "failed calls"))
+			n := 0
+			for _, f := range fails {
+				if f.status == hostapi.CallErr {
+					n++
+				}
+			}
+			switch {
+			case n == len(fails):
+				parts = append(parts, count(len(fails), "failed call", "failed calls"))
+			case n == 0:
+				parts = append(parts, count(len(fails), "denied call", "denied calls"))
+			default:
+				parts = append(parts, count(n, "failed call", "failed calls")+", "+count(len(fails)-n, "denied call", "denied calls"))
+			}
 		}
 	}
 	// a run whose only content is a thought still names it: an empty digest

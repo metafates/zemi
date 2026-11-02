@@ -2074,18 +2074,30 @@ func TestWorkingRowRetry(t *testing.T) {
 
 // TestWorkingRowRetryNarrow: a rule too narrow for everything keeps the
 // retry's reason and countdown before the key hint and the clock — the eyes
-// alone cannot name the state.
+// alone cannot name the state — and a long reason narrows, never starves the
+// rule of any state at all.
 func TestWorkingRowRetryNarrow(t *testing.T) {
 	t.Parallel()
-	app, host := bootAgentApp(t, 60, 16)
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 14 * time.Second, Retrying: true, RetryIn: 45 * time.Second, Retries: 1, RetryWhy: "rate limited by the provider"})
-	app.renderSync(t)
-	row := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 60))
-	if !strings.Contains(row, "next try in 45s · rate limited by the provider") {
-		t.Fatalf("the narrow rule lost the reason: %q", row)
-	}
-	if strings.Contains(row, "esc interrupt") {
-		t.Fatalf("the narrow rule kept the key hint over the reason: %q", row)
+	for _, tc := range []struct {
+		name string
+		why  string
+		want string
+	}{
+		{"short reason fits whole", "rate limited by the provider", "next try in 45s · rate limited by the provider"},
+		{"a long reason narrows", "network: the connection dropped mid-reply", "next try in 45s · network: the connection"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app, host := bootAgentApp(t, 60, 16)
+			host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 14 * time.Second, Retrying: true, RetryIn: 45 * time.Second, Retries: 1, RetryWhy: tc.why})
+			app.renderSync(t)
+			row := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 60))
+			if !strings.Contains(row, tc.want) {
+				t.Fatalf("the narrow rule lost the reason: %q", row)
+			}
+			if strings.Contains(row, "esc interrupt") {
+				t.Fatalf("the narrow rule kept the key hint over the reason: %q", row)
+			}
+		})
 	}
 }
 
@@ -2653,6 +2665,9 @@ func TestDigestCountsEveryFamily(t *testing.T) {
 		}},
 		{name: "a failed call reads its refusal", want: "update failed: todo 1: status must be pending, in_progress or done", rows: []hostapi.ChatMessage{
 			{Role: "assistant", Kind: "tool", Tool: "todos", Text: "1 todos, 0 done", Output: "todo 1: status must be pending, in_progress or done", Status: "err"},
+		}},
+		{name: "a denied call stays in the digest", want: "write denied by you", rows: []hostapi.ChatMessage{
+			{Role: "assistant", Kind: "tool", Tool: "write", Text: "b.go", Output: "permission denied (user): fs.write b.go: untrusted", Status: "stopped"},
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
