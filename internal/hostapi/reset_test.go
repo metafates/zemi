@@ -11,8 +11,7 @@ import (
 )
 
 // TestResetEmitsSessionReset: a reset tells Lua, so state derived from the
-// chat can drop with it. Another window's reset reaches the same event
-// through its own chatDropped.
+// chat can drop with it.
 func TestResetEmitsSessionReset(t *testing.T) {
 	h, r := newTestHostDB(t)
 	runUser(t, r, `zemi.event.on("session.reset", function(ev) zemi.state.set("reset_seen", ev.name) end)`)

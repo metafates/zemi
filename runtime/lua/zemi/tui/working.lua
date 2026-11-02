@@ -111,9 +111,7 @@ zemi.ui.widget.add({
 				state, parts, ticks = "asking", {}, nil
 			elseif ctx.cancelling then
 				parts[#parts + 1] = { fmt.hint("ctrl+c", "quit"), 6, 13 }
-			elseif not ctx.view and ctx.writer == "this" then
-				-- the turn a viewer draws is the writing window's: its esc
-				-- stops nothing, so the rule names no key it does not fire
+			elseif not ctx.view then
 				parts[#parts + 1] = { fmt.hint(key, verb), 6, 13 }
 			end
 			-- last: the block ends on the clock, its digits eating the rule on

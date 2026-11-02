@@ -138,7 +138,7 @@ func (a *Auth) bearer(ctx context.Context) (string, error) {
 	if fresh(t) {
 		return t.AccessToken, nil
 	}
-	// another window may have refreshed already, and a server that rotates
+	// another zemi may have refreshed already, and a server that rotates
 	// refresh tokens refuses the one it used: the refresh runs under a lock
 	// on the grant, so one process refreshes and the rest re-read its grant.
 	// A lock that cannot be taken leaves the old race, and the refusal names

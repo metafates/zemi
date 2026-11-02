@@ -521,26 +521,6 @@ func (h *Host) streamLocked() StreamSnapshot {
 	// the host's clock, never time.Now: a seeded stream, a golden included,
 	// must read the same seconds however loaded the machine is
 	now := h.now()
-	if !ag.active && ag.remote != nil {
-		// the writing window's pushed turn replaces this window's whole live
-		// view: the clocks advance from the frame's arrival, so the readouts
-		// run between pushes and freeze only when the writer dies - the
-		// takeover's promotion drops the watch. The queue stays this
-		// window's own: its parked message must not vanish behind the
-		// writer's stream, and the writer's parked drafts are not its to show.
-		r := *ag.remote
-		r.Steering = queuedRows(ag.steering)
-		if r.Active {
-			r.Elapsed += now.Sub(ag.remoteAt)
-			if r.Thinking {
-				r.Thought += now.Sub(ag.remoteAt)
-			}
-			if r.Retrying {
-				r.RetryIn = max(r.RetryIn-now.Sub(ag.remoteAt), 0)
-			}
-		}
-		return r
-	}
 	// a resumed session's bill lives in the store row: seed the tally once,
 	// so the statusline reads the conversation's cost before the next turn
 	if !ag.tallyLoaded {
@@ -632,24 +612,4 @@ func (h *Host) SeedStream(s StreamSnapshot) {
 	if s.Retrying {
 		ag.retryAt, ag.retryWhy = h.now().Add(s.RetryIn), s.RetryWhy
 	}
-}
-
-// watchStream installs a frame the writing window pushed: a window that owns
-// no turn draws the writer's from it, as live as its own. The write path is
-// untouched - AgentActive stays false, so the sync tick still runs and the
-// composer still refuses - and a frame that overtakes this window's own turn
-// or write is dropped: the writer is never a watcher.
-func (h *Host) watchStream(s StreamSnapshot) {
-	ag := h.agents
-	ag.mu.Lock()
-	// the writer under the same lock: a promotion between an unlocked read
-	// and this store would land a frame on the new writer
-	if ag.writer || ag.active {
-		ag.mu.Unlock()
-		return
-	}
-	ag.remote = &s
-	ag.remoteAt = h.now()
-	ag.mu.Unlock()
-	h.refresh()
 }

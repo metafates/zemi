@@ -803,7 +803,7 @@ reload cannot loosen it silently. A key whose `set` line was deleted returns
 to its saved pick, else its default, on that reload, unless a runtime pick moved it since.
 
 A runtime pick outlives the process: the global store keeps it per key as
-`config:<path>`, one row each, so two windows never lose each other's picks,
+`config:<path>`, one row each, so two zemis never lose each other's picks,
 and a start applies the rows before any Lua. The layers are schema default <
 saved pick < init.lua < this run: init.lua always wins a restart, and a pick
 over a key it sets lasts the run. A pick back to what the key would be without
@@ -908,8 +908,7 @@ Event catalogue (each emitted on the interpreter thread):
 - tools: `tool.pre` (vetoable: `deny|rewrite|halt`), `tool.post`, `tool.denied`
 - permission: `permission.request` (vetoable), `permission.resolved`
 - ui: `ui.resize`, `composer.change`, `composer.submit` (vetoable)
-- session: `session.reset` (a /reset wiped the chat: this window's, or
-  the writing window's, that this one reloads after)
+- session: `session.reset` (a /reset wiped the chat)
 - io: `job.exit`, `lsp.request`
 
 A handler vetoes by returning `{ decision = "deny", reason = "..." }`; `tool.pre`
@@ -1021,8 +1020,8 @@ for a gateway that limits per model alias, that model alone in its own
 pace. A reply charging more than the budget holds sinks it negative, so
 later calls wait out the drain instead of forcing the provider's 429. The
 state lives in `<state>/pace` keyed by the api key, so every zemi process
-of the user draws one quota together and parallel windows cannot double it;
-a state nothing can read starts fresh, and a window on another state home
+of the user draws one quota together and parallel zemis cannot double it;
+a state nothing can read starts fresh, and a zemi on another state home
 paces its own. A refusal a call sees holds the whole pace (shared file
 included) until the Retry-After it names, or the window, passes.
 
@@ -1287,9 +1286,7 @@ during the check goes instead of the note, an interrupt or a failed turn
 ends the chain with the goal kept, and at 20 turns in a row the goal
 started itself it pauses; a loop run does not reset that count. Each verdict is a notice
 row the log holds, so a resume reads it back. A reset drops it (the chat it was set in is
-gone), and a crash keeps it, since the row lives in the store. The chain belongs to the
-lease: promotion inherits the goal the reload read and runs it, demotion stops it, and a
-viewer never judges a writer's goal. Lua reads it
+gone), and a crash keeps it, since the row lives in the store. Lua reads it
 (`ctx.goal`, `ctx.agent.checking_goal`) and does not drive it: the check
 must hold the claim.
 
@@ -1845,7 +1842,7 @@ log(seq, kind, text, meta_json, parts_json, created_at)  -- the eternal chat: on
                                                          -- images
 nodes(l, i, text, size, built_at)                        -- the summary tree: node(l,i) covers the 2^l
                                                          -- messages from i*2^l on, one line each;
-                                                         -- INSERT OR IGNORE dedupes two windows
+                                                         -- INSERT OR IGNORE dedupes racing writes
 view_lines(ord, l, i)                                    -- the persisted view, oldest first; ord is
                                                          -- the line's first message, so an append or
                                                          -- a merge collapses onto the row it made
@@ -1884,63 +1881,13 @@ name), the same repository identity trust uses, so a subdirectory or a
 linked worktree opens the same chat rather than a blank store. The log is
 never swept - it is the memory - and the boot reads only its last
 `chatWindowRows` (1000) rows into the live transcript. Every log row
-carries the writer window's `origin`, so the live pairing tells one
-window's rows from another's, and the config watch's idle tick splices the
-rows written elsewhere into this one's transcript at their place: two
-windows on one repository draw the one chat it keeps, in the order a
-restart reads, and the writing window's reset reloads the window whole.
-Rows carry no provenance - the chat is the chat, whichever window wrote
-it. One window writes: a one-row lease (`leader`) names it, claimed at
-boot before the first prompt, renewed on the peers tick, lost to a clean
-close or a beat gone stale past its TTL; first claim wins at boot, first
-CAS wins a takeover, and two racers serialize under SQLite's write lock.
-Every other window is a read-only viewer: every road to a model turn but
-the composer refuses with one error, its background reports store and toast
-instead of turning the model, and promotion reloads before the write is
-visible, so its first turn answers with the previous writer's rows. A typed
-message parks as a queued row and asks the holder for the write; the asker's
-beat repeats the ask while its queue waits. An idle holder hands the write
-over at once, a holder mid-turn parks the ask - its runner's `Full` ends the
-turn at the next tool-call boundary - and the turn's end hands the lease to
-the asker by CAS, demotes, and pokes the asker's socket (`Yours`), whose
-lease read promotes it and sends its parked queue. The parked queue is
-live-only, like a draft: it goes with its window. Notice-class rows
-(`/note`) still write from a viewer - honest rows the seq order already
-places. A window's presence rides heartbeat files under `<state>/peers/<store
-key>/` (one per origin, a two-second beat, fresh for six seconds), so the
-statusline names who writes and who watches - liveness the log cannot
-tell, whose origins outlive their windows. The heartbeat advertises the
-window's socket (`internal/ipc`: a unix
-socket on every platform zemi builds for, Windows 10 1803+ included,
-bound in a private temp dir, since a state path can outgrow a sun_path),
-and the moves that matter travel it: a second zemi reads the lease row
-and dials the holder the way the composer would (`zemi send`), and a
-window whose presence moved - booted, closed - pokes every
-sibling it can dial, whose beat then reads the change at once instead of
-at its next tick. The writer's live turn travels it too: every stream
-flush and every row it logs pokes a push, and one coalesced wake ships
-the whole live snapshot to every sibling it can dial, which applies it
-with a sync of the rows the same flush logged - a viewer draws the
-writer's turn at the cadence the writer draws its own, with no tick's
-second between. The pushed turn never owns the watching window: its
-`AgentActive` stays false, so its sync tick still runs and its composer
-still refuses; the snapshot's clocks advance from the frame's arrival
-between pushes, and a takeover drops the watch whole. `/windows` lists the siblings off the same heartbeats -
-origin, process, terminal, how long each has been open, what each says it is
-on, the holder named - and its `kill <origin>` tells one process to quit while
-`close-others` (the list's `X`) ends them all, both asking first: the killed
-window's clean exit releases its lease, and the killer takes the write
-on its next tick. A window whose terminal closed gets there too: the SIGHUP
-drops its presence before the process ends, so the siblings' lists lose it at
-once. The beat and the freshness window stay as the backstop
-for a window that died before it could say so. Ceilings: for up to one
-tick a GC-paused zombie may write beside the new holder - interleaved
-rows the seq-ordered splice already handles; a wedged-but-alive holder
-keeps the lease until killed, since a hung socket proves nothing - a
-clean close releases; a hand-over to an asker that died costs one TTL, its
-stale row going to the first survivor; and a binary too old to claim the row never writes
-one, so mid-rollout `zemi send` may name no writer while one runs - no
-compat shims.
+carries the writing boot's `origin`, so a restart tells its own rows from
+an older boot's; rows carry no provenance beyond that - the chat is the
+chat, whichever boot wrote it. One zemi runs per project: the boot takes
+`zemi.lock` beside the store, an exclusive flock held on an open fd for
+the process's life (a zemi that dies releases it), and a second zemi on
+the same project stops at the CLI naming the holder's pid the file
+carries.
 
 Indexes: `messages(session_id)`,
 `tool_calls(message_id, created_at)`, `sessions(parent_id)`,
@@ -1948,7 +1895,7 @@ Indexes: `messages(session_id)`,
 
 The schema is embedded goose migrations under `internal/store/migrations`,
 one transaction each, applied on open under a `zemi.db.lock` file lock so
-two zemis never run one twice. A change is a new numbered file: it reaches
+two opens never run one twice. A change is a new numbered file: it reaches
 every store at its next open, with no version stamp and no reset to do.
 The baseline is all `CREATE ... IF NOT EXISTS`, so a store made before
 goose only gets the version table and keeps its rows; the one migration
@@ -1958,7 +1905,7 @@ An append commits in one transaction: the log row, its view line and, for
 the kinds a template can line (a tool call, a tool result), the message's
 own node (`AppendLog`). A view merge runs in one transaction too
 (`MergeViewLines`), each merge applied only while both its children are
-still there, so two windows merging from stale views can never
+still there, so a merge from a stale view can never
 double-cover a message. The compaction view, the second sawtooth the
 builder's calls read, is not a table: it persists as an `[l, i]` pair list
 under the kv key `chatlog.cv`, and the builder reloads it at boot like the
@@ -1980,9 +1927,8 @@ view; a reset's wipe drops the row with the chat.
   cancelled; at the right end of the rule the interrupt key
   with the elapsed time, and while the chat shows an agent run's transcript
   that run's agent with `esc back` in its place, both on an idle
-  rule too, and that run's own clock while it runs; the interrupt key shows
-  only on the window that writes the chat - a viewer's esc stops nothing - and
-  the chat's pending row rides the rule's middle, drawn as the chat draws it,
+  rule too, and that run's own clock while it runs; the
+  chat's pending row rides the rule's middle, drawn as the chat draws it,
   only while the reader has scrolled that row out of the view. The block ends a cell off
   the rule's end, a cell of rule either side of it, so nothing to its
   right ever moves and the cells a part grows into come out of the rule on its
@@ -1990,7 +1936,7 @@ view; a reset's wipe drops the row with the chat.
   can grow to; the running call names
   no cell of it, which the chat row already says. It reads `ctx.frame`,
   `ctx.ended`, `ctx.cancelling`, `interrupt_armed`, `view`, `editing`,
-  `waiting`, `rows_below`, `writer` and `agent.retry`/`checking_goal`),
+  `waiting`, `rows_below` and `agent.retry`/`checking_goal`),
   the statusline on a bar row below the box. The mascot is always drawn and the frame's height
   never moves with agent state, so no turn adds or removes a row.
   Statusline
@@ -2738,8 +2684,8 @@ merges re-compress them.
 One builder worker per project store (`memTree` in `hostapi/memtree.go`)
 owns the tree state; appends reach it through `Wake`, finished calls
 through its results channel, a reset through `RebuildQueues`. The builder
-takes no lease: a second window races on `INSERT OR IGNORE` and on merges
-of children already
+races the log append's own node writes on `INSERT OR IGNORE` and skips
+merges of children already
 gone, so a race wastes one cheap call and nothing else. A failed build
 retries at the next log row - no timer loop, the failure parks until fresh
 rows land. The exception is a rate-limited one (`429`) or an empty one that
@@ -2910,9 +2856,7 @@ was the hardest correctness surface, and the spec has none).
   turn or run, and asks through the armed screen or `--yes`. Between the
   last confirmation and the wipe sits no model call and no deferred step;
   the armed key's press runs the wipe on its own goroutine, so the UI's
-  worker never sits on it, and the toast names the outcome. A window whose
-  log shrinks under it - the writing window's reset - toasts "Another
-  window reset the chat" and reloads whole.
+  worker never sits on it, and the toast names the outcome.
 
 ### 10.7 Skills
 

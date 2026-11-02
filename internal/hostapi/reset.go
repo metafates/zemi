@@ -73,8 +73,7 @@ func (h *Host) ResetChat(yes bool) error {
 }
 
 // chatDropped drops what belongs to the chat that is gone, so the window it
-// left is fresh: a reset's wipe and another window's reset (SyncChat's
-// shrink) both end the chat this way.
+// left is fresh: a reset's wipe ends the chat this way.
 func (h *Host) chatDropped() {
 	ag := h.agents
 	ag.mu.Lock()

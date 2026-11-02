@@ -86,10 +86,8 @@ func (h *Host) writePadRoot(pad string, now time.Time) {
 
 // sweepScratch removes the pads under root unused since t, and at once the
 // pads of removed projects. The live pad is read at each removal, since a
-// resume may make an old pad live mid-sweep.
-// NOTE: a pad counts as used when anything in it changed or a command ran
-// with it; one another zemi window holds with neither for scratchTTL is
-// removed under it. A lock per live process would lift that.
+// resume may make an old pad live mid-sweep. A pad counts as used when
+// anything in it changed or a command ran with it.
 func (h *Host) sweepScratch(root string, t time.Time) {
 	entries, _ := os.ReadDir(root)
 	for _, e := range entries {

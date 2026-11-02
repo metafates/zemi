@@ -7,20 +7,13 @@ set -u
 
 usage() {
 	cat <<'U'
-usage: zemi-lab [-n name] [-s main|peer] command [args]
+usage: zemi-lab [-n name] command [args]
 
   up [-x W -y H] [--theme T] [--asks] [--untrusted] [--rex]
                      build, throwaway tree, fake model, TUI, wait for boot.
                      --rex runs zemi in a Rex block: the terminal acts on the
                      sequences tmux swallows (OSC 7501, OSC 9, titles) and
                      reports them as events
-  peer [-x W -y H] [NAME]
-                     another zemi on the same tree and store: what windows on
-                     one project see, for sync and presence work; a third
-                     window takes a name (default peer). The store is shared,
-                     the model traffic is not: the peer gets its own fake
-                     model writing under req-NAME
-  -s main|peer       which window the drive commands act on
   prompt TEXT        clear a leftover draft, type TEXT plus a per-call marker,
                      Enter, wait for that marker to reach the model and the
                      screen to settle; refuses while any overlay waits
@@ -55,11 +48,9 @@ U
 
 [ $# -ge 1 ] || usage
 NAME=zt
-SESSION=main
 while [ $# -ge 2 ]; do
 	case "$1" in
 		-n) NAME=$2; shift 2 ;;
-		-s) SESSION=$2; shift 2 ;;
 		*) break ;;
 	esac
 done
@@ -80,25 +71,11 @@ RSESSION="" RBLK=""
 say() { printf '%s\n' "$*"; }
 die() { printf 'zemi-lab: %s\n' "$*" >&2; exit 1; }
 
-[ "$CMD" = up ] && [ "$SESSION" != main ] &&
-	die "up takes no -s (a lab's first window is always 'main'; peers come from peer)"
-
-# block_id NAME: the Rex block id a lab window maps to (from .lab.blocks,
-# "name id" lines written at up/peer).
+# block_id NAME: the Rex block id a lab part maps to (from .lab.blocks,
+# "name id" lines written at up).
 block_id() { awk -v n="$1" '$1 == n {print $2}' "$BLOCKS" 2>/dev/null; }
 
-# req_base: the selected window's own model traffic. Every window boots its
-# own fake writing under its own dir, so a pair typed into a peer can only
-# land in the peer's stream - the direct route is closed. The store is still
-# shared: every window's DELIVERED words ride each later request's <chat>
-# fold in every window, so the match reads only requests past the prompt's
-# baseline and the per-tree lock (no window delivers while a prompt polls)
-# plus the per-prompt marker hold the fold route
-req_base() {
-	[ "$SESSION" = main ] && printf '%s' "$TREE" || printf '%s/req-%s' "$TREE" "$SESSION"
-}
-
-# accepted REQ: how many requests this window's fake countersigned in
+# accepted REQ: how many requests the fake countersigned in
 # .accepts - the delivery counter reads that, never the request files,
 # which anything with tree write access can plant
 accepted() {
@@ -136,14 +113,10 @@ load() {
 	# shellcheck disable=SC1090
 	. "$ENVF"
 	BACKEND=${LAB_BACKEND:-tmux}
-	case "$SESSION" in
-		fake | recorder) die "'$SESSION' is lab plumbing, not a window (-s main|peer)" ;;
-	esac
-	# shellcheck disable=SC2153  # LAB_SESSION comes from the sourced env file, not this script
 	if [ "$BACKEND" = rex ]; then
 		RSESSION=${LAB_RSESSION:-}
-		RBLK=$(block_id "$SESSION")
-		[ -n "$RBLK" ] || die "no window '$SESSION' (zemi-lab peer first)"
+		RBLK=$(block_id main)
+		[ -n "$RBLK" ] || die "no window block in $BLOCKS (zemi-lab up first)"
 		rex block ls -s "$RSESSION" --json >/dev/null 2>&1 ||
 			die "the Rex session is gone (zemi-lab up first)"
 		# a block outlives its process: after a wedged-zemi kill every drive
@@ -152,14 +125,11 @@ load() {
 		fgp=$(fgpid "$RSESSION" "$RBLK")
 		# shellcheck disable=SC2015  # either an empty pid or a dead one dies here
 		[ -n "$fgp" ] && kill -0 "$fgp" 2>/dev/null ||
-			die "the '$SESSION' block has no live process (zemi died? zemi-lab down and up again)"
-	elif [ "$SESSION" != "$LAB_SESSION" ]; then
-		tmux -L "$SERVER" has-session -t "$SESSION" 2>/dev/null ||
-			die "no window '$SESSION' (zemi-lab peer first)"
+			die "the main window's block has no live process (zemi died? zemi-lab down and up again)"
 	else
 		# the boot execs down to zemi, so a gone pane is a dead zemi - a
 		# corpse would serve its last screen to every drive command
-		tmux -L "$SERVER" has-session -t "$SESSION" 2>/dev/null ||
+		tmux -L "$SERVER" has-session -t main 2>/dev/null ||
 			die "the main window has no live process (zemi died? zemi-lab down and up again)"
 	fi
 }
@@ -167,7 +137,7 @@ load() {
 cap() {
 	case $BACKEND in
 		rex) rex capture -s "$RSESSION" -b "$RBLK" 2>/dev/null || true ;;
-		*) tmux -L "$SERVER" capture-pane -t "$SESSION" -p 2>/dev/null || true ;;
+		*) tmux -L "$SERVER" capture-pane -t main -p 2>/dev/null || true ;;
 	esac
 }
 
@@ -234,7 +204,7 @@ for f in sorted(glob.glob(os.path.join(tree, "requests", "[0-9]*.json"))):
                 if needle in t:
                     sys.exit(0)
 sys.exit(1)
-' "$(req_base)/last_request.json" "$1"
+' "$TREE/last_request.json" "$1"
 }
 
 # overlay_kind: what overlay waits on the user right now, read from terminal
@@ -260,7 +230,7 @@ for r in d.get("records", []):
 '
 		return 0
 	fi
-	case "$(tmux -L "$SERVER" display -p -t "$SESSION" '#{pane_title}' 2>/dev/null)" in
+	case "$(tmux -L "$SERVER" display -p -t main '#{pane_title}' 2>/dev/null)" in
 		"? "*) printf 'prompt' ;;
 	esac
 }
@@ -303,14 +273,14 @@ send_keys() {
 					die "send: rex refused key '$k'"
 			done
 			;;
-		*) tmux -L "$SERVER" send-keys -t "$SESSION" "$@" ;;
+		*) tmux -L "$SERVER" send-keys -t main "$@" ;;
 	esac
 }
 
 type_text() {
 	case $BACKEND in
 		rex) rex send -s "$RSESSION" -b "$RBLK" -- "$*" || die "rex send failed" ;;
-		*) tmux -L "$SERVER" send-keys -t "$SESSION" -l -- "$*" ;;
+		*) tmux -L "$SERVER" send-keys -t main -l -- "$*" ;;
 	esac
 }
 
@@ -411,17 +381,14 @@ wait_port() {
 
 # write_config: the generated init.lua and the askgate plugin, shared by both
 # backends.
-# write_config [DIR] [PORT]: init.lua pointing at a fake model; a peer
-# window passes its own dir and its own fake's port
 write_config() {
-	dir=${1:-$TREE/config} port=${2:-$PORT}
 	{
 		echo 'zemi.provider.add({ id = "fake", kind = "openai_compat",'
-		echo "	api_key = \"x\", base_url = \"http://127.0.0.1:$port/v1\","
+		echo "	api_key = \"x\", base_url = \"http://127.0.0.1:$PORT/v1\","
 		echo '	models = { { id = "m", context_window = 128000, pricing = { input = 0.27, output = 1.1 } } } })'
 		echo 'zemi.config.set("models.default", "fake/m")'
 		[ -n "${THEME:-}" ] && echo "zemi.config.set(\"ui.theme\", \"$THEME\")"
-	} >"$dir/init.lua"
+	} >"$TREE/config/init.lua"
 
 	[ -n "${ASKS:-}" ] || return 0
 		mkdir -p "$TREE/data/plugins/local/askgate/.zemi"
@@ -436,13 +403,12 @@ write_config() {
 
 # wait_boot: poll captures until the composer shows, or fail loudly. The
 # placeholder can also read "Tell zemi what to do instead…" - a [t] answer
-# points the draft at itself until the first key - or, on a peer window,
-# "message queues" - the lease's viewer wording.
+# points the draft at itself until the first key.
 wait_boot() {
 	i=0
 	while [ "$i" -lt 120 ]; do
 		case "$(cap)" in
-		*"Ask anything"* | *"what to do instead"* | *"message queues"*) return 0 ;;
+		*"Ask anything"* | *"what to do instead"*) return 0 ;;
 		esac
 		i=$((i + 1))
 		sleep 0.25
@@ -519,7 +485,7 @@ cmd_up() {
 	# marker's uniqueness) and bodies would poison diff, last and this
 	# boot's first prompt, and a stale stale-stream or kept mark would
 	# refuse a healthy teardown
-	rm -rf "$TREE/snap" "$TREE/requests" "$TREE"/req-*
+	rm -rf "$TREE/snap" "$TREE/requests"
 	rm -f "$TREE"/.lab.turn "$TREE"/.lab.turn-* "$TREE/last_request.json" "$TREE/.lab.stale-stream" "$TREE/.lab.kept" "$TREE/.accepts"
 	[ -d "$TREE/proj/.git" ] || (cd "$TREE/proj" && git init -q) || die "git init failed"
 	echo hello >"$TREE/proj/a.txt"
@@ -541,7 +507,6 @@ LAB_NAME="$NAME"
 LAB_TREE="$TREE"
 LAB_BACKEND="rex"
 LAB_RSESSION="$RS"
-LAB_SESSION="main"
 EOF
 		# the events recorder is a block, so it survives this shell: its stream
 		# is the assertion surface for everything the terminal saw. Its id is
@@ -558,7 +523,7 @@ EOF
 			rex capture -s "$RS" -b "$FB" 2>/dev/null | grep -v '^ *$' | tail -5 >&2
 			die "the fake model died (port taken?)"
 		}
-		RB=$(rex run -s "$RS" -c "$TREE/proj" --label "$SESSION" --keep-open --focus=false --json -- \
+		RB=$(rex run -s "$RS" -c "$TREE/proj" --label main --keep-open --focus=false --json -- \
 			env -u NO_COLOR -u ZEMI_SCRATCH -u ZEMI_PROJECT_DIR -u ZEMI_SESSION TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN="$BIN" "$DIR/zemi-safe" "$TREE" $TRUST |
 			python3 -c 'import json,sys;print(json.load(sys.stdin)["block_ids"][0])') ||
 			die "the zemi block failed to start"
@@ -581,7 +546,6 @@ LAB_BACKEND="rex"
 LAB_RSESSION="$RS"
 LAB_PORT="$PORT"
 LAB_TRUST="$TRUST"
-LAB_SESSION="main"
 EOF
 		say "lab $NAME up (rex): $TREE, fake model 127.0.0.1:$PORT, session $RS ($W x $H)"
 		say "  zemi-lab events | records | title          what the terminal saw"
@@ -601,7 +565,7 @@ EOF
 
 	# exec: the login shell wrapping the boot line must not keep the pane
 	# pid (fish never exec-optimizes a single command)
-	tmux -L "$SERVER" new-session -d -s "$SESSION" -x "$W" -y "$H" -c "$TREE/proj" \
+	tmux -L "$SERVER" new-session -d -s main -x "$W" -y "$H" -c "$TREE/proj" \
 		"exec env -u NO_COLOR -u ZEMI_SCRATCH -u ZEMI_PROJECT_DIR -u ZEMI_SESSION TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' '$DIR/zemi-safe' '$TREE' $TRUST" ||
 		die "tmux new-session failed"
 	wait_boot
@@ -612,7 +576,6 @@ LAB_NAME="$NAME"
 LAB_TREE="$TREE"
 LAB_BACKEND="tmux"
 LAB_SERVER="$SERVER"
-LAB_SESSION="$SESSION"
 LAB_PORT="$PORT"
 LAB_TRUST="$TRUST"
 EOF
@@ -661,7 +624,7 @@ release_prompt_lock() {
 stopped() {
 	case $BACKEND in
 		rex) pid=$(fgpid "$RSESSION" "$RBLK") ;;
-		*) pid=$(tmux -L "$SERVER" display -p -t "$SESSION" '#{pane_pid}' 2>/dev/null) ;;
+		*) pid=$(tmux -L "$SERVER" display -p -t main '#{pane_pid}' 2>/dev/null) ;;
 	esac
 	[ -n "$pid" ] || return 1
 	# macOS appends flags to the state letter (Ts+ )
@@ -674,19 +637,18 @@ stopped() {
 dead() {
 	case $BACKEND in
 	rex) [ -n "$(fgpid "$RSESSION" "$RBLK")" ] && return 1 ;;
-	*) tmux -L "$SERVER" has-session -t "$SESSION" 2>/dev/null && return 1 ;;
+	*) tmux -L "$SERVER" has-session -t main 2>/dev/null && return 1 ;;
 	esac
 	return 0
 }
 
-# fake_dead: whether the selected window's fake model stopped - a dead model
-# burns the whole poll window on connection errors the window shows as its
-# own rows, so the die names it instead of a queue
+# fake_dead: whether the fake model stopped - a dead model burns the whole
+# poll window on connection errors the window shows as its own rows, so the
+# die names it instead of a queue
 fake_dead() {
-	if [ "$SESSION" = main ]; then b=fake; else b="fake-$SESSION"; fi
 	case $BACKEND in
-		rex) [ -z "$(fgpid "$RSESSION" "$(block_id "$b")")" ] ;;
-		*) ! tmux -L "$SERVER" has-session -t "$b" 2>/dev/null ;;
+		rex) [ -z "$(fgpid "$RSESSION" "$(block_id fake)")" ] ;;
+		*) ! tmux -L "$SERVER" has-session -t fake 2>/dev/null ;;
 	esac
 }
 
@@ -695,7 +657,7 @@ cmd_prompt() {
 	stopped &&
 		die "prompt: zemi is stopped (kill -CONT the pid first - a frozen screen reads as settled)"
 	prompt_lock
-	req=$(req_base)
+	req=$TREE
 	kind=$(overlay_kind)
 	case "$kind" in
 		permission) die "a permission ask is up (the prompt's keys would answer it - ask y|n first)" ;;
@@ -709,23 +671,21 @@ cmd_prompt() {
 		die "this window's model is dead (its fake stopped answering - zemi-lab logs have the connection errors; down/up reboots it)"
 	# the request count before Enter: last refuses to serve a body older than
 	# the last prompt, so a turn that died before the model cannot silently
-	# serve the previous body to a prompt-cache diff (per window: a peer's
-	# prompt must not move this window's freshness mark)
-	accepted "$req" >"$TREE/.lab.turn-$SESSION"
+	# serve the previous body to a prompt-cache diff
+	accepted "$req" >"$TREE/.lab.turn"
 	# a leftover draft glues onto the text; one C-c clears it (a second, on an
 	# empty composer, quits) - but the C-c can be eaten by an overlay still
 	# closing (send Escape; prompt right after), so verify the composer box
 	# emptied and retry, bounded. The placeholder can also read "tell zemi
-	# what to do instead…" after a [t] answer, or "message queues" on
-	# a peer window.
+	# what to do instead…" after a [t] answer.
 	i=0
 	while [ "$i" -lt 4 ]; do
-		composer_has "Ask anything" || composer_has "what to do instead" || composer_has "message queues" && break
+		composer_has "Ask anything" || composer_has "what to do instead" && break
 		send_keys C-c
 		sleep 0.4
 		i=$((i + 1))
 	done
-	composer_has "Ask anything" || composer_has "what to do instead" || composer_has "message queues" ||
+	composer_has "Ask anything" || composer_has "what to do instead" ||
 		die "the composer will not empty (a draft survived 4 ctrl+c - an overlay may still be open)"
 	# a per-call marker rides the text, so delivery is attributable to it
 	# alone (request_carries); the composer check must match what was typed
@@ -744,7 +704,7 @@ cmd_prompt() {
 	# the request counter is the source of truth that the turn started: the
 	# screen cannot prove it - a stopped zemi holds the previous turn's rows
 	# and every whole-screen grep matches them
-	at=$(cat "$TREE/.lab.turn-$SESSION")
+	at=$(cat "$TREE/.lab.turn")
 	i=0
 	while [ "$i" -lt 40 ]; do
 		# the request must carry this text: the count alone fires on any
@@ -905,10 +865,10 @@ cmd_cap() {
 		*)
 			[ -n "$e" ] && e=-e || e=""
 			if [ -n "$out" ]; then
-				tmux -L "$SERVER" capture-pane -t "$SESSION" -p $e >"$out" || die "capture failed"
+				tmux -L "$SERVER" capture-pane -t main -p $e >"$out" || die "capture failed"
 				say "$out"
 			else
-				exec tmux -L "$SERVER" capture-pane -t "$SESSION" -p $e
+				exec tmux -L "$SERVER" capture-pane -t main -p $e
 			fi
 			;;
 	esac
@@ -979,100 +939,15 @@ cmd_size() {
 				die "resize failed"
 			check_size "$RSESSION" "$RBLK" "$1" "$2"
 			;;
-		*) tmux -L "$SERVER" resize-window -t "$SESSION" -x "$1" -y "$2" ;;
+		*) tmux -L "$SERVER" resize-window -t main -x "$1" -y "$2" ;;
 	esac
-}
-
-# cmd_peer: a second zemi on the same tree, so two windows share the store,
-# the config and the fake model exactly as two real windows on one project
-# do. `-s peer` points the drive commands at it.
-cmd_peer() {
-	W=140 H=40 WIN=peer
-	while [ $# -gt 0 ]; do
-		case "$1" in
-			-x | -y)
-				[ $# -ge 2 ] || die "peer: $1 needs a value"
-				if [ "$1" = -x ]; then W=$2; else H=$2; fi
-				shift 2
-				;;
-			-*) die "peer: unknown flag $1" ;;
-			*) WIN=$1; shift ;;
-		esac
-	done
-	case "$WIN" in
-		main | fake | recorder) die "'$WIN' is lab plumbing or the main window - pick another peer name" ;;
-	esac
-	load
-	BIN=${ZEMI_BIN:-$REPO/bin/zemi}
-	case $BIN in /*) ;; *) BIN=$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN") ;; esac
-	[ -x "$BIN" ] || die "no zemi binary at $BIN"
-	# the peer gets its own fake model writing under req-$WIN: two windows
-	# share the store, never the request stream, so words typed in one window
-	# cannot certify a prompt another window never delivered
-	PFAKE=$TREE/req-$WIN
-	PPORT=$(free_port) || die "python3 is needed"
-	case $BACKEND in
-	rex) [ -n "$(block_id "$WIN")" ] && die "window '$WIN' is already up (zemi-lab down reboots all)" ;;
-	*) tmux -L "$SERVER" has-session -t "$WIN" 2>/dev/null && die "window '$WIN' is already up (zemi-lab down reboots all)" ;;
-	esac
-	rm -rf "$PFAKE" "$TREE/config-$WIN"
-	mkdir -p "$PFAKE" "$TREE/config-$WIN"
-	write_config "$TREE/config-$WIN" "$PPORT"
-	if [ "$BACKEND" = rex ]; then
-		FB2=$(rex run -s "$RSESSION" --label "fake-$WIN" --keep-open --focus=false --json -- \
-			python3 "$DIR/fake_openai.py" "$PPORT" "$PFAKE" |
-			python3 -c 'import json,sys;print(json.load(sys.stdin)["block_ids"][0])') ||
-			die "the $WIN fake model block failed to start"
-		wait_port "$PPORT" || {
-			rex capture -s "$RSESSION" -b "$FB2" 2>/dev/null | grep -v '^ *$' | tail -5 >&2
-			die "the $WIN fake model died (port taken?)"
-		}
-		RB=$(rex run -s "$RSESSION" -c "$TREE/proj" --label "$WIN" --keep-open --focus=false --json -- \
-			env -u NO_COLOR -u ZEMI_SCRATCH -u ZEMI_PROJECT_DIR -u ZEMI_SESSION TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN="$BIN" ZEMI_LAB_CONFIG="$TREE/config-$WIN" "$DIR/zemi-safe" "$TREE" ${LAB_TRUST:+"$LAB_TRUST"} |
-			python3 -c 'import json,sys;print(json.load(sys.stdin)["block_ids"][0])') ||
-			die "the $WIN block failed to start"
-		rex block call -s "$RSESSION" -b "$RB" resize "{\"columns\":$W,\"rows\":$H}" >/dev/null ||
-			die "resize to $W x $H failed"
-		check_size "$RSESSION" "$RB" "$W" "$H"
-		{
-			printf '%s %s\n' "$WIN" "$RB"
-			printf 'fake-%s %s\n' "$WIN" "$FB2"
-		} >>"$BLOCKS"
-		RBLK=$RB
-	else
-		tmux -L "$SERVER" new-session -d -s "fake-$WIN" -c "$PFAKE" \
-			"python3 '$DIR/fake_openai.py' $PPORT '$PFAKE'" || die "the $WIN fake model failed to start"
-		wait_port "$PPORT" || {
-			tmux -L "$SERVER" capture-pane -t "fake-$WIN" -p 2>/dev/null | grep -v '^ *$' | tail -5 >&2
-			die "the $WIN fake model died (port taken?)"
-		}
-		tmux -L "$SERVER" new-session -d -s "$WIN" -x "$W" -y "$H" -c "$TREE/proj" \
-			"exec env -u NO_COLOR -u ZEMI_SCRATCH -u ZEMI_PROJECT_DIR -u ZEMI_SESSION TERM=xterm-256color COLORTERM=truecolor ZEMI_BIN='$BIN' ZEMI_LAB_CONFIG='$TREE/config-$WIN' '$DIR/zemi-safe' '$TREE'${LAB_TRUST:+ $LAB_TRUST}" ||
-			die "tmux new-session failed"
-	fi
-	i=0
-	while [ "$i" -lt 120 ]; do
-		case $BACKEND in
-			rex) cur=$(rex capture -s "$RSESSION" -b "$RBLK" 2>/dev/null || true) ;;
-			*) cur=$(tmux -L "$SERVER" capture-pane -t "$WIN" -p 2>/dev/null || true) ;;
-		esac
-		# a peer usually opens a viewer: its composer says who writes instead
-		# of "Ask anything" (the lease's wording, same as wait_boot's variants)
-		case "$cur" in
-		*"Ask anything"* | *"what to do instead"* | *"message queues"*) break ;;
-		esac
-		i=$((i + 1))
-		sleep 0.25
-	done
-	[ "$i" -lt 120 ] || die "window '$WIN' did not boot in 30s"
-	say "window $WIN up on the same store, its own fake model on 127.0.0.1:$PPORT: drive it with zemi-lab -s $WIN prompt|cap|wait"
 }
 
 cmd_last() {
-	req=$(req_base)
+	req=$TREE
 	[ -f "$req/last_request.json" ] || die "no request yet (last_request.json is missing)"
-	if [ -f "$TREE/.lab.turn-$SESSION" ]; then
-		at_prompt=$(cat "$TREE/.lab.turn-$SESSION")
+	if [ -f "$TREE/.lab.turn" ]; then
+		at_prompt=$(cat "$TREE/.lab.turn")
 		now_count=$(accepted "$req")
 		[ "$now_count" -gt "$at_prompt" ] ||
 			die "no request arrived after the last prompt (the turn died before the model? check zemi-lab logs)"
@@ -1129,7 +1004,7 @@ cmd_title() {
 			rex block call -s "$RSESSION" -b "$RBLK" title 2>/dev/null |
 				python3 -c 'import json,sys;print(json.load(sys.stdin).get("title",""))' || die "title failed"
 			;;
-		*) tmux -L "$SERVER" display -p -t "$SESSION" '#{pane_title}' ;;
+		*) tmux -L "$SERVER" display -p -t main '#{pane_title}' ;;
 	esac
 }
 
@@ -1146,15 +1021,12 @@ cmd_events() {
 	# no load: a downed session (down --keep) is exactly the state events must
 	# still serve - its kept tree holds the final stream, the only read left
 	# that can assert the exit clear
-	case "$SESSION" in
-		fake | recorder) die "'$SESSION' is lab plumbing, not a window (-s main|peer)" ;;
-	esac
 	[ -f "$ENVF" ] || die "no lab '$NAME' at $TREE (zemi-lab up first)"
 	# shellcheck disable=SC1090
 	. "$ENVF"
 	BACKEND=${LAB_BACKEND:-tmux}
 	RSESSION=${LAB_RSESSION:-}
-	RBLK=$(block_id "$SESSION")
+	RBLK=$(block_id main)
 	[ "$BACKEND" = rex ] || die "events: a rex lab only (tmux swallows those sequences)"
 	[ -f "$TREE/events.jsonl" ] || die "no events stream at $TREE/events.jsonl"
 	# a live session's stream must still be written: a dead recorder freezes it
@@ -1257,19 +1129,14 @@ PYEOF
 }
 
 cmd_health() {
-	# a peer's health reads its own config (its fake's port), not main's
-	if [ "$SESSION" = main ]; then
-		"$DIR/zemi-safe" "$TREE" -C "$TREE/proj" health "$@"
-	else
-		ZEMI_LAB_CONFIG="$TREE/config-$SESSION" "$DIR/zemi-safe" "$TREE" -C "$TREE/proj" health "$@"
-	fi
+	"$DIR/zemi-safe" "$TREE" -C "$TREE/proj" health "$@"
 }
 
 cmd_attach() {
 	load
 	case $BACKEND in
 		rex) say "the lab runs in Rex session $RSESSION; open it in the Rex app or: rex focus -s '$RSESSION'" ;;
-		*) exec tmux -L "$SERVER" attach -t "$SESSION" ;;
+		*) exec tmux -L "$SERVER" attach -t main ;;
 	esac
 }
 
@@ -1295,7 +1162,7 @@ cmd_down() {
 			# lands no exit clear: refuse - unless the tree was kept (the
 			# documented cleanup is a plain down) or --force reaps without it
 			[ -n "$live" ] || [ -n "$force" ] || [ -f "$TREE/.lab.kept" ] ||
-				die "zemi's main window is dead (${fgp:-no live process}); down --force reaps the lab, a live peer included"
+				die "zemi's main window is dead (${fgp:-no live process}); down --force reaps the lab"
 			# a recorder that died before the quit leaves a stream that ends
 			# early: mark it, so kept-tree events refuses absence assertions.
 			# A teardown of an already-kept tree must not re-mark: its stream
@@ -1313,7 +1180,7 @@ cmd_down() {
 			# (rex kill would otherwise strand the last record). A corpse skips
 			# the dance: its keys land nowhere and the 4s wait buys nothing.
 			if [ -n "$live" ] && [ -f "$BLOCKS" ]; then
-				zblocks=$(awk '$1 != "fake" && $1 !~ /^fake-/ && $1 != "recorder" {print $2}' "$BLOCKS")
+				zblocks=$(block_id main)
 				for bid in $zblocks; do
 					rex send-key -s "$LAB_RSESSION" -b "$bid" -- escape 2>/dev/null || true
 				done
@@ -1339,7 +1206,7 @@ cmd_down() {
 			# the rex branch refuses a corpse above; tmux's pane gone is the
 			# same situation and gets the same refusal (a kept tree's plain
 			# down, the documented cleanup, skips it)
-			tmux -L "$SERVER" has-session -t "$SESSION" 2>/dev/null ||
+			tmux -L "$SERVER" has-session -t main 2>/dev/null ||
 				[ -n "$force" ] || [ -f "$TREE/.lab.kept" ] ||
 				die "zemi's main window is dead (the pane is gone); down --force reaps the lab"
 		fi
@@ -1376,7 +1243,6 @@ cmd_down() {
 
 case "$CMD" in
 	up) cmd_up "$@" ;;
-	peer) cmd_peer "$@" ;;
 	prompt) load; cmd_prompt "$@" ;;
 	type) load; cmd_type "$@" ;;
 	send) load; cmd_send "$@" ;;

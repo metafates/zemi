@@ -20,6 +20,26 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
+// TestLockInstance: one zemi opens a project - a second taker on the same
+// dirs is refused naming the holder's pid, and a released lock is takeable.
+func TestLockInstance(t *testing.T) {
+	dirs := config.Dirs{StateHome: t.TempDir()}
+	unlock, err := lockInstance(dirs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = lockInstance(dirs)
+	if err == nil || !strings.Contains(err.Error(), "already open") ||
+		!strings.Contains(err.Error(), fmt.Sprintf("pid %d", os.Getpid())) {
+		t.Fatalf("second lock err = %v, want a refusal naming pid %d", err, os.Getpid())
+	}
+	unlock()
+	if unlock, err = lockInstance(dirs); err != nil {
+		t.Fatal(err)
+	}
+	unlock()
+}
+
 // TestConfigFingerprintFollowsSymlinks: a dotfiles setup links the config
 // home, a user tree or a file; an edit behind the link still counts. A dir
 // linked deeper is not walked, since it could be any size.

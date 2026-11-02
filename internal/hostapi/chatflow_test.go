@@ -212,7 +212,7 @@ func TestNoteCommandAppends(t *testing.T) {
 
 // TestNoticesPersist: a recap, a goal verdict and every other status notice
 // the chat draws carries a log row, so a resumed window reads the same rows
-// back, and the pairing's wipe check still matches them.
+// back.
 func TestNoticesPersist(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -234,22 +234,12 @@ func TestNoticesPersist(t *testing.T) {
 		tr[0].Detail != "turn off in /config" || tr[1].Text != "Goal met: the tests pass" {
 		t.Fatalf("rebuilt rows = %+v", tr)
 	}
-	// the live rows carry their seq from the append, and the wipe check
-	// against the newest one holds
+	// the live rows carry their seq from the append
 	h.tMu.RLock()
 	live := h.Session().Transcript
 	h.tMu.RUnlock()
 	if n := len(live); n < 3 || live[n-2].Seq != rows[1].Seq || live[n-1].Seq != rows[2].Seq {
 		t.Fatalf("live rows unstamped: %+v", live[max(n-2, 0):])
-	}
-	h.tMu.Lock()
-	wiped := h.logWipedLocked()
-	h.tMu.Unlock()
-	if wiped {
-		t.Fatal("the pairing reads a notice row as a wipe")
-	}
-	if !logRowMatches(rows[2], tr[1]) {
-		t.Fatal("the pairing does not match a notice row")
 	}
 }
 
@@ -303,7 +293,7 @@ func TestBuilderRebuildsAfterTheWritersReset(t *testing.T) {
 		}
 		return nil
 	})
-	// another window wipes; the fresh rows share this window's seq space again
+	// a reset wipes the log under the builder; the fresh rows are new seqs
 	if err := h.DB.ResetLog(); err != nil {
 		t.Fatal(err)
 	}
@@ -702,14 +692,6 @@ func TestResumedWindowNamesADeadTail(t *testing.T) {
 				return err
 			}
 			return h.chat.Error("Interrupted", true)
-		}, false},
-		{"the lease's live holder", func(h *Host) error {
-			if _, err := h.chat.User("go", ""); err != nil {
-				return err
-			}
-			// a fresh lease row: its holder may be running this very turn
-			_, err := h.DB.ClaimLeader(h.origin, "s.sock", store.Leader{})
-			return err
 		}, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {

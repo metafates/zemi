@@ -221,7 +221,7 @@ or run when it names a command (zemi "/review HEAD~1").`,
 	}
 	healthJSON = jsonFlag(health)
 
-	root.AddCommand(projectsCommand(o), pluginCommand(o), modelsCommand(o), dbCommand(o), sendCommand(o), health)
+	root.AddCommand(projectsCommand(o), pluginCommand(o), modelsCommand(o), dbCommand(o), health)
 	return root
 }
 

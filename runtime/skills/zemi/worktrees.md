@@ -20,7 +20,7 @@ git worktree add -b feat/retry .agents/worktrees/retry
   search does not return every hit twice. Nothing under it is loaded as the outer
   project's config, skills, agents or commands.
 
-zemi started inside such a worktree shares the main checkout's trust decision and its chat.
+zemi started inside such a worktree shares the main checkout's trust decision.
 
 ## Running work in one
 

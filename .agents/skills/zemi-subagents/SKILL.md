@@ -131,7 +131,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   pad, writes `.root` (0600, the session's trust root) and hands `sweepScratch` to `GoSafe`, off
   the send path, which removes pads with nothing in them changed for a week, and at once a pad
   whose `.root` names a project that no longer exists (an empty, / or $HOME root never counts),
-  never the live one (NOTE: another window's pad unused that long goes too).
+  never the live one.
 - **Lua tool** (luatool.go, tool name `lua`; DESIGN §9): model Lua runs through `Runtime.Eval`
   as `user` origin, default-deny: without approval it may call only `luaReadOnly` members,
   which the sandbox guard (`Sandbox.SetGuard` -> `guardLua`) enforces on every Go function in

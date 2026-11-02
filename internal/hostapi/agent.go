@@ -94,16 +94,7 @@ type agentHost struct {
 	targetsMu sync.RWMutex
 	targets   map[string]*modelTarget
 
-	active bool
-	// writer: this window holds the lease, so only it may start turns, run the
-	// goal chain and write user rows. True until OpenPeers' claim loses it.
-	writer bool
-	// remote is the writing window's pushed live turn, which a window that owns
-	// no turn draws as its own: replaced whole per push, its clocks advanced
-	// from remoteAt at each read. AgentActive stays false under it, so the sync
-	// tick keeps running and the composer keeps refusing.
-	remote    *StreamSnapshot
-	remoteAt  time.Time
+	active    bool
 	textBuf   string
 	reasonBuf string
 	// stretchMS holds the wall time of each reasoning stretch the turn has
@@ -122,9 +113,6 @@ type agentHost struct {
 	steering             []string
 	steeredTurn          bool   // the running turn's input came from the steering queue
 	task                 string // the running turn's own input, one line: the program status report names it
-	// yield is a viewer's ask for the write, parked while a turn runs: the
-	// turn ends at its next step boundary and the chat is handed to the asker
-	yield *yieldAsk
 	// spoke is closed when the user's own message arrives during a turn
 	// (UserSpoke): a foreground call waiting on a long run hands it off
 	// instead of holding the turn past the message. Re-armed where the queue
@@ -360,8 +348,6 @@ func (h *Host) ensureRunner(toolset []fantasy.AgentTool) (*agent.Runner, error) 
 	r.Hooks = h.streamHooks()
 	r.Persist = h.persistMessage
 	r.Steer = h.deliverSteering
-	// a viewer's ask for the write ends this turn at its next tool boundary
-	r.Full = func(int64) bool { return h.yieldPending() }
 	r.TextOnly = !h.takesImages(id)
 	r.Compose = func(text string) fantasy.Message { return h.composeUserMessage(text, !r.TextOnly) }
 	return r, nil
@@ -523,17 +509,9 @@ func (h *Host) AgentSendUser(text string) error {
 }
 
 // agentSendUser is AgentSendUser, reporting whether the message joined a
-// running turn. On a viewer the message parks instead: it draws as queued,
-// and the writing window is asked to hand the chat over.
+// running turn.
 func (h *Host) agentSendUser(text string) (queued bool, err error) {
 	text = agent.Defuse(text)
-	if !h.writerFlag() {
-		if err := checkMessage(text); err != nil {
-			return false, err
-		}
-		h.parkForHandover(text)
-		return true, nil
-	}
 	if queued, err = h.agentSend(text); queued {
 		h.UserSpoke()
 	}
@@ -564,9 +542,6 @@ func checkMessage(text string) error {
 func (h *Host) agentSend(text string) (queued bool, err error) {
 	if err := checkMessage(text); err != nil {
 		return false, err
-	}
-	if !h.writerFlag() {
-		return false, errNotWriter
 	}
 	ag := h.agents
 	ag.mu.Lock()
@@ -727,9 +702,6 @@ func (h *Host) sendClaimed(scope *turnScope, text string, held *heldPrompt) (err
 		h.refresh()
 		return err
 	}
-	if !h.writerFlag() {
-		return fail(errNotWriter)
-	}
 	id := h.roleModel(defaultRole)
 	if _, err := h.resolveTurnModel(id); err != nil {
 		return fail(err)
@@ -770,11 +742,6 @@ func (h *Host) claim() *turnScope {
 	h.agents.active = true
 	h.agents.spoke = nil // a new turn: the last one's spoken signal is spent
 	h.turn.Store(t)
-	// the working flag moved: tell the siblings now, not at their next beat —
-	// and name it in this window's own heartbeat, so a peer booting beside the
-	// turn's first second does not mourn a live writer
-	h.GoSafe("beat", h.beat)
-	h.GoSafe("peer poke", h.peerPoke)
 	return t
 }
 
@@ -837,17 +804,9 @@ func (h *Host) release() {
 	h.agents.active = false
 	h.agents.task = "" // the note a sender reads names a live turn, not the last one
 	h.turn.Store(nil)
-	// the turn's last frame ships too: nothing logs after this, so without a
-	// poke every viewer keeps drawing the turn live
-	h.pokeViewers()
-	// on their own goroutines: these run under ag.mu, which no store call
-	// may wait on while it holds the one connection
+	// on its own goroutine: it runs under ag.mu, which no store call may wait
+	// on while it holds the one connection
 	h.GoSafe("settle todos", h.settleTodos)
-	// the beat before the poke: a turn under one beat's length ends with
-	// the file still saying working, and a sibling's poke would then read
-	// the stale flag and hold its pill up for the next minute
-	h.GoSafe("release beat", h.beat)
-	h.GoSafe("peer poke", h.peerPoke)
 }
 
 // settleTodos closes the list the claim leaves behind: in_progress means a
@@ -875,12 +834,10 @@ func (h *Host) settleTodos() {
 	}
 	// a send may have claimed the agent while this read was in flight, and
 	// its turn writes a list of its own: that one is not a leftover to settle.
-	// Only the lease's holder settles the shared list: a viewer's release
-	// would flip the item the writer's turn holds
 	ag.mu.Lock()
 	stale := ag.active
 	ag.mu.Unlock()
-	if stale || !h.writerFlag() {
+	if stale {
 		return
 	}
 	if err := h.DB.SetTodos(sid, todos); err != nil {
@@ -1131,22 +1088,6 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 	ag := h.agents
 	ag.mu.Lock()
 	text := ""
-	if y := ag.yield; y != nil {
-		// a viewer's ask ended this turn at its boundary: the write goes to
-		// the asker, and this window's own queue returns to the composer with
-		// the demotion
-		ag.yield = nil
-		h.release()
-		ag.mu.Unlock()
-		done.cancel()
-		// the end frame ships in line, while this window still writes: past
-		// the hand-over the pusher drops it as a viewer's, and every sibling
-		// would keep drawing the turn live
-		h.pushStream()
-		h.handOver(*y)
-		h.refresh()
-		return nil, ""
-	}
 	if done.ctx.Err() != nil {
 		// esc stopped the turn; the reports behind it wait for the drain
 		// instead of the user's next message
@@ -1169,9 +1110,6 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 	}
 	// a background run's report starts its own turn, which is checked after
 	goal := ag.goal
-	if goal != nil && !ag.writer { // ag.mu held: the flag, not the locking reader
-		goal = nil // a viewer runs no chain: the goal belongs to the window that writes the chat now
-	}
 	if text != "" || err != nil || done.ctx.Err() != nil || h.tasks.runningFor(store.MainSessionID) > 0 {
 		goal = nil
 	}
@@ -1235,12 +1173,6 @@ func (h *Host) continueGoal(next *turnScope, g *Goal) (*turnScope, string) {
 	case note != "":
 		ag.goalRuns++
 	}
-	var y *yieldAsk
-	if ag.yield != nil {
-		// a viewer's ask outranks the chain: the write goes to the asker, and
-		// the goal reloads on the window that takes it
-		y, ag.yield, note = ag.yield, nil, ""
-	}
 	if note == "" {
 		h.release()
 	} else {
@@ -1252,9 +1184,6 @@ func (h *Host) continueGoal(next *turnScope, g *Goal) (*turnScope, string) {
 	}
 	if note == "" {
 		next.cancel()
-		if y != nil {
-			h.handOver(*y)
-		}
 		h.refresh()
 		return nil, ""
 	}
@@ -1271,9 +1200,8 @@ func (h *Host) deliverSteering() []string {
 	msgs := ag.steering
 	steered := len(msgs) > 0
 	ag.mu.Unlock()
-	// the store is the list's truth: another window's write never reaches
-	// this window's cache, and the note counts what is really open. The read
-	// stays outside ag.mu, where no store call belongs.
+	// the store is the list's truth: the note counts what is really open. The
+	// read stays outside ag.mu, where no store call belongs.
 	open := -1
 	if steered && h.DB != nil {
 		if todos, err := h.DB.Todos(h.AgentSessionID()); err == nil && len(todos) > 0 {
@@ -1507,7 +1435,6 @@ func (h *Host) AgentActive() bool {
 }
 
 func (h *Host) agentStream() {
-	h.pokeViewers()
 	if ui := h.hooks(); ui != nil {
 		ui.AgentStream()
 	}
@@ -2071,8 +1998,8 @@ const todoNagAfter = 4
 // armTodoTurnNote arms a turn-start remind while the todo list has open
 // items: a long session's view carries the list only as a summary line, and
 // a model that never opens it works untracked. One note per turn, dropped by
-// the todos write the turn starts with. The store is the list's truth —
-// another window's write never reaches this window's cache.
+// the todos write the turn starts with. The store is the list's truth, so
+// the note reads it fresh.
 func (h *Host) armTodoTurnNote() {
 	var todos []store.Todo
 	if h.DB != nil {

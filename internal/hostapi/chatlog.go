@@ -282,11 +282,9 @@ func (c *chatLog) setReplyStat(stat TurnStat, thought time.Duration) error {
 	return c.h.DB.SetLogMeta(c.reply, string(meta))
 }
 
-// wake ends a logged row's write: the tree rebuilds from it, and the sibling
-// windows hear of it now - their sync runs on the frame, not on their tick.
+// wake ends a logged row's write: the tree rebuilds from it.
 func (c *chatLog) wake() {
 	c.tree.Wake()
-	c.h.pokeViewers()
 }
 
 // append logs the rows a text splits into, each with its view line, and
@@ -789,9 +787,6 @@ func (h *Host) chatCommands() []*Command {
 	}, {
 		Name: "reset", NArgs: NArgsOptional, Desc: "wipe this chat's log and summary tree and start it over",
 		GoFn: func(h *Host, args string, confirm bool) error {
-			if !h.writerFlag() {
-				return errNotWriter
-			}
 			_, yes := ConfirmArgs(args, confirm)
 			if !confirm {
 				return h.ResetChat(yes)

@@ -2,8 +2,13 @@ package hostapi
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/lua"
+	zemiruntime "github.com/metafates/zemi/runtime"
 )
 
 // TestSpecFieldTypes pins DESIGN §6.0 for option tables: a field of the
@@ -134,4 +139,25 @@ func dumpKeys(keys []ItemKey) []string {
 		out[i] = strings.TrimSpace(strings.Join(words, " "))
 	}
 	return out
+}
+
+// newWindow boots one host with its runtime and the tui modules loaded, its
+// turns on a reply stub, returned for sendTurns.
+func newWindow(t *testing.T, stateHome, projectDir string) (*Host, *replyStubModel) {
+	t.Helper()
+	log := slog.New(slog.DiscardHandler)
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS})
+	h := NewHost(r, log, config.NewStore(), config.Dirs{
+		StateHome:  stateHome,
+		DataHome:   t.TempDir(),
+		ProjectDir: projectDir,
+	})
+	h.ReleaseBuilder()
+	h.SetUIHooks(&fakeUI{})
+	m := replyStub(t, h, "ok")
+	t.Cleanup(h.Close)
+	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), lua.RequireStep("zemi.tui")}); err != nil {
+		t.Fatalf("Boot: %v", err)
+	}
+	return h, m
 }

@@ -1,6 +1,5 @@
-// Attacks against the shared-session lock order and the goal handoff: each
-// test names the interleave it runs, and the race ones are evidence only
-// under -race.
+// Attacks against the session lock order and the goal kv: each test names
+// the interleave it runs, and the race ones are evidence only under -race.
 
 package hostapi
 
@@ -73,80 +72,10 @@ func TestVerifySnapshotRacesTheHeldDrop(t *testing.T) {
 	}
 }
 
-// TestVerifySnapshotRacesTheSplice runs the attack against the sync
-// tick's splice: a spliced row whose seq sits before this window's stamped
-// tail inserts mid-array, and slices.Insert shifts the shared backing array
-// in place when its capacity allows - while Session() snapshots read it
-// unlocked. b runs its own turns so its rows stamp and the splice lands
-// mid-array; a's rows are older by the time b's tick sees them.
-func TestVerifySnapshotRacesTheSplice(t *testing.T) {
-	proj, state := t.TempDir(), t.TempDir()
-	a, _ := newWindow(t, state, proj)
-	b, _ := newWindow(t, state, proj)
-	stop := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(3)
-	go func() { // b's render
-		defer wg.Done()
-		for {
-			select {
-			case <-stop:
-				return
-			default:
-			}
-			_ = hRowTexts(b.Session())
-		}
-	}()
-	go func() { // b drives itself: its own stamped turns, and the sync tick
-		defer wg.Done()
-		for i := 0; ; i++ {
-			select {
-			case <-stop:
-				return
-			default:
-			}
-			b.SyncChat()
-			if !b.AgentActive() && i%2 == 0 {
-				_ = b.AgentSend(fmt.Sprintf("b own %d", i))
-			}
-			time.Sleep(time.Millisecond)
-		}
-	}()
-	go func() { // a writes through its turns, the only path into the log
-		defer wg.Done()
-		for i := 0; ; i++ {
-			select {
-			case <-stop:
-				return
-			default:
-			}
-			if !a.AgentActive() {
-				_ = a.AgentSend(fmt.Sprintf("a spliced %d", i))
-			}
-			time.Sleep(2 * time.Millisecond)
-		}
-	}()
-	time.Sleep(2 * time.Second)
-	close(stop)
-	wg.Wait()
-	b.SyncChat()
-	if n := len(b.Session().Transcript); n < 4 {
-		t.Fatalf("b holds %d rows: neither window's turns nor the splice ran", n)
-	}
-}
-
-func hRowTexts(s Session) []string {
-	out := make([]string, len(s.Transcript))
-	for i, m := range s.Transcript {
-		out[i] = m.Text
-	}
-	return out
-}
-
 // TestVerifyLockOrderUnderTurnContention attacks the lock-order invariant
 // with everything the pins leave out at once: a real turn start and its
 // stream flushes, a hold, a held drop, a step retry, a late reasoning join,
-// the sync tick, settled appends and the read paths. A deadlock hangs the
+// settled appends and the read paths. A deadlock hangs the
 // test; the race detector judges the memory ordering.
 func TestVerifyLockOrderUnderTurnContention(t *testing.T) {
 	proj, state := t.TempDir(), t.TempDir()
@@ -166,7 +95,6 @@ func TestVerifyLockOrderUnderTurnContention(t *testing.T) {
 			}
 		})
 	}
-	spin(func(int) { h.SyncChat() })
 	spin(func(i int) {
 		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: fmt.Sprintf("s %d", i)})
 		appendedSettled.Add(1)
@@ -197,7 +125,7 @@ func TestVerifyLockOrderUnderTurnContention(t *testing.T) {
 		_, _ = h.Goal()
 	})
 	spin(func(i int) {
-		g := Goal{Condition: fmt.Sprintf("g %d", i), SetAt: int64(i), Writer: h.origin}
+		g := Goal{Condition: fmt.Sprintf("g %d", i), SetAt: int64(i)}
 		h.agents.mu.Lock()
 		h.agents.goal = &g
 		h.agents.mu.Unlock()
@@ -246,9 +174,9 @@ func TestVerifyLockOrderUnderTurnContention(t *testing.T) {
 // row; the row going missing right after a write is the interleave hit.
 func TestVerifyUnstoreGoalTOCTOU(t *testing.T) {
 	h, _ := newWindow(t, t.TempDir(), t.TempDir())
-	stale := Goal{Condition: "goal one", SetAt: 100, Writer: "a"}
+	stale := Goal{Condition: "goal one", SetAt: 100}
 	row := func(setAt int64) string {
-		raw, _ := json.Marshal(Goal{Condition: "goal one", SetAt: setAt, Writer: "a"}, json.Deterministic(true))
+		raw, _ := json.Marshal(Goal{Condition: "goal one", SetAt: setAt}, json.Deterministic(true))
 		return string(raw)
 	}
 	stop := make(chan struct{})

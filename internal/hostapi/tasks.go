@@ -889,10 +889,9 @@ func (h *Host) deliverReport(parent string, r report, attached string) {
 	// the run is over: every count-derived indicator and list moves now, not
 	// at the next frame the user happens to cause
 	h.refresh()
-	if h.AgentSessionID() != parent || !h.writerFlag() {
-		// the user moved on, or this window only views the chat: only the
-		// lease's holder turns the model, so the report stores where the next
-		// turn in its session reads it
+	if h.AgentSessionID() != parent {
+		// the user moved on: the report stores where the next turn in its
+		// session reads it
 		h.notifyReport(r)
 		return
 	}
@@ -913,7 +912,7 @@ const updateStatus = reportStatus("update")
 // toasted.
 func (h *Host) deliverUpdate(run *agentRun, text string) error {
 	defer h.tasks.bump()
-	if h.AgentSessionID() != run.parent || !h.writerFlag() {
+	if h.AgentSessionID() != run.parent {
 		h.notifyReport(report{id: run.id, agent: run.agent, status: updateStatus, description: run.description, body: text})
 		return nil
 	}

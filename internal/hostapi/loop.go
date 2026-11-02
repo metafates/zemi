@@ -110,9 +110,6 @@ func (h *Host) SetLoop(args string) error {
 	case strings.HasPrefix(prompt, "/") && (name == "loop" || name == "goal"):
 		return Usagef("a loop cannot run /%s", name)
 	}
-	if !h.writerFlag() {
-		return errNotWriter
-	}
 	now := h.RT.Clock().Now()
 	ag := h.agents
 	ag.mu.Lock()

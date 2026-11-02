@@ -11,7 +11,6 @@ import (
 	"io"
 	"log/slog"
 	"maps"
-	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -578,22 +577,8 @@ type Host struct {
 	stampFrom int64
 	stampRow  int
 
-	// origin is this window's writer id, what its log rows carry and the
-	// pairing tells its rows apart by; pendRows buffers the other windows'
-	// rows the pairing passed, for SyncChat to splice in.
-	origin     string
-	boot       time.Time                 // when this window opened, for the /windows age
-	peersPath  string                    // this window's heartbeat file, "" without a store
-	peers      atomic.Pointer[peersView] // the sibling windows the last beat read
-	lease      atomic.Pointer[string]    // the lease word the pill and the ctx read
-	leaseTTL   time.Duration             // lease staleness before a takeover; 0 reads peersTTL (tests narrow it)
-	sockLn     net.Listener              // the delivered-prompt socket, nil when not bound
-	sockDir    string                    // its private temp dir, removed on close
-	sockPath   string                    // the socket's path, advertised in the heartbeat
-	streamPoke chan struct{}             // the live-view push gate: one buffered poke, coalesced by the pusher
-	pushMu     sync.Mutex                // one push round at a time: the loop and a hand-over's last frame share it
-	pendRows   []store.LogEntry
-	metaWatch  []int64 // spliced foreign reply rows whose readout has not landed yet
+	// origin is this window's writer id, what its log rows carry
+	origin string
 
 	// agentRows caches ctx.agent's tool subtables between renders: a finished
 	// tool's fields never change, so a long turn rebuilds only the rows that
@@ -739,7 +724,6 @@ type Host struct {
 
 	composerMu     sync.Mutex
 	composerText   string
-	draftToasted   string // the draft the last collision toast named, so an unchanged one never re-toasts
 	composerCursor int
 
 	recentStale atomic.Bool
@@ -942,23 +926,17 @@ func turnStart(row ChatMessage) bool {
 	return row.Kind == RowShell || row.Kind == RowMessage && row.Role == fantasy.MessageRoleUser
 }
 
-// markDeadTail is the boot read of the dangling check: the lease's holder may
-// be running the very turn the tail shows dangling - its rows only look
-// dangling because its reply has not landed here yet - so a live holder blocks
-// the mark. A takeover needs no guard: it knows the holder it replaced is
-// gone.
+// markDeadTail is the boot read of the dangling check: the run before this
+// one may have died inside the very turn the tail shows dangling.
 func (h *Host) markDeadTail() {
-	if l, err := h.DB.ReadLeader(); err == nil && !l.Stale(h.staleAfter()) {
-		return
-	}
 	h.markDanglingTail()
 }
 
 // markDanglingTail terminates the tail a window died inside: a turn whose rows
 // hold no reply and no error row never ended — the window closed on it
 // (a kill, a quit, a crash) — and the view says so, the way an interrupt's
-// "■ Interrupted" does. The log stays as it is, a live peer's sync never draws
-// one, and the next turn's rows make the check pass.
+// "■ Interrupted" does. The log stays as it is, and the next turn's rows make
+// the check pass.
 func (h *Host) markDanglingTail() {
 	h.tMu.Lock()
 	tr := h.session.Transcript
@@ -1049,18 +1027,14 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		return root
 	})
 	h.gitStatus = sync.OnceValue(func() string { return h.gitStatusSection(dirs.ProjectDir) })
-	// the lease defaults to this window: hosts with no presence (headless,
-	// tests) are their store's one window, and OpenPeers' claim demotes a real
-	// second window to a viewer
-	h.agents.writer = true
 	if dirs.StateHome != "" {
 		// keyed on the repository, not the launch directory: a subdirectory
 		// and a worktree are the same project, with the same sessions
 		h.GlobalDB, h.DB, h.initErr = store.OpenForDirs(dirs.StateHome, h.trustRoot())
 	}
 	if h.DB != nil {
-		// the window names itself in its log rows, so a second window's
-		// pairing tells the rows apart and syncChat splices its own in
+		// the window names itself in its log rows, so a restart tells its rows
+		// from the ones an older boot wrote
 		h.origin = originID()
 		h.DB.Origin = h.origin
 		h.chat = newChatLog(context.Background(), h)
@@ -2114,10 +2088,6 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("agents_running", glua.LNumber(agents))
 	tb.RawSetString("workflows_running", glua.LNumber(flows))
 	tb.RawSetString("jobs_running", glua.LNumber(h.jobsRunningCount()))
-	if pv := h.peerView(); pv.n > 0 {
-		tb.RawSetString("peers", glua.LNumber(pv.n))
-	}
-	tb.RawSetString("writer", glua.LString(h.WriterWord()))
 	if g, ok := h.Goal(); ok {
 		gt := L.CreateTable(0, 3)
 		gt.RawSetString("condition", glua.LString(clipLine(g.Condition, 48)))
@@ -2619,7 +2589,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.156.0"))
+	api.RawSetString("version", glua.LString("0.157.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

@@ -102,7 +102,7 @@ func replaceDir(dir string, trees ...fs.FS) error {
 		return err
 	}
 	return filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		// another window may have removed it first
+		// another zemi may have removed it first
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil
 		}

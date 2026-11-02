@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -29,11 +30,13 @@ import (
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
+	"github.com/metafates/zemi/internal/filelock"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/logging"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/proc"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	"github.com/metafates/zemi/internal/ui"
 	zemiruntime "github.com/metafates/zemi/runtime"
@@ -62,9 +65,6 @@ func launch(o options) int {
 		return fail(err)
 	}
 	defer closeLog()
-	// the lease names this window a viewer before the first prompt is held:
-	// HoldPrompt claims the first turn's row, which a viewer must not write
-	host.OpenPeers()
 	app := ui.NewApp(host, log)
 	host.SetUIHooks(app)
 	// a prompt fills the transcript, so no splash offers projects
@@ -114,16 +114,9 @@ func launch(o options) int {
 			for range time.Tick(time.Second) {
 				if !host.AgentActive() {
 					host.ReloadIfChanged()
-					host.SyncChat()
-				} else if host.ChatWiped() {
-					// a quiet hold never flushes, so the tick is what ends a
-					// turn whose chat another window wiped — it must not run
-					// to completion in a chat that no longer exists
-					host.GoSafe("chat dropped by the writer", host.WriterResetEnded)
 				}
 			}
 		})
-		host.StartPeers()
 		// A bad flag is a toast, not a boot failure: the TUI is still usable.
 		if err := applyOptions(host, o); err != nil {
 			host.RecordError("flag", "", err.Error())
@@ -140,21 +133,18 @@ func launch(o options) int {
 	}()
 
 	// Closing the terminal sends SIGHUP, which ends the process before the
-	// cleanup below: drop this window's presence first, so the siblings see it
-	// close at once, and jobs and servers never outlive zemi. SIGTERM is not
-	// here: bubbletea quits on it and p.Run returns, which restores the
+	// cleanup below, and jobs and servers must never outlive zemi. SIGTERM is
+	// not here: bubbletea quits on it and p.Run returns, which restores the
 	// terminal and reaches the cleanup anyway.
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGHUP)
 	go func() {
 		<-sig
-		host.ClosePeers()
 		proc.KillAll()
 		os.Exit(130)
 	}()
 
 	_, err = p.Run()
-	host.ClosePeers()
 	// Children run in their own sessions (internal/proc), so the terminal
 	// closing does not reach them: stop them here, and start none after (a
 	// reload, an MCP retry, a plugin's job), which would outlive zemi. Exit
@@ -255,8 +245,8 @@ func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App) []lua.BootStep {
 // bootHost is the prologue a TUI boot and a headless one (zemi health, a
 // completion) share: this run's dirs, the log, the host and the trust gate
 // its steps read. An inert boot (zemi models, a completion) only reads
-// config: no store, no log file, no process. closeLog releases the log and,
-// for an inert boot, the process refusal.
+// config: no store, no log file, no process. closeLog releases the log, the
+// one-instance lock and, for an inert boot, the process refusal.
 func bootHost(o options, inert bool) (*hostapi.Host, *trustGate, *slog.Logger, func(), error) {
 	dirs := o.dirs
 	if !inert {
@@ -268,6 +258,14 @@ func bootHost(o options, inert bool) (*hostapi.Host, *trustGate, *slog.Logger, f
 	if inert {
 		hostDirs.StateHome, logDir, release = "", "", proc.Refuse()
 	}
+	unlock := func() {}
+	if !inert {
+		u, err := lockInstance(dirs)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		unlock = u
+	}
 	log, level, path, closeLog := logging.New(logDir)
 	host, trust := newHost(hostDirs, log, o)
 	host.UseLogFile(level, path)
@@ -278,7 +276,34 @@ func bootHost(o options, inert bool) (*hostapi.Host, *trustGate, *slog.Logger, f
 		host.Log.Info("zemi stopped")
 		closeLog()
 		release()
+		unlock()
 	}, nil
+}
+
+// lockInstance holds this project's one-instance lock for the process's life:
+// a second zemi on the same project names the holder and stops here. The
+// lock lives on an open fd, so a zemi that dies releases it; the file beside
+// the store carries the holder's pid for the refusal to name.
+func lockInstance(dirs config.Dirs) (func(), error) {
+	path := filepath.Join(filepath.Dir(store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot())), "zemi.lock")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
+	}
+	unlock, err := filelock.Lock(path, 0)
+	if err != nil {
+		if !errors.Is(err, filelock.ErrLocked) {
+			return nil, err
+		}
+		msg := "another zemi is already open on this project; close it to open here"
+		if raw, rerr := os.ReadFile(path); rerr == nil {
+			if pid, _ := strconv.Atoi(strings.TrimSpace(string(raw))); pid > 0 {
+				msg = fmt.Sprintf("another zemi (pid %d) is already open on this project; close it to open here", pid)
+			}
+		}
+		return nil, errors.New(msg)
+	}
+	_ = os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())), 0o600)
+	return unlock, nil
 }
 
 // bootHeadless boots zemi with no TUI, for zemi health, zemi models and the
@@ -524,9 +549,6 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		}},
 		{Name: "errors", NArgs: hostapi.NArgsAny, Desc: "show errors zemi recorded", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.OpenErrors(args)
-		}},
-		{Name: "windows", NArgs: hostapi.NArgsAny, Desc: "list the other zemi windows on this chat", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
-			return h.OpenWindows(args, confirm)
 		}},
 		{Name: "trust", Desc: "change whether this project is trusted", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			if _, err := h.Screen(); err != nil {

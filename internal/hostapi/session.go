@@ -7,9 +7,7 @@ package hostapi
 import (
 	"cmp"
 	"encoding/json/v2"
-	"errors"
 	"fmt"
-	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -88,8 +86,6 @@ func (h *Host) SetTranscript(tr []ChatMessage) {
 	h.tMu.Lock()
 	h.session.Transcript, h.view = tr, nil
 	h.trEpoch.Add(1)
-	h.pendRows = nil
-	h.metaWatch = nil
 	h.tMu.Unlock()
 	// the loaded pages and the stamping cursor speak the cut log's shape, and
 	// the window is stamped whole from the log
@@ -128,21 +124,8 @@ func (h *Host) stampLogSeqs() {
 	h.stampLogSeqsLocked()
 }
 
-// stampLogSeqsLocked is stampLogSeqs with tMu held. Rows another window
-// wrote pair with nothing here: they buffer in pendRows for SyncChat to
-// splice in at their place, and the pairing cursor passes them like the
-// kinds it pairs with nothing.
+// stampLogSeqsLocked is stampLogSeqs with tMu held.
 func (h *Host) stampLogSeqsLocked() {
-	if h.logWipedLocked() {
-		// the log under this turn was reset: reload now, so the turn's next
-		// rows pair with the log it really writes. What belonged to the chat
-		// drops off this goroutine: a flush calls here under ag.mu, and tMu
-		// must never wait on it.
-		if h.reloadChatLocked() {
-			h.GoSafe("chat dropped by the writer", h.WriterResetEnded)
-		}
-		return
-	}
 	tr := h.session.Transcript
 	rows, err := h.DB.LogFrom(h.stampFrom, stampBatch)
 	if err != nil || len(rows) == 0 {
@@ -158,12 +141,6 @@ func (h *Host) stampLogSeqsLocked() {
 	consumed := 0
 	for i := 0; i < len(rows); i++ {
 		row := rows[i]
-		if row.Origin != h.origin {
-			// a row this window did not write: never this transcript's to stamp
-			h.pendRows = append(h.pendRows, row)
-			consumed++
-			continue
-		}
 		if row.Kind != store.KindUser && row.Kind != store.KindAgent && row.Kind != store.KindTool {
 			// a result, report, note, thought, error or shell row pairs with
 			// nothing: the cursor passes it
@@ -248,263 +225,6 @@ func (h *Host) stampReset(tr []ChatMessage) {
 	h.stampRow = len(tr)
 	h.stampFrom = h.stampedTail(tr)
 	h.tMu.Unlock()
-}
-
-// ChatWiped reports whether another window reset the shared log under this
-// window while its turn runs: the row the transcript last stamped no longer
-// is the row the store holds there. Read-only on purpose — the reload stays
-// on the flush path, whose lock order it needs; a count cannot see a wipe
-// whose regrown rows cover it, and a quiet hold has unstamped rows besides.
-func (h *Host) ChatWiped() bool {
-	if h.DB == nil {
-		return false
-	}
-	h.tMu.RLock()
-	defer h.tMu.RUnlock()
-	return h.logWipedLocked()
-}
-
-// WriterResetEnded ends this window's work after the writing window reset the
-// shared log: the turn dies with the chat it ran in, the view reloads.
-func (h *Host) WriterResetEnded() {
-	h.chatDropped()
-	// the chat the turn worked in is gone: its work would write rows a
-	// wiped log no longer holds, so the turn ends with it
-	h.AgentCancel()
-	// a shown ask belonged to the wiped chat: dismiss it, or it outlives
-	// the turn and a later answer runs a tool into the dead chat
-	if ui := h.hooks(); ui != nil {
-		ui.DismissAsk()
-	}
-	h.refreshMessages()
-	h.scroll(ScrollBottom, "")
-	h.refresh()
-	h.Notify(slog.LevelInfo, "Another window reset the chat", "this window reloaded it")
-}
-
-// SyncChat pulls what other windows appended to the shared log into this
-// window's transcript, on the config watch's idle tick and on every stream
-// frame the writing window pushes: two windows on one
-// repository are the one chat it keeps, and the log's newest word is the
-// truth. A live turn or run owns the tail, so the tick's own AgentActive
-// guard covers it. A log that shrank under this window, or whose row this
-// window stamped now reads differently, is another window's reset: the
-// window reloads whole, the way its own reset left it.
-func (h *Host) SyncChat() {
-	if h.DB == nil || h.DB.Origin == "" {
-		return
-	}
-	// a goal another window set that the kv no longer holds (met or stopped
-	// where it was set, or replaced by a newer goal) leaves this window's copy
-	// stale: drop it, with no judge run here
-	if g, ok := h.Goal(); ok && g.Writer != "" && g.Writer != h.origin {
-		stale := false
-		if raw, err := h.DB.GetKV(goalKV); errors.Is(err, store.ErrNotFound) {
-			stale = true
-		} else if err == nil {
-			var row Goal
-			if json.Unmarshal([]byte(raw), &row) == nil && (row.SetAt != g.SetAt || row.Condition != g.Condition) {
-				stale = true
-			}
-		}
-		if stale {
-			h.agents.mu.Lock()
-			h.agents.goal = nil
-			h.agents.mu.Unlock()
-			h.refresh()
-		}
-	}
-	// a goal another window set joins this window live, so the chain can move
-	// here with the write: the goal runs wherever the lease holds
-	if _, ok := h.Goal(); !ok {
-		h.loadGoal()
-		if _, ok := h.Goal(); ok {
-			h.refresh()
-		}
-	}
-	// the agents lock leads the transcript lock everywhere (the turn path
-	// holds ag.mu across its appends), so the tick's splice never takes
-	// ag.mu inside tMu: that order made a turn starting inside this section
-	// freeze both sides of the pair
-	h.agents.mu.Lock()
-	h.tMu.Lock()
-	count, err := h.DB.LogCount()
-	if err != nil {
-		h.tMu.Unlock()
-		h.agents.mu.Unlock()
-		return
-	}
-	if (count < h.stampFrom || h.logWipedLocked()) && h.reloadChatLocked() {
-		// the log shrank under this window's cursor, or the row it stamped
-		// reads differently: another window reset, its regrown rows included
-		h.tMu.Unlock()
-		h.agents.mu.Unlock()
-		h.WriterResetEnded()
-		return
-	}
-	h.stampLogSeqsLocked()
-	pend := h.pendRows
-	h.pendRows = nil
-	if len(pend) > 0 {
-		// the pairing buffered copies, and a reply's readout lands in its
-		// row's meta after that: re-read the span, then splice what the log
-		// holds now
-		if fresh, err := h.DB.LogFrom(pend[0].Seq, int(pend[len(pend)-1].Seq-pend[0].Seq)+1); err == nil {
-			pend = pend[:0]
-			for _, row := range fresh {
-				if row.Origin != h.origin {
-					pend = append(pend, row)
-				}
-			}
-		}
-		// Session() hands out snapshots of this array under a
-		// never-written-in-place contract, and an insert lands mid-array
-		// whenever a spliced row's seq sorts before the stamped tail: build
-		// the spliced slice fresh, the way a whole replacement does
-		tr := slices.Clone(h.session.Transcript)
-		for _, m := range logRows(pend) {
-			// splice at the row's place in the log, so the window draws the
-			// order a restart reads: past the pairing's cursor the rows are
-			// unclaimed and their seqs all sort above the buffered span, so
-			// the scan stops at the first of them - stepping over drew the
-			// burst after own rows it precedes
-			at := len(tr)
-			for i, o := range tr {
-				if o.Seq != NoSeq && o.Seq > m.Seq || i >= h.stampRow && o.Seq == NoSeq && stampable(o) {
-					at = i
-					break
-				}
-			}
-			tr = slices.Insert(tr, at, m)
-			if at <= h.stampRow {
-				h.stampRow++ // the pairing's row moved down with the insert
-			}
-			if m.Role == fantasy.MessageRoleAssistant && m.Kind == RowMessage && m.Stat == nil {
-				// the readout lands on the reply row's meta only at its
-				// turn's end, after the row itself spliced in
-				h.metaWatch = append(h.metaWatch, m.Seq)
-			}
-		}
-		h.session.Transcript = h.trimTranscript(tr)
-		h.trEpoch.Add(1)
-	}
-	if len(h.metaWatch) > 0 {
-		h.watchMetaLocked()
-	}
-	h.tMu.Unlock()
-	h.agents.mu.Unlock()
-	if len(pend) > 0 {
-		// another window may have written the list: the snapshot reloads on
-		// the next render, or this window's block freezes at its own last
-		// write forever
-		h.todosStale.Store(true)
-		h.refresh()
-		// a draft in the composer can be answered by what just arrived: say
-		// it once per draft, so a chatty window cannot re-toast an unchanged one
-		if draft := h.ComposerText(); strings.TrimSpace(draft) != "" && draft != h.draftToasted {
-			h.composerMu.Lock()
-			h.draftToasted = draft
-			h.composerMu.Unlock()
-			h.Notify(slog.LevelInfo, "Another window sent a message", "your draft is kept")
-		}
-	}
-}
-
-// logWipedLocked reports whether another window reset the shared log under
-// this window: the row its transcript last stamped no longer is the row the
-// store holds at that seq. A count cannot see a wipe that regrown rows
-// already cover; the row's own words are the evidence.
-func (h *Host) logWipedLocked() bool {
-	var m ChatMessage
-	found := false
-	for _, c := range slices.Backward(h.session.Transcript) {
-		if c.Seq != NoSeq {
-			m, found = c, true
-			break
-		}
-	}
-	if !found {
-		return false // nothing stamped: no identity to check
-	}
-	row, err := h.DB.LogAt(m.Seq)
-	if err != nil {
-		return true // the cursor names a seq the log no longer holds
-	}
-	if splitMarked(row) {
-		// the row is one chunk of a message the transcript holds whole:
-		// identity speaks the unit's text, the chunks joined the way a
-		// rebuild folds them
-		if rest, err := h.DB.LogFrom(m.Seq+1, stampBatch); err == nil {
-			for _, r := range rest {
-				if !splitMarked(r) || r.Kind != row.Kind || rowID(r) != rowID(row) {
-					break
-				}
-				row.Text += r.Text
-			}
-		}
-	}
-	return !logRowMatches(row, m)
-}
-
-// logRowMatches reports whether the store row still is the transcript row
-// carrying its seq: the kind and text identity the pairing stamps by. A
-// longer message logs as sibling chunks and the transcript row holds the
-// whole, so the first chunk matches as its prefix - a reset's regrown row
-// would have to open with the same 8000 characters to pass as the same.
-func logRowMatches(row store.LogEntry, m ChatMessage) bool {
-	text := strings.TrimSpace(row.Text)
-	switch row.Kind {
-	case store.KindUser:
-		return m.Role == fantasy.MessageRoleUser && m.Kind == RowMessage &&
-			(text == strings.TrimSpace(m.Text) || firstChunkOf(text, m.Text))
-	case store.KindAgent:
-		return m.Role == fantasy.MessageRoleAssistant && m.Kind == RowMessage &&
-			(text == strings.TrimSpace(m.Text) || firstChunkOf(text, m.Text))
-	case store.KindTool:
-		return m.Kind == RowTool && toolSummary(rowTool(row), row.Text) == m.Text
-	case store.KindThought:
-		return m.Kind == RowReasoning && row.Text == m.Text
-	case store.KindError:
-		return m.Kind == RowError && row.Text == m.Text
-	case store.KindShell:
-		return m.Kind == RowShell && row.Text == m.Text
-	case store.KindWork:
-		return m.Kind == RowNotice // its text needs the row's meta; the kind is identity enough
-	case store.KindNote:
-		// the chapter mark the transcript carries: first line, as it draws
-		return m.Kind == RowNotice && firstLine(text) == strings.TrimSpace(m.Text)
-	case store.KindNotice:
-		// a status notice: first line, as it draws
-		return m.Kind == RowNotice && firstLine(text) == strings.TrimSpace(m.Text)
-	default: // an echo: no transcript row carries its seq
-		return false
-	}
-}
-
-// firstChunkOf reports whether text opens a message the transcript holds
-// whole: the chat split's first sibling, shorter than the message it starts.
-func firstChunkOf(text, whole string) bool {
-	whole = strings.TrimSpace(whole)
-	return text != whole && strings.HasPrefix(whole, text)
-}
-
-// reloadChatLocked swaps the chat window for the log's tail: what a reset
-// leaves, this window's own or another window's. tMu held. False when the
-// read failed, leaving the window as it was.
-func (h *Host) reloadChatLocked() bool {
-	rows, err := h.DB.LogTail(chatWindowRows)
-	if err != nil {
-		return false
-	}
-	h.session.Transcript, h.view = logRows(rows), nil
-	h.msgMu.Lock()
-	h.msgOld, h.msgFrom = nil, -1
-	h.msgMu.Unlock()
-	h.stampRow, h.stampFrom = len(h.session.Transcript), h.stampedTail(h.session.Transcript)
-	h.pendRows = nil
-	h.metaWatch = nil
-	h.trEpoch.Add(1)
-	return true
 }
 
 // stampable reports whether a transcript row comes from a log row the
@@ -735,66 +455,6 @@ func replyMeta(meta string) *TurnStat {
 		return nil // the split mark rides a split reply's meta alone, before its readout lands
 	}
 	return &TurnStat{Model: m.Model, ElapsedMS: m.TurnMS, Out: m.Out, ThoughtMS: m.ThoughtMS, Ended: m.Ended}
-}
-
-// watchMetaLocked carries the readout a late settle wrote onto the log onto
-// the reply rows a splice already drew: a reply's row lands when its text
-// does, its readout only at its turn's end, so a window that spliced the row
-// in between would draw it without its telemetry forever. tMu held.
-func (h *Host) watchMetaLocked() {
-	// a split reply's readout settles on its last sibling, past the seq its
-	// row names: the read reaches the log's end or it stops short of it
-	count, err := h.DB.LogCount()
-	if err != nil || count < h.metaWatch[0] {
-		return
-	}
-	fresh, err := h.DB.LogFrom(h.metaWatch[0], int(count-h.metaWatch[0])+1)
-	if err != nil {
-		return
-	}
-	read := make(map[int64]*TurnStat, len(fresh))
-	start := int64(-1)
-	for _, row := range fresh {
-		stat := replyMeta(row.MetaJSON)
-		if stat != nil {
-			read[row.Seq] = stat
-		}
-		if row.Kind != store.KindAgent || !splitMarked(row) {
-			start = -1
-			continue
-		}
-		if start < 0 {
-			start = row.Seq
-		}
-		// the transcript's row names the group's first chunk, the readout
-		// settles on its last: let the watched row find it
-		if stat != nil {
-			read[start] = stat
-		}
-	}
-	if len(read) > 0 {
-		tr := h.session.Transcript
-		clone := false
-		for i := range tr {
-			if stat := read[tr[i].Seq]; stat != nil && tr[i].Stat == nil {
-				if !clone { // readers share the array: replace it, never write in place
-					tr = slices.Clone(tr)
-					clone = true
-				}
-				tr[i].Stat = stat
-			}
-		}
-		if clone {
-			h.session.Transcript = tr
-			h.trEpoch.Add(1)
-		}
-		h.metaWatch = slices.DeleteFunc(h.metaWatch, func(seq int64) bool { return read[seq] != nil })
-	}
-	// NOTE: a readout that never lands (its writer died before the settle)
-	// stays watched; the cap bounds that to the last 64 replies
-	if len(h.metaWatch) > 64 {
-		h.metaWatch = h.metaWatch[len(h.metaWatch)-64:]
-	}
 }
 
 // stampMS is a log stamp as unix ms, 0 when it does not parse.

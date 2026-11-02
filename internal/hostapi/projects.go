@@ -303,7 +303,7 @@ func (h *Host) deleteProject(p Project) error {
 	}
 	_, release, err := store.ClaimForDelete(store.ProjectDBPath(h.Dirs.StateHome, p.Root))
 	if errors.Is(err, store.ErrInUse) {
-		return Usagef("zemi has %s open in another window; quit it there first", perm.TildePath(p.Root))
+		return Usagef("another zemi has %s open; quit it first", perm.TildePath(p.Root))
 	}
 	if err != nil {
 		return err

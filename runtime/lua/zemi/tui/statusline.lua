@@ -111,36 +111,6 @@ zemi.ui.widget.add({
 	end,
 })
 
--- Windows sharing this chat: the other zemis whose heartbeat beside this
--- one's under the state home is still fresh. The lease names who writes and
--- the pill counts who watches; a lone writer needs no pill. Clicking the pill
--- opens /windows, the list with the kill.
-zemi.ui.widget.add({
-	id = "statusline.peers",
-	region = "statusline.left",
-	priority = 27,
-	on_click = fmt.run_click,
-	---@param ctx zemi.WidgetCtx
-	---@return zemi.Line[]
-	render = function(ctx)
-		local watching = ctx.peers or 0
-		if ctx.writer == "other" and watching > 0 then
-			watching = watching - 1 -- the writer among the peers is not watching
-		end
-		local word = ctx.writer == "this" and "this window writes"
-			or ctx.writer == "other" and "another window writes"
-			or "no window writes yet"
-		if ctx.writer == "this" and watching == 0 then return {} end
-		---@type zemi.Line
-		local line = { { text = "⧉ " .. word, hl = "Title", click = "windows" } }
-		if watching > 0 then
-			line[#line + 1] = { text = " · ", hl = "Dim", click = "windows" }
-			line[#line + 1] = { text = watching .. " watching", hl = "Dim", click = "windows" }
-		end
-		return { line }
-	end,
-})
-
 -- The keys of a bound sequence typed so far, waiting for the rest.
 zemi.ui.widget.add({
 	id = "statusline.keys",

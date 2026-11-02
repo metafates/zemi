@@ -40,10 +40,8 @@ $S/zemi-lab type 'partial text'    # literal text into the composer; returns onc
 $S/zemi-lab ask y                  # answer a permission ask (y|n|t); refuses when none is up
 $S/zemi-lab up -x 60 -y 15         # narrow layouts are baked into up
 $S/zemi-lab size 60 15             # resize after the fact; rex fails loudly when it did not stick
-$S/zemi-lab peer                   # a second zemi on the same tree and store,
-                                   # its own fake model and request stream (req-peer);
-                                   # the names main, fake, recorder are reserved
-$S/zemi-lab -s peer prompt 'name one river'   # drive the peer; -s main|peer aims every command
+$S/zemi-lab up -x 60 -y 15         # narrow layouts are baked into up
+$S/zemi-lab size 60 15             # resize after the fact; rex fails loudly when it did not stick
 $S/zemi-lab snap && $S/zemi-lab diff          # row-shift check: mask volatile spans,
                                    # exit 1 when rows moved (raw captures kept beside)
 $S/zemi-lab title                  # the pane title (? while an ask is up)
@@ -55,35 +53,18 @@ $S/zemi-lab status                 # the tree, port, session and every block id
 $S/zemi-lab down                   # quit zemi, kill sessions and server, delete the tree
 ```
 
-The lease owns the peer: the main window booted first and claimed the write, so the peer
-opens a read-only viewer - its placeholder says "another window writes", the writer's live
-turn and rows stream into it as they happen, and typing into it parks the message as a
-queued row that asks the holder for the write (an idle holder hands over at once; a
-mid-turn holder yields at the turn's next step boundary and the peer promotes, sends the
-queue and writes from there). A flow that needs the peer to act can also stop the main
-window first (kill its pane - a clean quit releases the lease, a kill costs one TTL) and
-let the peer's next tick promote it, which its pill names ("this window writes"); `zemi
-send` still reaches whichever window writes.
-
 `prompt` clears a leftover draft first (ctrl+c until the composer box empties - verified
 against the composer box's own rows, however tall a narrow pane folds them, never the
 whole screen, which transcript rows echo), types, sends Enter, then waits for the request
 to reach the model (the fake's request counter, which counts only requests the fake
 accepted - a 429 refusal never reached a model, a mid-stream drop counts, it got its
 200 - because the screen cannot prove a turn started), that a request carries the
-prompt's text with its marker (each `prompt` appends
-a unique `[zl:PID]` to the text and the match wants marker and full text together: the
-marker alone is the caller's pid, readable off the composer and typeable by another
-window - which is why every window boots its own fake model writing under its own dir
-(`req-<window>`; `-s peer last` reads the peer's), so a pair typed into a peer can only
-land in the peer's stream. The store is still shared: every window's DELIVERED words ride
-each later request's `<chat>` fold in every window, which is why the match reads only
-requests past the prompt's baseline, and the per-tree lock - no window delivers while a
-prompt polls - plus the marker are what hold that fold route. Within one window only a
-delivery of this very text - as a verbatim user message, or inside a later `<chat>` fold
-built from delivered messages - can put the pair in a request: neither a count alone
-(fires on any request landing after the baseline) nor a duplicate text (a re-sent older
-turn reads as delivered) can pass for it, and an
+prompt's text with its marker (each `prompt` appends a unique `[zl:PID]` to the text and
+the match wants marker and full text together, reading only requests past the prompt's
+baseline: only a delivery of this very text - as a verbatim user message, or inside a
+later `<chat>` fold built from delivered messages - can put the pair in a request: neither
+a count alone (fires on any request landing after the baseline) nor a duplicate text (a
+re-sent older turn reads as delivered) can pass for it, and an
 interrupt-restored draft leaves no trace) and for the screen to settle (the 10s window is
 matched-poll time; under load the same loop stretches to ~25s wall). Prompts serialize on
 a per-tree lock: concurrent prompts share one composer and one Enter would submit both
@@ -153,9 +134,7 @@ streamed chunks.
   mid-row keeps its figures), a row's
   trailing `· Ns` and a running tool's right-aligned seconds - and never the user's own
   words in the rows, so
-  a diff shows text as written. With a peer up, one window's diff conflates the peer's
-  rows (its queued `· other window` row, its error rows): diff a single-window lab, or
-  with the peer idle. The raw captures are kept beside
+  a diff shows text as written. The raw captures are kept beside
   the masked ones for re-checking (`snap m1.txt` keeps `m1.raw` - the suffix replaces
   `.txt`; a relative name lands in `$TREE/snap/`; a suffixless name warns and writes the
   bare name).
@@ -268,8 +247,8 @@ $S/zemi-lab -n ps down                          # quits zemi first, so the exit 
 - Rex answers the OSC 7501 feature query, so a status-following build suppresses its own
   alerts there and the events stay clean; tmux never answers, which is the right control
   for the other side of that branch.
-- A block takes focus at creation and no blur arrives on its own: open a second block (or
-  `peer`) to steal focus before asserting on unfocused behavior.
+- A block takes focus at creation and no blur arrives on its own: open a second block to
+  steal focus before asserting on unfocused behavior.
 - `down` dismisses an open ask or overlay (one escape) and then quits zemi by its armed
   ctrl+c - a plain kill would strand the last record on the dead block, and with an ask
   up even a bare ctrl+c is swallowed. Keys go to the zemi blocks only (a ctrl+c to the

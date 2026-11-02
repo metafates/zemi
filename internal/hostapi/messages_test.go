@@ -748,7 +748,7 @@ func TestLogRowsPairsParallelCalls(t *testing.T) {
 // TestStampPairsASplitMessage: a message over the chat split logs as sibling
 // rows while the transcript holds one; the row names the first chunk and the
 // pairing walks past the siblings. Marked gone instead, the cursor stalls on
-// the second chunk and the window never pairs again - deaf to live sync.
+// the second chunk and the window never pairs again.
 func TestStampPairsASplitMessage(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -775,20 +775,8 @@ func TestStampPairsASplitMessage(t *testing.T) {
 	if from != 3 {
 		t.Fatalf("the cursor walked past the siblings: %d", from)
 	}
-	// the split's row must not read as another window's wipe: a false wipe
-	// drops the chat, the goal with it
-	h.storeGoal(&Goal{Condition: "the tests pass", SetAt: 1})
-	h.tMu.Lock()
-	wiped := h.logWipedLocked()
-	h.tMu.Unlock()
-	if wiped {
-		t.Fatal("the split message's row reads as another window's wipe")
-	}
-	if _, err := h.DB.GetKV(goalKV); err != nil {
-		t.Fatalf("the goal survives the split: %v", err)
-	}
 	// the rebuild folds the marked siblings back into the one row the live
-	// window drew: a peer's transcript matches it
+	// window drew: a resumed transcript matches it
 	marked := func(seq int64, text string) store.LogEntry {
 		return store.LogEntry{Seq: seq, Kind: store.KindUser, Text: text, MetaJSON: `{"split":true}`}
 	}
@@ -799,11 +787,9 @@ func TestStampPairsASplitMessage(t *testing.T) {
 }
 
 // TestStampPairsASplitToolInput: a tool input over the chat split logs as
-// sibling rows while the transcript holds the call's one row. The probe
-// recomputes the row's summary from the store's text: read as one chunk, the
-// cut JSON cannot match, and the false wipe cancels the live turn as if the
-// user interrupted it. The sibling chunk, paired by kind alone, would steal
-// the next call's row.
+// sibling rows while the transcript holds the call's one row: the call's row
+// names its first chunk, and a later call pairs with its own row - the
+// sibling, paired by kind alone, would steal the next call's row.
 func TestStampPairsASplitToolInput(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -825,14 +811,6 @@ func TestStampPairsASplitToolInput(t *testing.T) {
 	h.tMu.RUnlock()
 	if from != 2 {
 		t.Fatalf("the cursor walked past the sibling: %d", from)
-	}
-	// the split must not read as another window's wipe: the false wipe ends
-	// the turn as if the user interrupted it
-	h.tMu.Lock()
-	wiped := h.logWipedLocked()
-	h.tMu.Unlock()
-	if wiped {
-		t.Fatal("the split tool input's row reads as another window's wipe")
 	}
 	// a later call pairs with its own row: the sibling rides the first chunk
 	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Text: toolSummary("read", `{"path":"/tmp/x"}`)})

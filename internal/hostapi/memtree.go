@@ -2,9 +2,7 @@
 // a binary tree of 512-byte one-line summaries and keeps the view, the
 // sawtooth list of lines a turn reads. Its tree state is owned by its worker
 // goroutine; appends reach it through Wake, finished model calls through
-// results, and a reset through RebuildQueues. No lease: two windows race on
-// INSERT OR IGNORE and on view merges skipped for children already gone, so
-// a race wastes one cheap call and nothing else.
+// results, and a reset through RebuildQueues.
 
 package hostapi
 
@@ -91,9 +89,9 @@ var errEmptyReply = errors.New("empty compaction reply")
 // in compaction-dumps.jsonl beside the store.
 var errEmptyTwice = fmt.Errorf("%w - the model returned no line twice", errEmptyReply)
 
-// errWiped: the log shrank under the builder's cursor - the writing window's
-// /reset. The run loop answers it with a rebuild.
-var errWiped = errors.New("the chat was reset by another window")
+// errWiped: the log shrank under the builder's cursor - a /reset raced the
+// build. The run loop answers it with a rebuild.
+var errWiped = errors.New("the chat was reset while building")
 
 // rateLimited says whether a build failed on the provider's rate limit:
 // fantasy wraps the refusal in its retry error. Such a build cools down and
@@ -573,8 +571,7 @@ func (b *memTree) sizeOf(id nodeID) (int, bool) {
 	return n, ok
 }
 
-// resyncView reloads the view mirror from the store: a batch wrote it, and
-// another window may have merged past this one's back.
+// resyncView reloads the view mirror from the store: a batch wrote it.
 func (b *memTree) resyncView() error {
 	lines, err := b.h.DB.LoadView()
 	if err != nil {
@@ -595,8 +592,8 @@ func (b *memTree) resyncView() error {
 
 // syncNew learns the appends that landed since the last round: their view
 // lines, their leaves, the template-built ones' sizes. Failed builds rejoin
-// their queues here, per their streak. A log that shrank under b.seen is
-// another window's /reset: the wiped seqs are new rows now, so rebuild.
+// their queues here, per their streak. A log that shrank under b.seen is a
+// /reset: the wiped seqs are new rows now, so rebuild.
 func (b *memTree) syncNew() error {
 	fresh := false
 	for {

@@ -113,7 +113,7 @@ func TestProjectsCommand(t *testing.T) {
 		{name: "an unknown dir", args: "forget " + filepath.Join(tmp, "nope"), err: "zemi keeps nothing for"},
 		{name: "delete asks first", args: "delete " + other, want: []string{"Confirm:projects delete " + other + " --yes"}},
 		{name: "forget drops the decision", args: "forget " + other, want: []string{"Trust decision forgotten", "undecided"}, not: []string{"Forget trust"}},
-		{name: "delete a store another zemi holds", args: "delete " + held + " --yes", want: []string{"open in another window", "run:projects delete " + held}},
+		{name: "delete a store another zemi holds", args: "delete " + held + " --yes", want: []string{"another zemi has", "quit it first", "run:projects delete " + held}},
 		{name: "delete", args: "delete " + other + " --yes", want: []string{"Project data deleted"}, not: []string{"run:projects delete " + other}, gone: true},
 	} {
 		h.agents.mu.Lock()

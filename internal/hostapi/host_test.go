@@ -196,7 +196,7 @@ func TestNamespaceVersion(t *testing.T) {
 	t.Parallel()
 	_, r := newTestHost(t)
 	runUser(t, r, `
-		assert(zemi.api.version == "0.156.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.157.0", "version=" .. tostring(zemi.api.version))
 		assert(not pcall(function() return zemi.test end), "zemi.test outside zemi plugin test")
 		assert(zemi.project.trusted() == false and zemi.project.root() ~= "", "zemi.project")
 		assert(zemi.ui.width("日本") == 4, "zemi.ui.width counts cells")
@@ -1114,30 +1114,6 @@ func TestChatCountsTheRowsBelowItsPendingRow(t *testing.T) {
 	h.todoMu.Unlock()
 	render()
 	runUser(t, h.RT, `assert(require("zemi.tui.text").rows_after_pending > 0, "the todo block sits below the pending row")`)
-}
-
-// TestViewerRuleNamesNoInterruptKey: a viewer draws the writing window's turn
-// live, but its esc cannot stop that turn, so the readout carries the
-// interrupt key only on the window that writes.
-func TestViewerRuleNamesNoInterruptKey(t *testing.T) {
-	t.Parallel()
-	h := newTestHostUI(t)
-	row := func() string {
-		t.Helper()
-		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("working"), 80, 1, UIState{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return SegsText(lines[0])
-	}
-	h.SeedStream(StreamSnapshot{Active: true, Elapsed: time.Second})
-	if got := row(); !strings.Contains(got, "interrupt") {
-		t.Fatalf("the writer's rule lost its interrupt key: %q", got)
-	}
-	h.setLeaseWord(writerOther)
-	if got := row(); strings.Contains(got, "interrupt") {
-		t.Fatalf("a viewer's rule names a key that stops nothing: %q", got)
-	}
 }
 
 // TestProjectEmojiPool: every marker emoji holds the pool's criteria - one

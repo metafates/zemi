@@ -826,15 +826,10 @@ type fakeUI struct {
 	onRefresh           func(id string)   // runs inside RefreshOverlay, mid-rebuild
 	edit                func(path string) // what the user does in the editor
 	relaunched, resumed string
-	notices             []string // the Notify bodies, newest last
 }
 
-func (f *fakeUI) Notify(_ slog.Level, title, body string) {
-	f.mu.Lock()
-	f.notices = append(f.notices, title+": "+body)
-	f.mu.Unlock()
-}
-func (f *fakeUI) Alert(slog.Level, string, string) {}
+func (f *fakeUI) Notify(slog.Level, string, string) {}
+func (f *fakeUI) Alert(slog.Level, string, string)  {}
 func (f *fakeUI) OpenOverlay(o Overlay) {
 	f.mu.Lock()
 	f.opened = append(f.opened, o)
@@ -857,12 +852,6 @@ func (f *fakeUI) overlays() []Overlay {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return slices.Clone(f.opened)
-}
-
-func (f *fakeUI) notified() []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return slices.Clone(f.notices)
 }
 
 func (f *fakeUI) CloseOverlay(id string, by lua.Origin, byPath string) {
