@@ -686,7 +686,7 @@ func (h *Host) MessageAgent(id, text string) error {
 		return err
 	}
 	if h.ViewedAgent() == run.id {
-		h.scroll(ScrollBottom, "")
+		h.scroll(ScrollBottom)
 		h.refresh()
 	}
 	return nil

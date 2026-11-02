@@ -414,14 +414,12 @@ func TestKeymapFromLua(t *testing.T) {
 		assert(zemi.keymap.del("tab") == false, "unbinding twice reports false, not an error")
 		for _, bad in ipairs({ "control+q", "ctrl-q", "ctrl+", "pgupp", "Ctrl+C", "ctrl+c x", "ctrl+x ctrl+c" }) do
 			assert(not pcall(zemi.keymap.set, bad, function() end), "bound " .. bad)
-			assert(not pcall(zemi.keymap.set, bad, function() end, { focus = "sidebar" }), "bound focused " .. bad)
 		end
 		for _, good in ipairs({ "shift+pgup", "alt+f12", "ctrl+alt+x", "esc" }) do
 			zemi.keymap.set(good, function() end)
 		end
 		local ok2, err2 = pcall(zemi.keymap.set, "+", function() end)
 		assert(not ok2 and tostring(err2):find("printable key", 1, true), "err=" .. tostring(err2))
-		zemi.keymap.set("+", function() end, { focus = "sidebar" })
 
 		zemi.command.add("hello", function() end)
 		zemi.keymap.set("ctrl+y", "hello")
@@ -438,7 +436,6 @@ func TestKeymapFromLua(t *testing.T) {
 			{ "d", "down", { list = true }, "printable keys filter" },
 			{ "ctrl+k", "help", { list = true }, "is a move" },
 			{ "ctrl+k", function() end, { list = true }, "is a move" },
-			{ "ctrl+k", "down", { list = true, focus = "sidebar" }, "do not combine" },
 			{ "enter", "down", { list = true }, "lists answer with" },
 		}) do
 			local ok, err = pcall(zemi.keymap.set, bad[1], bad[2], bad[3])
@@ -449,7 +446,7 @@ func TestKeymapFromLua(t *testing.T) {
 	if err := r.ExecuteChunk(t.Context(), `zemi.keymap.set("ctrl+k", "up", { list = true })`, "p.lua", lua.OriginPlugin); err != nil {
 		t.Fatalf("a plugin bound a list alias: %v", err)
 	}
-	if b := h.Keymaps.Lookup("", "ctrl+g"); b == nil || b.Origin != lua.OriginUser {
+	if b := h.Keymaps.Lookup("ctrl+g"); b == nil || b.Origin != lua.OriginUser {
 		t.Fatalf("ctrl+g = %+v", b)
 	}
 }

@@ -101,17 +101,6 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.keySeq = nil
 	}
 
-	// A focused node takes every key but ctrl+c: its own keymaps, then the
-	// global ones. Unbound keys do nothing, and an unbound esc gives the
-	// keys back to the composer.
-	if f := a.focusedNode(); top == noModal && f != "" && key != "ctrl+c" {
-		if ok, _ := a.keySequence(key, f); !ok && key == "esc" {
-			a.host.SetFocus("")
-		}
-		a.bump()
-		return nil
-	}
-
 	// Keymaps (zemi.keymap.set) take single keys and bound sequences;
 	// printable keys stay with the composer, and an open popup keeps its
 	// keys. The composer is Go-drawn, so typing must not bump the frame
@@ -120,7 +109,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if a.palette.open || a.completion.shown() {
 			return a.composerKey(key, msg)
 		}
-		ok, replay := a.keySequence(key, "")
+		ok, replay := a.keySequence(key)
 		if !ok {
 			// a fast esc+key arrives as one alt-combo the terminal folded
 			// (the ESC wait): run the two keys it was, esc then the key, so
@@ -579,7 +568,7 @@ const keySeqTimeout = 1500 * time.Millisecond
 // s"): a key that starts or continues a bound sequence is held until the
 // sequence completes, esc cancels it, and when a key breaks or outlives it
 // the held keys replay as plain ones before the key is handled on its own.
-func (a *App) keySequence(key, focus string) (bool, tea.Cmd) {
+func (a *App) keySequence(key string) (bool, tea.Cmd) {
 	held := a.keySeq
 	a.keySeq = nil
 	if len(held) > 0 && key == "esc" {
@@ -590,29 +579,28 @@ func (a *App) keySequence(key, focus string) (bool, tea.Cmd) {
 	if len(held) > 0 && a.now().Sub(a.keySeqAt) <= keySeqTimeout {
 		seq = strings.Join(append(held, key), " ")
 	} else {
-		replay, held = a.replayKeys(held, focus), nil
+		replay, held = a.replayKeys(held), nil
 	}
-	if b := a.host.Keymaps.Lookup(focus, seq); b != nil {
+	if b := a.host.Keymaps.Lookup(seq); b != nil {
 		a.runRHS(b)
 		return true, replay
 	}
-	if a.host.Keymaps.IsPrefix(focus, seq) {
+	if a.host.Keymaps.IsPrefix(seq) {
 		a.keySeq, a.keySeqAt = strings.Fields(seq), a.now()
 		return true, replay
 	}
 	if len(held) == 0 {
 		return false, replay
 	}
-	replay = a.replayKeys(held, focus)
-	ok, cmd := a.keySequence(key, focus)
+	replay = a.replayKeys(held)
+	ok, cmd := a.keySequence(key)
 	return ok, tea.Batch(replay, cmd)
 }
 
 // replayKeys hands held keys to the composer as plain ones, so a Go key
-// under a leader (ctrl+g opens the editor) still works on its own. A
-// focused node drops them, like any key it has no binding for.
-func (a *App) replayKeys(held []string, focus string) tea.Cmd {
-	if focus != "" || a.topChrome() != noModal {
+// under a leader (ctrl+g opens the editor) still works on its own.
+func (a *App) replayKeys(held []string) tea.Cmd {
+	if a.topChrome() != noModal {
 		return nil
 	}
 	var cmds []tea.Cmd
@@ -652,15 +640,6 @@ func (a *App) arm(key, what string) bool {
 
 func (a *App) isArmed(key string) bool {
 	return a.armed.key == key && a.now().Before(a.armed.until)
-}
-
-// focusedNode is the layout node taking keys: the host's focus while the
-// last frame drew it, else "" (the composer).
-func (a *App) focusedNode() string {
-	if f := a.host.Focus(); f != "" && slices.Contains(a.focusables, f) {
-		return f
-	}
-	return ""
 }
 
 // listMove maps list navigation keys (arrows, k/j, ctrl+p/n) to -1 or 1;

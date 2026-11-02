@@ -4,6 +4,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 )
@@ -61,12 +63,7 @@ func TestFadeSparesTheWidgetCache(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 20)
 	runLua(t, app, `
-zemi.ui.layout.set({ root = { kind = "box", dir = "col", stage = true, children = {
-  { kind = "region", id = "chat", region = "chat", scroll = "bottom", size = "fill" },
-  { kind = "region", id = "notes", region = "notes", size = 2 },
-  { kind = "composer" },
-} } })
-zemi.ui.widget.add({ id = "notes.wide", region = "notes", wrap = true, render = function()
+zemi.ui.widget.add({ id = "notes.wide", region = "chat", priority = 20, wrap = true, render = function()
   return { { { text = string.rep("word ", 14) } } }
 end })`)
 	app.screen(t)
@@ -92,4 +89,14 @@ end })`)
 	if after := app.Frame(); after != before {
 		t.Fatalf("the frame kept the fade past the box:\n%s\nwant:\n%s", after, before)
 	}
+}
+
+// screen renders every widget synchronously and returns the frame as plain
+// text: what a reader sees, styling dropped.
+func (a *App) screen(t *testing.T) string {
+	t.Helper()
+	for a.Pump() {
+	}
+	a.renderSync(t)
+	return ansi.Strip(a.Frame())
 }

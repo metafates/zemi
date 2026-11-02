@@ -103,7 +103,7 @@ func (h *Host) keySeq(key string, focused bool) (string, error) {
 		}
 	}
 	if len([]rune(tokens[0])) == 1 && !focused {
-		return "", fmt.Errorf("%q is a printable key and only ever reaches the composer: pass opts.focus to scope it to a node, or start with a non-printable key such as ctrl+x", tokens[0])
+		return "", fmt.Errorf("%q is a printable key and only ever reaches the composer: start with a non-printable key such as ctrl+x", tokens[0])
 	}
 	return strings.Join(tokens, " "), nil
 }
@@ -167,25 +167,20 @@ func (h *Host) installDefaultKeymap() error {
 
 // keymapNamespace is zemi.keymap: set(key, action, opts?), del(key, opts?),
 // get(key, opts?) and list(). An action is a function, a command name or a
-// host action; setting a bound key again rebinds it. opts.focus scopes a
-// binding to a focusable layout node: it works only while that node has the
-// keys, and there it may start with a printable key. opts.list makes the key
+// host action; setting a bound key again rebinds it. opts.list makes the key
 // a list alias, whose action is one of listMoves.
 func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
-	// binding reads the key, opts.focus and opts.list of a call
-	binding := func(L *glua.LState, what string) (key, focus string, list bool, opts *glua.LTable) {
+	// binding reads the key and opts.list of a call
+	binding := func(L *glua.LState, what string) (key string, list bool, opts *glua.LTable) {
 		opts = L.OptTable(3, nil)
 		if what != "set" {
 			opts = L.OptTable(2, nil)
 		}
 		if opts != nil {
-			focus, list = rawString(L, opts, "focus"), rawBool(L, opts, "list")
+			list = rawBool(L, opts, "list")
 		}
-		key, err := h.keySeq(L.CheckString(1), focus != "" || list)
-		if list && focus != "" {
-			err = errors.New("focus and list do not combine")
-		}
+		key, err := h.keySeq(L.CheckString(1), list)
 		if err == nil && list {
 			switch {
 			case strings.Contains(key, " "):
@@ -200,12 +195,12 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 		if err != nil && what != "get" {
 			L.RaiseError("zemi.keymap.%s: %v", what, err)
 		}
-		return key, focus, list, opts
+		return key, list, opts
 	}
 
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		key, focus, list, opts := binding(L, "set")
-		b := &KeyBinding{Key: key, Focus: focus, List: list, Origin: h.RT.CurrentOrigin(L), Path: h.RT.CurrentPath(L), Gen: h.currentGen()}
+		key, list, opts := binding(L, "set")
+		b := &KeyBinding{Key: key, List: list, Origin: h.RT.CurrentOrigin(L), Path: h.RT.CurrentPath(L), Gen: h.currentGen()}
 		v := L.Get(2)
 		if s, ok := v.(glua.LString); list && (!ok || !slices.Contains(listMoves, string(s))) {
 			L.RaiseError("zemi.keymap.set: with opts.list the action is a move: %s", strings.Join(listMoves, ", "))
@@ -241,8 +236,8 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		key, focus, list, _ := binding(L, "del")
-		removed, err := h.Keymaps.Del(h.RT.CurrentOrigin(L), h.RT.CurrentPath(L), focus, key, list)
+		key, list, _ := binding(L, "del")
+		removed, err := h.Keymaps.Del(h.RT.CurrentOrigin(L), h.RT.CurrentPath(L), key, list)
 		if err != nil {
 			L.RaiseError("zemi.keymap.del: %v", err)
 		}
@@ -251,8 +246,8 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
-		key, focus, list, _ := binding(L, "get")
-		b := h.Keymaps.Lookup(focus, key)
+		key, list, _ := binding(L, "get")
+		b := h.Keymaps.Lookup(key)
 		if list {
 			b = h.Keymaps.ListAlias(key)
 		}
@@ -277,13 +272,10 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 }
 
 // keymapRow is a binding snapshot: key, action ("/cmd", a host action,
-// "<function>" or a list alias's move), desc, origin, focus (nil for a
-// global binding) and list (true for a list alias).
+// "<function>" or a list alias's move), desc, origin and list (true for a
+// list alias).
 func keymapRow(b *KeyBinding) map[string]any {
 	row := map[string]any{"key": b.Key, "action": describeRHS(b.RHS), "desc": b.Desc, "origin": string(b.Origin)}
-	if b.Focus != "" {
-		row["focus"] = b.Focus
-	}
 	if b.List {
 		row["list"] = true
 	}

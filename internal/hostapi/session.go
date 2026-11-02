@@ -93,7 +93,7 @@ func (h *Host) SetTranscript(tr []ChatMessage) {
 	h.msgOld, h.msgFrom = nil, -1
 	h.msgMu.Unlock()
 	h.stampReset(tr)
-	h.scroll(ScrollBottom, "")
+	h.scroll(ScrollBottom)
 	h.refresh()
 	h.refreshMessages()
 }

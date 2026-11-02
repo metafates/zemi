@@ -405,20 +405,17 @@ func TestComposerHiddenRows(t *testing.T) {
 // cursor was on.
 func TestComposerPlaceholder(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
-	app.focusables = []string{"side"}
 	for _, c := range []struct {
-		name, text, focus, want string
-		cursor                  int  // the cursor cell's column, -1 for none
-		modal                   bool // a box over the composer has the keys
+		name, text, want string
+		cursor           int  // the cursor cell's column, -1 for none
+		modal            bool // a box over the composer has the keys
 	}{
-		{"empty", "", "", "Ask anything", 0, false},
-		{"typed", "h", "", "h", 1, false},
-		{"command draft", "/", "", "/", 2, false},
-		{"a node has the keys", "", "side", "Ask anything", -1, false},
-		{"a modal has the keys", "", "", "Ask anything", -1, true},
+		{"empty", "", "Ask anything", 0, false},
+		{"typed", "h", "h", 1, false},
+		{"command draft", "/", "/", 2, false},
+		{"a modal has the keys", "", "Ask anything", -1, true},
 	} {
 		app.composer.text, app.composer.cursor = c.text, len(c.text)
-		app.host.SetFocus(c.focus)
 		if c.modal {
 			app.openOverlay(hostapi.Overlay{ID: "box", Title: "box"})
 		}

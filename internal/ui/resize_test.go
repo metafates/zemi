@@ -207,7 +207,7 @@ func TestAnchoredPickerComposerLine(t *testing.T) {
 			return strings.HasSuffix(row, "┐") || strings.HasSuffix(row, "┤")
 		}
 		top := slices.IndexFunc(rows, func(row string) bool { return strings.Contains(row, "Picker") })
-		c := a.LayoutRects()["composer"]
+		c := a.layoutRects()["composer"]
 		if top < 0 || !edge(rows[top]) || !edge(rows[c.Y]) {
 			t.Fatalf("%s: picker rows %d and %d not in line with the composer frame:\n%s", anchor, top, c.Y, strings.Join(rows, "\n"))
 		}

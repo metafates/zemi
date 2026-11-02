@@ -503,9 +503,7 @@ func (t *PluginTest) set(L *glua.LState) int {
 	})
 }
 
-// keys is test.keys(seq): what the plugin bound a global key sequence to.
-// NOTE: a { focus = id } binding is not reachable; keys needs a focused
-// node for it, which only a drawn layout has.
+// keys is test.keys(seq): what the plugin bound a key sequence to.
 func (t *PluginTest) keys(L *glua.LState) int {
 	seq, err := t.h.keySeq(L.CheckString(1), false)
 	if err != nil {
@@ -513,7 +511,7 @@ func (t *PluginTest) keys(L *glua.LState) int {
 	}
 	b := t.own(L, "keys", "Lua key binding", seq, t.h.Keymaps.List(), func(k *KeyBinding) (string, bool) {
 		c := t.h.Commands.Lookup(k.RHS.Command)
-		return k.Key, k.Focus == "" && t.mine(k.Path) && k.RHS.API == "" && (k.RHS.Command == "" || c != nil && c.GoFn == nil && t.mine(c.Path))
+		return k.Key, t.mine(k.Path) && k.RHS.API == "" && (k.RHS.Command == "" || c != nil && c.GoFn == nil && t.mine(c.Path))
 	})
 	return t.drive(L, "keys", "keymap "+b.Key, func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
 		return nil, errText(t.h.RunRHS(ctx, b))
@@ -1058,8 +1056,7 @@ func (u *testUI) CloseLuaOverlays() {
 func (*testUI) Notify(slog.Level, string, string)                   {}
 func (*testUI) Alert(slog.Level, string, string)                    {}
 func (*testUI) Refresh()                                            {}
-func (*testUI) Scroll(ScrollAction, string)                         {}
-func (*testUI) LayoutRects() map[string]Rect                        { return nil }
+func (*testUI) Scroll(ScrollAction)                                 {}
 func (*testUI) KeyHelp() ([][2]string, [][2]string)                 { return nil, nil }
 func (*testUI) AgentStream()                                        {}
 func (*testUI) TurnDone(string, bool)                               {}

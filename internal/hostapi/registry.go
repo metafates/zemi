@@ -36,7 +36,6 @@ var listMoves = []string{"up", "down", "pgup", "pgdown", "home", "end", "ctrl+d"
 // KeyBinding maps one key to a right-hand side.
 type KeyBinding struct {
 	Key    string // bubbletea key string: "ctrl+s", "tab", "alt+enter"
-	Focus  string // the layout node id it works in while focused; "" everywhere
 	List   bool   // a list alias: live while a list, popup or prompt has the keys
 	RHS    RHS
 	Desc   string
@@ -49,11 +48,11 @@ type KeyBinding struct {
 // bindKey is a binding's slot. Lists take their keys before keymaps are
 // consulted, so an alias never overlaps a global binding or sequence.
 type bindKey struct {
-	focus, key string
-	list       bool
+	key  string
+	list bool
 }
 
-func (b *KeyBinding) slot() bindKey { return bindKey{b.Focus, b.Key, b.List} }
+func (b *KeyBinding) slot() bindKey { return bindKey{b.Key, b.List} }
 
 // mayReplace refuses one plugin's registration or removal over another's: both
 // carry OriginPlugin, so the later would silently replace or drop the first
@@ -97,9 +96,8 @@ type KeymapRegistry struct {
 	owner    func(path string) string // Host.PluginOf, see mayReplace
 }
 
-// Set binds or rebinds a key; the last registration wins. A focused binding
-// sits over the global ones, and a key fires before the longer sequences it
-// starts, so overlapping one shadows it (or is dead).
+// Set binds or rebinds a key; the last registration wins. A key fires before
+// the longer sequences it starts, so overlapping one shadows it (or is dead).
 func (r *KeymapRegistry) Set(b *KeyBinding) error {
 	if b.Key == "" {
 		return errors.New("keymap: key is required")
@@ -117,8 +115,8 @@ func (r *KeymapRegistry) Set(b *KeyBinding) error {
 	// a key fires before the longer sequences it starts, so overlapping a
 	// more trusted sequence would take it over (or be dead)
 	for k, old := range r.bindings {
-		related := k.list == b.List && (k.focus == b.Focus || k.focus == "" || b.Focus == "")
-		overlap := strings.HasPrefix(k.key, b.Key+" ") || strings.HasPrefix(b.Key, k.key+" ") || (k.key == b.Key && k.focus == "" && b.Focus != "")
+		related := k.list == b.List
+		overlap := strings.HasPrefix(k.key, b.Key+" ") || strings.HasPrefix(b.Key, k.key+" ")
 		if !related || !overlap {
 			continue
 		}
@@ -139,10 +137,10 @@ func (r *KeymapRegistry) Set(b *KeyBinding) error {
 // Del unbinds a key the caller may replace (mayReplace) and reports whether
 // there was one. Unbinding what is not bound is not an error: a reloaded
 // config must be idempotent.
-func (r *KeymapRegistry) Del(by lua.Origin, byPath, focus, key string, list bool) (bool, error) {
+func (r *KeymapRegistry) Del(by lua.Origin, byPath, key string, list bool) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	k := bindKey{focus, key, list}
+	k := bindKey{key, list}
 	b := r.bindings[k]
 	if b == nil {
 		return false, nil
@@ -154,15 +152,11 @@ func (r *KeymapRegistry) Del(by lua.Origin, byPath, focus, key string, list bool
 	return true, nil
 }
 
-// Lookup finds the binding for a key while focus has the keys: the focused
-// node's own, else the global one.
-func (r *KeymapRegistry) Lookup(focus, key string) *KeyBinding {
+// Lookup finds the binding for a key.
+func (r *KeymapRegistry) Lookup(key string) *KeyBinding {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	if s := r.bindings[bindKey{focus, key, false}]; focus != "" && s != nil {
-		return s
-	}
-	return r.bindings[bindKey{"", key, false}]
+	return r.bindings[bindKey{key, false}]
 }
 
 // ListAlias is the list alias bound to key, nil when none: the key loop
@@ -170,16 +164,15 @@ func (r *KeymapRegistry) Lookup(focus, key string) *KeyBinding {
 func (r *KeymapRegistry) ListAlias(key string) *KeyBinding {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.bindings[bindKey{"", key, true}]
+	return r.bindings[bindKey{key, true}]
 }
 
-// IsPrefix reports whether seq begins a longer key sequence bound globally
-// or for focus.
-func (r *KeymapRegistry) IsPrefix(focus, seq string) bool {
+// IsPrefix reports whether seq begins a longer bound key sequence.
+func (r *KeymapRegistry) IsPrefix(seq string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for k := range r.bindings {
-		if !k.list && (k.focus == "" || k.focus == focus) && strings.HasPrefix(k.key, seq+" ") {
+		if !k.list && strings.HasPrefix(k.key, seq+" ") {
 			return true
 		}
 	}

@@ -128,8 +128,6 @@ type App struct {
 	stepSeq        int64
 	stepSettledSeq int64
 	stepLanded     []hostapi.Overlay
-	// focusables are the focusable nodes the last frame drew, floats last
-	focusables []string
 
 	completion wordCompleter
 	palette    cmdPalette
@@ -168,8 +166,11 @@ type App struct {
 	workOnce sync.Once
 	editing  string // the editor handoff in progress, shown in the working row
 
-	prefixes      map[string]string  // styled segment prefixes, rebuilt each frame
-	fadeKeys      map[float64]string // a fade's key text, rebuilt each frame
+	prefixes map[string]string  // styled segment prefixes, rebuilt each frame
+	fadeKeys map[float64]string // a fade's key text, rebuilt each frame
+	// tree is the screen's layout: zemi draws one fixed tree, and only a
+	// test replaces it
+	tree          *hostapi.Layout
 	caches        map[string]*widgetCache
 	pending       map[string]renderKey // widget id -> the render in flight
 	renderSeq     int64                // counts render dispatches, so the latest one wins
@@ -269,6 +270,7 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 	return &App{
 		host:     host,
 		log:      log,
+		tree:     hostapi.DefaultLayout,
 		thm:      themeResolver{host: host, sgr: map[string]uv.Style{}, ramps: map[*hostapi.Theme][32]color.Color{}},
 		caches:   map[string]*widgetCache{},
 		wake:     make(chan struct{}, 1),
@@ -786,7 +788,7 @@ func (a *App) onFrame() tea.Cmd {
 	// anyway, and Ended turning on and off bumps at both ends by itself
 	var replay tea.Cmd
 	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) > keySeqTimeout {
-		replay = a.replayKeys(a.keySeq, a.focusedNode())
+		replay = a.replayKeys(a.keySeq)
 		a.keySeq = nil
 	}
 	st := a.uiState()
@@ -860,7 +862,7 @@ func (a *App) uiState() hostapi.UIState {
 		QuitArmed:      a.isArmed("ctrl+c") && a.composer.empty() && !a.host.AgentActive(),
 		InterruptArmed: a.isArmed("esc") && a.armed.what == "interrupt",
 		RowsBelow:      a.rowsBelow(),
-		Cancelling:     a.cancelling, Editing: a.editing, Focus: a.focusedNode(), Regions: a.regions,
+		Cancelling:     a.cancelling, Editing: a.editing, Regions: a.regions,
 		Rail: a.rail,
 	}
 	if !a.turnActive && a.now().Sub(a.turnEnd) < doneLinger {
@@ -1140,12 +1142,8 @@ func (a *App) compose(w, h int) string {
 	a.syncFollow()
 	rows := a.paint(lay.root)
 	a.paintFloats(rows, &lay, w, h)
-	a.focusables = slices.DeleteFunc(lay.focusable, func(id string) bool { _, ok := lay.rects[id]; return !ok })
 
-	var pop uv.Rectangle
-	if a.focusedNode() == "" { // the composer's popups follow its keys
-		pop = a.floatPopup(rows, lay, w)
-	}
+	pop := a.floatPopup(rows, lay, w)
 	if pills := a.pills(); !lay.bar && len(pills) > 0 {
 		// without a statusline the alarms still show
 		placeBox(rows, [][]hostapi.Segment{joinItems(pills, false)}, 0, h-1, w)
@@ -1305,8 +1303,9 @@ func drawnRow(lines [][]hostapi.Segment, from, stop, step int) int {
 	return 0
 }
 
-// LayoutRects implements hostapi.UIHooks from the last composed frame.
-func (a *App) LayoutRects() map[string]hostapi.Rect {
+// layoutRects is where the last composed frame drew each node with an id,
+// plus "stage" and "composer".
+func (a *App) layoutRects() map[string]hostapi.Rect {
 	a.frameMu.Lock()
 	defer a.frameMu.Unlock()
 	return a.rects

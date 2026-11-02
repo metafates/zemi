@@ -315,7 +315,6 @@ function zemi.config.schema() end
 
 ---@class zemi.KeymapOpts
 ---@field desc? string Shown in /help.
----@field focus? string A focusable layout node id: the binding works only while that node has the keys (zemi.ui.focus), and there it may start with a printable key ("j", "g g").
 ---@field list? boolean A list alias: while a list, a composer popup or a prompt has the keys, the key makes the move the action names ("up", "down", "pgup", "pgdown", "home", "end", "ctrl+d", "ctrl+u"), resolved without calling Lua. One non-printable key, not one the lists answer with.
 
 ---@class zemi.Keymap
@@ -323,7 +322,6 @@ function zemi.config.schema() end
 ---@field desc string
 ---@field origin zemi.Origin
 ---@field action string "/command", a host action, or "<function>".
----@field focus? string The node it is scoped to; nil for a global binding.
 ---@field list? boolean A list alias; its action is the move.
 
 --- The host actions a keymap may name; some take an argument after a space.
@@ -337,9 +335,6 @@ function zemi.config.schema() end
 ---| "zemi.ui.scroll.line_down"
 ---| "zemi.ui.scroll.sticky_up"
 ---| "zemi.ui.scroll.sticky_down"
----| "zemi.ui.focus.set"
----| "zemi.ui.focus.next"
----| "zemi.ui.focus.prev"
 ---| "zemi.model.pick"
 ---| "zemi.composer.submit"
 ---| "zemi.composer.insert"
@@ -353,22 +348,17 @@ zemi.keymap = {}
 
 --- Bind a key or a key sequence. The right-hand side is a function, a
 --- command name with or without its slash ("review", "/review", so what
---- `get` hands back rebinds as is), or a host action ("zemi.ui.scroll.up"), which may take an
---- argument after a space ("zemi.ui.scroll.up sidebar" scrolls the layout
---- node with that id; without one, the stage's scrolled region). Keys may be
---- sequences that start with a non-printable key: "ctrl+x s", "<leader>gs"
---- (`<leader>` is the `keymap.leader` setting, ctrl+x by default). A key the
---- terminal never reports ("ctrl-q", "control+q") or zemi keeps (ctrl+c)
---- raises rather than binding something nothing can press, and so does a
---- sequence that starts with a printable key without `opts.focus`, since
---- the composer takes those. Setting the same key again rebinds it, whoever
+--- `get` hands back rebinds as is), or a host action ("zemi.ui.scroll.up").
+--- Keys may be sequences that start with a non-printable key: "ctrl+x s",
+--- "<leader>gs" (`<leader>` is the `keymap.leader` setting, ctrl+x by
+--- default). A key the terminal never reports ("ctrl-q", "control+q") or
+--- zemi keeps (ctrl+c) raises rather than binding something nothing can
+--- press, and so does a sequence that starts with a printable key, since the
+--- composer takes those. Setting the same key again rebinds it, whoever
 --- bound it first: the last registration wins, and a key that starts a longer
---- sequence shadows it.
---- With `opts.focus` the binding is scoped to a focusable node: while it has
---- the keys its bindings come first, then the global ones. The composer's own
---- editing keys (ctrl+a,
---- ctrl+e, ctrl+w, home, end) bind like any other, and the composer
---- then no longer gets them.
+--- sequence shadows it. The composer's own editing keys (ctrl+a, ctrl+e,
+--- ctrl+w, home, end) bind like any other, and the composer then no longer
+--- gets them.
 ---
 --- With `opts.list` the key moves in every list, popup and prompt, and stays
 --- what it was elsewhere: `zemi.keymap.set("ctrl+j", "down", { list = true })`
@@ -380,13 +370,11 @@ zemi.keymap = {}
 --- Host actions: zemi.composer.{submit,history_prev,history_next,paste,edit},
 --- zemi.composer.insert <text>,
 --- zemi.ui.help, zemi.model.pick,
---- zemi.ui.scroll.{up,down,top,bottom,line_up,line_down,sticky_up,sticky_down} [id],
---- zemi.ui.focus.set [id] and zemi.ui.focus.{next,prev}.
+--- zemi.ui.scroll.{up,down,top,bottom,line_up,line_down,sticky_up,sticky_down}.
 ---
 --- ```lua
 --- zemi.keymap.set("<leader>r", "/review", { desc = "review the diff" })
---- zemi.keymap.set("<leader>k", "zemi.ui.scroll.up sidebar")
---- zemi.keymap.set("j", "zemi.ui.scroll.line_down sidebar", { focus = "sidebar" })
+--- zemi.keymap.set("<leader>k", "zemi.ui.scroll.up")
 --- ```
 ---@param key string
 ---@param action zemi.HostAction|string|fun()
@@ -396,14 +384,13 @@ function zemi.keymap.set(key, action, opts) end
 --- Unbind a key whatever bound it, but not another plugin's. A key
 --- nothing bound is `false`, not an error, so a reload unbinds idempotently.
 ---@param key string
----@param opts? { focus?: string, list?: boolean }
+---@param opts? { list?: boolean }
 ---@return boolean removed
 function zemi.keymap.del(key, opts) end
 
---- The binding a key runs, while `opts.focus` has the keys when given, or
---- its list alias with `opts.list`.
+--- The binding a key runs, or its list alias with `opts.list`.
 ---@param key string
----@param opts? { focus?: string, list?: boolean }
+---@param opts? { list?: boolean }
 ---@return zemi.Keymap|nil
 function zemi.keymap.get(key, opts) end
 
@@ -876,7 +863,6 @@ function zemi.event.stats() end
 ---@field cancelling boolean An interrupt was sent and the turn has not ended yet.
 ---@field editing string Title of the file open in the user's editor, else "".
 ---@field waiting zemi.Waiting|"" The prompt holding the turn, else "".
----@field focus string Id of the layout node that has the keys, "" while the composer has them.
 
 --- `render` returns a list of lines. A bare string or a single line is taken
 --- as one line; a list of several strings raises, since it could mean one
@@ -1029,128 +1015,6 @@ function zemi.ui.widget.list() end
 --- "content" (the rows a region, bar or composer draws; in a col only).
 ---@alias zemi.Size integer|string
 
----@alias zemi.LayoutDir
----| "row"  # left to right
----| "col"  # top to bottom
-
----@alias zemi.LayoutScroll
----| "top"
----| "bottom"  # follows the tail
-
----@alias zemi.FloatAnchor
----| "NW"
----| "NE"
----| "SW"
----| "SE"
-
----@alias zemi.LayoutNode
----| zemi.LayoutBox
----| zemi.LayoutRegion
----| zemi.LayoutBar
----| zemi.LayoutComposer
----| zemi.LayoutSpacer
-
---- Fields every node takes. A box too small for its children takes cells
---- from "fill" children first, then percent, content and cells, the last
---- child first: down to `min`, then to 0.
----@class zemi.LayoutBase
----@field id? string Unique; names the node for rects, scroll actions and float `relative`.
----@field size? zemi.Size Default: "fill" for a box and anything in a row; 1 for a spacer; "content" otherwise.
----@field weight? integer A "fill" node's share, default 1.
----@field min? integer
----@field max? integer
----@field hidden? boolean Takes no cells and draws nothing.
----@field collapse? boolean Hidden when its box cannot give every child its `min` (the last collapsing child first), instead of squeezing them.
----@field stage? boolean Prompts, overlays, toasts and completion popups go over this node (the screen when none, or when it is under 40 columns or 8 rows). At most one.
-
---- Children laid out left to right ("row") or top to bottom ("col").
----@class zemi.LayoutBox: zemi.LayoutBase
----@field kind "box"
----@field dir zemi.LayoutDir
----@field sep? boolean A one-cell separator between children.
----@field children zemi.LayoutNode[]
-
---- The widgets registered in `region`, stacked by priority. A region is drawn at most once.
----@class zemi.LayoutRegion: zemi.LayoutBase
----@field kind "region"
----@field region zemi.Region
----@field scroll? zemi.LayoutScroll Scrollable (needs an id): the wheel over it and the zemi.ui.scroll.* actions move it.
----@field focusable? boolean Can take the keys (needs an id): zemi.ui.focus, a click on it, and keymaps with `focus` set to its id.
----@field fade? integer Rows at an edge content lies past that fade toward the canvas (needs scroll); the shipped chat uses 4.
-
---- One row: the first line of each widget in `left`, then Go's pills (boot
---- failed, stuck, errors), then `right` aligned to the right edge, truncated
---- first. Without a bar the pills draw over the bottom-left cell.
----@class zemi.LayoutBar: zemi.LayoutBase
----@field kind "bar"
----@field left string Region name.
----@field right string Region name.
-
---- zemi's own editor. Exactly one per layout, never hidden. With `frame` it
---- draws inside a square frame two rows taller, whose rules carry the first
---- line of the widgets in `top`, `left` and `right` (the last two like a
---- bar's clusters, Go's pills included), so the mascot and the statusline
---- cost no row of their own.
----@class zemi.LayoutComposer: zemi.LayoutBase
----@field kind "composer"
----@field frame? boolean
----@field top? string Region name; needs `frame`. Drawn flush from the left corner at `ctx.width` cells, the whole rule: a widget fills it with its own "─" in `Rule`, or leaves the rest to zemi.
----@field left? string Region name; needs `frame`.
----@field right? string Region name; needs `frame`.
----@field placeholder? string Drawn dim under the cursor while the draft is empty, on one row cut to the composer; the first key typed replaces it.
-
----@class zemi.LayoutSpacer: zemi.LayoutBase
----@field kind "spacer"
-
---- A region drawn over the tree in list order, like a neovim float: its
---- `anchor` corner sits at the same corner of the `relative` node, moved
---- `row` rows down and `col` columns right, kept on screen. It never covers
---- the composer or the statusline's alarm pills.
----@class zemi.LayoutFloat
----@field id? string
----@field region zemi.Region
----@field relative? string A node id, "stage" (default) or "screen".
----@field anchor? zemi.FloatAnchor Default "NW".
----@field row? integer
----@field col? integer
----@field width? integer|string Cells, "N%" of the relative node, or "content" (default: its widest row).
----@field height? integer|string Cells, "N%", or "content" (default: its rows).
----@field hidden? boolean
----@field focusable? boolean Can take the keys, like a region node (needs an id).
-
----@class zemi.Layout
----@field root zemi.LayoutBox
----@field floats? zemi.LayoutFloat[]
-
---- Cells on the last frame, 0-based.
----@class zemi.Rect
----@field x integer
----@field y integer
----@field width integer
----@field height integer
-
----@class zemi.ui.layout
-zemi.ui.layout = {}
-
---- Replace the screen layout (DESIGN §8). The shipped UI sets the default
---- (tui/layout.lua) and any later call replaces it. Raises on a malformed
---- layout: an unknown
---- kind or field, no composer or two, a region drawn twice, a duplicate id,
---- a bad size, min over max, more than 64 nodes or 8 levels. `/reload`
---- keeps the old layout until the replay sets one; a replay that sets none
---- draws zemi's built-in fallback.
----@param layout zemi.Layout
-function zemi.ui.layout.set(layout) end
-
---- The layout table last set, nil when the built-in fallback draws.
----@return zemi.Layout|nil
-function zemi.ui.layout.get() end
-
---- Where the last frame drew each node and float with an id, plus "stage"
---- and "composer".
----@return table<string, zemi.Rect>
-function zemi.ui.layout.rects() end
-
 --- Set the terminal tab's title (escapes stripped, whitespace collapsed);
 --- nil gives it back to zemi, which names it after the session. A reload
 --- that does not set it again gives it back too.
@@ -1174,40 +1038,11 @@ function zemi.ui.redraw() end
 ---| "sticky_up"   # to the header (a run of sticky rows) above the view
 ---| "sticky_down" # to the next header below it, else the tail
 
---- Scroll a layout node, or the stage's scrolled region (the chat) without
---- `id`, as the zemi.ui.scroll.* host actions do: for a click or a handler.
---- A "top" or "bottom" issued before the node's rows arrive applies after the
---- next layout, and "top" holds until the node scrolls again.
---- Raises inside render.
+--- Scroll the chat, as the zemi.ui.scroll.* host actions do: for a click or
+--- a handler. A "top" or "bottom" issued before the rows arrive applies after
+--- the next layout, and "top" holds until the chat scrolls again.
 ---@param action zemi.ScrollAction
----@param id? string
-function zemi.ui.scroll(action, id) end
-
---- Keyboard focus. The composer has the keys unless a focusable node does.
---- While a node has them, every key but ctrl+c goes to the keymaps scoped
---- to it and then the global ones; an unbound key does nothing and an
---- unbound esc gives the keys back to the composer. Prompts and overlays
---- still take keys first. A click on a focusable node focuses it, a click
---- on the composer focuses the composer, and the keys come back. A node the
---- frame does not draw gives its keys to the composer.
----@class zemi.ui.focus
-zemi.ui.focus = {}
-
---- Give the keys to a focusable node of the layout, or to the composer with
---- nil. Raises when the layout has no focusable node with that id.
----@param id? string
-function zemi.ui.focus.set(id) end
-
---- The focused node's id, nil for the composer.
----@return string|nil
-function zemi.ui.focus.get() end
-
---- Move the focus to the next drawn focusable node, the composer counting
---- as one, in tree order and then float order.
-function zemi.ui.focus.next() end
-
---- Move the focus back one.
-function zemi.ui.focus.prev() end
+function zemi.ui.scroll(action) end
 
 ---@class zemi.ui.overlay
 zemi.ui.overlay = {}

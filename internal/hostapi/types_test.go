@@ -297,9 +297,6 @@ func TestTypesEnums(t *testing.T) {
 		{"zemi.NArgs", "", strs(nargsSpecs)},
 		{"zemi.ScrollAction", "", strs(scrollActions)},
 		{"zemi.OverlayAnchor", "", strs(overlayAnchors)},
-		{"zemi.LayoutDir", "", strs(layoutDirs)},
-		{"zemi.LayoutScroll", "", strs(scrollEdges)},
-		{"zemi.FloatAnchor", "", strs(floatAnchors)},
 		{"zemi.RowKind", "", strs(rowKinds)},
 		{"zemi.CallStatus", "", strs(callStatuses)},
 		{"zemi.MarkKind", "", strs(slices.Collect(maps.Keys(Marks)))},
@@ -408,25 +405,6 @@ func annotatedAlias(t *testing.T, name string) []string {
 		}
 	}
 	return out
-}
-
-// TestTypesLayoutKinds: zemi.LayoutNode is a union of one class per kind,
-// each with its own `kind` literal, which together are the kinds Go parses.
-func TestTypesLayoutKinds(t *testing.T) {
-	_, rest, _ := strings.Cut(typesSource(t), "---@alias zemi.LayoutNode\n")
-	var kinds []string
-	for line := range strings.SplitSeq(rest, "\n") {
-		class, ok := strings.CutPrefix(line, "---| ")
-		if !ok {
-			break
-		}
-		m := regexp.MustCompile(`(?m)^---@field kind "([a-z]+)"$`).FindStringSubmatch(annotatedClass(t, class+": zemi.LayoutBase"))
-		if m == nil {
-			t.Fatalf("%s has no kind literal", class)
-		}
-		kinds = append(kinds, m[1])
-	}
-	assertSameNames(t, "zemi.LayoutNode kinds", kinds, strs(layoutKinds))
 }
 
 func assertSameNames(t *testing.T, what string, annotated, live []string) {

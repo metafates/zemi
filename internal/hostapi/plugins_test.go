@@ -307,7 +307,7 @@ func TestPluginsStep(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			if b := h.Keymaps.Lookup("", "ctrl+g"); b != nil {
+			if b := h.Keymaps.Lookup("ctrl+g"); b != nil {
 				if err := h.RunRHS(t.Context(), b); err != nil {
 					t.Fatal(err)
 				}

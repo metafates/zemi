@@ -111,9 +111,6 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 	tb.RawSetString("widget", widget)
-	tb.RawSetString("layout", h.layoutNamespace(L))
-	focus := h.focusNamespace(L)
-	tb.RawSetString("focus", focus)
 
 	overlay := L.NewTable()
 	overlay.RawSetString("open", L.NewFunction(func(L *glua.LState) int {
@@ -375,7 +372,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		if !slices.Contains(scrollActions, kind) {
 			L.ArgError(1, strings.Join(strs(scrollActions), ", "))
 		}
-		h.scroll(kind, L.OptString(2, ""))
+		h.scroll(kind)
 		return 0
 	}))
 

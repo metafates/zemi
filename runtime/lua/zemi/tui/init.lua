@@ -7,7 +7,6 @@ require("zemi.tui.statusline")
 require("zemi.tui.working")
 require("zemi.tui.chat")
 local splash = require("zemi.tui.splash")
-require("zemi.tui.layout")
 
 ---@class zemi.tui
 ---@field splash fun(ctx: zemi.WidgetCtx): zemi.Line[] The default splash rows, so a custom splash widget can add to them instead of copying them.

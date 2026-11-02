@@ -51,12 +51,8 @@ type UIHooks interface {
 	// CloseLuaOverlays drops every overlay the interpreter owns (Gen != 0).
 	CloseLuaOverlays()
 	Refresh()
-	// Scroll moves a scrolled region of the layout: the node id, or the
-	// stage's when id is "".
-	Scroll(kind ScrollAction, id string)
-	// LayoutRects is where the last frame drew each node with an id, plus
-	// "stage" and "composer"; safe from any goroutine.
-	LayoutRects() map[string]Rect
+	// Scroll moves the chat, as the zemi.ui.scroll.* host actions do.
+	Scroll(kind ScrollAction)
 	// KeyHelp is the keys the router owns and the keys every list takes, as
 	// rows of key and what it does: they are not Lua keymaps, so the UI that
 	// routes them owns the wording /help lists.
@@ -754,9 +750,7 @@ type Host struct {
 	// compaction, the model and tools.
 	turn atomic.Pointer[turnScope]
 
-	layout atomic.Pointer[layoutSet] // zemi.ui.layout.set's; nil draws DefaultLayout
-	focus  atomic.Pointer[string]    // the layout node taking keys; nil or "" is the composer
-	title  atomic.Pointer[titleSet]  // zemi.ui.title's; nil names the tab after the session
+	title atomic.Pointer[titleSet] // zemi.ui.title's; nil names the tab after the session
 
 	// reloadDone is non-nil and open while reloads run; reloadSeq counts
 	// reloads started (see awaitReload). reloadRun keeps one reload's sweep
@@ -1058,15 +1052,12 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		h.loadPicks()
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
-		"zemi.ui.help":       func(h *Host, _ string) error { return h.OpenHelp() },
-		"zemi.model.pick":    func(h *Host, _ string) error { return h.OpenModelPicker(defaultRole) },
-		"zemi.ui.focus.set":  func(h *Host, id string) error { return h.focusNode(id) },
-		"zemi.ui.focus.next": func(h *Host, _ string) error { return h.cycleFocus(1) },
-		"zemi.ui.focus.prev": func(h *Host, _ string) error { return h.cycleFocus(-1) },
-		"zemi.reload":        nil, // Go-reserved; never dispatched here
+		"zemi.ui.help":    func(h *Host, _ string) error { return h.OpenHelp() },
+		"zemi.model.pick": func(h *Host, _ string) error { return h.OpenModelPicker(defaultRole) },
+		"zemi.reload":     nil, // Go-reserved; never dispatched here
 	}
 	for _, a := range scrollActions {
-		h.hostActions["zemi.ui.scroll."+string(a)] = func(h *Host, id string) error { h.scroll(a, id); return nil }
+		h.hostActions["zemi.ui.scroll."+string(a)] = func(h *Host, _ string) error { h.scroll(a); return nil }
 	}
 	// insert takes the text after the action's name
 	for _, op := range []ComposerOp{ComposerSubmit, ComposerInsert, ComposerHistoryPrev, ComposerHistoryNext, ComposerPaste, ComposerEditor} {
@@ -1275,9 +1266,9 @@ func (h *Host) notifyStderr(level slog.Level, title, body string) {
 
 // scroll routes a zemi.ui.scroll.* action to the UI (no-op before the UI
 // attaches).
-func (h *Host) scroll(kind ScrollAction, id string) {
+func (h *Host) scroll(kind ScrollAction) {
 	if ui := h.hooks(); ui != nil {
-		ui.Scroll(kind, id)
+		ui.Scroll(kind)
 	}
 }
 
@@ -1322,9 +1313,6 @@ func (h *Host) OpenHelp() error {
 		desc := b.Desc
 		if desc == "" {
 			desc = describeRHS(b.RHS)
-		}
-		if b.Focus != "" {
-			desc += " (in " + b.Focus + ")"
 		}
 		if b.List {
 			aliases = append(aliases, OverlayItem{Text: b.Key, Desc: cmp.Or(b.Desc, "same as "+b.RHS.Move), Section: "Lists"})
@@ -1997,7 +1985,6 @@ type UIState struct {
 	Cancelling     bool    // interrupt sent, turn not finished yet
 	Editing        string  // title of the file open in the editor
 	Waiting        Waiting // while a prompt holds the turn
-	Focus          string  // the drawn layout node taking keys, "" for the composer
 	Rail           int     // the activity run the chat draws whole, negative when it holds no settled rows, 0 for none
 	// Regions are the regions the layout draws this frame, replaced whole
 	// when the set moves, so comparing two states sees it
@@ -2053,7 +2040,6 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 	tb.RawSetString("cancelling", glua.LBool(state.Cancelling))
 	tb.RawSetString("editing", glua.LString(state.Editing))
 	tb.RawSetString("waiting", glua.LString(state.Waiting))
-	tb.RawSetString("focus", glua.LString(state.Focus))
 	tb.RawSetString("version", glua.LString(h.Version))
 	tb.RawSetString("cwd", glua.LString(perm.TildePath(sess.CWD)))
 	home, _ := os.UserHomeDir()
@@ -2723,7 +2709,6 @@ func (h *Host) ForceReload(ctx context.Context, steps []lua.BootStep) error {
 	if err == nil {
 		h.dropPluginKeys()
 		h.cfgSettle()
-		h.dropStaleLayout()
 	}
 	return err
 }

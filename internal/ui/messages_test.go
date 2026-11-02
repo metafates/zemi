@@ -811,49 +811,6 @@ func messagesApp(t *testing.T) (*App, *hostapi.Host) {
 	return app, host
 }
 
-// TestMessagesRailClosesOnARenamedNode: the close handshake matches the chat
-// by the region it draws, not the scroll node's id, so a layout that renames
-// the node still folds the run and closes the list.
-func TestMessagesRailClosesOnARenamedNode(t *testing.T) {
-	t.Parallel()
-	app, host := messagesApp(t)
-	runLua(t, app, `zemi.ui.layout.set({ root = { kind = "box", dir = "col", stage = true, children = {
-		{ kind = "region", id = "transcript", region = "chat", scroll = "bottom", size = "fill" },
-		{ kind = "composer" },
-	} } })`)
-	host.AppendMessage("user", "walk a running rail")
-	for i := range 3 {
-		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: tools.ToolName("read"), Text: fmt.Sprintf("f%d.go", i), Label: fmt.Sprintf("read f%d", i), Status: "ok"})
-	}
-	appendReply(host, "all green", hostapi.TurnStat{})
-	app.renderSync(t)
-	app.Frame()
-	app.openOverlay(hostapi.Overlay{
-		ID: "messages turn 1 rail 2", Title: "rail", Origin: lua.OriginBuiltin, Follow: true, Rail: 2,
-		Items: []hostapi.OverlayItem{{Text: "run", Anchor: 2}},
-	})
-	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "read f1") {
-		t.Fatalf("the rail did not open the run whole:\n%s", frame)
-	}
-	press(t, app, tea.KeyPressMsg{Code: tea.KeyEscape})
-	if app.railClose == "" || len(app.overlays) != 1 {
-		t.Fatalf("esc did not arm the close: closing %q, %d overlays", app.railClose, len(app.overlays))
-	}
-	for range 3 {
-		for app.Pump() {
-		}
-		app.renderSync(t)
-		app.Frame()
-	}
-	if app.railClose != "" || len(app.overlays) != 0 {
-		t.Fatalf("a renamed scroll node stranded the closing rail: closing %q, %d overlays", app.railClose, len(app.overlays))
-	}
-	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "read f1") {
-		t.Fatalf("the run stayed open:\n%s", frame)
-	}
-}
-
 // TestMessagesMenu: /messages is one list over the chat; l reads a row whole
 // and esc there returns to the list as it was, enter closes the menu keeping
 // the chat's place, and esc closes whole with the chat back where the menu

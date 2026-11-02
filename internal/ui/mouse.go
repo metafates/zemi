@@ -157,7 +157,6 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 		if !a.mouse.dragged {
 			a.mouse = mouseSel{}
 			if !a.dismissOutside(m.X, m.Y) {
-				a.focusAt(m.X, m.Y)
 				a.click(m.X, m.Y)
 			}
 			return a.hover(m.X, m.Y)
@@ -247,25 +246,6 @@ func (a *App) dismissOutside(x, y int) bool {
 	}
 	a.bump()
 	return true
-}
-
-// focusAt gives the keys to the focusable node a click lands in (the topmost:
-// floats come last), or to the composer when it lands there.
-func (a *App) focusAt(x, y int) {
-	if a.topChrome() != noModal {
-		return
-	}
-	in := func(r hostapi.Rect) bool { return x >= r.X && x < r.X+r.Width && y >= r.Y && y < r.Y+r.Height }
-	if in(a.rects["composer"]) {
-		a.host.SetFocus("")
-		return
-	}
-	for _, id := range slices.Backward(a.focusables) {
-		if in(a.rects[id]) {
-			a.host.SetFocus(id)
-			return
-		}
-	}
 }
 
 // selectionText is the plain text under the selection, one line per row:

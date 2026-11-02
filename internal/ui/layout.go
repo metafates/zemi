@@ -126,9 +126,6 @@ type screenLayout struct {
 	scroll string
 	bar    bool
 	floats []placedFloat
-	// focusable is the focusable node and float ids in focus order; a float
-	// that draws nothing gets no rect
-	focusable []string
 	// panes are the cells a selection may not leave: the leaves, then the
 	// floats, then the composer again, since paintFloats keeps it on top
 	panes []uv.Rectangle
@@ -144,7 +141,7 @@ type placedFloat struct {
 
 // layout solves the layout in force for a w by h frame.
 func (a *App) layout(w, h int) screenLayout {
-	spec := a.host.Layout()
+	spec := a.tree
 	screen := uv.Rect(0, 0, w, h)
 	s := screenLayout{root: a.solve(spec.Root, screen), stage: screen, rects: map[string]uv.Rectangle{"screen": screen}}
 	staged := false // the scroll node chosen is inside the stage
@@ -167,9 +164,6 @@ func (a *App) layout(w, h int) screenLayout {
 			if n.Scroll != "" && (s.scroll == "" || inStage && !staged) {
 				s.scroll, staged = n.ID, inStage
 			}
-			if n.Focusable {
-				s.focusable = append(s.focusable, n.ID)
-			}
 		case hostapi.LayoutBox, hostapi.LayoutSpacer:
 		}
 		if len(l.kids) == 0 && n.Kind != hostapi.LayoutSpacer {
@@ -190,9 +184,6 @@ func (a *App) layout(w, h int) screenLayout {
 		pf.width = floatAxis(f.Width, rel.Dx())
 		pf.height = floatAxis(f.Height, rel.Dy())
 		s.floats = append(s.floats, pf)
-		if f.Focusable {
-			s.focusable = append(s.focusable, f.ID)
-		}
 	}
 	return s
 }
