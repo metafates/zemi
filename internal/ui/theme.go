@@ -67,7 +67,7 @@ func (t themeResolver) group(hl string) (hostapi.HLSpec, *hostapi.Theme, bool) {
 	if hl == "" || t.host == nil {
 		return hostapi.HLSpec{}, nil, false
 	}
-	spec, ok := t.host.Themes.Group(hl)
+	spec, ok := hostapi.Group(hl)
 	return spec, t.active(), ok
 }
 
@@ -119,10 +119,15 @@ func chromeStyles(p *hostapi.Palette) map[string]uv.Style {
 // own style. With the group undefined it still underlines, so a target
 // never goes unmarked.
 func (t themeResolver) hover(base uv.Style, group string) uv.Style {
-	spec, theme, ok := t.group(group)
+	spec, ok := hostapi.Group(group)
 	if !ok {
 		spec = hostapi.HLSpec{Underline: hostapi.UnderlineSingle}
 	}
+	return t.hoverSpec(base, spec, t.active())
+}
+
+// hoverSpec draws one hover group's spec over base.
+func (t themeResolver) hoverSpec(base uv.Style, spec hostapi.HLSpec, theme *hostapi.Theme) uv.Style {
 	if spec.Replace {
 		base = uv.Style{}
 	}

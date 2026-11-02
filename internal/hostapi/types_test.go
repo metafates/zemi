@@ -294,7 +294,6 @@ func TestTypesEnums(t *testing.T) {
 		{"zemi.SkillSource", "", strs(skill.Sources)},
 		{"zemi.Role", "", strs([]fantasy.MessageRole{fantasy.MessageRoleUser, fantasy.MessageRoleAssistant})},
 		{"zemi.HealthLevel", "", strs(healthLevels)},
-		{"zemi.Underline", "", strs(underlines)},
 		{"zemi.NArgs", "", strs(nargsSpecs)},
 		{"zemi.ScrollAction", "", strs(scrollActions)},
 		{"zemi.OverlayAnchor", "", strs(overlayAnchors)},

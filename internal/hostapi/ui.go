@@ -115,37 +115,6 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 	focus := h.focusNamespace(L)
 	tb.RawSetString("focus", focus)
 
-	theme := L.NewTable()
-	theme.RawSetString("add", L.NewFunction(func(L *glua.LState) int {
-		name := L.CheckString(1)
-		p, err := parsePalette(tableArg(L, 2, "zemi.ui.theme.add"))
-		if err != nil {
-			L.RaiseError("zemi.ui.theme.add: %v", err)
-		}
-		t := &Theme{Name: name, Palette: p, Origin: h.RT.CurrentOrigin(L), Path: h.RT.CurrentPath(L), Gen: h.currentGen()}
-		if _, err := h.Themes.Add(t); err != nil {
-			L.RaiseError("zemi.ui.theme.add: %v", err)
-		}
-		return 0
-	}))
-	theme.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
-		name := ""
-		if t := h.ActiveTheme(); t != nil {
-			name = t.Name
-		}
-		L.Push(glua.LString(name))
-		return 1
-	}))
-	theme.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		var rows []any
-		for _, t := range h.Themes.List() {
-			rows = append(rows, map[string]any{"name": t.Name, "origin": string(t.Origin)})
-		}
-		L.Push(lua.FromGo(L, rows))
-		return 1
-	}))
-	tb.RawSetString("theme", theme)
-
 	overlay := L.NewTable()
 	overlay.RawSetString("open", L.NewFunction(func(L *glua.LState) int {
 		tb, ok := L.Get(1).(*glua.LTable)
@@ -378,78 +347,6 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
-	hl := L.NewTable()
-	// hl.set(group, spec) defines one highlight group for every theme:
-	// { fg, bg, sp, bold, italic, underline, reverse, brighten, replace },
-	// colors as palette roles, hex or ANSI names, or { link = "Group" }.
-	hl.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
-		group := L.CheckString(1)
-		h.Themes.SetHL(group, hlSpec(L, "zemi.ui.hl.set", tableArg(L, 2, "zemi.ui.hl.set")))
-		h.refresh()
-		return 0
-	}))
-
-	// hl.del(group) drops the group's definition, so the themes' own draws
-	// again; it reports whether one was set.
-	hl.RawSetString("del", L.NewFunction(func(L *glua.LState) int {
-		ok := h.Themes.DelHL(L.CheckString(1))
-		h.refresh()
-		L.Push(glua.LBool(ok))
-		return 1
-	}))
-
-	// hl.get(group) is how the group draws under the active theme, links
-	// followed and roles resolved to hex (an ANSI color name is the
-	// terminal's, so it stays a name), or nil when nothing sets it.
-	hl.RawSetString("get", L.NewFunction(func(L *glua.LState) int {
-		theme := h.ActiveTheme()
-		spec, ok := h.Themes.Group(L.CheckString(1))
-		if !ok {
-			L.Push(glua.LNil)
-			return 1
-		}
-		color := func(ref string) any {
-			if _, ok := ANSIColors[ref]; !ok && ref != "NONE" {
-				ref = Hex(theme.Color(ref))
-			}
-			if ref == "" {
-				return nil
-			}
-			return ref
-		}
-		flag := func(b *bool) any {
-			if b == nil {
-				return nil
-			}
-			return *b
-		}
-		out := map[string]any{
-			"fg": color(spec.Fg), "bg": color(spec.Bg), "sp": color(spec.Sp),
-			"bold": flag(spec.Bold), "italic": flag(spec.Italic), "reverse": flag(spec.Reverse),
-		}
-		switch spec.Underline {
-		case "":
-		case UnderlineNone:
-			out["underline"] = false
-		case UnderlineSingle:
-			out["underline"] = true
-		default:
-			out["underline"] = spec.Underline
-		}
-		if spec.Brighten != 0 {
-			out["brighten"] = spec.Brighten
-		}
-		if spec.Shade != nil {
-			out["shade"] = *spec.Shade
-		}
-		if spec.Replace {
-			out["replace"] = true
-		}
-		L.Push(lua.FromGo(L, out))
-		return 1
-	}))
-	tb.RawSetString("hl", hl)
-
 	// screenshot() -> the drawn screen as plain text, or nil, err. zemi
 	// reads its own UI with it instead of asking what the user sees.
 	tb.RawSetString("screenshot", L.NewFunction(func(L *glua.LState) int {
@@ -513,16 +410,6 @@ func (h *Host) openInEditor(ui UIHooks, path, title string) {
 	})
 }
 
-// tableArg reads argument n as a table; anything else raises (DESIGN §6.0),
-// since a missing spec would otherwise read as an empty one.
-func tableArg(L *glua.LState, n int, where string) map[string]any {
-	m, ok := luaToGoChecked(L, n, where).(map[string]any)
-	if !ok {
-		L.RaiseError("%s: argument %d must be a table", where, n)
-	}
-	return m
-}
-
 // isHexColor reports whether ref is #rgb or #rrggbb, the only color
 // literal a theme understands.
 func isHexColor(ref string) bool {
@@ -541,69 +428,6 @@ var ANSIColors = map[string]ansi.BasicColor{
 	"blue": ansi.Blue, "magenta": ansi.Magenta, "cyan": ansi.Cyan, "white": ansi.White,
 }
 
-// checkColor refuses a color that can never resolve: a name outside the
-// roles would draw as nothing, and a CSS color name is the first thing
-// anyone writes (DESIGN §6.0).
-func checkColor(L *glua.LState, where, field, ref string) {
-	_, isANSI := ANSIColors[ref]
-	switch {
-	case ref == "" || ref == "NONE" || isANSI || slices.Contains(Roles, ref):
-	case strings.HasPrefix(ref, "#") && isHexColor(ref):
-	case strings.HasPrefix(ref, "#"):
-		L.RaiseError("%s: %s %q is not a hex color; write #rrggbb", where, field, ref)
-	default:
-		L.RaiseError("%s: %s %q is not #rrggbb, an ANSI color name, or a palette role (%s)",
-			where, field, ref, strings.Join(Roles, ", "))
-	}
-}
-
-// hlSpec reads a group table; misuse raises (DESIGN §6.0).
-func hlSpec(L *glua.LState, where string, m map[string]any) HLSpec {
-	flag := func(key string) *bool {
-		if b, ok := m[key].(bool); ok {
-			return &b
-		}
-		return nil
-	}
-	for _, f := range []string{"fg", "bg", "sp"} {
-		checkColor(L, where, f, strField(m, f))
-	}
-	spec := HLSpec{
-		Link: strField(m, "link"),
-		Fg:   strField(m, "fg"), Bg: strField(m, "bg"), Sp: strField(m, "sp"),
-		Bold: flag("bold"), Italic: flag("italic"), Reverse: flag("reverse"),
-		Replace: boolField(m, "replace"),
-	}
-	switch u := m["underline"].(type) {
-	case nil:
-	case bool:
-		if u {
-			spec.Underline = UnderlineSingle
-		} else {
-			spec.Underline = UnderlineNone
-		}
-	case string:
-		if !slices.Contains(underlines, Underline(u)) {
-			L.RaiseError("%s: underline %q is not one of %s", where, u, strings.Join(strs(underlines), ", "))
-		}
-		spec.Underline = Underline(u)
-	default:
-		L.RaiseError("%s: underline must be a boolean or a string", where)
-	}
-	if b, ok := m["brighten"].(float64); ok {
-		spec.Brighten = max(-1, min(b, 1))
-	}
-	if b, ok := m["shade"].(float64); ok {
-		if strField(m, "fg") != "" {
-			L.RaiseError("%s: shade and fg cannot combine", where)
-		}
-		s := max(0, min(b, 1))
-		spec.Shade = &s
-	}
-	return spec
-}
-
-// Verb says what enter does on a row, in one word for the footer hint.
 type Verb string
 
 const (
@@ -982,7 +806,7 @@ func (h *Host) EmitAsync(name string, payload map[string]any) {
 // checkTheme refuses a ui.theme value no theme answers to; the picker, not
 // a refusal line, is where the names live.
 func (h *Host) checkTheme(name string) error {
-	if h.Themes.Get(name) != nil {
+	if ThemeByName(name) != nil {
 		return nil
 	}
 	return Usagef("unknown theme %q; /theme lists them", name)
@@ -991,23 +815,19 @@ func (h *Host) checkTheme(name string) error {
 // CheckTheme records a ui.theme no theme answers to once boot is done: a
 // typo, or a pick of a removed plugin's theme, draws whorl instead.
 func (h *Host) CheckTheme() {
-	if name := h.Settings.Str(config.KeyUITheme); h.Themes.Get(name) == nil {
+	if name := h.Settings.Str(config.KeyUITheme); ThemeByName(name) == nil {
 		h.RecordErrorOnce("ui.theme", "", fmt.Sprintf("ui.theme %q names no theme, so whorl draws; /theme lists them", name))
 	}
 }
 
-// ActiveTheme is the theme drawing now: the configured one, whorl when
-// that names none, and its light twin on a light terminal. nil before any
-// theme is.
+// ActiveTheme is the theme drawing now: the configured one, whorl when that
+// names none, and its light twin on a light terminal.
 func (h *Host) ActiveTheme() *Theme {
-	t := h.Themes.Get(h.Settings.Str(config.KeyUITheme))
-	if t == nil {
-		t = h.Themes.Get("whorl")
-	}
+	t := cmp.Or(ThemeByName(h.Settings.Str(config.KeyUITheme)), ThemeByName("whorl"))
 	if t == nil || !h.lightTerm.Load() {
 		return t
 	}
-	return cmp.Or(h.Themes.Light(t), t)
+	return cmp.Or(ThemeByName(t.Name+"-light"), t)
 }
 
 // SetLightTerminal records whether the terminal's background is light.

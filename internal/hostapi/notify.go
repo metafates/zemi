@@ -62,8 +62,3 @@ func strField(m map[string]any, key string) string {
 	s, _ := m[key].(string)
 	return s
 }
-
-func boolField(m map[string]any, key string) bool {
-	b, _ := m[key].(bool)
-	return b
-}

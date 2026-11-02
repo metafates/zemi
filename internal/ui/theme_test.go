@@ -11,7 +11,6 @@ import (
 	"github.com/lucasb-eyer/go-colorful"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/lua"
 )
 
 func rgb(v uint32) ansi.RGBColor {
@@ -60,7 +59,7 @@ func TestThemes(t *testing.T) {
 		{"Host:DiffDel", "DiffDel"},
 		{"Host:DiffDelNum", "DiffDelNum"},
 	}
-	themes := host.Themes.List()
+	themes := hostapi.ThemeList()
 	if len(themes) < 21 {
 		t.Fatalf("%d themes", len(themes))
 	}
@@ -115,7 +114,6 @@ func TestThemes(t *testing.T) {
 // is the one text-vs-text neighbor of warn.
 func TestThemeCVD(t *testing.T) {
 	t.Parallel()
-	_, host := bootAgentApp(t, 80, 24)
 	deutan := [3][3]float64{{0.625, 0.375, 0}, {0.7, 0.3, 0}, {0, 0.3, 0.7}}
 	protan := [3][3]float64{{0.567, 0.433, 0}, {0.558, 0.442, 0}, {0, 0.242, 0.758}}
 	project := func(c color.Color, m [3][3]float64) [3]float64 {
@@ -143,7 +141,7 @@ func TestThemeCVD(t *testing.T) {
 		{theme: "whorl", greyFloor: 0.07, pairs: map[[2]string]float64{{"warn", "literal"}: 0.04, {"danger", "literal"}: 0.045, {"warn", "danger"}: 0.05}},
 		{theme: "whorl-light", greyFloor: 0.05, pairs: map[[2]string]float64{{"warn", "literal"}: 0.035, {"danger", "literal"}: 0.045, {"warn", "danger"}: 0.04}},
 	} {
-		th := host.Themes.Get(c.theme)
+		th := hostapi.ThemeByName(c.theme)
 		if th == nil {
 			t.Fatalf("no %s", c.theme)
 		}
@@ -171,16 +169,13 @@ func TestThemeCVD(t *testing.T) {
 }
 
 // TestActiveTheme: a light terminal draws the theme's light twin, chrome
-// included (whatever registered it), a dark one the theme itself, and a name
-// no theme answers to draws whorl and is named in /errors.
+// included, a dark one the theme itself, a theme with no twin draws as it is,
+// and a name no theme answers to draws whorl and is named in /errors.
 func TestActiveTheme(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	title := func() color.Color { return app.hlStyle("Host:Title").Fg }
-	whorl, light := host.Themes.Get("whorl"), host.Themes.Get("whorl-light")
-	if _, err := host.Themes.Add(&hostapi.Theme{Name: "nord-light", Palette: light.Palette, Origin: lua.OriginProject}); err != nil {
-		t.Fatal(err)
-	}
+	whorl, light := hostapi.ThemeByName("whorl"), hostapi.ThemeByName("whorl-light")
 	for _, c := range []struct {
 		name  string
 		bg    uint32
@@ -190,7 +185,7 @@ func TestActiveTheme(t *testing.T) {
 		{"light terminal", 0xfafafa, "whorl", light},
 		{"dark terminal", 0x141414, "whorl", whorl},
 		{"light theme on a dark terminal", 0x141414, "whorl-light", light},
-		{"a project's twin of a shipped theme", 0xfafafa, "nord", host.Themes.Get("nord-light")},
+		{"a theme with no light twin", 0xfafafa, "nord", hostapi.ThemeByName("nord")},
 		{"unknown name", 0x141414, "gone", whorl},
 	} {
 		app.Update(tea.BackgroundColorMsg{Color: rgb(c.bg)})

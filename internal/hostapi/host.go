@@ -529,7 +529,6 @@ type Host struct {
 	Commands *CommandRegistry
 	Widgets  *WidgetRegistry
 	Events   *EventRegistry
-	Themes   *ThemeRegistry
 
 	// initErr surfaces store-open failures at the namespaces boot step.
 	initErr error
@@ -985,7 +984,6 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		Commands:  &CommandRegistry{},
 		Widgets:   &WidgetRegistry{},
 		Events:    &EventRegistry{},
-		Themes:    &ThemeRegistry{},
 		session:   &Session{CWD: dirs.ProjectDir},
 		watches:   &watchReg{},
 		hookReg:   &hookReg{},
@@ -1008,7 +1006,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		h.Providers.PaceDir = filepath.Join(dirs.StateHome, "pace")
 	}
 	h.Builtin.Store(&agent.Catalog{})
-	h.Keymaps.owner, h.Commands.owner, h.Widgets.owner, h.Themes.owner, h.Events.owner, h.luaTools.owner, h.watches.owner = h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf
+	h.Keymaps.owner, h.Commands.owner, h.Widgets.owner, h.Events.owner, h.luaTools.owner, h.watches.owner = h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf
 	h.jobs.OnChange = func() {
 		h.refresh()
 		h.watchJobs()
@@ -2787,7 +2785,6 @@ func (h *Host) PurgeGeneration() {
 	h.Commands.Purge()
 	h.Widgets.Purge()
 	h.Events.Purge()
-	h.Themes.Purge()
 	h.purgeWatches()
 	h.hookReg.purge(h.currentGen())
 	h.healthReg.purge()

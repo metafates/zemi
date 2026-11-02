@@ -349,7 +349,7 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 		key.WriteString(theme.Name)
 	}
 	apply := func(p *gansi.StylePrimitive, group string) {
-		spec, ok := h.Themes.Group(group)
+		spec, ok := Group(group)
 		if !ok {
 			return
 		}

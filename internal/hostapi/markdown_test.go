@@ -281,7 +281,8 @@ func TestMarkdownHexColors(t *testing.T) {
 	} {
 		text, hl := "", ""
 		for _, s := range h.Markdown(c.text, 40)[0] {
-			if strings.Contains(s.HL, "48;2;") && (hl == "" || s.HL == hl) {
+			// a swatch is the one run drawn in black or white on the color itself
+			if strings.Contains(s.Text, "#") && (strings.Contains(s.HL, "38;2;0;0;0;") || strings.Contains(s.HL, "38;2;255;255;255;")) {
 				text, hl = text+s.Text, s.HL
 			}
 		}

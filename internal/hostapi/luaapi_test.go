@@ -270,67 +270,6 @@ func TestKeySequences(t *testing.T) {
 	}
 }
 
-// TestHighlightOverride: zemi.ui.hl defines a group for every theme, a
-// later set replaces it, links resolve, a cycle resolves to nothing, and
-// hl.get reads the group with its roles in the active theme's colors. A
-// theme takes only the palette roles and ansi, and ui.theme may name one
-// before it is added.
-func TestHighlightOverride(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	runUser(t, r, `
-		zemi.ui.theme.add("t", { bg = "#101010", fg = "#e0e0e0", accent = "#8899ff", ok = "#88dd88", warn = "#dddd66", danger = "#ee6666" })
-		zemi.config.set("ui.theme", "t")
-		zemi.ui.hl.set("Title", { fg = "accent" })
-		zemi.ui.hl.set("Dim", { fg = "#777777" })
-		zemi.ui.hl.set("Link", { link = "Title", fg = "#000000" })
-		assert(zemi.ui.hl.get("Link").fg == "#8899ff", "a link to a role")
-		zemi.ui.hl.set("Title", { fg = "#ffffff", bold = true })
-		zemi.ui.hl.set("Mine", { link = "Link" })
-		local mine = zemi.ui.hl.get("Mine")
-		assert(mine.fg == "#ffffff" and mine.bold and mine.bg == nil, zemi.json.encode(mine))
-		zemi.ui.hl.set("A", { link = "B" })
-		zemi.ui.hl.set("B", { link = "A" })
-		assert(zemi.ui.hl.get("A") == nil and zemi.ui.hl.get("Nope") == nil, "a cycle or an unset group")
-		zemi.ui.hl.set("Hover", { underline = "curl", sp = "accent", bold = false, brighten = 0.3, replace = true })
-		local hv = zemi.ui.hl.get("Hover")
-		assert(hv.underline == "curl" and hv.sp == "#8899ff" and hv.bold == false and hv.italic == nil
-			and hv.brighten == 0.3 and hv.replace, zemi.json.encode(hv))
-		zemi.ui.hl.set("U", { underline = false })
-		assert(zemi.ui.hl.get("U").underline == false, "underline = false reads back")
-		zemi.ui.hl.set("W", { fg = "yellow" })
-		assert(zemi.ui.hl.get("W").fg == "yellow", "an ANSI color name stays the terminal's")
-		zemi.ui.hl.set("Loud", { link = "W", bold = true })
-		local loud = zemi.ui.hl.get("Loud")
-		assert(loud.fg == "yellow" and loud.bold, "a link's bold applies over it: " .. zemi.json.encode(loud))
-		assert(not pcall(zemi.ui.hl.set, "X", { underline = "wavy" }), "an unknown underline kind raises")
-		assert(not pcall(zemi.ui.hl.set, "X", "blue") and not pcall(zemi.ui.hl.set, "X"), "a spec that is not a table raises")
-		assert(not pcall(zemi.ui.theme.add, "bogus", "nope"), "a theme that is not a table raises")
-		local ok, err = pcall(zemi.ui.hl.set, "X", { fg = "salmon" })
-		assert(not ok and tostring(err):find("palette role", 1, true), "err=" .. tostring(err))
-		assert(not pcall(zemi.ui.hl.set, "X", { bg = "#gg0000" }), "a bad hex color raises")
-		assert(zemi.ui.hl.get("X") == nil, "a refused spec sets nothing")
-		for _, bad in ipairs({
-			{ bg = "#000000", fg = "#ffffff", accent = "salmon", ok = "#00ff00", warn = "#ffff00", danger = "#ff0000" },
-			{ fg = "#ffffff", accent = "#0000ff", ok = "#00ff00", warn = "#ffff00", danger = "#ff0000" },
-			{ bg = "#000000", fg = "#ffffff" },
-			{ bg = "#000000", fg = "#ffffff", ansi = { "#000000" } },
-		}) do
-			assert(not pcall(zemi.ui.theme.add, "bad", bad), zemi.json.encode(bad))
-		end
-		local ok2, err2 = pcall(zemi.ui.theme.add, "bad", { bg = "#000000", fg = "#ffffff", hl = {} })
-		assert(not ok2 and tostring(err2):find('unknown key "hl"', 1, true), tostring(err2))
-		zemi.config.set("ui.theme", "later") -- a theme added after the set line still draws
-		zemi.ui.theme.add("later", { bg = "#101010", fg = "#e0e0e0", accent = "#8899ff", ok = "#88dd88", warn = "#dddd66", danger = "#ee6666" })
-	`)
-	if s, _ := h.Themes.Group("Title"); s.Fg != "#ffffff" || s.Bold == nil || !*s.Bold {
-		t.Fatalf("Title = %+v", s)
-	}
-	if th := h.ActiveTheme(); th.Name != "later" {
-		t.Fatalf("%s draws", th.Name)
-	}
-}
-
 // TestWidgets: a project origin adds and removes its widget, del reports
 // whether there was one. A priority between two others stays between.
 func TestWidgets(t *testing.T) {

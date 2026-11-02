@@ -422,10 +422,14 @@ func TestHoverStyle(t *testing.T) {
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			spec, ok := hostapi.Group(c.group)
 			if c.spec != nil {
-				app.host.Themes.SetHL(c.group, *c.spec)
+				spec, ok = *c.spec, true
 			}
-			if got := app.thm.hover(base, c.group); !got.Equal(&c.want) {
+			if !ok {
+				spec = hostapi.HLSpec{Underline: hostapi.UnderlineSingle}
+			}
+			if got := app.thm.hoverSpec(base, spec, app.host.ActiveTheme()); !got.Equal(&c.want) {
 				t.Fatalf("got %+v, want %+v", got, c.want)
 			}
 		})

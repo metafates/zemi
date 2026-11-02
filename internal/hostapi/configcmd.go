@@ -44,7 +44,7 @@ func (h *Host) configCommands() []*Command {
 		},
 		GoComplete: func(h *Host, _, _ string) []string {
 			var names []string
-			for _, t := range h.Themes.List() {
+			for _, t := range ThemeList() {
 				names = append(names, t.Name)
 			}
 			return names
@@ -341,7 +341,7 @@ func (h *Host) configChoices(path config.Key) []string {
 	switch path {
 	case config.KeyUITheme:
 		var names []string
-		for _, t := range h.Themes.List() {
+		for _, t := range ThemeList() {
 			names = append(names, t.Name)
 		}
 		return names

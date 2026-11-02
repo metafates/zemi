@@ -269,11 +269,6 @@ func TestPluginOwnership(t *testing.T) {
 				func(o lua.Origin, p string) (bool, error) { return r.Remove("x", o, p) },
 			}
 		}},
-		{"theme", func() ops {
-			r := &ThemeRegistry{}
-			r.owner = owner
-			return ops{add: func(o lua.Origin, p string) error { _, err := r.Add(&Theme{Name: "x", Origin: o, Path: p}); return err }}
-		}},
 		{"tool", func() ops {
 			r := &toolReg{}
 			r.owner = owner

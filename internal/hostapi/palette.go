@@ -10,18 +10,13 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/lucasb-eyer/go-colorful"
-
-	"github.com/metafates/zemi/internal/lua"
 )
 
-// Theme is a palette registered from Lua; the groups that draw with it are
+// Theme is one of the shipped palettes; the groups that draw with it are
 // defined once, apart from any theme (DESIGN §6.6).
 type Theme struct {
 	Name    string
 	Palette Palette
-	Origin  lua.Origin
-	Path    string
-	Gen     Gen
 }
 
 // Palette is a theme's colors by role, each set: what the spec leaves out

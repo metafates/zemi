@@ -17,8 +17,8 @@ import (
 // chrome sits on the same canvas, whatever the theme sets it to.
 func TestTerminalBackground(t *testing.T) {
 	t.Parallel()
-	app, host := bootAgentApp(t, 80, 24)
-	canvas := host.Themes.Get("whorl").Palette.Bg
+	app, _ := bootAgentApp(t, 80, 24)
+	canvas := hostapi.ThemeByName("whorl").Palette.Bg
 	hint := hostapi.Segment{Text: " ", HL: "Host:Hint"}
 	for _, c := range []struct {
 		name    string
@@ -58,7 +58,6 @@ func TestTerminalBackground(t *testing.T) {
 func TestSurfacesAt16Colors(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
-	app.host.Themes.SetHL("NearBlack", hostapi.HLSpec{Fg: "#202020"})
 	for _, c := range []struct {
 		profile colorprofile.Profile
 		hl      string
@@ -67,7 +66,6 @@ func TestSurfacesAt16Colors(t *testing.T) {
 	}{
 		{colorprofile.ANSI, "Rule", hostapi.FillAuto, ansi.BrightBlack, ansi.Black},
 		{colorprofile.ANSI, "Host:Dim", hostapi.FillAuto, ansi.BrightBlack, ansi.Black},
-		{colorprofile.ANSI, "NearBlack", hostapi.FillAuto, ansi.BrightBlack, ansi.Black},
 		{colorprofile.ANSI, "Dim", hostapi.FillBand, ansi.White, ansi.BrightBlack},
 		{colorprofile.ANSI, "Host:DiffDelNum", hostapi.FillAuto, ansi.BrightRed, ansi.BrightBlack},
 		{colorprofile.ANSI256, "Rule", hostapi.FillAuto, ansi.IndexedColor(239), ansi.IndexedColor(234)},

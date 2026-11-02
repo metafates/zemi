@@ -990,7 +990,7 @@ zemi.ui.widget.add({
 			epoch,
 			width,
 			ctx.cwd or "",
-			zemi.ui.theme.get(),
+			tostring(zemi.config.get("ui.theme") or ""),
 			tostring(ctx.transcript_edit or 0),
 			ctx.view and ctx.view.id or "",
 			rev,

@@ -141,8 +141,7 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 -- Settings: zemi.config.schema() lists every one with its default.
 -- /config lists every setting; a pick there lasts across restarts unless a
 -- line here sets that key.
--- zemi.config.set("ui.theme", "catppuccin") -- /theme lists them; a theme
--- is one line of colors: zemi.ui.theme.add(name, { bg, fg, ansi = { 16 } })
+-- zemi.config.set("ui.theme", "catppuccin") -- /theme lists the shipped ones
 
 -- Keys: <leader> is keymap.leader (ctrl+x). The right-hand side is a
 -- command name ("review", "/review"), a host action (zemi.HostAction in
@@ -155,12 +154,9 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 -- 	zemi.agent.send("run the tests" .. (a.args ~= "" and " for " .. a.args or ""))
 -- end, { desc = "ask the agent to run the tests", nargs = "?" })
 
--- Everything on screen is a widget: an id, a region, and a render that
--- returns lines of { text, hl } segments. Reuse a builtin id to replace it.
--- zemi.ui.widget.add({
--- 	id = "msgs", region = "statusline.right", priority = 5,
--- 	render = function(ctx) return { { { text = ctx.transcript_count .. " msgs", hl = "Dim" } } } end,
--- })
+-- Menus and prompts are yours to open: zemi.ui.select, zemi.ui.input and
+-- zemi.ui.overlay.open draw a screen from rows of text, and zemi.ui.edit
+-- hands a file to your editor.
 
 -- zemi writes type annotations for the whole zemi.* API to <data>/types and
 -- the editor configs (.luarc.json, .emmyrc.json) beside this file, so your
