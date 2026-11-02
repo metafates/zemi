@@ -196,7 +196,7 @@ type flowSpec struct {
 // report as a message. The error is a start's; the run's own is f.err.
 func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	parent := h.AgentSessionID()
-	pad := h.scratchFor(parent)
+	pad := h.ScratchDir()
 	var cache map[string][]journalLine
 	if spec.from != "" {
 		old, err := readJournal(pad, spec.from)
@@ -1296,7 +1296,7 @@ func (j journal) cache() map[string][]journalLine {
 // loadFlow rebuilds a finished run of session sid from its journal, for
 // the screens; one with no end line reads as stopped.
 func (h *Host) loadFlow(sid, id string) (*flowRun, error) {
-	j, err := readJournal(h.scratchFor(sid), id)
+	j, err := readJournal(h.ScratchDir(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -1319,9 +1319,9 @@ func (h *Host) loadFlow(sid, id string) (*flowRun, error) {
 	return f, nil
 }
 
-// padFlows lists the run ids whose journals are in session sid's pad.
-func (h *Host) padFlows(sid string) []string {
-	ents, _ := os.ReadDir(h.scratchFor(sid))
+// padFlows lists the run ids whose journals are in the project's pad.
+func (h *Host) padFlows() []string {
+	ents, _ := os.ReadDir(h.ScratchDir())
 	var ids []string
 	for _, e := range ents {
 		if id, ok := strings.CutSuffix(strings.TrimPrefix(e.Name(), "workflow-"), ".jsonl"); ok && store.IDShape.MatchString(id) {
@@ -1331,13 +1331,13 @@ func (h *Host) padFlows(sid string) []string {
 	return ids
 }
 
-// flowAgentIDs are the agent run ids session sid's journals name: /agents
+// flowAgentIDs are the agent run ids the project's journals name: /agents
 // lists a workflow's agents as the workflow. A forged journal can only hide
-// this session's own agents from that list.
-func (h *Host) flowAgentIDs(sid string) set.Set[string] {
+// the project's own agents from that list.
+func (h *Host) flowAgentIDs() set.Set[string] {
 	ids := set.Set[string]{}
-	for _, id := range h.padFlows(sid) {
-		if j, err := readJournal(h.scratchFor(sid), id); err == nil {
+	for _, id := range h.padFlows() {
+		if j, err := readJournal(h.ScratchDir(), id); err == nil {
 			for _, a := range j.agents {
 				ids.Add(a.Agent)
 			}
@@ -1358,7 +1358,7 @@ func (h *Host) saveFlow(id, name string) (string, error) {
 	}
 	if name == "" {
 		// a default name never shadows a builtin or plugin workflow unseen
-		name = slug(f.description)
+		name = slug(f.description, "workflow")
 	}
 	// the loader's own rule, so a saved name is one workflows() takes back
 	if !skill.ValidName(name) {
@@ -1659,7 +1659,7 @@ func (t *workflowTool) wait(ctx context.Context, callID, id string) fantasy.Tool
 		// a run this process no longer holds: its journal has how it ended,
 		// and a run with no end line died with the previous process, whose
 		// report was never delivered
-		j, err := readJournal(h.scratchFor(h.AgentSessionID()), id)
+		j, err := readJournal(h.ScratchDir(), id)
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error())
 		}
@@ -2054,7 +2054,7 @@ func (h *Host) workflowsOverlay() Overlay {
 		}
 	}
 	var stored []*flowRun
-	for _, id := range h.padFlows(sid) {
+	for _, id := range h.padFlows() {
 		if f, err := h.loadFlow(sid, id); err == nil && !held.Has(id) {
 			stored = append(stored, f)
 		}

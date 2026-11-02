@@ -1,9 +1,9 @@
-// scratch.go gives each session a scratchpad: a directory for the agent's
+// scratch.go gives each project a scratchpad: a directory for the agent's
 // temporary files (notes, drafts, command output, scripts, handoffs between
-// subagents), which the file tools read, write and edit without asking,
-// plan mode included. A pipeline binds it once (tools.Pipeline.Pad). Pads
-// live in <state>/scratch, outside every repository, and are removed once
-// unused for scratchTTL, or at once when their project is gone (.root).
+// subagents), which the file tools read, write and edit without asking, plan
+// mode included. A pipeline binds it once (tools.Pipeline.Pad). A pad lives in
+// the project's own state dir, outside every repository, and is removed once
+// unused for scratchTTL, or at once with its project.
 
 package hostapi
 
@@ -11,10 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
-
-	"github.com/metafates/zemi/internal/config"
 )
 
 const scratchTTL = 7 * 24 * time.Hour
@@ -36,20 +33,17 @@ func removeTree(dir string) error {
 	return os.RemoveAll(dir)
 }
 
-// ScratchDir is the live session's scratchpad, "" before the first send.
-func (h *Host) ScratchDir() string { return h.scratchFor(h.AgentSessionID()) }
-
-func (h *Host) scratchFor(sid string) string {
-	if sid == "" || h.Dirs.StateHome == "" {
+// ScratchDir is the project's scratchpad, "" without a state home or a
+// project root.
+func (h *Host) ScratchDir() string {
+	if h.Dirs.StateHome == "" || h.trustRoot() == "" {
 		return ""
 	}
-	return filepath.Join(h.Dirs.StateHome, "scratch", sid)
+	return filepath.Join(projectState(h.Dirs.StateHome, h.trustRoot()), "scratch")
 }
 
-// ensureScratch creates the live session's pad, marks it used and writes
-// .root, the project the session runs in, which the sweep reads to drop
-// the pads of removed projects at once; the sweep of the others walks
-// their trees, so it runs off the send path.
+// ensureScratch creates the pad and marks it used; the sweep of the other
+// pads walks their trees, so it runs off the send path.
 func (h *Host) ensureScratch() {
 	dir := h.ScratchDir()
 	if dir == "" {
@@ -60,62 +54,36 @@ func (h *Host) ensureScratch() {
 		return
 	}
 	now := time.Now()
-	h.writePadRoot(dir, now)
 	_ = os.Chtimes(dir, now, now)
-	h.GoSafe("scratch sweep", func() { h.sweepScratch(filepath.Dir(dir), now.Add(-scratchTTL)) })
+	h.GoSafe("scratch sweep", func() { h.sweepScratch(now.Add(-scratchTTL)) })
 }
 
-// writePadRoot marks pad with its project root, idempotent: rewritten only
-// when the root changed, so a resume elsewhere corrects it and a rerun here
-// does not keep the pad fresh forever.
-func (h *Host) writePadRoot(pad string, now time.Time) {
-	root := h.Dirs.TrustRoot()
-	if root == "" {
-		return
-	}
-	mark := filepath.Join(pad, ".root")
-	if prev, err := os.ReadFile(mark); err == nil && string(prev) == root+"\n" {
-		return
-	}
-	if err := config.WriteFileAtomic(mark, []byte(root+"\n")); err != nil {
-		h.Log.Warn(".root not written", "origin", "scratch", "path", mark, "error", err)
-		return
-	}
-	_ = os.Chtimes(mark, now, now)
-}
-
-// sweepScratch removes the pads under root unused since t, and at once the
-// pads of removed projects. The live pad is read at each removal, since a
-// resume may make an old pad live mid-sweep. A pad counts as used when
-// anything in it changed or a command ran with it.
-func (h *Host) sweepScratch(root string, t time.Time) {
-	entries, _ := os.ReadDir(root)
+// sweepScratch removes the pads of other projects, and those of the
+// session-keyed root an older zemi kept, unused since t. The live pad is read
+// at each removal, since a resume may make an old pad live mid-sweep. A pad
+// counts as used when anything in it changed or a command ran with it.
+func (h *Host) sweepScratch(t time.Time) {
+	projects := filepath.Join(h.Dirs.StateHome, "projects")
+	entries, _ := os.ReadDir(projects)
 	for _, e := range entries {
-		if pad := filepath.Join(root, e.Name()); e.IsDir() && pad != h.ScratchDir() && (deadPad(pad) || !usedSince(pad, t)) {
-			if err := removeTree(pad); err != nil {
-				h.Log.Warn("scratchpad not removed", "origin", "scratch", "path", pad, "error", err)
-			}
+		if e.IsDir() {
+			h.dropPad(filepath.Join(projects, e.Name(), "scratch"), t)
 		}
 	}
+	old := filepath.Join(h.Dirs.StateHome, "scratch")
+	entries, _ = os.ReadDir(old)
+	for _, e := range entries {
+		h.dropPad(filepath.Join(old, e.Name()), t)
+	}
 }
 
-// deadPad reports a pad whose .root names a directory that is gone: the
-// session's project was removed, so nothing in the pad can be wanted
-// again. A root that is no particular project - a missing marker, an
-// empty one, / or $HOME - never counts, and a root that fails to stat
-// for any other reason keeps its TTL: those pads age out by use alone.
-func deadPad(pad string) bool {
-	b, err := os.ReadFile(filepath.Join(pad, ".root"))
-	if err != nil {
-		return false
+func (h *Host) dropPad(pad string, t time.Time) {
+	if pad == h.ScratchDir() || usedSince(pad, t) {
+		return
 	}
-	root := strings.TrimSpace(string(b))
-	home, _ := os.UserHomeDir()
-	if root == "" || root == "/" || root == home {
-		return false
+	if err := removeTree(pad); err != nil {
+		h.Log.Warn("scratchpad not removed", "origin", "scratch", "path", pad, "error", err)
 	}
-	_, err = os.Stat(root)
-	return os.IsNotExist(err)
 }
 
 // usedSince reports anything under dir, dir included, modified after t: a

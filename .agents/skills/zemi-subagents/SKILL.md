@@ -114,9 +114,9 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   does the status field of its detail and of a run's view (`Overlay.Mark`), and a run's view
   heads each phase with its rows' combined mark (`Overlay.Phases`); an agent its run never
   started reads cancelled once the run ended.
-- **Scratchpad** (scratch.go): `<state>/scratch/<session id>`, 8 characters (`store.ShortID`),
-  for a tidy path. A pipeline binds it once (`Pipeline.Pad`):
-  `PipelineFor` the live session's, a subagent run its parent session's, so a run
+- **Scratchpad** (scratch.go): `<state>/projects/<hash>/scratch`, the project's own, so a pad
+  goes with its project. A pipeline binds it once (`Pipeline.Pad`):
+  `PipelineFor` the live project's, a subagent run the project's too, so a run
   outliving its caller keeps the pad its prompt names, and a host tool's cut
   output (`truncOutput`: MCP, Lua and agent results, a `tool.post` rewrite) spills there too. Commands the model
   starts run with the parent's environ (`Pipeline.cmdEnv`). Writes in the pad settle like any write,
@@ -128,10 +128,9 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   `%VAR%` is refused naming the pad. A subagent run that can write is told in its task, never its
   system prompt (which runs of one agent share in the provider cache), to keep its files in
   `<pad>/<agent>-<run id>`. `ensureScratch` (building the environment prompt) creates the live
-  pad, writes `.root` (0600, the session's trust root) and hands `sweepScratch` to `GoSafe`, off
-  the send path, which removes pads with nothing in them changed for a week, and at once a pad
-  whose `.root` names a project that no longer exists (an empty, / or $HOME root never counts),
-  never the live one.
+  pad and hands `sweepScratch` to `GoSafe`, off the send path, which removes the other
+  projects' pads with nothing in them changed for a week, never the live one; a deleted
+  project takes its pad with its store.
 - **Lua tool** (luatool.go, tool name `lua`; DESIGN §9): model Lua runs through `Runtime.Eval`
   as `user` origin, default-deny: without approval it may call only `luaReadOnly` members,
   which the sandbox guard (`Sandbox.SetGuard` -> `guardLua`) enforces on every Go function in

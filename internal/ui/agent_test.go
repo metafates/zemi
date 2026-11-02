@@ -92,6 +92,13 @@ func bootAgentAppPinned(t testing.TB, w, h int) (*App, *hostapi.Host) {
 // cfg's home first, which rules out t.Parallel for it.
 func bootAgentAppOn(t testing.TB, w, h int, clock lua.Clock, cfg string) (*App, *hostapi.Host) {
 	t.Helper()
+	return bootAgentAppIn(t, w, h, clock, cfg, "")
+}
+
+// bootAgentAppIn is bootAgentAppOn in a project: a host that knows its
+// project has a scratchpad, and a run keeps its script and journal there.
+func bootAgentAppIn(t testing.TB, w, h int, clock lua.Clock, cfg, project string) (*App, *hostapi.Host) {
+	t.Helper()
 	ctx := t.Context()
 	data, state := t.TempDir(), t.TempDir()
 	data, state = resolved(t, data), resolved(t, state)
@@ -103,7 +110,7 @@ func bootAgentAppOn(t testing.TB, w, h int, clock lua.Clock, cfg string) (*App, 
 		{Prefix: filepath.Join(data, "plugins"), Origin: lua.OriginPlugin},
 	}
 	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: zemiruntime.FS, Clock: clock})
-	host := hostapi.NewHost(rt, log, settings, config.Dirs{ConfigHome: cfg, DataHome: data, StateHome: state})
+	host := hostapi.NewHost(rt, log, settings, config.Dirs{ConfigHome: cfg, DataHome: data, StateHome: state, ProjectDir: project})
 	app := NewApp(host, log)
 	host.SetUIHooks(app)
 	app.CaptureHooks()

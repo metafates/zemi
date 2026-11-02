@@ -17,7 +17,6 @@ import (
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
-	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -39,7 +38,7 @@ func TestAgentSelfAccess(t *testing.T) {
 	}
 
 	pad := h.ScratchDir()
-	if !strings.Contains(pad, filepath.Join("scratch", store.MainSessionID)) {
+	if !strings.HasPrefix(pad, filepath.Join(h.Dirs.StateHome, "projects")+string(filepath.Separator)) {
 		t.Fatalf("pad = %q", pad)
 	}
 }

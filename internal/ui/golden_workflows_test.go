@@ -41,7 +41,9 @@ func TestGoldenWorkflows(t *testing.T) {
 	defer srv.Close()
 	defer close(hold)
 
-	app, host := bootAgentApp(t, 80, 30)
+	_, cfg := tempHome(t)
+	app, host := bootAgentAppIn(t, 80, 30, tipClock, cfg, "/tmp/zemi-golden-project")
+	host.SetProjectTrusted(true)
 	ctx := t.Context()
 	reloadUI(t, host)
 	runLua(t, app, fmt.Sprintf(`

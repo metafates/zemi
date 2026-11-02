@@ -621,7 +621,7 @@ func TestWorkflowRerun(t *testing.T) {
 		defer mu.Unlock()
 		return total
 	}
-	pad := h.scratchFor(store.MainSessionID)
+	pad := h.ScratchDir()
 	const wf = "local wf = zemi.workflow\n"
 	for _, c := range []struct {
 		name, first, again string
@@ -670,7 +670,7 @@ func TestWorkflowRerun(t *testing.T) {
 				t.Fatalf("loadFlow = %+v, %v", old, err)
 			}
 			for _, a := range f.view().agents {
-				if !h.flowAgentIDs(store.MainSessionID).Has(a.id) {
+				if !h.flowAgentIDs().Has(a.id) {
 					t.Fatalf("flowAgentIDs misses %s", a.id)
 				}
 			}
@@ -865,7 +865,7 @@ func TestStaleWorkflowWait(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	seedSession(t, h)
 	tool := h.workflowTool(h.PipelineFor())
-	pad := h.scratchFor(h.AgentSessionID())
+	pad := h.ScratchDir()
 	for _, c := range []struct {
 		name, end, want string
 	}{
@@ -973,7 +973,7 @@ func TestWorkflowToolInput(t *testing.T) {
 		{name: "a script with the rerun replaces it", input: `{"run":"` + id + `","action":"rerun","script":"return 4"}`, want: "4\n\n[workflow", preview: "return 4"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			if err := os.WriteFile(filepath.Join(h.scratchFor(store.MainSessionID), flowFile(id, ".lua")), []byte("-- Count to two\nreturn 3"), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(h.ScratchDir(), flowFile(id, ".lua")), []byte("-- Count to two\nreturn 3"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			n := len(ui.asked)

@@ -457,7 +457,7 @@ func (h *Host) runPipeline(run *agentRun, name, modelID string) *tools.Pipeline 
 	pipe.Images = func() bool { return h.takesImages(modelID) }
 	pipe.Audio = func() bool { return h.takesAudio(modelID) }
 	if run.parent != "" {
-		pipe.Pad = h.scratchFor(run.parent)
+		pipe.Pad = h.ScratchDir()
 	}
 	h.labelAsks(pipe, run, name)
 	return pipe

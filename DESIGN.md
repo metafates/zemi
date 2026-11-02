@@ -323,15 +323,14 @@ Directories (XDG; Windows keeps the same roots under the user's home,
   plugins/disabled        names turned off, one per line
   builtin-skills/<name>/  zemi's own skills, rewritten from runtime/ on sync
   drops/                  copies of the images pasted from the clipboard
-  plans/<session id>.md   plans approved from the plan tool's popup
   types/                  the LuaLS annotations and a copy of runtime/lua, rewritten every start
 ~/.local/state/zemi/      state
   zemi.db                 global store (skills, kv)
-  scratch/<session id>/   per-session scratchpad: spill output, the read-only agent's writes (§9 write root);
-                          .root holds the session's project root, a pad whose project is gone
-                          sweeps at once, the rest a week after their last use
   projects/<hash>/zemi.db per-project store, hash of the trust root (sessions, ...)
   projects/<hash>/root    the trust root the dir belongs to; its mtime is the last use there
+  projects/<hash>/plans/<name>.md  plans approved from the plan tool's popup, named by the model
+  projects/<hash>/scratch/  the project's scratchpad: spill output, the read-only agent's writes
+                          (§9 write root), removed a week after its last use
   projects/<hash>/skills/<name>/SKILL.md  recipes: the project's private skills (§10.5)
   trust.json              trust decisions by repository root
   logs/
@@ -1387,7 +1386,7 @@ independent parts as parallel agent calls), `question` (1-4 questions in one ove
 answer, and a note the user may add to a pick; the result is one JSON
 document, each answer a string, a multi-select's array, or null when left
 open, which its `open` field tells the model to decide), `plan` (shows the plan in its own scrollable popup for approval, taken from the call's
-markdown or a file's path in `file`; the
+markdown or a file's path in `file`, and saves an approved one in the project's `plans/`, named from `name`, its first heading, else `plan`; the
 model keeps its own capabilities and stays the same agent: an approval lets it
 implement in the same turn, Save, don't start approves with no
 handoff, saving the plan and leaving the turn ended until the user says when;

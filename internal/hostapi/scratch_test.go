@@ -8,57 +8,47 @@ import (
 	"time"
 
 	"charm.land/fantasy"
-
-	"github.com/metafates/zemi/internal/store"
 )
 
-// TestScratchSweep: the sweep keeps the live pad however old, and another
-// pad while anything in it moved within the TTL, whatever its own directory
-// time says, and ages out a pad holding a read-only tree, which a plain
-// RemoveAll cannot (a module cache copies its dirs 0555). A pad whose .root
-// names a removed project goes whatever its age; a live or empty root keeps
-// the TTL.
+// TestScratchSweep: the sweep keeps the live pad however old, keeps another
+// project's pad while anything in it moved within the TTL, whatever its own
+// directory time says, and ages out a pad holding a read-only tree, which a
+// plain RemoveAll cannot (a module cache copies its dirs 0555). The pads of
+// the session-keyed root an older zemi kept go by the same rule.
 func TestScratchSweep(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	live := h.ScratchDir()
-	if filepath.Base(live) != store.MainSessionID {
-		t.Fatalf("pad %q is not named by the chat's id", live)
+	if !strings.HasPrefix(live, filepath.Join(h.Dirs.StateHome, "projects")+string(filepath.Separator)) {
+		t.Fatalf("pad %q is not in a project's state dir", live)
 	}
-	root, old := filepath.Dir(live), time.Now().Add(-2*scratchTTL)
+	projects := filepath.Join(h.Dirs.StateHome, "projects")
+	old := filepath.Join(h.Dirs.StateHome, "scratch")
 	cases := []struct {
 		name  string
+		pad   string
 		file  string
-		root  *string // the pad's .root line, nil without the marker
 		fresh bool
 		kept  bool
 		ro    bool
 	}{
-		{"the live pad", filepath.Join(live, "notes.md"), nil, false, true, false},
-		{"a pad written deep inside", filepath.Join(root, "b", "d", "e", "out.txt"), nil, true, true, false},
-		{"a pad nobody used", filepath.Join(root, "c", "d", "out.txt"), nil, false, false, false},
-		{"a pad holding a read-only tree", filepath.Join(root, "d", "gomod", "out.txt"), nil, false, false, true},
-		{"a pad of a removed project", filepath.Join(root, "e", "out.txt"), new(filepath.Join(t.TempDir(), "gone")), true, false, false},
-		{"a pad of a live project", filepath.Join(root, "f", "out.txt"), new(t.TempDir()), true, true, false},
-		{"a pad of a live project gone stale", filepath.Join(root, "g", "out.txt"), new(t.TempDir()), false, false, false},
-		{"a pad whose root is empty", filepath.Join(root, "h", "out.txt"), new(""), true, true, false},
+		{"the live pad", live, filepath.Join(live, "notes.md"), false, true, false},
+		{"another project's fresh pad", filepath.Join(projects, "b", "scratch"), filepath.Join(projects, "b", "scratch", "out.txt"), true, true, false},
+		{"another project's unused pad", filepath.Join(projects, "c", "scratch"), filepath.Join(projects, "c", "scratch", "out.txt"), false, false, false},
+		{"a pad holding a read-only tree", filepath.Join(projects, "d", "scratch"), filepath.Join(projects, "d", "scratch", "gomod", "out.txt"), false, false, true},
+		{"the pad of an old session key", filepath.Join(old, "e"), filepath.Join(old, "e", "out.txt"), false, false, false},
+		{"a fresh pad of an old session key", filepath.Join(old, "f"), filepath.Join(old, "f", "out.txt"), true, true, false},
 	}
 	for _, c := range cases {
 		if err := os.MkdirAll(filepath.Dir(c.file), 0o700); err != nil || os.WriteFile(c.file, nil, 0o600) != nil {
 			t.Fatal(err)
 		}
-		if c.root != nil {
-			mark := filepath.Join(filepath.Dir(c.file), ".root")
-			if err := os.WriteFile(mark, []byte(*c.root+"\n"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			if !c.fresh {
-				os.Chtimes(mark, old, old)
-			}
-		}
-		for p := c.file; p != root; p = filepath.Dir(p) {
+		for p := c.file; ; p = filepath.Dir(p) {
 			if !c.fresh || p != c.file {
-				os.Chtimes(p, old, old)
+				os.Chtimes(p, time.Now().Add(-2*scratchTTL), time.Now().Add(-2*scratchTTL))
+			}
+			if p == c.pad {
+				break
 			}
 		}
 		if c.ro {
@@ -67,63 +57,10 @@ func TestScratchSweep(t *testing.T) {
 			}
 		}
 	}
-	h.sweepScratch(root, time.Now().Add(-scratchTTL))
+	h.sweepScratch(time.Now().Add(-scratchTTL))
 	for _, c := range cases {
 		if _, err := os.Stat(c.file); (err == nil) != c.kept {
 			t.Errorf("%s: kept %v, want %v", c.name, err == nil, c.kept)
-		}
-	}
-	// writePadRoot is idempotent: rewriting the same root leaves the pad's
-	// times alone, so an ensure cannot keep a pad fresh forever.
-	h.writePadRoot(live, time.Now())
-	mark := filepath.Join(live, ".root")
-	padBefore, err := os.Stat(live)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fileBefore, err := os.Stat(mark)
-	if err != nil {
-		t.Fatal(err)
-	}
-	padT, fileT := padBefore.ModTime(), fileBefore.ModTime()
-	h.writePadRoot(live, time.Now())
-	padAfter, _ := os.Stat(live)
-	fileAfter, _ := os.Stat(mark)
-	if !padAfter.ModTime().Equal(padT) || !fileAfter.ModTime().Equal(fileT) {
-		t.Error("a second writePadRoot of the same root moved the pad's times")
-	}
-}
-
-// TestScratchDeadPad: a .root naming no particular project never counts as
-// dead, so a missing marker, a wiped home or the filesystem root cannot
-// mass-delete pads.
-func TestScratchDeadPad(t *testing.T) {
-	home := filepath.Join(t.TempDir(), "home")
-	t.Setenv("HOME", home)
-	for _, c := range []struct {
-		name string
-		root string // the .root line, written only when mark
-		mark bool
-		dead bool
-	}{
-		{"no marker", "", false, false},
-		{"an empty marker", "", true, false},
-		{"the filesystem root", "/", true, false},
-		{"home", home, true, false},
-		{"a removed project", filepath.Join(t.TempDir(), "gone"), true, true},
-	} {
-		pad := filepath.Join(t.TempDir(), "pad")
-		if err := os.MkdirAll(pad, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if c.mark {
-			mark := filepath.Join(pad, ".root")
-			if err := os.WriteFile(mark, []byte(c.root+"\n"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if got := deadPad(pad); got != c.dead {
-			t.Errorf("%s: dead %v, want %v", c.name, got, c.dead)
 		}
 	}
 }

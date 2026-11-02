@@ -895,7 +895,7 @@ func (h *Host) deliverReport(parent string, r report, attached string) {
 		h.notifyReport(r)
 		return
 	}
-	pad := h.scratchFor(parent)
+	pad := h.ScratchDir()
 	h.work(r.id, cmp.Or(r.description, r.agent), r.agent, string(r.status), h.truncOutput(pad, "agent", r.body))
 	if err := h.AgentSend(h.reportMessage(pad, r) + attached); err != nil {
 		h.Notify(slog.LevelError, "Could not send the report of "+r.id, h.friendlyError(err))
@@ -917,7 +917,7 @@ func (h *Host) deliverUpdate(run *agentRun, text string) error {
 		return nil
 	}
 	h.work(run.id, cmp.Or(run.description, run.agent), run.agent, string(updateStatus), text)
-	if err := h.AgentSend(h.updateMessage(h.scratchFor(run.parent), run.id, run.agent, cmp.Or(run.description, run.agent), text)); err != nil {
+	if err := h.AgentSend(h.updateMessage(h.ScratchDir(), run.id, run.agent, cmp.Or(run.description, run.agent), text)); err != nil {
 		h.Notify(slog.LevelError, "Could not send the update of "+run.id, h.friendlyError(err))
 		return fmt.Errorf("the update did not reach the caller: %s", h.friendlyError(err))
 	}
@@ -1013,7 +1013,7 @@ func (h *Host) notifyReport(r report) {
 		parent = f.parent
 	}
 	if parent != "" && h.DB != nil {
-		pad := h.scratchFor(parent)
+		pad := h.ScratchDir()
 		msg := h.reportMessage(pad, r)
 		if r.status == updateStatus {
 			msg = h.updateMessage(pad, r.id, r.agent, cmp.Or(r.description, r.agent), r.body)
@@ -1253,7 +1253,7 @@ func (h *Host) agentRunItems() []OverlayItem {
 	}
 	if h.DB != nil && sid != "" {
 		children, _ := h.DB.ChildSessions(sid)
-		inFlows := h.flowAgentIDs(sid)
+		inFlows := h.flowAgentIDs()
 		for _, c := range children {
 			if !held.Has(c.ID) && !inFlows.Has(c.ID) {
 				row(c.ID, storedStatus(c.RunStatus), cmp.Or(c.Title, c.Agent), time.Duration(c.UpdatedAt-c.CreatedAt)*time.Millisecond, c.Agent, 0, nil)

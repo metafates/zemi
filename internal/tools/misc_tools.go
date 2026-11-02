@@ -211,6 +211,7 @@ func PlanOutcome(output string) (verdict, path string) {
 type planArgs struct {
 	Plan string `json:"plan,omitempty" desc:"the plan in markdown"`
 	File string `json:"file,omitempty" desc:"path of a file holding the plan, relative to the working directory or absolute; instead of retyping a plan you already wrote"`
+	Name string `json:"name,omitempty" desc:"a few words naming the plan; its file is named from it"`
 }
 
 // planFile reads a plan held in a file, under the file tools' path rules:
@@ -252,7 +253,7 @@ func runPlan(ctx context.Context, p *Pipeline, in planArgs) (fantasy.ToolRespons
 	if p.ApprovePlan == nil {
 		return fantasy.NewTextResponse("No user is available to approve the plan. Put the plan in your reply and stop."), nil
 	}
-	v, ok := p.ApprovePlan(plan)
+	v, ok := p.ApprovePlan(plan, in.Name)
 	saved := ""
 	if v.Path != "" {
 		saved = planSaved + v.Path + "."

@@ -221,9 +221,10 @@ type Pipeline struct {
 	// Question asks the user and returns one answer per question; false =
 	// dismissed. nil = nobody can answer.
 	Question func(qs []Question) (answers []Answer, ok bool)
-	// ApprovePlan shows a plan and asks the user to approve it; false =
+	// ApprovePlan shows a plan and asks the user to approve it; name is the
+	// model's label for the saved file, "" when it gave none. false =
 	// dismissed. nil = nobody can answer.
-	ApprovePlan func(plan string) (PlanVerdict, bool)
+	ApprovePlan func(plan, name string) (PlanVerdict, bool)
 
 	// Jobs owns model-started background processes; nil = jobs error.
 	Jobs *Jobs

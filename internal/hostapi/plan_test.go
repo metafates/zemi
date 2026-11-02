@@ -3,6 +3,7 @@ package hostapi
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -21,32 +22,89 @@ func TestPlanHold(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	ui := &fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}}
 	h.SetUIHooks(ui)
-	if v, ok := h.approvePlan("# The first plan"); !ok || v.Path == "" {
+	v, ok := h.approvePlan("# The first plan", "first")
+	if !ok || v.Path == "" {
 		t.Fatalf("approve: %+v ok=%v", v, ok)
 	}
-	path := h.planPath()
-	saved, err := os.ReadFile(path)
+	saved, err := os.ReadFile(v.Path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// a dismissed plan is not written: it would overwrite the saved one
 	ui.planOK = false
 	ui.planVerdict = tools.PlanVerdict{}
-	if _, ok := h.approvePlan("# A plan the user dismissed"); ok {
+	if _, ok := h.approvePlan("# A plan the user dismissed", "dismissed"); ok {
 		t.Fatal("a dismissed plan was approved")
 	}
-	if now, err := os.ReadFile(path); err != nil || string(now) != string(saved) {
+	if now, err := os.ReadFile(v.Path); err != nil || string(now) != string(saved) {
 		t.Fatalf("the saved plan moved: %q, %v", now, err)
 	}
 	// a hold saves and starts nothing
 	ui.planOK = true
 	ui.planVerdict = tools.PlanVerdict{Approved: true, Hold: true}
-	v, ok := h.approvePlan("# The plan to keep")
-	if !ok || !v.Approved || !v.Hold || v.Path == "" {
-		t.Fatalf("hold: %+v ok=%v", v, ok)
+	held, ok := h.approvePlan("# The plan to keep", "kept")
+	if !ok || !held.Approved || !held.Hold || held.Path == "" {
+		t.Fatalf("hold: %+v ok=%v", held, ok)
 	}
-	if now, err := os.ReadFile(path); err != nil || !strings.Contains(string(now), "The plan to keep") {
+	if now, err := os.ReadFile(held.Path); err != nil || !strings.Contains(string(now), "The plan to keep") {
 		t.Fatalf("the held plan was not saved: %q, %v", now, err)
+	}
+}
+
+// TestPlanSavesUnderItsProject: a plan is saved in the state dir of the
+// project it was approved in, under the name the model gave it, and a second
+// plan of that name never writes over the first.
+func TestPlanSavesUnderItsProject(t *testing.T) {
+	t.Parallel()
+	state := t.TempDir()
+	approve := func(h *Host, plan, name string) string {
+		t.Helper()
+		h.SetUIHooks(&fakeUI{planOK: true, planVerdict: tools.PlanVerdict{Approved: true}})
+		v, ok := h.approvePlan(plan, name)
+		if !ok || v.Path == "" {
+			t.Fatalf("approve %q: %+v ok=%v", name, v, ok)
+		}
+		return v.Path
+	}
+	one, _ := newWindow(t, state, t.TempDir())
+	two, _ := newWindow(t, state, t.TempDir())
+	projects := filepath.Join(state, "projects") + string(filepath.Separator)
+	first, second := approve(one, "# One\nfirst steps", "the fix"), approve(two, "# Two\nother steps", "the fix")
+	if first == second || !strings.HasPrefix(first, projects) {
+		t.Fatalf("two projects share a plan: %q, %q", first, second)
+	}
+	for path, want := range map[string]string{first: "# One", second: "# Two"} {
+		if got, err := os.ReadFile(path); err != nil || !strings.Contains(string(got), want) {
+			t.Fatalf("%s: %q, %v", path, got, err)
+		}
+	}
+	// the same plan approved again keeps its name; another plan of that name
+	// takes the next one, so a path handed out once still holds its plan
+	if again := approve(one, "# One\nfirst steps", "the fix"); again != first {
+		t.Fatalf("the same plan moved: %q, %q", again, first)
+	}
+	next := approve(one, "# One\nrevised steps", "the fix")
+	if next != strings.TrimSuffix(first, ".md")+"-2.md" {
+		t.Fatalf("a second plan of the same name: %q", next)
+	}
+	if got, err := os.ReadFile(first); err != nil || !strings.Contains(string(got), "first steps") {
+		t.Fatalf("the first plan moved: %q, %v", got, err)
+	}
+}
+
+// TestPlanName: a plan's file is named by the model's own name, else by the
+// plan's first heading.
+func TestPlanName(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ name, given, plan, want string }{
+		{"the model named it", "Fix the plan path", "# Plan\nbody", "fix-the-plan-path"},
+		{"no name: the heading", "", "## Plans per project\nbody", "plans-per-project"},
+		{"no name, no heading", "", "1. do it", "plan"},
+		{"a name with nothing to make of it", "!!!", "# Named\nbody", "named"},
+	} {
+		if got := planName(c.given, c.plan); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
 	}
 }
 

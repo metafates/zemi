@@ -131,11 +131,11 @@ func TestQuestionAndPlanTools(t *testing.T) {
 	answer := func(ans []Answer, ok bool) func([]Question) ([]Answer, bool) {
 		return func(qs []Question) ([]Answer, bool) { asked = qs; return ans, ok }
 	}
-	verdict := func(v PlanVerdict, ok bool) func(string) (PlanVerdict, bool) {
-		return func(string) (PlanVerdict, bool) { return v, ok }
+	verdict := func(v PlanVerdict, ok bool) func(string, string) (PlanVerdict, bool) {
+		return func(string, string) (PlanVerdict, bool) { return v, ok }
 	}
-	filed := func(got *string, v PlanVerdict, ok bool) func(string) (PlanVerdict, bool) {
-		return func(plan string) (PlanVerdict, bool) { *got = plan; return v, ok }
+	filed := func(got *string, v PlanVerdict, ok bool) func(string, string) (PlanVerdict, bool) {
+		return func(plan, name string) (PlanVerdict, bool) { *got = plan; return v, ok }
 	}
 	planPath := filepath.Join(t.TempDir(), "brief.md")
 	planBody := "# The brief\n1. do it\n"
@@ -146,7 +146,7 @@ func TestQuestionAndPlanTools(t *testing.T) {
 	for _, c := range []struct {
 		name, tool, input string
 		question          func([]Question) ([]Answer, bool)
-		plan              func(string) (PlanVerdict, bool)
+		plan              func(string, string) (PlanVerdict, bool)
 		want              string
 		isErr, stop       bool
 	}{
@@ -200,6 +200,18 @@ func TestQuestionAndPlanTools(t *testing.T) {
 	if defaulted[0].Type != TypeSingle || defaulted[1].Type != TypeFreeText {
 		t.Fatalf("an omitted type reads from the shape: %+v", defaulted)
 	}
+	// the model's own name for the plan reaches the approval, which names the
+	// file saved from it
+	p, _ = testPipeline(t, false)
+	var gotName string
+	p.ApprovePlan = func(_, name string) (PlanVerdict, bool) {
+		gotName = name
+		return PlanVerdict{Approved: true}, true
+	}
+	call(t, toolNamed(t, "plan", p), `{"plan":"1. do it","name":"the fix"}`)
+	if gotName != "the fix" {
+		t.Fatalf("the plan's name did not reach approval: %q", gotName)
+	}
 }
 
 // TestPlanOutcome: a plan row reads the verdict back out of each result the
@@ -216,7 +228,7 @@ func TestPlanOutcome(t *testing.T) {
 		{"changes over two lines", PlanVerdict{Feedback: "use sqlite\nand go"}, "changes requested: use sqlite\nand go", "", false},
 	} {
 		p, _ := testPipeline(t, false)
-		p.ApprovePlan = func(string) (PlanVerdict, bool) { return c.v, true }
+		p.ApprovePlan = func(string, string) (PlanVerdict, bool) { return c.v, true }
 		resp := call(t, toolNamed(t, "plan", p), `{"plan":"1. do it"}`)
 		if v, path := PlanOutcome(resp.Content); v != c.verdict || path != c.path {
 			t.Errorf("%s: verdict %q, path %q", c.name, v, path)
