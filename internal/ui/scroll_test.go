@@ -50,7 +50,7 @@ func TestChatScrollKeys(t *testing.T) {
 	app.renderSync(t)
 	app.Frame()
 
-	if !app.scrolls["chat"].follow {
+	if !app.scrolls[regionChat].follow {
 		t.Fatalf("expected tail follow")
 	}
 	if !strings.Contains(app.Frame(), "reply 30") {
@@ -58,7 +58,7 @@ func TestChatScrollKeys(t *testing.T) {
 	}
 
 	press(t, app, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
-	if app.scrolls["chat"].follow {
+	if app.scrolls[regionChat].follow {
 		t.Fatalf("ctrl+u should leave tail follow")
 	}
 	if strings.Contains(app.Frame(), "reply 30") {
@@ -66,7 +66,7 @@ func TestChatScrollKeys(t *testing.T) {
 	}
 
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgDown})
-	if !app.scrolls["chat"].follow {
+	if !app.scrolls[regionChat].follow {
 		t.Fatalf("pgdown into the bottom should re-arm follow")
 	}
 	if !strings.Contains(app.Frame(), "reply 30") {
@@ -77,7 +77,7 @@ func TestChatScrollKeys(t *testing.T) {
 	// view and down comes back to it
 	ctrlU, ctrlD := tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}, tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl}
 	press(t, app, ctrlU)
-	st := app.scrolls["chat"]
+	st := app.scrolls[regionChat]
 	if half := max(st.viewH/2, 1); st.follow || st.top != st.rows-st.viewH-half {
 		t.Fatalf("ctrl+u left the view at %d of %d rows, want half a view up", st.top, st.rows)
 	}
@@ -99,7 +99,7 @@ func TestChatScrollKeys(t *testing.T) {
 	}
 
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome, Mod: tea.ModCtrl})
-	if app.scrolls["chat"].follow || app.scrolls["chat"].top != 0 {
+	if app.scrolls[regionChat].follow || app.scrolls[regionChat].top != 0 {
 		t.Fatalf("ctrl+home should pin the first row")
 	}
 	if !strings.Contains(app.Frame(), "message 1") {
@@ -107,7 +107,7 @@ func TestChatScrollKeys(t *testing.T) {
 	}
 
 	press(t, app, tea.KeyPressMsg{Code: 'b', Mod: tea.ModCtrl})
-	if !app.scrolls["chat"].follow {
+	if !app.scrolls[regionChat].follow {
 		t.Fatalf("ctrl+b should re-arm follow")
 	}
 }
@@ -122,13 +122,13 @@ func TestChatScrollWheel(t *testing.T) {
 	app.Frame()
 
 	app.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
-	if app.scrolls["chat"].follow {
+	if app.scrolls[regionChat].follow {
 		t.Fatalf("wheel up should scroll off the tail")
 	}
 	for range 200 {
 		app.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	}
-	if !app.scrolls["chat"].follow {
+	if !app.scrolls[regionChat].follow {
 		t.Fatalf("wheel down should re-arm follow at the bottom")
 	}
 }
@@ -144,7 +144,7 @@ func TestChatScrollStaysAnchored(t *testing.T) {
 	app.Frame()
 
 	press(t, app, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
-	top := app.scrolls["chat"].top
+	top := app.scrolls[regionChat].top
 	before := app.Frame()
 
 	for i := 31; i <= 35; i++ {
@@ -153,12 +153,12 @@ func TestChatScrollStaysAnchored(t *testing.T) {
 	app.renderSync(t)
 	after := app.Frame()
 
-	if app.scrolls["chat"].follow {
+	if app.scrolls[regionChat].follow {
 		t.Fatalf("new lines must not yank a scrolled view")
 	}
 	// the chat window must not move; the statusline may, its scroll
 	// indicator counts what is now below
-	if app.scrolls["chat"].top != top || withoutStatus(after) != withoutStatus(before) {
+	if app.scrolls[regionChat].top != top || withoutStatus(after) != withoutStatus(before) {
 		t.Fatalf("scrolled frame should stay anchored as content grows")
 	}
 	if !strings.Contains(after, "ctrl+b") {
@@ -176,7 +176,7 @@ func TestChatScrollShrinks(t *testing.T) {
 	app.renderSync(t)
 	app.Frame()
 	press(t, app, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
-	st := app.scrolls["chat"]
+	st := app.scrolls[regionChat]
 	st.top, st.rows = 2, st.rows+400 // the last frame drew 400 rows more
 	app.frameGen++
 	app.renderSync(t)
@@ -323,7 +323,7 @@ func TestChatScrollFollows(t *testing.T) {
 			app.renderSync(t)
 			app.Frame()
 			press(t, app, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
-			if app.scrolls["chat"].follow {
+			if app.scrolls[regionChat].follow {
 				t.Fatalf("precondition: scrolled off the tail")
 			}
 			if err := act(app, host); err != nil {
@@ -331,7 +331,7 @@ func TestChatScrollFollows(t *testing.T) {
 			}
 			for app.Pump() {
 			}
-			if !app.scrolls["chat"].follow {
+			if !app.scrolls[regionChat].follow {
 				t.Fatalf("should snap back to the tail")
 			}
 		})
@@ -350,14 +350,14 @@ func TestChatScrollShortContent(t *testing.T) {
 
 	for _, key := range []tea.KeyPressMsg{{Code: 'u', Mod: tea.ModCtrl}, {Code: tea.KeyHome, Mod: tea.ModCtrl}} {
 		press(t, app, key)
-		if !app.scrolls["chat"].follow {
+		if !app.scrolls[regionChat].follow {
 			t.Fatalf("short content cannot scroll: %s", key)
 		}
 	}
 	if !strings.Contains(app.Frame(), "only one") {
 		t.Fatalf("message must stay visible")
 	}
-	st := app.scrolls["chat"]
+	st := app.scrolls[regionChat]
 	pad := strings.TrimSpace(hostapi.SegsText(app.lastRows[st.rect.Min.Y]))
 	row := strings.TrimSpace(hostapi.SegsText(app.lastRows[st.rect.Min.Y+1]))
 	if pad != "" || !strings.Contains(row, "only one") {
@@ -428,7 +428,7 @@ func TestChatFoldLeavesTheTail(t *testing.T) {
 	app.renderSync(t)
 	app.Frame()
 
-	st := app.scrolls["chat"]
+	st := app.scrolls[regionChat]
 	if !st.follow || st.top != 0 || st.rows >= st.viewH {
 		t.Fatalf("precondition: top %d, follow %v, %d rows over %d", st.top, st.follow, st.rows, st.viewH)
 	}
@@ -475,7 +475,7 @@ func TestChatScrollAnchorsThroughFill(t *testing.T) {
 	app.Frame()
 	var chat shownWidget
 	for _, w := range app.shownWidgets() {
-		if w.Region == app.scrolls["chat"].region {
+		if w.Region == app.scrolls[regionChat].region {
 			chat = w
 		}
 	}
@@ -512,7 +512,7 @@ func TestChatStickyPrompt(t *testing.T) {
 	}
 	app.renderSync(t)
 	app.Frame()
-	st := app.scrolls["chat"]
+	st := app.scrolls[regionChat]
 	y := st.rect.Min.Y
 	row := func() string {
 		return strings.TrimRight(hostapi.SegsText(app.lastRows[y][:len(app.lastRows[y])-1]), " ")
@@ -593,7 +593,7 @@ func TestChatFade(t *testing.T) {
 	}
 	app.renderSync(t)
 	app.Frame()
-	st := app.scrolls["chat"]
+	st := app.scrolls[regionChat]
 	// the top six rows and the bottom six, top down
 	fades := func() (top, bottom []float64) {
 		app.Frame()
@@ -609,16 +609,16 @@ func TestChatFade(t *testing.T) {
 	if top, bottom := fades(); !slices.Equal(top, []float64{0, 0.8, 0.6, 0.4, 0.2, 0}) || !none(bottom) {
 		t.Fatalf("at the tail only the top fades, pin aside: %v %v", top, bottom)
 	}
-	app.scrollRows("chat", -30)
+	app.scrollRows(regionChat, -30)
 	if top, bottom := fades(); !slices.Equal(top, []float64{0, 0.8, 0.6, 0.4, 0.2, 0}) || !slices.Equal(bottom, []float64{0, 0, 0.2, 0.4, 0.6, 0.8}) {
 		t.Fatalf("both edges fade, pin aside: %v %v", top, bottom)
 	}
-	app.scrollRows("chat", -st.top)
+	app.scrollRows(regionChat, -st.top)
 	if top, bottom := fades(); !none(top) || slices.Equal(bottom, make([]float64, 6)) {
 		t.Fatalf("at the top only the bottom fades: %v %v", top, bottom)
 	}
 	// one row past the bottom edge: the ramp at a quarter of its depth
-	app.scrollRows("chat", st.rows-st.top-st.viewH-1)
+	app.scrollRows(regionChat, st.rows-st.top-st.viewH-1)
 	if _, bottom := fades(); math.Abs(bottom[5]-0.2) > 1e-9 || math.Abs(bottom[2]-0.05) > 1e-9 {
 		t.Fatalf("the fade does not ease off near the edge: %v", bottom)
 	}
@@ -780,7 +780,7 @@ func TestThinkingFade(t *testing.T) {
 		host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: reasoning, Thinking: true})
 		app.renderSync(t)
 		app.Frame()
-		st := app.scrolls["chat"]
+		st := app.scrolls[regionChat]
 		head := slices.IndexFunc(st.lines, func(r []hostapi.Segment) bool {
 			return strings.HasSuffix(strings.TrimSpace(hostapi.SegsText(r)), "thinking")
 		})
@@ -845,12 +845,12 @@ func TestChatStickyDigest(t *testing.T) {
 	pins := func(at string) []string {
 		app.renderSync(t)
 		app.Frame()
-		st = app.scrolls["chat"]
+		st = app.scrolls[regionChat]
 		i := slices.IndexFunc(st.lines, func(r []hostapi.Segment) bool { return strings.Contains(hostapi.SegsText(r), at) })
 		if i < 0 {
 			t.Fatal("no such row")
 		}
-		app.scrollRows("chat", i-st.top)
+		app.scrollRows(regionChat, i-st.top)
 		app.Frame()
 		var out []string
 		for _, row := range app.lastRows[st.rect.Min.Y:] {
@@ -901,14 +901,14 @@ func TestChatStickyDigest(t *testing.T) {
 func TestScrollPendingEdge(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
-	app.applyScroll(hostapi.ScrollTop, "chat")
+	app.applyScroll(hostapi.ScrollTop, regionChat)
 	rows := func(tag string, n int) (*scrollState, string) {
 		t.Helper()
 		for len(host.Session().Transcript) < n {
 			host.AppendMessage("user", fmt.Sprintf("%s row %d", tag, len(host.Session().Transcript)+1))
 		}
 		app.renderSync(t)
-		return app.scrolls["chat"], ansi.Strip(app.Frame())
+		return app.scrolls[regionChat], ansi.Strip(app.Frame())
 	}
 	if st, frame := rows("a", 40); st.top != 0 || st.follow || !strings.Contains(frame, "a row 1 ") {
 		t.Fatalf("a top before the rows arrived: top %d, follow %v\n%s", st.top, st.follow, frame)
@@ -916,12 +916,12 @@ func TestScrollPendingEdge(t *testing.T) {
 	if st, frame := rows("b", 60); st.top != 0 || !strings.Contains(frame, "a row 1 ") {
 		t.Fatalf("new rows under a parked top: top %d\n%s", st.top, frame)
 	}
-	app.scrollRows("chat", 3)
+	app.scrollRows(regionChat, 3)
 	app.Frame()
 	if st, _ := rows("b", 61); st.top != 3 {
 		t.Fatalf("a scroll leaves the park: top %d", st.top)
 	}
-	app.applyScroll(hostapi.ScrollBottom, "chat")
+	app.applyScroll(hostapi.ScrollBottom, regionChat)
 	if st, frame := rows("c", 70); !st.follow || !strings.Contains(frame, "c row 70") {
 		t.Fatalf("a bottom follows the tail: follow %v\n%s", st.follow, frame)
 	}

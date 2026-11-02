@@ -862,7 +862,6 @@ func (f *fakeUI) CloseOverlay(id string, by lua.Origin, byPath string) {
 func (f *fakeUI) CloseLuaOverlays()                   { f.closedLua++ }
 func (f *fakeUI) Refresh()                            {}
 func (f *fakeUI) Scroll(ScrollAction)                 {}
-func (f *fakeUI) LayoutRects() map[string]Rect        { return nil }
 func (f *fakeUI) KeyHelp() ([][2]string, [][2]string) { return nil, nil }
 func (f *fakeUI) AgentStream()                        {}
 func (f *fakeUI) TurnDone(err string, stopped bool)   { f.turnsDone.Add(1) }

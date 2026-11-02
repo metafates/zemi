@@ -73,7 +73,7 @@ end, { desc = "notify on rebound ctrl+t" })
 	}
 
 	// a plugin's own statusline segment, as the golden pins it
-	addWidget(app, &widget{id: "user.status", region: "statusline.left", priority: 90, render: func(*hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	addWidget(app, &widget{id: "user.status", region: regionStatusLeft, priority: 90, render: func(*hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 		return [][]hostapi.Segment{{{Text: "[rebound]", HL: "Dim"}}}, false
 	}})
 	app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})

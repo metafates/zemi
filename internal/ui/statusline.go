@@ -14,24 +14,24 @@ import (
 // moves nothing.
 func statuslineWidgets() []*widget {
 	return []*widget{
-		{id: "statusline.cwd", region: "statusline.left", priority: 10, render: statusCwd},
-		{id: "statusline.goal", region: "statusline.left", priority: 11, render: statusGoal},
-		{id: "statusline.loop", region: "statusline.left", priority: 12, render: statusLoop},
-		{id: "statusline.agents", region: "statusline.left", priority: 25, render: statusAgents},
-		{id: "statusline.jobs", region: "statusline.left", priority: 26, render: statusJobs},
-		{id: "statusline.keys", region: "statusline.left", priority: 95, render: statusKeys},
+		{id: "statusline.cwd", region: regionStatusLeft, priority: 10, render: statusCwd},
+		{id: "statusline.goal", region: regionStatusLeft, priority: 11, render: statusGoal},
+		{id: "statusline.loop", region: regionStatusLeft, priority: 12, render: statusLoop},
+		{id: "statusline.agents", region: regionStatusLeft, priority: 25, render: statusAgents},
+		{id: "statusline.jobs", region: regionStatusLeft, priority: 26, render: statusJobs},
+		{id: "statusline.keys", region: regionStatusLeft, priority: 95, render: statusKeys},
 		{
-			id: "statusline.scroll", region: "statusline.left", priority: 100, render: statusScroll,
+			id: "statusline.scroll", region: regionStatusLeft, priority: 100, render: statusScroll,
 			// its id is the scroll target, not a command's name
 			onClick: func(*App, map[string]any) bool { return true },
 		},
-		{id: "statusline.quit", region: "statusline.left", priority: 110, render: statusQuit},
+		{id: "statusline.quit", region: regionStatusLeft, priority: 110, render: statusQuit},
 
-		{id: "statusline.model", region: "statusline.right", priority: 8, render: statusModel},
-		{id: "statusline.effort", region: "statusline.right", priority: 9, render: statusEffort},
-		{id: "statusline.context", region: "statusline.right", priority: 40, render: statusContext},
-		{id: "statusline.cost", region: "statusline.right", priority: 42, render: statusCost},
-		{id: "statusline.hints", region: "statusline.right", priority: 130, render: statusHints},
+		{id: "statusline.model", region: regionStatusRight, priority: 8, render: statusModel},
+		{id: "statusline.effort", region: regionStatusRight, priority: 9, render: statusEffort},
+		{id: "statusline.context", region: regionStatusRight, priority: 40, render: statusContext},
+		{id: "statusline.cost", region: regionStatusRight, priority: 42, render: statusCost},
+		{id: "statusline.hints", region: regionStatusRight, priority: 130, render: statusHints},
 	}
 }
 

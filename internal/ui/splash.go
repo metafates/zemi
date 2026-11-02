@@ -28,7 +28,7 @@ func splashTip(now time.Time) int {
 func splashWidget() *widget {
 	return &widget{
 		id:       "splash",
-		region:   "chat",
+		region:   regionChat,
 		priority: 5,
 		onClick:  nil, // the app runs it, since it edits the composer and runs commands
 		render: func(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {

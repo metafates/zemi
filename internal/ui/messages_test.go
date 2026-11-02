@@ -101,7 +101,7 @@ func TestMessagesHomeLoadsPages(t *testing.T) {
 // bandedChatRows is the text of the chat rows the picker's message is banded
 // on, as the last frame drew them.
 func bandedChatRows(app *App) []string {
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	var out []string
 	for y := chat.rect.Min.Y; y < min(chat.rect.Max.Y, len(app.lastRows)); y++ {
 		// the chat's first cell, so a box drawn over the rows is no band here
@@ -190,7 +190,7 @@ func TestMessagesOpenAtGap(t *testing.T) {
 	fillChat(host)
 	app.renderSync(t)
 	app.Frame()
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	open := func() {
 		t.Helper()
 		if err := host.OpenMessages(); err != nil {
@@ -218,7 +218,7 @@ func TestMessagesOpenAtGap(t *testing.T) {
 
 	// a blank row between two messages at the view's top, the message above
 	// it ends before the view starts
-	delete(app.pendingScroll, "chat")
+	delete(app.pendingScroll, regionChat)
 	for top := chat.rows - chat.viewH; top > 0; top-- {
 		chat.top = top
 		if rowAnchor(chat.lines[top]) == 0 && rowAnchor(chat.lines[top+1]) > 0 {
@@ -307,7 +307,7 @@ func TestMessagesRailKeepsThePick(t *testing.T) {
 	}
 	app.renderSync(t)
 	app.Frame()
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	// the chat sits at its tail, the run the last thing it draws folded
 	if !chat.follow {
 		t.Fatalf("the chat is not at its tail: top %d, %d rows", chat.top, chat.rows)
@@ -351,7 +351,7 @@ func TestMessagesOpenOnBlank(t *testing.T) {
 	appendReply(host, strings.Repeat("the reply wraps on and on. ", 40), hostapi.TurnStat{})
 	app.renderSync(t)
 	app.Frame()
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	prompt := -1
 	for i, row := range chat.lines {
 		if strings.HasPrefix(hostapi.SegsText(row), "▌ the prompt") {
@@ -365,7 +365,7 @@ func TestMessagesOpenOnBlank(t *testing.T) {
 		t.Fatalf("the chat does not scroll: %d rows, %d high", chat.rows, chat.viewH)
 	}
 	// the blank is the row the view's middle draws
-	delete(app.pendingScroll, "chat")
+	delete(app.pendingScroll, regionChat)
 	chat.top, chat.focus, chat.follow = max(prompt+1-(chat.viewH-1)/2, 0), 0, false
 	app.Frame()
 	place := app.chatRow()
@@ -409,7 +409,7 @@ func TestMessagesOpenOnRun(t *testing.T) {
 	appendReply(host, long.String(), hostapi.TurnStat{})
 	app.renderSync(t)
 	app.Frame()
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	digest := -1
 	for i, row := range chat.lines {
 		if strings.HasPrefix(hostapi.SegsText(row), "· ") {
@@ -419,7 +419,7 @@ func TestMessagesOpenOnRun(t *testing.T) {
 	if digest < 0 || chat.rows <= chat.viewH {
 		t.Fatalf("no digest row to scroll to, or the chat does not scroll: %d, %d rows", digest, chat.rows)
 	}
-	delete(app.pendingScroll, "chat")
+	delete(app.pendingScroll, regionChat)
 	// the digest is the row the view's middle draws
 	chat.top, chat.focus, chat.follow = max(digest-(chat.viewH-1)/2, 0), 0, false
 	app.Frame()
@@ -458,7 +458,7 @@ func TestMessagesBandKeepsScrollbar(t *testing.T) {
 	app.Frame()
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome})
 	app.Frame()
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	if !chat.overflows() {
 		t.Fatal("the chat should scroll")
 	}
@@ -489,7 +489,7 @@ func TestMessagesTallJump(t *testing.T) {
 	for app.Pump() {
 	}
 	app.Frame()
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	ov := &app.overlays[len(app.overlays)-1]
 	// away and back, so the jump to this prompt is what the second key makes
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome})
@@ -516,7 +516,7 @@ func TestMessagesFollow(t *testing.T) {
 	fillOneTurn(host)
 	app.renderSync(t)
 	app.Frame()
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	if chat == nil || !chat.follow {
 		t.Fatal("the chat should follow its tail")
 	}
@@ -640,7 +640,7 @@ func TestMessagesOpensAtTheReader(t *testing.T) {
 	fillChat(host)
 	app.renderSync(t)
 	app.Frame()
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	open := func() *overlayState {
 		t.Helper()
 		if err := host.OpenMessages(); err != nil {
@@ -708,7 +708,7 @@ func TestMessagesBottomDropsPlace(t *testing.T) {
 	fillOneTurn(host)
 	app.renderSync(t)
 	app.Frame()
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	open := func() *overlayState {
 		t.Helper()
 		if err := host.OpenMessages(); err != nil {
@@ -751,7 +751,7 @@ func TestMessagesWheelKeepsPlace(t *testing.T) {
 	}
 	app.renderSync(t)
 	app.Frame()
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	ov := openMessages(t, app, host)
 	ov.selected = slices.IndexFunc(ov.visible, func(idx int) bool {
 		return strings.Contains(ov.items[idx].label, "reply 10 at")
@@ -860,7 +860,7 @@ func TestMessagesMenu(t *testing.T) {
 		t.Fatalf("esc on the view: %d overlays, %q at %d, want %d: %v", n, id, top().selected, row, ids())
 	}
 	// enter is the place itself: the menu closes
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	chatTop := chat.top
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
 	pump()
@@ -1021,7 +1021,7 @@ func TestMessagesRail(t *testing.T) {
 	if n := len(app.overlays); n != 0 {
 		t.Fatalf("enter on a call left %d overlays", n)
 	}
-	if got := app.scrolls["chat"].focus; got != 3 {
+	if got := app.scrolls[regionChat].focus; got != 3 {
 		t.Fatalf("the chat kept %d as its place, want the call's row 3", got)
 	}
 	// reopening with the reader in the run brings the rail up with the list
@@ -1099,7 +1099,7 @@ func walkToList(t *testing.T, app *App, sub string) {
 // first drawn first, as the last frame composed them.
 func bandedChatText(t *testing.T, app *App) []string {
 	t.Helper()
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	if chat == nil {
 		t.Fatal("no chat scroll")
 	}
@@ -1210,7 +1210,7 @@ func TestRailBandGrowsWithTheLiveRail(t *testing.T) {
 	}
 	walkToList(t, app, "step")
 	app.Frame()
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	drop := func() [][]hostapi.Segment {
 		rows := make([][]hostapi.Segment, 0, chat.rect.Dy())
 		for y := chat.rect.Min.Y; y < min(chat.rect.Max.Y, len(app.lastRows)); y++ {
@@ -1373,7 +1373,7 @@ func TestRailBandCoversOneCall(t *testing.T) {
 	if len(banded) != 2 || !strings.Contains(banded[0], "find Parse") || !strings.Contains(banded[1], "Parse") {
 		t.Fatalf("live call band:\n%s", strings.Join(banded, "\n"))
 	}
-	if chat := app.scrolls["chat"]; chat.viewH > 0 {
+	if chat := app.scrolls[regionChat]; chat.viewH > 0 {
 		from, _ := spanOf(chat.lines, top().selectedAnchor(), true)
 		if from < 0 || from < chat.top || from >= chat.top+chat.viewH {
 			t.Fatalf("the live pick is off screen: row %d of view %d..%d", from, chat.top, chat.top+chat.viewH)
@@ -1404,7 +1404,7 @@ func TestMessagesOpenSelectsTheClosestCall(t *testing.T) {
 	clickAt(app, x, y)
 	app.renderSync(t)
 	app.Frame()
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	mid := -1
 	for i, row := range chat.lines {
 		if strings.Contains(hostapi.SegsText(row), "read f6") {
@@ -1414,7 +1414,7 @@ func TestMessagesOpenSelectsTheClosestCall(t *testing.T) {
 	if mid < 0 || chat.rows <= chat.viewH {
 		t.Fatalf("no mid row to park on: %d, %d rows", mid, chat.rows)
 	}
-	delete(app.pendingScroll, "chat")
+	delete(app.pendingScroll, regionChat)
 	chat.top, chat.focus, chat.follow = max(mid-(chat.viewH-1)/2, 0), 0, false
 	app.Frame()
 	if err := host.OpenMessages(); err != nil {
@@ -1462,7 +1462,7 @@ func TestMessagesThinkingTail(t *testing.T) {
 	if banded := bandedChatText(t, app); len(banded) != 1 || !strings.Contains(banded[0], "read f2") {
 		t.Fatalf("band at the thinking window:\n%s", strings.Join(banded, "\n"))
 	}
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	if from, to := spanOf(chat.lines, top.selectedAnchor(), true); from < 0 || from != to {
 		t.Fatalf("the pick's span %d..%d, want the one row the call draws", from, to)
 	}
@@ -1496,7 +1496,7 @@ func TestRailBandCoversTheLiveOnlyRun(t *testing.T) {
 	}
 	walkToList(t, app, "step")
 	app.Frame()
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	if chat.top == 0 {
 		t.Fatal("the view yanked to the top")
 	}

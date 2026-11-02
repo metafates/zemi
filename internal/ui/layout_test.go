@@ -10,11 +10,11 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
-func cells(n int) hostapi.Size   { return hostapi.Size{Kind: hostapi.SizeCells, N: n} }
-func percent(n int) hostapi.Size { return hostapi.Size{Kind: hostapi.SizePercent, N: n} }
-func fill(n int) hostapi.Size    { return hostapi.Size{Kind: hostapi.SizeFill, N: n} }
+func cells(n int) Size   { return Size{Kind: sizeCells, N: n} }
+func percent(n int) Size { return Size{Kind: sizePercent, N: n} }
+func fill(n int) Size    { return Size{Kind: sizeFill, N: n} }
 
-var contentSize = hostapi.Size{Kind: hostapi.SizeContent}
+var contentSize = Size{Kind: sizeContent}
 
 func TestSpan(t *testing.T) {
 	for _, c := range []struct {
@@ -53,7 +53,7 @@ func FuzzSpan(f *testing.F) {
 			if len(b) < 4 {
 				break
 			}
-			k := spanKid{size: hostapi.Size{Kind: hostapi.SizeKind(b[0] % 4), N: int(b[1])}, want: int(b[1]), floor: int(b[2] % 40)}
+			k := spanKid{size: Size{Kind: SizeKind(b[0] % 4), N: int(b[1])}, want: int(b[1]), floor: int(b[2] % 40)}
 			if b[3] > 0 {
 				k.ceil = k.floor + int(b[3]%60)
 			}
@@ -64,7 +64,7 @@ func FuzzSpan(f *testing.F) {
 		mins, sum, openFill := 0, 0, false
 		for _, k := range kids {
 			mins += k.floor
-			openFill = openFill || k.size.Kind == hostapi.SizeFill && k.ceil == 0
+			openFill = openFill || k.size.Kind == sizeFill && k.ceil == 0
 		}
 		for i, k := range kids {
 			sum += out[i]

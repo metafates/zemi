@@ -632,7 +632,7 @@ func chatWidget(h *hostapi.Host) *widget {
 		md: map[string][][]hostapi.Segment{}, hl: map[string][]hostapi.Segment{},
 	}
 	return &widget{
-		id: "chat", region: "chat", priority: 10, wrap: true,
+		id: "chat", region: regionChat, priority: 10, wrap: true,
 		render:  func(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) { return f.render(h, st) },
 		onClick: f.click,
 	}

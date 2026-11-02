@@ -27,7 +27,7 @@ func TestMessagesResumedTailPicksTheReply(t *testing.T) {
 	appendReply(host, long, hostapi.TurnStat{In: 9000, Out: 300, ElapsedMS: 54_000})
 	app.renderSync(t)
 	app.Frame()
-	chat := app.scrolls["chat"]
+	chat := app.scrolls[regionChat]
 	if !chat.follow {
 		t.Fatalf("the tail view should follow")
 	}

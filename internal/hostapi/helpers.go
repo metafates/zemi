@@ -18,6 +18,30 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
+func luaList(v any) ([]any, bool) {
+	switch l := v.(type) {
+	case nil:
+		return nil, true
+	case []any:
+		return l, true
+	case map[string]any:
+		return nil, len(l) == 0
+	default:
+		return nil, false
+	}
+}
+
+// onlyKeys refuses a field the table's kind does not take, so a typo is an
+// error rather than a node that silently ignores it.
+func onlyKeys(m map[string]any, at string, keys ...string) error {
+	for k := range m {
+		if !slices.Contains(keys, k) {
+			return fmt.Errorf("%s: unknown field %q", at, k)
+		}
+	}
+	return nil
+}
+
 // onlyTableKeys is onlyKeys for a spec that is still on the stack: specs
 // carry callbacks, which ToGo refuses, so the keys are read off the table.
 func onlyTableKeys(L *glua.LState, tb *glua.LTable, api string, keys ...string) {

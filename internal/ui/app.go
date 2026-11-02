@@ -34,7 +34,6 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/sanitize"
-	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/status"
 )
 
@@ -85,12 +84,12 @@ type App struct {
 
 	histLoaded bool // the stored messages already seeded the composer history
 
-	// Scrolled regions by layout node id (DESIGN §8 scrollback); scrollDef
-	// is the one scroll actions without an id and the wheel outside every
+	// Scrolled regions by region (DESIGN §8 scrollback); scrollDef is the
+	// one scroll actions without a region and the wheel outside every
 	// scrolled region move, scrollIDs the ones drawn on the last frame.
-	scrolls   map[string]*scrollState
-	scrollDef string
-	scrollIDs []string
+	scrolls   map[region]*scrollState
+	scrollDef region
+	scrollIDs []region
 	// The chat scrolls per view: chatScroll parks the session's state while
 	// a run's transcript draws in its place.
 	chatView   string
@@ -98,11 +97,11 @@ type App struct {
 	// pendingScroll is an edge a region goes to at its next paint, when the
 	// rows a scroll was issued for may not have arrived yet: "top" stays
 	// parked there until the region is scrolled again, "bottom" applies once.
-	pendingScroll map[string]hostapi.ScrollAction
+	pendingScroll map[region]hostapi.ScrollAction
 	// pendingAnchor is the transcript row a region goes to at its next
 	// paint, for a following list: the rows a jump was issued for may still
 	// be filling in above.
-	pendingAnchor map[string]int
+	pendingAnchor map[region]int
 	// highlight is the transcript row the open messages picker selects, whose
 	// rows the paint bands; 0 when nothing follows. railPick says the row
 	// names one call of a rail (the picker's rail level), so the band and the
@@ -168,9 +167,6 @@ type App struct {
 
 	prefixes map[string]string  // styled segment prefixes, rebuilt each frame
 	fadeKeys map[float64]string // a fade's key text, rebuilt each frame
-	// tree is the screen's layout: zemi draws one fixed tree, and only a
-	// test replaces it
-	tree *hostapi.Layout
 	// widgets are the screen's own pieces, drawn from the frame's state
 	widgets       []*widget
 	caches        map[string]*widgetCache
@@ -186,7 +182,6 @@ type App struct {
 	looping       bool             // what onFrame last saw of the session's /loop
 	unseen        hostapi.TurnEnd  // how the last turn ended while the window was away, "" once seen
 	lastState     hostapi.UIState  // what the widgets last rendered with, the tick aside
-	regions       *set.Set[string] // the regions the last solve drew (ctx.regions)
 	now           func() time.Time // animation clock; tests pin it
 	cancelling    bool             // interrupt sent, turn not finished yet
 	progress      bool             // the view reports a running turn (OSC 9;4)
@@ -228,7 +223,6 @@ type App struct {
 	frameMu   sync.Mutex
 	lastFrame string
 	readRow   int // the transcript row the paint placed the reader at
-	rects     map[string]hostapi.Rect
 	// what lastFrame drew: a generation or size change recomposes, and the
 	// changes that move neither (the draft, a widget's lines, the toasts)
 	// set frameDirty, so a View with nothing behind it returns the frame
@@ -272,13 +266,12 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 	return &App{
 		host:     host,
 		log:      log,
-		tree:     hostapi.DefaultLayout,
 		thm:      themeResolver{host: host, sgr: map[string]uv.Style{}, ramps: map[*hostapi.Theme][32]color.Color{}},
 		caches:   map[string]*widgetCache{},
 		wake:     make(chan struct{}, 1),
 		prefixes: map[string]string{},
 		fadeKeys: map[float64]string{},
-		scrolls:  map[string]*scrollState{},
+		scrolls:  map[region]*scrollState{},
 		lastSel:  map[string]string{},
 		widgets:  shippedWidgets(host),
 		timeStr:  "--:--",
@@ -286,8 +279,8 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 		focused:  true,
 		hooks:    make(chan tea.Msg, hookQueueSize),
 
-		pendingScroll: map[string]hostapi.ScrollAction{},
-		pendingAnchor: map[string]int{},
+		pendingScroll: map[region]hostapi.ScrollAction{},
+		pendingAnchor: map[region]int{},
 	}
 }
 
@@ -865,8 +858,7 @@ func (a *App) uiState() hostapi.UIState {
 		QuitArmed:      a.isArmed("ctrl+c") && a.composer.empty() && !a.host.AgentActive(),
 		InterruptArmed: a.isArmed("esc") && a.armed.what == "interrupt",
 		RowsBelow:      a.rowsBelow(),
-		Cancelling:     a.cancelling, Editing: a.editing, Regions: a.regions,
-		Rail: a.rail,
+		Cancelling:     a.cancelling, Editing: a.editing, Rail: a.rail,
 	}
 	if !a.turnActive && a.now().Sub(a.turnEnd) < doneLinger {
 		st.Ended = a.turnEnded
@@ -981,10 +973,10 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 }
 
 // widgetRegion is the region a widget draws in.
-func (a *App) widgetRegion(id string) (string, bool) {
+func (a *App) widgetRegion(id string) (region, bool) {
 	w := a.widgetByID(id)
 	if w == nil {
-		return "", false
+		return regionNone, false
 	}
 	return w.region, true
 }
@@ -1154,7 +1146,6 @@ func (a *App) compose(w, h int) string {
 	a.scrollIDs, a.scrollDef = a.scrollIDs[:0], lay.scroll
 	a.syncFollow()
 	rows := a.paint(lay.root)
-	a.paintFloats(rows, &lay, w, h)
 
 	pop := a.floatPopup(rows, lay, w)
 	if pills := a.pills(); !lay.bar && len(pills) > 0 {
@@ -1167,7 +1158,7 @@ func (a *App) compose(w, h int) string {
 	// reaches the box drawn on top). What lies under the top box sinks toward
 	// the canvas, so nothing beside it passes for its chrome (DESIGN §8).
 	area := boxArea(stage, w, h)
-	frame := lay.rects["composer"]
+	frame := lay.composer
 	if frame.Empty() {
 		frame = area
 	}
@@ -1246,14 +1237,8 @@ func (a *App) compose(w, h int) string {
 		b.WriteString(a.renderSegs(row, w))
 	}
 	out := b.String()
-	rects := make(map[string]hostapi.Rect, len(lay.rects))
-	for id, r := range lay.rects {
-		if id != "screen" {
-			rects[id] = hostapi.Rect{X: r.Min.X, Y: r.Min.Y, Width: r.Dx(), Height: r.Dy()}
-		}
-	}
 	a.frameMu.Lock()
-	a.lastFrame, a.rects, a.readRow = out, rects, a.chatRow()
+	a.lastFrame, a.readRow = out, a.chatRow()
 	a.frameMu.Unlock()
 	a.drawn, a.frameDirty = renderKey{gen: a.frameGen, width: w, height: h}, false
 	return out
@@ -1314,14 +1299,6 @@ func drawnRow(lines [][]hostapi.Segment, from, stop, step int) int {
 		}
 	}
 	return 0
-}
-
-// layoutRects is where the last composed frame drew each node with an id,
-// plus "stage" and "composer".
-func (a *App) layoutRects() map[string]hostapi.Rect {
-	a.frameMu.Lock()
-	defer a.frameMu.Unlock()
-	return a.rects
 }
 
 // Screenshot implements hostapi.UIHooks: the screen as plain text, one
@@ -1440,7 +1417,7 @@ func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.R
 	default:
 		return uv.Rectangle{}
 	}
-	stage, c := lay.stage, lay.rects["composer"]
+	stage, c := lay.stage, lay.composer
 	x, width, top, bottom := c.Min.X, c.Dx(), stage.Min.Y, min(stage.Max.Y, h)
 	up := true
 	if stage.Max.Y > c.Min.Y {
@@ -1480,22 +1457,22 @@ func (a *App) rowsBelow() int {
 
 // scrolledUp reports whether the region a widget draws in is off its tail.
 func (a *App) scrolledUp(widget string) bool {
-	region, ok := a.widgetRegion(widget)
+	r, ok := a.widgetRegion(widget)
 	for _, st := range a.scrolls {
-		if ok && st.region == region && !st.follow {
+		if ok && st.region == r && !st.follow {
 			return true
 		}
 	}
 	return false
 }
 
-// leaveTail takes the scrolled regions a widget draws in off their tail, so
+// leaveTail takes the scrolled region a widget draws in off its tail, so
 // the rows a click has it redraw (a digest opening over its rail, a thought
 // unrolling) grow under the reader's place instead of scrolling it away.
 func (a *App) leaveTail(widget string) {
-	if region, ok := a.widgetRegion(widget); ok {
+	if r, ok := a.widgetRegion(widget); ok {
 		for _, st := range a.scrolls {
-			if st.region == region {
+			if st.region == r {
 				st.follow, st.focus = false, 0
 			}
 		}
@@ -1503,9 +1480,8 @@ func (a *App) leaveTail(widget string) {
 }
 
 // scrollAt is the scrolled region drawn under (x, y), else the default one. A
-// bar in the separator beside a region is that region's own, one cell out of
-// its rect.
-func (a *App) scrollAt(x, y int) string {
+// bar one cell past a region's rect is that region's own.
+func (a *App) scrollAt(x, y int) region {
 	for _, id := range a.scrollIDs {
 		st := a.scrolls[id]
 		if st == nil {
@@ -1522,7 +1498,7 @@ func (a *App) scrollAt(x, y int) string {
 // scrollRows moves a scrolled region's viewport by n rows (negative =
 // older). Scrolling down re-arms tail follow at the bottom of a "bottom"
 // region; while scrolled up the view stays anchored as new lines arrive.
-func (a *App) scrollRows(id string, n int) {
+func (a *App) scrollRows(id region, n int) {
 	delete(a.pendingScroll, id)
 	st := a.scrolls[id]
 	if st == nil {
@@ -1536,7 +1512,7 @@ func (a *App) scrollRows(id string, n int) {
 		return
 	}
 	st.scroll(n)
-	st.follow = st.bottom && st.top+st.viewH >= st.rows
+	st.follow = st.top+st.viewH >= st.rows
 	if st.follow {
 		st.focus = 0
 	}
@@ -1546,7 +1522,7 @@ func (a *App) scrollRows(id string, n int) {
 // followStage pins the default scrolled region back to its tail (a submit).
 func (a *App) followStage() {
 	delete(a.pendingScroll, a.scrollDef)
-	if st := a.scrolls[a.scrollDef]; st != nil && st.bottom {
+	if st := a.scrolls[a.scrollDef]; st != nil {
 		st.follow, st.focus = true, 0
 	}
 }
@@ -1562,14 +1538,14 @@ func (a *App) syncChatScroll() {
 	}
 	fromSession := a.chatView == ""
 	a.chatView = v
-	chat := ""
+	chat := regionNone
 	for _, id := range a.scrollIDs { // last paint's order, so the pick is stable
-		if st := a.scrolls[id]; st != nil && st.region == "chat" {
+		if st := a.scrolls[id]; st != nil && st.region == regionChat {
 			chat = id
 			break
 		}
 	}
-	if chat == "" {
+	if chat == regionNone {
 		return
 	}
 	// an edge or a jump parked for the outgoing view must not fire into the
@@ -1592,13 +1568,15 @@ func (a *App) syncChatScroll() {
 }
 
 // applyScroll maps the zemi.ui.scroll.* host actions onto a scrolled
-// region, the default one when id is "": up and down move a page with a
+// region, the default one for regionNone: up and down move a page with a
 // one-row overlap, top and bottom go to the ends, line_up and line_down a
 // row. An edge also holds as the region's pending target, so it lands on
 // rows that arrive after it or a region not drawn yet.
-func (a *App) applyScroll(kind hostapi.ScrollAction, id string) {
+func (a *App) applyScroll(kind hostapi.ScrollAction, id region) {
 	a.syncChatScroll()
-	id = cmp.Or(id, a.scrollDef)
+	if id == regionNone {
+		id = a.scrollDef
+	}
 	st := a.scrolls[id]
 	if kind == hostapi.ScrollTop || kind == hostapi.ScrollBottom {
 		defer func() { a.pendingScroll[id] = kind }()
@@ -1645,9 +1623,9 @@ func headerAt(lines [][]hostapi.Segment, i int) bool {
 	return (p == hostapi.PinTurn || p == hostapi.PinSection) && (i == 0 || pinOf(lines[i-1]) != p)
 }
 
-func (a *App) regionLines(region string, width, clip int) [][]hostapi.Segment {
+func (a *App) regionLines(r region, width, clip int) [][]hostapi.Segment {
 	var out [][]hostapi.Segment
-	for _, wgt := range a.regionWidgets(region) {
+	for _, wgt := range a.regionWidgets(r) {
 		c := a.caches[wgt.ID]
 		if c == nil {
 			continue
@@ -1753,8 +1731,8 @@ func (a *App) pills() []statusItem {
 
 // statusRow builds the one-row statusline: the left cluster, then the right
 // one aligned to the right edge (DESIGN §8).
-func (a *App) statusRow(w int, n *hostapi.LayoutNode) []hostapi.Segment {
-	left, right := a.statusClusters(w, n)
+func (a *App) statusRow(w int) []hostapi.Segment {
+	left, right := a.statusClusters(w)
 	out := append([]hostapi.Segment{}, left...)
 	if gap := max(0, w-hostapi.SegsWidth(left)-hostapi.SegsWidth(right)); gap > 0 {
 		out = append(out, hostapi.Segment{Text: strings.Repeat(" ", gap)})
@@ -1770,16 +1748,11 @@ type statusItem struct {
 
 // statusClusters are the statusline's two sides fitted into w cells, each
 // drawn from its outer edge in priority order, so a lasting widget sits
-// outermost and one that comes and goes never moves it: the left region's
-// widgets and the pills left to right, the right region's right to left. The
-// pills join a node that carries the statusline, not every cluster: a bare
-// rule draws bare, and when no node carries it the bottom-left float does.
-func (a *App) statusClusters(w int, n *hostapi.LayoutNode) (left, right []hostapi.Segment) {
-	leftItems := a.statusItems(n.Left)
-	if n.Kind == hostapi.LayoutBar || n.Left != "" || n.Right != "" {
-		leftItems = append(leftItems, a.pills()...)
-	}
-	return fitClusters(leftItems, a.statusItems(n.Right), w)
+// outermost and one that comes and goes never moves it: the left widgets and
+// the pills left to right, the right widgets right to left.
+func (a *App) statusClusters(w int) (left, right []hostapi.Segment) {
+	leftItems := append(a.statusItems(regionStatusLeft), a.pills()...)
+	return fitClusters(leftItems, a.statusItems(regionStatusRight), w)
 }
 
 // fitClusters joins the clusters, dropping the highest priority widget (the
@@ -1820,10 +1793,10 @@ func joinItems(items []statusItem, reverse bool) []hostapi.Segment {
 
 var statusDot = hostapi.Segment{Text: " · ", HL: hostapi.GroupDim, NoCopy: true}
 
-// statusItems are the widgets of region that draw, by priority.
-func (a *App) statusItems(region string) []statusItem {
+// statusItems are the widgets of r that draw, by priority.
+func (a *App) statusItems(r region) []statusItem {
 	var out []statusItem
-	for _, wgt := range a.regionWidgets(region) {
+	for _, wgt := range a.regionWidgets(r) {
 		if lines := a.widgetLines(wgt.ID); len(lines) > 0 && hostapi.SegsWidth(lines[0]) > 0 {
 			out = append(out, statusItem{lines[0], wgt.Priority})
 		}

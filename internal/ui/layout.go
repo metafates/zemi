@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"maps"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -10,12 +9,102 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/set"
 )
+
+// region is a leaf of the screen: the widgets drawn in it. A region no
+// widget fills draws nothing.
+type region uint8
+
+const (
+	regionNone region = iota
+	regionChat
+	regionWorking
+	regionStatusLeft
+	regionStatusRight
+)
+
+// SizeKind is how a node claims cells along its parent box's axis.
+type SizeKind uint8
+
+const (
+	sizeContent SizeKind = iota // what the node draws: region rows, composer rows, 1 for a bar
+	sizeCells
+	sizePercent // of the parent's cells
+	sizeFill    // a share of what is left, by weight
+)
+
+// Size is a node's claim: N is the cells, the percent or the fill weight
+// (0 reads as 1).
+type Size struct {
+	Kind SizeKind
+	N    int
+}
+
+// layoutKind is what a node is: a box of children or a leaf.
+type layoutKind uint8
+
+const (
+	layoutBox layoutKind = iota
+	layoutRegion
+	layoutBar
+	layoutComposer
+	layoutSpacer
+)
+
+// layoutDir is how a box lays its children out: dirRow side by side, dirCol
+// stacked.
+type layoutDir uint8
+
+const (
+	dirRow layoutDir = iota
+	dirCol
+)
+
+// node is one node of the screen's layout: a box lays its children out along
+// Dir, a leaf names what fills its cells.
+type node struct {
+	Kind     layoutKind
+	Dir      layoutDir // box
+	Children []*node
+
+	Region region // region: the widgets drawn in it
+	Scroll bool   // region: scrolls, following its tail
+	Fade   int    // region: the rows at an edge content lies past that fade toward the canvas
+
+	Left, Right region // bar: the regions of its two clusters
+
+	Frame       bool   // composer: a square frame around it, two rows taller
+	Top         region // framed composer: the region drawn in its top rule
+	Placeholder string // composer: drawn dim while the draft is empty
+
+	Stage    bool // prompts, overlays and toasts go over this node
+	Size     Size
+	Min, Max int // Max 0 means none
+}
+
+// screen is the one layout zemi draws: the main column centered; in it the
+// stage centered inside it, and the framed composer wider than the stage, the
+// statusline on a bar row under it.
+var screen = node{Kind: layoutBox, Dir: dirRow, Size: Size{Kind: sizeFill}, Children: []*node{
+	{Kind: layoutSpacer, Size: Size{Kind: sizeFill}},
+	{Kind: layoutBox, Dir: dirCol, Size: Size{Kind: sizeFill, N: 1000}, Min: 30, Max: 124, Children: []*node{
+		{Kind: layoutBox, Dir: dirRow, Size: Size{Kind: sizeFill}, Children: []*node{
+			{Kind: layoutSpacer, Size: Size{Kind: sizeFill}},
+			{Kind: layoutBox, Dir: dirCol, Stage: true, Size: Size{Kind: sizeFill, N: 1000}, Min: 63, Max: 100, Children: []*node{
+				{Kind: layoutRegion, Region: regionChat, Scroll: true, Fade: 4, Size: Size{Kind: sizeFill}, Min: 3},
+				{Kind: layoutSpacer, Size: Size{Kind: sizeCells, N: 1}},
+			}},
+			{Kind: layoutSpacer, Size: Size{Kind: sizeFill}},
+		}},
+		{Kind: layoutComposer, Placeholder: "Ask anything…", Frame: true, Top: regionWorking},
+		{Kind: layoutBar, Left: regionStatusLeft, Right: regionStatusRight},
+	}},
+	{Kind: layoutSpacer, Size: Size{Kind: sizeFill}},
+}}
 
 // spanKid is one child of a box as the solver sees it.
 type spanKid struct {
-	size        hostapi.Size
+	size        Size
 	want        int // a content node's measured cells
 	floor, ceil int // ceil 0 means none
 }
@@ -40,13 +129,13 @@ func span(avail int, kids []spanKid) []int {
 	used := 0
 	for i, k := range kids {
 		switch k.size.Kind {
-		case hostapi.SizeCells:
+		case sizeCells:
 			out[i] = k.size.N
-		case hostapi.SizePercent:
+		case sizePercent:
 			out[i] = (k.size.N*avail + 50) / 100
-		case hostapi.SizeContent:
+		case sizeContent:
 			out[i] = k.want
-		case hostapi.SizeFill: // takes what is left, below
+		case sizeFill: // takes what is left, below
 		}
 		out[i] = k.clamp(max(out[i], 0))
 		used += out[i]
@@ -57,7 +146,7 @@ func span(avail int, kids []spanKid) []int {
 	for ; used < avail; used++ {
 		best := -1
 		for i, k := range kids {
-			if k.size.Kind != hostapi.SizeFill || k.ceil > 0 && out[i] >= k.ceil {
+			if k.size.Kind != sizeFill || k.ceil > 0 && out[i] >= k.ceil {
 				continue
 			}
 			if best < 0 || (given[i]+1)*weight(kids[best]) < (given[best]+1)*weight(k) {
@@ -72,11 +161,11 @@ func span(avail int, kids []spanKid) []int {
 	}
 	rank := func(k spanKid) int {
 		switch k.size.Kind {
-		case hostapi.SizeFill:
+		case sizeFill:
 			return 3
-		case hostapi.SizePercent:
+		case sizePercent:
 			return 2
-		case hostapi.SizeContent:
+		case sizeContent:
 			return 1
 		default:
 			return 0
@@ -105,45 +194,32 @@ func weight(k spanKid) int { return max(k.size.N, 1) }
 
 // laid is a layout node solved into its cells for one frame.
 type laid struct {
-	node *hostapi.LayoutNode
+	node *node
 	rect uv.Rectangle
 	// rows is the height its widgets render at: the rect's, or for a
 	// content node the most it could get, since a height taken from its
 	// own last draw could never shrink.
 	rows int
-	sep  bool // a separator column left of it
 	kids []laid
 }
 
 // screenLayout is the layout solved for one frame.
 type screenLayout struct {
-	root  laid
-	stage uv.Rectangle
-	// rects holds every node with an id, "stage", "screen" and "composer"
-	rects map[string]uv.Rectangle
-	// scroll is the scrolled region actions without an id move: the first
-	// inside the stage, else the first in the tree
-	scroll string
+	root     laid
+	stage    uv.Rectangle
+	composer uv.Rectangle
+	// scroll is the region actions without one move: the first scrolled
+	// region inside the stage, else the first in the tree
+	scroll region
 	bar    bool
-	floats []placedFloat
-	// panes are the cells a selection may not leave: the leaves, then the
-	// floats, then the composer again, since paintFloats keeps it on top
+	// panes are the cells a selection may not leave: the tree's leaves
 	panes []uv.Rectangle
 }
 
-// placedFloat is a Lua float's region with the cells it renders at and
-// where it goes, before its content is measured.
-type placedFloat struct {
-	f             hostapi.LayoutFloat
-	rel           uv.Rectangle
-	width, height int // render size
-}
-
-// layout solves the layout in force for a w by h frame.
+// layout solves the screen for a w by h frame.
 func (a *App) layout(w, h int) screenLayout {
-	spec := a.tree
-	screen := uv.Rect(0, 0, w, h)
-	s := screenLayout{root: a.solve(spec.Root, screen), stage: screen, rects: map[string]uv.Rectangle{"screen": screen}}
+	box := uv.Rect(0, 0, w, h)
+	s := screenLayout{root: a.solve(&screen, box), stage: box}
 	staged := false // the scroll node chosen is inside the stage
 	var walk func(l laid, inStage bool)
 	walk = func(l laid, inStage bool) {
@@ -151,22 +227,18 @@ func (a *App) layout(w, h int) screenLayout {
 		if n.Stage {
 			s.stage, inStage = l.rect, true
 		}
-		if n.ID != "" {
-			s.rects[n.ID] = l.rect
-		}
 		switch n.Kind {
-		case hostapi.LayoutComposer:
-			s.rects["composer"] = l.rect
-			s.bar = s.bar || n.Left != "" || n.Right != ""
-		case hostapi.LayoutBar:
+		case layoutComposer:
+			s.composer = l.rect
+		case layoutBar:
 			s.bar = true
-		case hostapi.LayoutRegion:
-			if n.Scroll != "" && (s.scroll == "" || inStage && !staged) {
-				s.scroll, staged = n.ID, inStage
+		case layoutRegion:
+			if n.Scroll && (s.scroll == regionNone || inStage && !staged) {
+				s.scroll, staged = n.Region, inStage
 			}
-		case hostapi.LayoutBox, hostapi.LayoutSpacer:
+		case layoutBox, layoutSpacer:
 		}
-		if len(l.kids) == 0 && n.Kind != hostapi.LayoutSpacer {
+		if len(l.kids) == 0 && n.Kind != layoutSpacer {
 			s.panes = append(s.panes, l.rect)
 		}
 		for _, k := range l.kids {
@@ -174,99 +246,49 @@ func (a *App) layout(w, h int) screenLayout {
 		}
 	}
 	walk(s.root, false)
-	s.rects["stage"] = s.stage
-	for _, f := range spec.Floats {
-		rel, ok := s.rects[f.Relative]
-		if f.Hidden || !ok {
-			continue
-		}
-		pf := placedFloat{f: f, rel: rel}
-		pf.width = floatAxis(f.Width, rel.Dx())
-		pf.height = floatAxis(f.Height, rel.Dy())
-		s.floats = append(s.floats, pf)
-	}
 	return s
 }
 
-// floatAxis is a float's render cells along one axis of its relative node:
-// cells, a percent of it, or all of it for content (the content then
-// takes what it draws).
-func floatAxis(sz hostapi.Size, rel int) int {
-	switch sz.Kind {
-	case hostapi.SizeCells:
-		return sz.N
-	case hostapi.SizePercent:
-		return (sz.N*rel + 50) / 100
-	default:
-		return rel
-	}
-}
-
-// solve places n's children inside r. While the children's mins do not
-// fit, the last collapsing child is hidden for the frame.
-func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
+// solve places n's children inside r.
+func (a *App) solve(n *node, r uv.Rectangle) laid {
 	l := laid{node: n, rect: r, rows: r.Dy()}
-	if n.Kind != hostapi.LayoutBox {
+	if n.Kind != layoutBox {
 		return l
 	}
-	row := n.Dir == hostapi.DirRow
+	row := n.Dir == dirRow
 	length, cross := r.Dy(), r.Dx()
 	if row {
 		length, cross = cross, length
 	}
-	var items []*hostapi.LayoutNode
+	items := make([]*node, 0, len(n.Children))
 	for _, c := range n.Children {
 		// a failed boot draws a screen of its own, with no composer to type in
-		if !c.Hidden && !(a.bootErr != nil && c.Kind == hostapi.LayoutComposer) {
+		if a.bootErr == nil || c.Kind != layoutComposer {
 			items = append(items, c)
 		}
 	}
-	var sizes []int
-	var kids []spanKid
-	var avail int
-	for {
-		avail = length
-		if n.Sep {
-			avail -= max(len(items)-1, 0)
+	avail := max(length, 0)
+	kids := make([]spanKid, len(items))
+	for i, c := range items {
+		kids[i] = spanKid{size: c.Size, floor: c.Min, ceil: c.Max}
+		if c.Size.Kind == sizeContent && !row {
+			kids[i].want = a.measure(c, cross)
 		}
-		avail = max(avail, 0)
-		kids = make([]spanKid, len(items))
-		for i, c := range items {
-			kids[i] = spanKid{size: c.Size, floor: c.Min, ceil: c.Max}
-			if c.Size.Kind == hostapi.SizeContent && !row {
-				kids[i].want = a.measure(c, cross)
-			}
-		}
-		mins, gone := 0, -1
-		for i, c := range items {
-			mins += kids[i].floor
-			if c.Collapse {
-				gone = i
-			}
-		}
-		if mins <= avail || gone < 0 {
-			sizes = span(avail, kids)
-			break
-		}
-		items = slices.Delete(items, gone, gone+1)
 	}
+	sizes := span(avail, kids)
 	pos := r.Min.Y
 	if row {
 		pos = r.Min.X
 	}
 	for i, size := range sizes {
-		if i > 0 && n.Sep {
-			pos++
-		}
 		kr := uv.Rect(r.Min.X, pos, cross, size)
 		if row {
 			kr = uv.Rect(pos, r.Min.Y, size, cross)
 		}
 		k := a.solve(items[i], kr)
-		if c := items[i]; c.Size.Kind == hostapi.SizeContent && !row {
+		if c := items[i]; c.Size.Kind == sizeContent && !row {
 			k.rows = kids[i].clamp(avail)
 		}
-		k.sep = row && n.Sep && i > 0
 		l.kids = append(l.kids, k)
 		pos += size
 	}
@@ -274,26 +296,26 @@ func (a *App) solve(n *hostapi.LayoutNode, r uv.Rectangle) laid {
 }
 
 // measure is the rows a content-sized node draws at width.
-func (a *App) measure(n *hostapi.LayoutNode, width int) int {
+func (a *App) measure(n *node, width int) int {
 	switch n.Kind {
-	case hostapi.LayoutRegion:
+	case layoutRegion:
 		return len(a.regionLines(n.Region, regionWidth(n, width), 0))
-	case hostapi.LayoutComposer:
+	case layoutComposer:
 		if n.Frame {
 			return len(a.composerRows(frameInner(width), n.Placeholder)) + 2
 		}
 		return len(a.composerRows(width, n.Placeholder))
-	case hostapi.LayoutBar:
+	case layoutBar:
 		return 1
-	case hostapi.LayoutBox, hostapi.LayoutSpacer:
+	case layoutBox, layoutSpacer:
 	}
 	return 0
 }
 
 // regionWidth is the cells a region's widgets render at: a scrolled one
 // keeps its bar's column and a blank before it.
-func regionWidth(n *hostapi.LayoutNode, w int) int {
-	if n.Scroll != "" {
+func regionWidth(n *node, w int) int {
+	if n.Scroll {
 		return barText(w)
 	}
 	return w
@@ -302,26 +324,22 @@ func regionWidth(n *hostapi.LayoutNode, w int) int {
 // shownWidget is a widget of a region the layout draws, with the cells it
 // renders at.
 type shownWidget struct {
-	ID, Region    string
+	ID            string
+	Region        region
 	Wrap          bool
 	Go            *widget
 	width, height int
 }
 
 // shownWidgets lists the widgets of every region the layout draws; widgets
-// of other regions cost no render. It keeps those regions for ctx.regions:
-// a set that moved changes the UI state, so every widget renders again.
+// of other regions cost no render.
 func (a *App) shownWidgets() []shownWidget {
 	if a.width <= 0 || a.height <= 0 {
 		return nil
 	}
 	s := a.layout(a.width, a.height)
 	var out []shownWidget
-	regions := set.Set[string]{}
-	add := func(region string, w, h int) {
-		if region != "" {
-			regions.Add(region)
-		}
+	add := func(region region, w, h int) {
 		for _, wg := range a.regionWidgets(region) {
 			out = append(out, shownWidget{ID: wg.ID, Region: wg.Region, Wrap: wg.Wrap, Go: wg.Go, width: w, height: h})
 		}
@@ -329,38 +347,23 @@ func (a *App) shownWidgets() []shownWidget {
 	var walk func(l laid)
 	walk = func(l laid) {
 		switch l.node.Kind {
-		case hostapi.LayoutRegion:
+		case layoutRegion:
 			add(l.node.Region, regionWidth(l.node, l.rect.Dx()), l.rows)
-		case hostapi.LayoutBar:
+		case layoutBar:
 			add(l.node.Left, l.rect.Dx(), 1)
 			add(l.node.Right, l.rect.Dx(), 1)
-		case hostapi.LayoutComposer:
+		case layoutComposer:
 			if l.node.Frame {
 				add(l.node.Top, max(l.rect.Dx()-2, 1), 1) // the whole rule between the corners
-				add(l.node.Left, frameInner(l.rect.Dx()), 1)
-				add(l.node.Right, frameInner(l.rect.Dx()), 1)
 			}
-		case hostapi.LayoutBox, hostapi.LayoutSpacer:
+		case layoutBox, layoutSpacer:
 		}
 		for _, k := range l.kids {
 			walk(k)
 		}
 	}
 	walk(s.root)
-	for _, f := range s.floats {
-		add(f.f.Region, f.width, f.height)
-	}
-	if a.regions == nil || !maps.Equal(regions, *a.regions) {
-		a.regions = &regions
-		a.wakeTick()
-	}
 	return out
-}
-
-// lastBar is whether a painted row ends in a scrollbar cell: that cell is the
-// pane's border, which a separator column behind it must not double.
-func lastBar(row []hostapi.Segment) bool {
-	return len(row) > 0 && row[len(row)-1].Bar
 }
 
 // paint draws a solved node: exactly one row per cell of height, a row box
@@ -369,35 +372,14 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 	n, w, h := l.node, l.rect.Dx(), l.rect.Dy()
 	var rows [][]hostapi.Segment
 	switch {
-	case n.Kind == hostapi.LayoutBox && n.Dir == hostapi.DirRow:
+	case n.Kind == layoutBox && n.Dir == dirRow:
 		joined := make([][]hostapi.Segment, h)
 		x := 0
 		for _, k := range l.kids {
-			if k.sep {
-				// a viewport draws its scrollbar in its own last cell: that cell is
-				// this column, and the blank before the bar is what it leaves behind
-				for j := range joined {
-					row := joined[j]
-					cell := hostapi.Segment{Text: "│", HL: hostapi.GroupRule, NoCopy: true, Line: true}
-					if n := len(row); lastBar(row) && n > 1 {
-						cell = row[n-1]
-						row = append(row[:n-1:n-1], hostapi.Segment{Text: " ", HL: row[n-2].HL, Fill: row[n-2].Fill})
-					}
-					// one make per row: the row must not share a backing
-					// array with a kid's or a cache's row, which in-place
-					// edits below would corrupt
-					p, ok := padSeg(row, x)
-					out := make([]hostapi.Segment, 0, len(row)+2)
-					out = append(out, row...)
-					if ok {
-						out = append(out, p)
-					}
-					joined[j] = append(out, cell)
-				}
-				x++
-			}
 			for j, kr := range a.paint(k) {
-				// one make per row per kid, for the same reason
+				// one make per row per kid: the row must not share a backing
+				// array with a kid's or a cache's row, which in-place edits
+				// below would corrupt
 				p, ok := padSeg(joined[j], x)
 				out := make([]hostapi.Segment, 0, len(joined[j])+len(kr)+1)
 				out = append(out, joined[j]...)
@@ -409,25 +391,22 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 			x += k.rect.Dx()
 		}
 		rows = joined
-	case n.Kind == hostapi.LayoutBox:
-		for i, k := range l.kids {
-			if i > 0 && n.Sep {
-				rows = append(rows, []hostapi.Segment{{Text: strings.Repeat("─", w), HL: hostapi.GroupRule, NoCopy: true, Line: true}})
-			}
+	case n.Kind == layoutBox:
+		for _, k := range l.kids {
 			rows = append(rows, a.paint(k)...)
 		}
-	case n.Kind == hostapi.LayoutRegion && n.Scroll != "":
+	case n.Kind == layoutRegion && n.Scroll:
 		rows = a.paintScrolled(n, l.rect)
-	case n.Kind == hostapi.LayoutRegion:
+	case n.Kind == layoutRegion:
 		rows = a.regionLines(n.Region, w, 0)
 		for i, row := range rows {
 			if hostapi.SegsWidth(row) == 0 {
 				rows[i] = padSegs(row, w) // a blank line is a blank row
 			}
 		}
-	case n.Kind == hostapi.LayoutComposer && n.Frame:
+	case n.Kind == layoutComposer && n.Frame:
 		rows = a.composerFrame(n, w)
-	case n.Kind == hostapi.LayoutComposer:
+	case n.Kind == layoutComposer:
 		// the composer is on the panel, its rows padded to the node so the
 		// whole block is one surface, as the frame's own rows are
 		rows = a.composerRows(w, n.Placeholder)
@@ -435,9 +414,9 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 			rows[i] = padSegs(rows[i], w)
 		}
 		onPanel(rows)
-	case n.Kind == hostapi.LayoutBar:
+	case n.Kind == layoutBar:
 		// two cells of air either side, in from the edges the frame above spans
-		row := append([]hostapi.Segment{{Text: "  "}}, a.statusRow(max(w-4, 1), n)...)
+		row := append([]hostapi.Segment{{Text: "  "}}, a.statusRow(max(w-4, 1))...)
 		rows = [][]hostapi.Segment{padSegs(row, w)}
 	}
 	for len(rows) < h {
@@ -446,9 +425,9 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 	return rows[:h]
 }
 
-// viewport is the one scroll model (chat, Lua scroll nodes, box text,
-// lists): rows of content, viewH of them shown from top. Content shorter
-// than the view starts at its first row; follow pins it to the tail.
+// viewport is the one scroll model (the chat, box text, lists): rows of
+// content, viewH of them shown from top. Content shorter than the view
+// starts at its first row; follow pins it to the tail.
 type viewport struct {
 	top, rows, viewH int
 	follow           bool
@@ -604,12 +583,11 @@ func scrollKey(v *viewport, key string, textOnly bool) bool {
 // content in view instead of the same row number.
 type scrollState struct {
 	viewport
-	bottom    bool
 	anchor    []string
 	anchorOff int
 	filling   bool         // the rows drawn are a fill's latest, older ones still to land above
 	rect      uv.Rectangle // where it was drawn on the last frame
-	region    string
+	region    region
 	// the last paint's rows, shared with the widget cache, which replaces
 	// rows whole and never writes them in place
 	lines  [][]hostapi.Segment
@@ -645,34 +623,34 @@ const anchorRows = 3
 // paintScrolled draws a scrolled region into r. Its widgets render at
 // barText of its width whether or not the bar shows, so the bar
 // appearing never rewraps them.
-func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.Segment {
+func (a *App) paintScrolled(n *node, r uv.Rectangle) [][]hostapi.Segment {
 	w, h := r.Dx(), r.Dy()
 	st := a.scrollOf(n)
 	lines := a.regionLines(n.Region, regionWidth(n, w), h)
 	prevRows := st.rows
 	st.rows, st.viewH, st.rect, st.region = len(lines), h, r, n.Region
-	a.scrollIDs = append(a.scrollIDs, n.ID)
+	a.scrollIDs = append(a.scrollIDs, n.Region)
 	if !st.follow && prevRows > 0 && st.rows != prevRows {
 		st.top = reanchor(lines, st, prevRows)
 	}
-	switch a.pendingScroll[n.ID] {
+	switch a.pendingScroll[n.Region] {
 	case hostapi.ScrollTop:
 		st.top, st.follow = 0, false
 	case hostapi.ScrollBottom:
-		st.top, st.follow = st.rows, st.bottom
-		delete(a.pendingScroll, n.ID)
+		st.top, st.follow = st.rows, true
+		delete(a.pendingScroll, n.Region)
 	default: // applyScroll holds only the edges
 	}
 	// a following list's jump outranks a parked edge, and leaves none behind
 	jumped := 0
-	if at, ok := a.pendingAnchor[n.ID]; ok {
+	if at, ok := a.pendingAnchor[n.Region]; ok {
 		if unit := unitAt(lines, at); unit != 0 {
 			from, to := spanOf(lines, at, a.railPick)
 			st.top = jumpTop(lines, from, to, st.viewH)
-			st.follow = st.bottom && st.top >= st.rows-st.viewH
+			st.follow = st.top >= st.rows-st.viewH
 			st.focus, jumped = at, at
-			delete(a.pendingAnchor, n.ID)
-			delete(a.pendingScroll, n.ID)
+			delete(a.pendingAnchor, n.Region)
+			delete(a.pendingScroll, n.Region)
 		}
 	}
 	st.filling = false
@@ -702,7 +680,7 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 	st.pinRows(lines, w)
 	// the picker's message is banded under the pins, which stay chrome
 	draw := lines
-	if n.ID == a.scrollDef && a.highlight != 0 {
+	if n.Region == a.scrollDef && a.highlight != 0 {
 		same := len(st.bandSrc) == len(lines) && (len(lines) == 0 || &st.bandSrc[0] == &lines[0])
 		if !same || st.bandAt != a.highlight || st.bandW != w-1 {
 			from, to := spanOf(lines, a.highlight, a.railPick)
@@ -1115,89 +1093,14 @@ func anchoredAt(lines [][]hostapi.Segment, i int, want []string) bool {
 	return true
 }
 
-// scrollOf is a scrolled region's state, a "bottom" one following its tail
-// from the start.
-func (a *App) scrollOf(n *hostapi.LayoutNode) *scrollState {
-	st := a.scrolls[n.ID]
-	if st == nil || st.bottom != (n.Scroll == hostapi.EdgeBottom) {
-		st = &scrollState{follow: n.Scroll == hostapi.EdgeBottom, bottom: n.Scroll == hostapi.EdgeBottom}
-		a.scrolls[n.ID] = st
+// scrollOf is the scrolled state of n's region.
+func (a *App) scrollOf(n *node) *scrollState {
+	st := a.scrolls[n.Region]
+	if st == nil {
+		st = &scrollState{follow: true}
+		a.scrolls[n.Region] = st
 	}
 	return st
-}
-
-// paintFloats draws the Lua floats over rows in list order, each opaque at
-// its content's size or the size it asked for, and records the ones with
-// an id. The composer and the statusline's alarm pills stay on top: they
-// are how a broken layout gets fixed.
-func (a *App) paintFloats(rows [][]hostapi.Segment, s *screenLayout, w, h int) {
-	if len(s.floats) == 0 {
-		return
-	}
-	type kept struct {
-		x, y int
-		segs []hostapi.Segment
-	}
-	var keep []kept
-	if c, ok := s.rects["composer"]; ok {
-		for y := c.Min.Y; y < c.Max.Y && y < len(rows); y++ {
-			keep = append(keep, kept{c.Min.X, y, truncateSegs(dropCells(rows[y], c.Min.X), c.Dx())})
-		}
-	}
-	for y, row := range rows {
-		x := 0
-		for _, sg := range row {
-			if sg.Widget == "" && sg.Click != "" { // a Go pill
-				keep = append(keep, kept{x, y, []hostapi.Segment{sg}})
-			}
-			x += ansi.StringWidth(sg.Text)
-		}
-	}
-	for _, pf := range s.floats {
-		f := pf.f
-		lines := a.regionLines(f.Region, pf.width, 0)
-		fw, fh := pf.width, pf.height
-		if f.Width.Kind == hostapi.SizeContent {
-			fw = 0
-			for _, l := range lines {
-				fw = max(fw, hostapi.SegsWidth(l))
-			}
-			fw = min(fw, pf.width)
-		}
-		if f.Height.Kind == hostapi.SizeContent {
-			fh = min(len(lines), pf.height)
-		}
-		if fw <= 0 || fh <= 0 {
-			continue
-		}
-		x, y := pf.rel.Min.X+f.Col, pf.rel.Min.Y+f.Row
-		if f.Anchor == hostapi.AnchorNE || f.Anchor == hostapi.AnchorSE {
-			x = pf.rel.Max.X - fw + f.Col
-		}
-		if f.Anchor == hostapi.AnchorSW || f.Anchor == hostapi.AnchorSE {
-			y = pf.rel.Max.Y - fh + f.Row
-		}
-		x, y = max(0, min(x, w-fw)), max(0, min(y, h-fh))
-		box := make([][]hostapi.Segment, fh)
-		for i := range box {
-			var line []hostapi.Segment
-			if i < len(lines) {
-				line = truncateSegs(lines[i], fw)
-			}
-			box[i] = padSegs(line, fw)
-		}
-		placeBox(rows, box, x, y, w)
-		s.panes = append(s.panes, uv.Rect(x, y, fw, fh))
-		if f.ID != "" {
-			s.rects[f.ID] = uv.Rect(x, y, fw, fh)
-		}
-	}
-	if c, ok := s.rects["composer"]; ok {
-		s.panes = append(s.panes, c)
-	}
-	for _, k := range keep {
-		placeBox(rows, [][]hostapi.Segment{k.segs}, k.x, k.y, w)
-	}
 }
 
 // The arms of a light box glyph: the sides of its cell its lines run to.

@@ -28,7 +28,6 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
-	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -1797,9 +1796,6 @@ type UIState struct {
 	Editing        string  // title of the file open in the editor
 	Waiting        Waiting // while a prompt holds the turn
 	Rail           int     // the activity run the chat draws whole, negative when it holds no settled rows, 0 for none
-	// Regions are the regions the layout draws this frame, replaced whole
-	// when the set moves, so comparing two states sees it
-	Regions *set.Set[string]
 }
 
 // instructionsCached is ctx.instructions: the project's instruction files,

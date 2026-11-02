@@ -6,7 +6,6 @@ import (
 
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
-	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -27,7 +26,6 @@ type ScreenState struct {
 	Cancelling     bool
 	Editing        string
 	Waiting        Waiting
-	Regions        *set.Set[string]
 	Rail           int
 
 	// where zemi is
@@ -213,7 +211,7 @@ func (h *Host) ScreenState(width, height int, state UIState) *ScreenState {
 		Width: width, Height: height, Time: state.Time, Now: h.now(), Frame: state.Frame,
 		Ended: state.Ended, QuitArmed: state.QuitArmed, InterruptArmed: state.InterruptArmed,
 		KeySeq: state.KeySeq, RowsBelow: state.RowsBelow, Cancelling: state.Cancelling,
-		Editing: state.Editing, Waiting: state.Waiting, Regions: state.Regions, Rail: state.Rail,
+		Editing: state.Editing, Waiting: state.Waiting, Rail: state.Rail,
 
 		Version: h.Version, CWD: perm.TildePath(sess.CWD),
 		Trusted: h.ProjectTrusted(), InitError: h.InitError(), ModelHint: h.NoModelHint(),

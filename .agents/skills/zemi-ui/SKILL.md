@@ -5,38 +5,39 @@ description: "Load before changing the TUI or anything the user sees: internal/u
 
 # The TUI
 
-## Screen layout (internal/hostapi/layout.go, internal/ui/layout.go)
+## Screen layout (internal/ui/layout.go)
 
-`zemi.ui.layout.set` hands Go a layout table; `parseLayout` validates it into immutable
-`hostapi.Layout` data (no closures) behind an atomic pointer `compose` reads every frame, so
-drawing never waits on Lua. The shipped `tui/layout.lua` sets the default and any origin's
-later `set` replaces it: the last one wins. A reload keeps the old layout drawn (the spec is
-plain data, safe across generations); `ForceReload` drops one the replay did not set again and
-`DefaultLayout`, the Go copy of the shipped tree, draws. `span` sizes one box per frame from
-cells, percent, content and weighted fill, takes cells back from fill first when they do not
-fit, and never fails (`FuzzSpan`). The stage node is where prompts, overlays and toasts
-go, the toasts drawn last (`App.compose`, after the final join and fade) so nothing a box
-places can cover or dim one. A content-sized node's height is the most rows it could get, never
-its last draw, so a widget that pads to `ctx.height` can still shrink. Hit testing reads the
-painted segments, never the tree. A widget whose region no layout node draws is warned
-about in `/health`: its `render` runs for nothing, so a region name the layout does not
-know is a bug in the widget or the layout. A `composer` node with `frame` draws the square frame around the composer
-and puts the first line of the widgets in its `top`, `left` and `right` regions into the rules
-(`composerFrame`, ui/composer.go; `top` gets the whole rule, whose left end holds the
-snail of `tui/snail.lua` a cell off the corner, its eyes showing the state, how a turn ended included
-(`ctx.ended`), and whose right end holds the turn's status), which is where the shipped layout keeps
-the mascot, with the statusline on a bar row below the box: agent
-state changes what a rule says, never how many rows the frame takes, so nothing above it
-reflows. The statusline clusters draw from their outer edges by widget priority and a short
-row drops the highest first (`fitClusters`), so what lasts sits outermost and never moves.
+The screen is one fixed tree, `screen`, in Go: no Lua and no config set it. Each node is a box
+of children or a leaf, laid out along its `Dir`; `span` sizes one box per frame from cells,
+percent, content and weighted fill, takes cells back from fill first when they do not fit, and
+never fails (`FuzzSpan`). A leaf names the region it draws, one of the `region` constants
+(`regionChat`, `regionWorking`, `regionStatusLeft`, `regionStatusRight`); a region no widget
+fills draws nothing. `App.shownWidgets` walks the solved tree, so a widget of a region the
+layout does not draw costs no render.
+
+The stage node is where prompts, overlays and toasts go, the toasts drawn last (`App.compose`,
+after the final join and fade) so nothing a box places can cover or dim one. A content-sized
+node's height is the most rows it could get, never its last draw, so a widget that pads to
+its region's height can still shrink. Hit testing reads the painted segments, never the tree.
+
+`screenLayout` keeps what the rest of the app asks of a solved frame: the stage's cells, the
+composer's (`App.floatPopup` anchors the palette and the completion list to it), the scrolled
+region (`regionChat`: `App.scrolls`, `pendingScroll` and `pendingAnchor` are keyed by region)
+and the leaves a selection may not leave. A `composer` node with `Frame` draws the square
+frame around the composer and puts its `Top` region's first row in the top rule
+(`composerFrame`, ui/composer.go; that rule's left end holds the snail, its eyes showing the
+state, how a turn ended included, and its right end the turn's status), which is where the
+shipped tree keeps the mascot, with the statusline on a bar row below the box: agent state
+changes what a rule says, never how many rows the frame takes, so nothing above it reflows.
+The statusline clusters draw from their outer edges by widget priority and a short row drops
+the highest first (`fitClusters`), so what lasts sits outermost and never moves.
 
 ## Gotchas
 
 - **The Go-reserved triggers** (`ctrl+c` cancel, `/reload`) are never routed through Lua
   keymaps and cannot be rebound - `/reload` is matched on composer submit before the command
   registry, so nothing can shadow it. Keep them out of any "rebind everything" refactor.
-- **No editor modes.** The composer has the keys unless a `focusable` layout node does
-  (`Host.Focus`, counted only while the last frame drew it); commands are slash commands typed
+- **No editor modes.** The composer has the keys; commands are slash commands typed
   in the composer. Keymaps are keys or key sequences (`<leader>` is `keymap.leader`; a key name
   the terminal never reports raises, `checkKey`). Printable and composer editing keys stay with
   the composer - scrolling is not on them (DESIGN §8, Default keymaps) - and chrome, an open
@@ -54,7 +55,7 @@ row drops the highest first (`fitClusters`), so what lasts sits outermost and ne
   how chat body rows stay quiet; a link on a body row is the exception, the
   one thing acting there, and lights alone on hover. Selection and clicks are zemi's own (internal/ui/mouse.go): a
   drag copies the last frame's segments inside the pane or box it started in (`App.selClip`:
-  the top modal's text cells, a composer popup's, else a layout leaf or float), leaving out `Segment.NoCopy` cells (decoration) and
+  the top modal's text cells, a composer popup's, else a layout leaf), leaving out `Segment.NoCopy` cells (decoration) and
   rejoining a row that ends in a `Segment.Soft` one with the next. `hostapi.WrapSegs` sets
   both, so a wrapped prompt, reply or code block copies as the text that was written, which is
   also why `Host.Markdown` renders glamour unwrapped (tables aside) and wraps it itself. A

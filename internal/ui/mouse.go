@@ -80,7 +80,7 @@ func clamp(r uv.Rectangle, x, y int) (int, int) {
 
 // selClip is where a drag pressed at (x, y) may select: the top modal's
 // text, a composer popup's, else the layout pane under it; nothing outside
-// a modal, whose backdrop is dimmed, or on a separator or spacer. A toast's
+// a modal, whose backdrop is dimmed, or on a gap between the panes. A toast's
 // cells are NoCopy, so a drag under one takes the box's text alone.
 func (a *App) selClip(x, y int) uv.Rectangle {
 	p := uv.Position{X: x, Y: y}
@@ -171,9 +171,9 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 }
 
 // barHold is a scrollbar the pointer holds: the screen rows of its column,
-// and the scrolled region it scrolls, "" for the box on top.
+// and the scrolled region it scrolls, regionNone for the box on top.
 type barHold struct {
-	region string
+	region region
 	top, h int
 }
 
@@ -210,7 +210,7 @@ func (a *App) barAt(x, y int) barHold {
 func (a *App) dragBar(y int) {
 	b := a.barDrag
 	rel, span := max(0, min(y-b.top, b.h-1)), max(b.h-1, 1)
-	if b.region != "" {
+	if b.region != regionNone {
 		if st := a.scrolls[b.region]; st != nil {
 			a.scrollRows(b.region, rel*(st.rows-st.viewH)/span-st.top)
 		}
@@ -543,7 +543,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 // cell under the pointer must be the pin's own (under), not a toast's drawn
 // over it; a box placed over the pin cuts its segment, so under may be a
 // prefix of the pin's.
-func (a *App) pinAt(x, y int, under hostapi.Segment) (string, int, cellSpan) {
+func (a *App) pinAt(x, y int, under hostapi.Segment) (region, int, cellSpan) {
 	for _, id := range a.scrollIDs {
 		st := a.scrolls[id]
 		if st == nil {
@@ -562,7 +562,7 @@ func (a *App) pinAt(x, y int, under hostapi.Segment) (string, int, cellSpan) {
 			return id, k, sp
 		}
 	}
-	return "", 0, cellSpan{}
+	return regionNone, 0, cellSpan{}
 }
 
 // painted is true of a segment filled with something other than the app's

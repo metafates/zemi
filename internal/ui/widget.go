@@ -14,7 +14,7 @@ import (
 // big for one render uses (the chat fills a long log over a few of them).
 type widget struct {
 	id       string
-	region   string
+	region   region
 	priority float64
 	wrap     bool
 	render   func(*hostapi.ScreenState) ([][]hostapi.Segment, bool)
@@ -53,18 +53,19 @@ func (a *App) renderWidget(w shownWidget, st *hostapi.ScreenState) (lines [][]ho
 
 // regionWidget is one widget of a region.
 type regionWidget struct {
-	ID, Region string
-	Wrap       bool
-	Priority   float64
-	Go         *widget
+	ID       string
+	Region   region
+	Wrap     bool
+	Priority float64
+	Go       *widget
 }
 
 // regionWidgets lists a region's widgets, lowest priority first: a region
 // stacks them in that order.
-func (a *App) regionWidgets(region string) []regionWidget {
+func (a *App) regionWidgets(r region) []regionWidget {
 	var out []regionWidget
 	for _, w := range a.widgets {
-		if w.region == region {
+		if w.region == r {
 			out = append(out, regionWidget{ID: w.id, Region: w.region, Wrap: w.wrap, Priority: w.priority, Go: w})
 		}
 	}

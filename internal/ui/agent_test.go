@@ -149,7 +149,7 @@ func renderChat(t testing.TB, app *App, w, h int, st hostapi.UIState) ([][]hosta
 	if wg == nil {
 		t.Fatal("the shipped chat is not registered")
 	}
-	lines, more, err := app.renderWidget(shownWidget{ID: "chat", Region: "chat", Wrap: wg.wrap, Go: wg, width: w, height: h}, app.host.ScreenState(w, h, st))
+	lines, more, err := app.renderWidget(shownWidget{ID: "chat", Region: regionChat, Wrap: wg.wrap, Go: wg, width: w, height: h}, app.host.ScreenState(w, h, st))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +298,7 @@ func TestColdChatRender(t *testing.T) {
 	app.renderSync(t)
 	app.Frame()
 	for range 60 {
-		app.applyScroll("up", "")
+		app.applyScroll(hostapi.ScrollUp, regionNone)
 	}
 	app.Frame()
 	st := app.scrolls[app.scrollDef]
@@ -3018,7 +3018,7 @@ func TestStreamEventsCoalesce(t *testing.T) {
 func TestWidgetErrorRecordedOnce(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 20)
-	addWidget(app, &widget{id: "bad", region: "statusline.right", render: func(*hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	addWidget(app, &widget{id: "bad", region: regionStatusRight, render: func(*hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 		panic("boom")
 	}})
 	run := func(src string) {

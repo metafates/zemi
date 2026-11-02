@@ -248,7 +248,7 @@ func TestHoverTargets(t *testing.T) {
 	}
 	widgets := func(app *App) {
 		one := func(id string, priority float64, seg hostapi.Segment, click bool) *widget {
-			w := &widget{id: id, region: "statusline.left", priority: priority, render: func(*hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+			w := &widget{id: id, region: regionStatusLeft, priority: priority, render: func(*hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 				return [][]hostapi.Segment{{seg}}, false
 			}}
 			if click {
@@ -579,7 +579,7 @@ func TestScrollbarDrag(t *testing.T) {
 	}{
 		"chat": {
 			func(_ *App, host *hostapi.Host) { fillChat(host) }, false,
-			func(app *App) bool { return app.scrolls["chat"].top == 0 },
+			func(app *App) bool { return app.scrolls[regionChat].top == 0 },
 		},
 		"chat beside the palette": {
 			func(app *App, host *hostapi.Host) {
@@ -588,7 +588,7 @@ func TestScrollbarDrag(t *testing.T) {
 					app.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
 				}
 			}, false,
-			func(app *App) bool { return app.scrolls["chat"].top == 0 && app.palette.selected == 0 },
+			func(app *App) bool { return app.scrolls[regionChat].top == 0 && app.palette.selected == 0 },
 		},
 		"help list": {
 			func(_ *App, host *hostapi.Host) { host.OpenHelp() }, true,

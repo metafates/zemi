@@ -13,9 +13,10 @@ import (
 // row - mark and shimmer, no key the chat row does not carry.
 func TestWorkingRuleCarriesThePendingRowOnlyOutOfView(t *testing.T) {
 	st := &hostapi.ScreenState{Width: 80, Busy: []hostapi.BusyItem{{Label: "Answering the side question"}}}
+	e := &eyes{}
 	row := func() string {
 		t.Helper()
-		lines, _ := workingRule(st)
+		lines, _ := workingRule(e, st)
 		return hostapi.SegsText(lines[0])
 	}
 	if got := row(); strings.Contains(got, "side question") || strings.Contains(got, "esc") {

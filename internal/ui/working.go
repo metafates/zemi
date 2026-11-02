@@ -23,14 +23,13 @@ import (
 // reads are the calls whose eyes say zemi is reading.
 var reads = map[string]bool{"read": true, "grep": true, "glob": true, "skill": true}
 
-// ruleState remembers between frames what the eyes last showed, the frame it began
-// on (an eye cycle starts with its state, whatever the clock read), and how
-// many rows the chat drew below its pending row, which says whether that row
-// left the view. Renders may overlap, so it takes a lock.
+// ruleState remembers between frames how many rows the chat drew below its
+// pending row, which says whether that row left the view. Renders may overlap,
+// so it takes a lock.
+// NOTE: the count is the last chat render's on the package, not the frame's:
+// a test reading it must not run parallel to a chat render.
 var ruleState = struct {
 	sync.Mutex
-	shown string
-	since int
 	after int
 }{}
 
@@ -42,9 +41,21 @@ func setRowsAfterPending(n int) {
 	ruleState.Unlock()
 }
 
+// eyes is the snail's cycle against the state it is in: an eye cycle starts
+// with its state, whatever the clock read. Renders may overlap, so it takes a
+// lock.
+type eyes struct {
+	sync.Mutex
+	shown string
+	since int
+}
+
 // workingWidget is the rule above the composer.
 func workingWidget() *widget {
-	return &widget{id: "working", region: "working", priority: 10, render: workingRule}
+	e := &eyes{}
+	return &widget{id: "working", region: regionWorking, priority: 10, render: func(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+		return workingRule(e, st)
+	}}
 }
 
 // workingPart is one part of the rule with its worth, the cells it grows to,
@@ -76,7 +87,7 @@ func clock(d time.Duration) string {
 
 // workingRule draws the row: the snail, the block, and the part the row
 // centres, a cell of rule on either side of it.
-func workingRule(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+func workingRule(e *eyes, st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	ag := st.Agent
 	ruleState.Lock()
 	rowsAfter := ruleState.after
@@ -229,12 +240,12 @@ func workingRule(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	if len(after) > 0 {
 		block = segsCells(after) + 2
 	}
-	ruleState.Lock()
-	if state != ruleState.shown {
-		ruleState.shown, ruleState.since = state, st.Frame
+	e.Lock()
+	if state != e.shown {
+		e.shown, e.since = state, st.Frame
 	}
-	frame := st.Frame - ruleState.since
-	ruleState.Unlock()
+	frame := max(st.Frame-e.since, 0) // a clock gone back starts the cycle over
+	e.Unlock()
 
 	// the centred part at the row's middle, in the rule fit left for it
 	w := 0
