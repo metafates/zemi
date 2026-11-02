@@ -28,7 +28,7 @@ import (
 
 // todosArgs is the todos tool's input and its schema source.
 type todosArgs struct {
-	Todos []todoItem `json:"todos,omitempty"`
+	Items []todoItem `json:"items,omitempty"`
 }
 
 // todoItem is one list entry as the todos tool reads it.
@@ -39,7 +39,7 @@ type todoItem struct {
 }
 
 func runTodos(ctx context.Context, p *Pipeline, in todosArgs) (fantasy.ToolResponse, error) {
-	out, dropped, ok, err := parseTodos(in.Todos)
+	out, dropped, ok, err := parseTodos(in.Items)
 	// a run whose host wired no todo hook has no list to write or read
 	if p.TodosRead == nil || ok && p.TodosWrite == nil {
 		return fantasy.NewTextErrorResponse("there is no todo list in this run: keep the steps in your reply instead"), nil
@@ -155,25 +155,6 @@ func parseTodos(items []todoItem) (out []store.Todo, dropped []string, ok bool, 
 		out = append(out, store.Todo{Content: td.Content, Status: status, ActiveForm: td.ActiveForm})
 	}
 	return out, dropped, ok, nil
-}
-
-// ParseTodos reads a todos call's input the run does.
-func ParseTodos(in map[string]any) ([]store.Todo, int, bool, error) {
-	list, ok := in["todos"].([]any)
-	items := make([]todoItem, 0, len(list))
-	for i, v := range list {
-		m, isObj := v.(map[string]any)
-		if !isObj {
-			return nil, 0, true, fmt.Errorf("todo %d: not an object", i+1)
-		}
-		var td todoItem
-		if err := remarshal(m, &td); err != nil {
-			return nil, 0, true, fmt.Errorf("todo %d: %w", i+1, err)
-		}
-		items = append(items, td)
-	}
-	out, dropped, _, err := parseTodos(items)
-	return out, len(dropped), ok, err
 }
 
 // TodoList is the list as the todos tool reports it.

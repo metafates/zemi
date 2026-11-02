@@ -247,7 +247,7 @@ func TestPendingRowLabel(t *testing.T) {
 
 func TestToolSummary(t *testing.T) {
 	for _, c := range []struct{ tool, in, want string }{
-		{"", `{"todos":[{"content":"a","status":"done"},{"content":"b","status":"pending"}]}`, "2 todos, 1 done"},
+		{"", `{"items":[{"content":"a","status":"done"},{"content":"b","status":"pending"}]}`, "2 todos, 1 done"},
 		{"", `{"command":"python3","args":["-m","http.server","8765"]}`, "python3 -m http.server 8765"},
 		{"", `{"id":"job-1"}`, "job-1"},
 		{"", `{"questions":[{"question":"Which color?","options":[]},{"question":"Size?"}]}`, "Which color? +1 more"},

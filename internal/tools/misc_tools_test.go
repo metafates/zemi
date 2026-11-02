@@ -39,7 +39,7 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 	p.TodosWrite = func(list []store.Todo) error { stored = list; return nil }
 	todos := toolNamed(t, "todos", p)
 
-	resp := call(t, todos, `{"todos":[
+	resp := call(t, todos, `{"items":[
 		{"content":"first","status":"pending"},
 		{"content":"second","status":"done","active_form":"finishing second"}]}`)
 	if resp.IsError || resp.Content != "updated todos: 1/2 done" {
@@ -53,11 +53,11 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 	if resp.IsError || resp.Content != "- [pending] first\n- [done] second\n" {
 		t.Fatalf("absent todos is read-only: %+v", resp)
 	}
-	resp = call(t, todos, `{"todos":[{"content":"a","status":"in_progress"},{"content":"b","status":"in_progress"}]}`)
+	resp = call(t, todos, `{"items":[{"content":"a","status":"in_progress"},{"content":"b","status":"in_progress"}]}`)
 	if resp.IsError || len(stored) != 2 || resp.Content != `updated todos: 0/2 done; 1 open item left the list ("first"): put it back or mark it done; 2 items are in_progress; keep exactly one` {
 		t.Fatalf("two in_progress: stored %d, %+v", len(stored), resp)
 	}
-	resp = call(t, todos, `{"todos":[{"content":"a","status":"cancelled"},{"content":"b","status":"pending"}]}`)
+	resp = call(t, todos, `{"items":[{"content":"a","status":"cancelled"},{"content":"b","status":"pending"}]}`)
 	if resp.IsError || len(stored) != 1 || stored[0].Content != "b" || resp.Content != `updated todos: 0/1 done; dropped 1 cancelled` {
 		t.Fatalf("cancelled items drop: stored %+v, %+v", stored, resp)
 	}
@@ -65,45 +65,47 @@ func TestTodosWriteReadAndValidation(t *testing.T) {
 		t.Fatalf("failed writes must not replace the list: %+v", stored)
 	}
 
-	resp = call(t, todos, `{"todos":[{"content":"a","status":"pending"},{"content":"b","status":"pending"},{"content":"c","status":"pending"}]}`)
+	resp = call(t, todos, `{"items":[{"content":"a","status":"pending"},{"content":"b","status":"pending"},{"content":"c","status":"pending"}]}`)
 	if resp.IsError || !strings.Contains(resp.Content, "3 items are pending: the ones that need little from each other can run as parallel agent calls") {
 		t.Fatalf("a fresh plan points at parallel runs: %+v", resp)
 	}
-	resp = call(t, todos, `{"todos":[{"content":"a","status":"done"},{"content":"b","status":"pending"},{"content":"c","status":"pending"}]}`)
+	resp = call(t, todos, `{"items":[{"content":"a","status":"done"},{"content":"b","status":"pending"},{"content":"c","status":"pending"}]}`)
 	if resp.IsError || strings.Contains(resp.Content, "parallel agent calls") {
 		t.Fatalf("a plan already underway does not nag: %+v", resp)
 	}
 
 	// a write that drops an open item names it, so work never vanishes quietly
-	resp = call(t, todos, `{"todos":[{"content":"c","status":"done"}]}`)
+	resp = call(t, todos, `{"items":[{"content":"c","status":"done"}]}`)
 	if resp.IsError || !strings.Contains(resp.Content, `1 open item left the list ("b"): put it back or mark it done`) {
 		t.Fatalf("a dropped open item is named: %+v", resp)
 	}
-	resp = call(t, todos, `{"todos":[{"content":"c","status":"done"}]}`)
+	resp = call(t, todos, `{"items":[{"content":"c","status":"done"}]}`)
 	if resp.IsError || strings.Contains(resp.Content, "left the list") {
 		t.Fatalf("a list that keeps its open items stays quiet: %+v", resp)
 	}
 
 	// a same-length write that rewords an item in place is a rename, not a drop
-	resp = call(t, todos, `{"todos":[{"content":"c","status":"done"},{"content":"x","status":"pending"}]}`)
+	resp = call(t, todos, `{"items":[{"content":"c","status":"done"},{"content":"x","status":"pending"}]}`)
 	if resp.IsError || strings.Contains(resp.Content, "left the list") {
 		t.Fatalf("a reworded item is not a drop: %+v", resp)
 	}
-	resp = call(t, todos, `{"todos":[{"content":"y","status":"pending"}]}`)
+	resp = call(t, todos, `{"items":[{"content":"y","status":"pending"}]}`)
 	if resp.IsError || !strings.Contains(resp.Content, `1 open item left the list ("x"): put it back or mark it done`) {
 		t.Fatalf("a shortened list still names what vanished: %+v", resp)
 	}
-	resp = call(t, todos, `{"todos":[{"content":"y","status":"pending"},{"content":"z","status":"cancelled"}]}`)
+	resp = call(t, todos, `{"items":[{"content":"y","status":"pending"},{"content":"z","status":"cancelled"}]}`)
 	if resp.IsError || !strings.Contains(resp.Content, "dropped 1 cancelled") || strings.Contains(resp.Content, "left the list") {
 		t.Fatalf("an explicit cancel is not a drop: %+v", resp)
 	}
 
 	for _, bad := range []struct{ in, want string }{
-		{`{"todos":[{"content":"","status":"pending"}]}`, "todo 1: content is required"},
-		{`{"todos":[{"content":"x","status":"pending"},{"content":"x","status":"nope"}]}`, "todo 2: status must be"},
+		{`{"items":[{"content":"","status":"pending"}]}`, "todo 1: content is required"},
+		{`{"items":[{"content":"x","status":"pending"},{"content":"x","status":"nope"}]}`, "todo 2: status must be"},
 		// a non-object item never reaches the run: the typed decode refuses it
 		// (the modal verb is Go's, randomized per process)
-		{`{"todos":["not-an-object"]}`, `invalid tool input: json: `},
+		{`{"items":["not-an-object"]}`, `invalid tool input: json: `},
+		// the list's name before the rename: the refusal names what the tool takes
+		{`{"todos":[{"content":"x","status":"pending"}]}`, `unknown field "todos"`},
 	} {
 		resp = call(t, todos, bad.in)
 		if !resp.IsError || !strings.HasPrefix(resp.Content, bad.want) {

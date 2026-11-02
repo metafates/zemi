@@ -2067,7 +2067,7 @@ func (m *btwModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Strea
 	return streamOf(&fantasy.Response{
 		Content: fantasy.ResponseContent{
 			fantasy.TextContent{Text: "the build"},
-			fantasy.ToolCallContent{ToolCallID: "b1", ToolName: "todos", Input: `{"todos":[{"content":"x","status":"pending"}]}`},
+			fantasy.ToolCallContent{ToolCallID: "b1", ToolName: "todos", Input: `{"items":[{"content":"x","status":"pending"}]}`},
 		},
 		FinishReason: fantasy.FinishReasonToolCalls,
 		Usage:        fantasy.Usage{InputTokens: 100, OutputTokens: 7},
