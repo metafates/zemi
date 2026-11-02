@@ -936,6 +936,30 @@ func (h *Host) work(run, who, agent, status, body string) {
 	if body != "" {
 		text = who + " · " + body
 	}
+	ag := h.agents
+	ag.mu.Lock()
+	// rows the log holds but the window has not drawn yet (a settled step's
+	// rows between their persist and the next flush) would flip this notice's
+	// place: a resume reads the log's order, so the notice waits for the
+	// flush, and everything that parks behind it waits with it
+	if ag.workHeld || ag.unflushed && (ag.textBuf != "" || ag.reasonBuf != "" || len(ag.tools) > 0) {
+		ag.workHeld = true
+		ag.pendingWork = append(ag.pendingWork, workNote{run, who, agent, status, text})
+		ag.mu.Unlock()
+		return
+	}
+	h.appendWork(run, who, agent, status, text)
+	ag.mu.Unlock()
+	h.refresh()
+	h.refreshMessages()
+}
+
+// workNote is a work row parked behind an unsettled step.
+type workNote struct{ run, who, agent, status, text string }
+
+// appendWork writes the log row and the window's row, and settles the calls
+// that finished before it, one order for both (ag.mu held).
+func (h *Host) appendWork(run, who, agent, status, text string) {
 	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(text), Status: workStatus(status), Run: run, Tool: tools.ToolName(agent)}
 	if h.chat != nil {
 		first, err := h.chat.Work(run, who, agent, status, text)
@@ -945,7 +969,46 @@ func (h *Host) work(run, who, agent, status, body string) {
 			m.Seq = first
 		}
 	}
-	h.AppendChat(m)
+	h.settleTools()
+	h.appendTranscript(m)
+}
+
+// drainWork writes the work rows a mid-turn report parked (ag.mu held): the
+// flush drew the rows they raced, so theirs land after them, in the log and
+// in the window alike.
+func (h *Host) drainWork() {
+	ag := h.agents
+	for _, w := range ag.pendingWork {
+		h.appendWork(w.run, w.who, w.agent, w.status, w.text)
+	}
+	ag.pendingWork = nil
+	ag.workHeld = false
+	h.refreshMessagesFrom(h.pickerTranscriptLocked()) // ag.mu held, as flushOutput's
+	h.refresh()
+}
+
+// settleTools moves the calls that finished and reached the log into the
+// transcript, leaving the reply and thoughts still streaming where they are
+// (ag.mu held): a call's log row exists only once its step settled, so a
+// notice lands below the calls the log already holds, the order a resume
+// reads.
+func (h *Host) settleTools() {
+	ag := h.agents
+	done := 0
+	for done < len(ag.tools) && ag.tools[done].logged &&
+		ag.tools[done].Status != CallRun && ag.tools[done].Status != CallWait {
+		done++
+	}
+	if done == 0 {
+		return
+	}
+	var rows []ChatMessage
+	for _, t := range ag.tools[:done] {
+		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, CallID: t.ID, Tool: tools.ToolName(t.Name), Text: t.Input, Label: t.Label, Status: t.Status, Detail: t.Detail, Job: t.Job, Run: t.Run, Diff: t.Diff, Output: t.Output})
+	}
+	ag.tools = slices.Clone(ag.tools[done:])
+	h.appendTranscript(rows...)
+	h.stampLogSeqs()
 }
 
 // updateMessage is the user message an update reaches the model as, live and

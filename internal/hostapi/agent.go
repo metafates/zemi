@@ -110,6 +110,9 @@ type agentHost struct {
 	stepTurnThought      time.Duration
 	stepSettled          bool // the step's OnStepFinish ran, so its calls are logged
 	tools                []StreamTool
+	pendingWork          []workNote // work rows parked behind an unsettled step
+	workHeld             bool       // a work row parked: the next ones follow it
+	unflushed            bool       // rows the log took that no flush has drawn yet
 	steering             []string
 	steeredTurn          bool   // the running turn's input came from the steering queue
 	task                 string // the running turn's own input, one line: the program status report names it
@@ -1560,6 +1563,10 @@ func (h *Host) flushOutput(stat TurnStat) int {
 	ag.reasonBuf, ag.tools, ag.textBuf, ag.thought = "", slices.Clone(ag.tools[done:]), "", 0
 	h.appendTranscript(rows...)
 	h.stampLogSeqs()
+	// the flushed rows are in the log: work rows a report parked behind them
+	// land after them, in the log and in the window alike
+	h.drainWork()
+	ag.unflushed = false
 	h.refreshMessagesFrom(h.pickerTranscriptLocked()) // the picker shows a row as it settles
 	return len(rows)
 }
@@ -1827,6 +1834,11 @@ func (h *Host) persistMessage(msg fantasy.Message) error {
 		h.logAppendFailed(err)
 		return nil
 	}
+	// the log holds rows the window has not drawn: a work row arriving before
+	// the next flush waits for it, so the two keep one order
+	h.agents.mu.Lock()
+	h.agents.unflushed = true
+	h.agents.mu.Unlock()
 	if seq >= 0 {
 		h.stampLogSeqs()
 	}

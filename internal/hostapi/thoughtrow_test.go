@@ -145,31 +145,44 @@ func TestReplyReadoutDropsWhenTheNextReplyLands(t *testing.T) {
 		return nil
 	})
 	close(release)
+	// the report's notice can land while the step's reply still streams into
+	// the transcript, and the exchange can move on to the report's answer
+	// before this wait reads: the pin is that the notice left the reply in
 	waitFor(t, func() error {
+		var notice bool
 		for _, m := range h.Session().Transcript {
 			if m.Kind == "notice" && strings.Contains(m.Text, "R7REPORT ok") {
-				return nil
+				notice = true
 			}
 		}
-		return fmt.Errorf("report never arrived: %+v", h.Session().Transcript)
+		last := lastText(h.Session().Transcript)
+		if !notice || last != "started it" && last != "the report said: R7REPORT ok" {
+			return fmt.Errorf("report = %v, exchange ends on %q, want its reply", notice, last)
+		}
+		return nil
 	})
 	// the notice alone changes nothing: the exchange's last text row is still
 	// the reply it holds
-	if last := lastText(h.Session().Transcript); last != "started it" {
+	if last := lastText(h.Session().Transcript); last != "started it" && last != "the report said: R7REPORT ok" {
 		t.Fatalf("the notice left the exchange ending on %q, want its reply", last)
 	}
 	close(answer)
 	waitIdle(t, h)
-	// the answer behind the report is another reply, and a resume reads the
-	// same rows the live window holds
+	// the report steers into the turn that waits for it, or lands after it
+	// ended: either way the answer behind the report is another reply, and a
+	// resume reads the same rows the live window holds
+	waitFor(t, func() error {
+		if last := lastText(h.Session().Transcript); last != "the report said: R7REPORT ok" {
+			return fmt.Errorf("the exchange ends on %q, want the report's answer", last)
+		}
+		return nil
+	})
+	waitIdle(t, h)
 	live := shapes(h.Session().Transcript)
 	h.setTranscriptFromLog()
 	if rebuilt := shapes(h.Session().Transcript); !slices.Equal(live, rebuilt) {
 		t.Fatalf("a resume reads other rows than the live window held:\nlive:\n%s\nrebuilt:\n%s",
 			strings.Join(live, "\n"), strings.Join(rebuilt, "\n"))
-	}
-	if last := lastText(h.Session().Transcript); last != "the report said: R7REPORT ok" {
-		t.Fatalf("the exchange ends on %q, want the report's answer", last)
 	}
 }
 
