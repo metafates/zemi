@@ -1428,7 +1428,12 @@ func (b *chatBuilder) anchor(oneBased, from, to int) {
 		if len(b.lines[i]) == 0 || segsCells(b.lines[i]) == 0 {
 			continue
 		}
-		b.lines[i][0].Anchor = oneBased
+		if b.lines[i][0].Anchor != oneBased {
+			// the memo's rows are shared across the replies whose text matches:
+			// stamping one in place would move every copy's anchor
+			b.lines[i] = slices.Clone(b.lines[i])
+			b.lines[i][0].Anchor = oneBased
+		}
 	}
 }
 
