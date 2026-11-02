@@ -835,7 +835,7 @@ Chain dependent steps with &&.`,
 			pathReq(perm.SubjectRead, searchRoot, ""),
 			typed(runGrep)),
 
-		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees; never a single step. Pass the whole list every time in the todos field, with exactly one item in_progress while work remains, and mark an item done in the same response as the next step's first calls. Work that arrives mid-turn joins the list: add it when you take it on, not once it is done. An item left in_progress when the turn ends goes back to pending, so mark the next one in_progress to pick it up. A turn does not end with open items: before your final message every item is done, or the list rewritten to match what happened. Do not repeat the list in your reply.",
+		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees; never a single step. Pass the whole list every time, with exactly one item in_progress while work remains, and mark an item done in the same response as the next step's first calls. Work that arrives mid-turn joins the list: add it when you take it on, not once it is done. An item left in_progress when the turn ends goes back to pending, so mark the next one in_progress to pick it up. A turn does not end with open items: before your final message every item is done, or the list rewritten to match what happened. Do not repeat the list in your reply.",
 			false,
 			todosArgs{},
 			nil,
