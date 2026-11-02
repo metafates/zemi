@@ -90,7 +90,5 @@ func (a *App) regionWidgets(region string) []regionWidget {
 // shippedWidgets is the screen zemi draws: the splash, the statusline, the
 // composer's rule and the chat, one per region.
 func shippedWidgets() []*widget {
-	return []*widget{
-		splashWidget(),
-	}
+	return append([]*widget{splashWidget()}, statuslineWidgets()...)
 }

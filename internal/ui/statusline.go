@@ -1,0 +1,231 @@
+package ui
+
+import (
+	"strconv"
+	"strings"
+
+	"github.com/metafates/zemi/internal/hostapi"
+)
+
+// The statusline: statusline.left holds the project and what needs attention,
+// statusline.right the model and context use. Each side draws from its outer
+// edge in priority order and a short row drops the highest priority first, so
+// what lasts sits outermost and what comes and goes sits inner, where it
+// moves nothing.
+func statuslineWidgets() []*widget {
+	return []*widget{
+		{id: "statusline.cwd", region: "statusline.left", priority: 10, render: statusCwd},
+		{id: "statusline.goal", region: "statusline.left", priority: 11, render: statusGoal},
+		{id: "statusline.loop", region: "statusline.left", priority: 12, render: statusLoop},
+		{id: "statusline.agents", region: "statusline.left", priority: 25, render: statusAgents},
+		{id: "statusline.jobs", region: "statusline.left", priority: 26, render: statusJobs},
+		{id: "statusline.keys", region: "statusline.left", priority: 95, render: statusKeys},
+		{
+			id: "statusline.scroll", region: "statusline.left", priority: 100, render: statusScroll,
+			// its id is the scroll target, not a command's name
+			onClick: func(map[string]any) {},
+		},
+		{id: "statusline.quit", region: "statusline.left", priority: 110, render: statusQuit},
+
+		{id: "statusline.model", region: "statusline.right", priority: 8, render: statusModel},
+		{id: "statusline.effort", region: "statusline.right", priority: 9, render: statusEffort},
+		{id: "statusline.context", region: "statusline.right", priority: 40, render: statusContext},
+		{id: "statusline.cost", region: "statusline.right", priority: 42, render: statusCost},
+		{id: "statusline.hints", region: "statusline.right", priority: 130, render: statusHints},
+	}
+}
+
+// shortPath is fish's prompt_pwd: every directory but the last down to a
+// cell, a leading dot kept.
+func shortPath(p string) string {
+	if p == "" {
+		return p
+	}
+	parts := strings.Split(p, "/")
+	for i := range len(parts) - 1 {
+		if parts[i] == "" {
+			continue
+		}
+		n := 1
+		if parts[i][0] == '.' {
+			n = 2
+		}
+		if len(parts[i]) > n {
+			parts[i] = parts[i][:n]
+		}
+	}
+	return strings.Join(parts, "/")
+}
+
+// statusCwd is the project, shortPath'd, the name alone when even that
+// outgrows a quarter of the row, and whether it is untrusted. A click opens
+// /projects.
+func statusCwd(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	p := st.Project
+	if p == "" {
+		p = st.CWD
+	}
+	p = shortPath(p)
+	if ansiWidth(p) > st.Width/4 {
+		if i := strings.LastIndex(strings.TrimRight(p, "/"), "/"); i >= 0 {
+			p = strings.TrimRight(p, "/")[i+1:]
+		}
+	}
+	line := []hostapi.Segment{{Text: p, HL: "Dim", Click: "projects"}}
+	if st.Branch != "" {
+		line = append(line, hostapi.Segment{Text: ":" + st.Branch, HL: "Accent"})
+	}
+	if !st.Trusted {
+		// an empty project leaves the pill alone, with no path to point at
+		if p == "" {
+			line = nil
+		} else {
+			line = append(line[:1], hostapi.Segment{Text: " · ", HL: "Dim"})
+		}
+		line = append(line, pointAt("untrusted", "/trust", "")...)
+	}
+	return [][]hostapi.Segment{line}, false
+}
+
+// statusGoal is the session's goal while one is set; no count, so a check
+// moves nothing.
+func statusGoal(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	if st.Goal == nil {
+		return nil, false
+	}
+	// the condition is the pill's value; the command is the way to change it
+	return [][]hostapi.Segment{pointAt("⚑ "+st.Goal.Condition, "· /goal", "goal")}, false
+}
+
+// statusLoop is the session's loop and when its next run fires, five cells
+// whatever the time, so a reschedule moves nothing.
+func statusLoop(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	if st.Loop == nil {
+		return nil, false
+	}
+	return [][]hostapi.Segment{pointAt("↻ "+clockText(st.Loop.Next), "/loop", "")}, false
+}
+
+// statusAgents is the subagents at work: the turn's own, background ones,
+// workflows and Lua.
+func statusAgents(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	flows, agents := st.WorkflowsRunning, st.AgentsRunning
+	if flows == 0 && agents == 0 {
+		return nil, false
+	}
+	n, word := flows, "workflow"
+	if flows == 0 {
+		n, word = agents, "agent"
+	}
+	line := pointAt("⧗ "+strconv.Itoa(n), plural(word, n), word+"s")
+	if flows > 0 && agents > 0 {
+		line = append(line, hostapi.Segment{Text: " · ", HL: "Dim"})
+		line = append(line, pointAt(strconv.Itoa(agents), plural("agent", agents), "agents")...)
+	}
+	return [][]hostapi.Segment{line}, false
+}
+
+// statusJobs is the background processes the model started: their own
+// screen, apart from the agents one.
+func statusJobs(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	if st.JobsRunning == 0 {
+		return nil, false
+	}
+	return [][]hostapi.Segment{pointAt("⚙ "+strconv.Itoa(st.JobsRunning), plural("job", st.JobsRunning), "jobs")}, false
+}
+
+// statusKeys is the keys of a bound sequence typed so far, waiting for the
+// rest.
+func statusKeys(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	if st.KeySeq == "" {
+		return nil, false
+	}
+	return [][]hostapi.Segment{{{Text: st.KeySeq + " …", HL: "Title"}}}, false
+}
+
+// statusScroll is, while the chat is scrolled up, how many rows are below and
+// the key that goes back.
+func statusScroll(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	if st.RowsBelow <= 0 {
+		return nil, false
+	}
+	return [][]hostapi.Segment{pointAt("↓ "+strconv.Itoa(st.RowsBelow), "ctrl+b", "bottom")}, false
+}
+
+// statusQuit says what a second ctrl+c does while the first armed it.
+func statusQuit(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	if !st.QuitArmed {
+		return nil, false
+	}
+	return [][]hostapi.Segment{pointAt("ctrl+c", "again to quit", "")}, false
+}
+
+// statusModel is the model running the conversation; a click opens the model
+// picker.
+func statusModel(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	if st.Model == "" {
+		return nil, false
+	}
+	return [][]hostapi.Segment{{{Text: st.Model, HL: "Dim", Click: "model"}}}, false
+}
+
+// statusEffort is the reasoning effort; a click opens its picker.
+func statusEffort(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	if st.Effort == "" {
+		return nil, false
+	}
+	return [][]hostapi.Segment{{{Text: st.Effort, HL: "Dim", Click: "effort"}}}, false
+}
+
+// statusContext is how much of the window is in use, not the running session
+// total: the total says nothing about how much room is left.
+func statusContext(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	used, window := tokens(st.Context.Tokens), tokens(st.Context.Window)
+	if window != "" {
+		// a known window with no use yet reads as nothing, not as a total
+		if used == "" {
+			return nil, false
+		}
+		return [][]hostapi.Segment{{{Text: used + "/" + window + " ctx", HL: "Dim", Click: "usage"}}}, false
+	}
+	if total := tokens(st.Usage.Total); total != "" {
+		return [][]hostapi.Segment{{{Text: total + " tok", HL: "Dim", Click: "usage"}}}, false
+	}
+	return nil, false
+}
+
+// statusCost is the session's tally, shown only when the conversation's own
+// model declares prices.
+func statusCost(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	if !st.Usage.Priced {
+		return nil, false
+	}
+	c := costText(st.Usage.Cost)
+	if c == "" {
+		return nil, false
+	}
+	return [][]hostapi.Segment{{{Text: c, HL: "Dim", Click: "usage"}}}, false
+}
+
+// statusHints is the two keys worth knowing, on an empty session only:
+// innermost, so the first send takes them away without moving the model or
+// the cost, and the first to go on a short row.
+func statusHints(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	if st.TranscriptCount > 0 || st.AgentActive {
+		return nil, false
+	}
+	return [][]hostapi.Segment{{
+		{Text: "/", HL: "SplashKey", Click: "help"},
+		{Text: " commands  ", HL: "Dim", Click: "help"},
+		{Text: "@", HL: "SplashKey"},
+		{Text: " files, dirs and skills", HL: "Dim"},
+	}}, false
+}
+
+// plural is a noun with its count's number left off: "agents" for 2.
+func plural(noun string, n int) string {
+	if n == 1 {
+		return noun
+	}
+	return noun + "s"
+}

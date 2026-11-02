@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -135,4 +136,48 @@ func (a *App) runClick(ev map[string]any) {
 	if name, args := hostapi.SplitCommand(id); name != "" {
 		a.runCommand(name, args, false)
 	}
+}
+
+// tokens is a token count as "812", "24.5k", "1.2M" or "1.5B"; "" for none.
+func tokens(n int64) string {
+	if n <= 0 {
+		return ""
+	}
+	var s string
+	switch {
+	case n >= 1_000_000_000:
+		s = fmt.Sprintf("%.1fB", float64(n)/1_000_000_000)
+	case n >= 1_000_000:
+		s = fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+	case n >= 1000:
+		s = fmt.Sprintf("%.1fk", float64(n)/1000)
+	default:
+		s = strconv.FormatInt(n, 10)
+	}
+	return strings.NewReplacer(".0k", "k", ".0M", "M", ".0B", "B").Replace(s)
+}
+
+// costText is a cost in dollars as "$0.42", "<$0.01" under half a cent; ""
+// for none (an unpriced model).
+func costText(usd float64) string {
+	if usd <= 0 {
+		return ""
+	}
+	if usd < 0.005 {
+		return "<$0.01"
+	}
+	return fmt.Sprintf("$%.2f", usd)
+}
+
+// clockText is a wall clock, "14:05".
+func clockText(t time.Time) string { return t.Format("15:04") }
+
+// pointAt is a pointer to what deals with something: the noun in Title (hl
+// overrides it), then the command or key in Dim. Both segments click as
+// click, a command's own name when click is left out.
+func pointAt(noun, cmd, click string) []hostapi.Segment {
+	if click == "" && strings.HasPrefix(cmd, "/") && !strings.Contains(cmd[1:], " ") {
+		click = cmd[1:]
+	}
+	return []hostapi.Segment{{Text: noun, HL: "Title", Click: click}, {Text: " " + cmd, HL: "Dim", Click: click}}
 }
