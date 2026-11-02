@@ -792,7 +792,9 @@ func (b *chatBuilder) markdown(text string) {
 		b.folds.md[key] = rows
 	}
 	for _, row := range rows {
-		b.push(slices.Clone(row))
+		// the memo's rows are shared read-only: a downstream paint builds its
+		// own row arrays and mutates segments only as value copies
+		b.push(row)
 	}
 }
 
@@ -1586,8 +1588,9 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		folds: f.ver, view: viewID(st), tail: tailFirst, replying: st.Agent.Text == "",
 	}
 	if key == f.settledKey {
-		b.lines = append([][]hostapi.Segment(nil), f.settled...)
-		b.prev = f.settledPrev
+		// appending may write into the spare capacity, which the settled
+		// slice's own rows never reach
+		b.lines, b.prev = f.settled, f.settledPrev
 	} else {
 		// the transcript's first row stands one row off the window's top edge, and
 		// the window is the log's tail: name what the head cut left out
