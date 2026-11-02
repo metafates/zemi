@@ -2534,6 +2534,9 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 	}
 	L := g.L
 	h.gen.Store(g.ID)
+	if err := h.installDefaultKeymap(); err != nil {
+		return err
+	}
 	h.Providers.Reset(*h.Builtin.Load())
 	if !h.Inert {
 		h.syncSkills()

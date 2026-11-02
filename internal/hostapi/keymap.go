@@ -127,6 +127,44 @@ func (h *Host) resolveRHS(s string) (RHS, error) {
 	return RHS{API: s}, nil
 }
 
+// defaultKeymap is the shipped bindings (DESIGN §8); they register before
+// config runs, so a user's keymap.set rebinds one and keymap.del unbinds it.
+var defaultKeymap = []struct {
+	key  string
+	rhs  RHS
+	desc string
+}{
+	{"pgdown", RHS{API: "zemi.ui.scroll.down"}, "scroll chat down a page"},
+	{"pgup", RHS{API: "zemi.ui.scroll.up"}, "scroll chat up a page"},
+	{"ctrl+home", RHS{API: "zemi.ui.scroll.top"}, "scroll chat to top"},
+	{"ctrl+b", RHS{API: "zemi.ui.scroll.bottom"}, "scroll chat to bottom"},
+	{"shift+up", RHS{API: "zemi.ui.scroll.line_up"}, "scroll chat up a line"},
+	{"shift+down", RHS{API: "zemi.ui.scroll.line_down"}, "scroll chat down a line"},
+	{"ctrl+k", RHS{API: "zemi.ui.scroll.line_up"}, "scroll chat up a line"},
+	{"ctrl+j", RHS{API: "zemi.ui.scroll.line_down"}, "scroll chat down a line"},
+	{"alt+up", RHS{API: "zemi.ui.scroll.sticky_up"}, "scroll chat to the previous prompt or opened run"},
+	{"alt+down", RHS{API: "zemi.ui.scroll.sticky_down"}, "scroll chat to the next prompt or opened run"},
+	{"ctrl+m", RHS{Command: "messages"}, "read or copy a message"},
+	{"alt+o", RHS{Command: "memories"}, "browse the chat's memory"},
+}
+
+// installDefaultKeymap binds the shipped keys as builtin, once per
+// generation: a reload purges them with everything else and this binds them
+// again.
+func (h *Host) installDefaultKeymap() error {
+	for _, d := range defaultKeymap {
+		key, err := h.keySeq(d.key, false)
+		if err != nil {
+			return fmt.Errorf("default keymap %q: %w", d.key, err)
+		}
+		b := &KeyBinding{Key: key, RHS: d.rhs, Desc: d.desc, Origin: lua.OriginBuiltin, Gen: h.currentGen()}
+		if err := h.Keymaps.Set(b); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // keymapNamespace is zemi.keymap: set(key, action, opts?), del(key, opts?),
 // get(key, opts?) and list(). An action is a function, a command name or a
 // host action; setting a bound key again rebinds it. opts.focus scopes a

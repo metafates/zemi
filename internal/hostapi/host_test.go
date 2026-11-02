@@ -406,7 +406,9 @@ func TestKeymapFromLua(t *testing.T) {
 		assert(not ok and tostring(err):find("Go-reserved", 1, true), "err=" .. tostring(err))
 		ok, err = pcall(zemi.keymap.set, "f2", "zemi.nope")
 		assert(not ok and tostring(err):find("neither a command nor a host action", 1, true), "err=" .. tostring(err))
-		assert(#zemi.keymap.list() == 2, "list=" .. #zemi.keymap.list())
+		local keys = {}
+		for _, b in ipairs(zemi.keymap.list()) do keys[b.key] = true end
+		assert(keys["tab"] and keys["ctrl+g"], "list")
 		zemi.keymap.del("tab")
 		assert(zemi.keymap.get("tab") == nil, "user could not remove a shipped key")
 		assert(zemi.keymap.del("tab") == false, "unbinding twice reports false, not an error")
@@ -428,9 +430,9 @@ func TestKeymapFromLua(t *testing.T) {
 		zemi.keymap.set("ctrl+n", cmd) -- what get hands back rebinds as is
 		assert(zemi.keymap.get("ctrl+n").action == "/hello", "command binding does not round-trip")
 
-		zemi.keymap.set("ctrl+j", "down", { list = true })
-		local a = zemi.keymap.get("ctrl+j", { list = true })
-		assert(a and a.list and a.action == "down" and zemi.keymap.get("ctrl+j") == nil, "a list alias is its own binding")
+		zemi.keymap.set("ctrl+u", "down", { list = true })
+		local a = zemi.keymap.get("ctrl+u", { list = true })
+		assert(a and a.list and a.action == "down" and zemi.keymap.get("ctrl+u") == nil, "a list alias is its own binding")
 		for _, bad in ipairs({
 			{ "ctrl+x j", "down", { list = true }, "one key" },
 			{ "d", "down", { list = true }, "printable keys filter" },
@@ -442,7 +444,7 @@ func TestKeymapFromLua(t *testing.T) {
 			local ok, err = pcall(zemi.keymap.set, bad[1], bad[2], bad[3])
 			assert(not ok and tostring(err):find(bad[4], 1, true), "alias " .. bad[1] .. ": " .. tostring(err))
 		end
-		assert(zemi.keymap.del("ctrl+j", { list = true }) and zemi.keymap.get("ctrl+j", { list = true }) == nil, "del an alias")
+		assert(zemi.keymap.del("ctrl+u", { list = true }) and zemi.keymap.get("ctrl+u", { list = true }) == nil, "del an alias")
 	`)
 	if err := r.ExecuteChunk(t.Context(), `zemi.keymap.set("ctrl+k", "up", { list = true })`, "p.lua", lua.OriginPlugin); err != nil {
 		t.Fatalf("a plugin bound a list alias: %v", err)
