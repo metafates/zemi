@@ -235,7 +235,7 @@ func (h *Host) ScreenState(width, height int, state UIState) *ScreenState {
 	}
 	if jobs := h.BusyList(); len(jobs) > 0 {
 		for _, j := range jobs {
-			st.Busy = append(st.Busy, BusyItem{Label: j.Label, Elapsed: j.Elapsed, Cancellable: j.Cancellable})
+			st.Busy = append(st.Busy, BusyItem(j))
 		}
 	}
 	sid := h.AgentSessionID()

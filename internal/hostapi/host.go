@@ -575,16 +575,6 @@ type Host struct {
 	// origin is this window's writer id, what its log rows carry
 	origin string
 
-	// agentRows caches ctx.agent's tool subtables between renders: a finished
-	// tool's fields never change, so a long turn rebuilds only the rows that
-	// moved. The Lua actor goroutine fills it, like the renders, and the gen
-	// stamp drops tables an older generation's LState built.
-	agentRows struct {
-		gen  Gen
-		prev []StreamTool
-		rows []*glua.LTable
-	}
-
 	// usageCtx caches ctx.usage and ctx.context between renders: both are
 	// pure functions of the snapshot's tallies, which move only when a
 	// response lands, so most frames of a turn reuse the tables. The Lua
