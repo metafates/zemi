@@ -859,8 +859,8 @@ func (a *App) uiState() hostapi.UIState {
 		// ctrl+c reaches the arm branch
 		QuitArmed:      a.isArmed("ctrl+c") && a.composer.empty() && !a.host.AgentActive(),
 		InterruptArmed: a.isArmed("esc") && a.armed.what == "interrupt",
-		InterruptIn:    a.interruptIn(), RowsBelow: a.rowsBelow(),
-		Cancelling: a.cancelling, Editing: a.editing, Focus: a.focusedNode(), Regions: a.regions,
+		RowsBelow:      a.rowsBelow(),
+		Cancelling:     a.cancelling, Editing: a.editing, Focus: a.focusedNode(), Regions: a.regions,
 		Rail: a.rail,
 	}
 	if !a.turnActive && a.now().Sub(a.turnEnd) < doneLinger {

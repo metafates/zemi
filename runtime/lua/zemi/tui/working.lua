@@ -82,14 +82,6 @@ zemi.ui.widget.add({
 			local clock = function(s) return string.format("%dm %02ds", math.floor(s / 60), math.floor(s) % 60) end
 			---@type { [1]: zemi.Line, [2]: integer }[]?
 			local ticks = { { plain(clock(ag.elapsed)), 5 } }
-			if ctx.interrupt_armed then
-				-- the number by the armed key is the window it still waits; the
-				-- turn's clock trails at a weight the narrow rule drops first
-				ticks = {
-					{ plain("arm " .. fmt.duration(math.ceil(ctx.interrupt_in or 0), true)), 7 },
-					{ plain("elapsed " .. clock(ag.elapsed)), 5 },
-				}
-			end
 			if ag.retry then
 				state = "error"
 				local why = ag.retry.why ~= "" and " · " .. fmt.clip(ag.retry.why, 60) or ""
