@@ -43,9 +43,8 @@ the highest first (`fitClusters`), so what lasts sits outermost and never moves.
   the composer - scrolling is not on them (DESIGN §8, Default keymaps) - and chrome, an open
   palette and completion popups keep their keys before keymaps are consulted; a `list = true`
   binding swaps a key for a move there first (`Keymaps.ListAlias`, in Go), but for a move a typed
-  line edits with while one types (`lineKey`, `App.typing`). A focused node
-  takes every key but ctrl+c through `Keymaps.Lookup(focus, key)`: a `{ focus = id }` binding
-  first, else the global one; unbound keys drop and an unbound esc returns the keys.
+  line edits with while one types (`lineKey`, `App.typing`). Keys go through
+  `Keymaps.Lookup(key)` once no overlay or popup claims them; unbound keys drop.
 - **Mouse capture is load-bearing.** `App.View` sets `MouseModeAllMotion` (unless `ui.mouse =
   false`) so the wheel scrolls the transcript (the altscreen buffer has no native scrollback)
   and plain motion drives hover. `App.target` is the one hit test for clicks and hover, so a
@@ -68,7 +67,7 @@ the highest first (`fitClusters`), so what lasts sits outermost and never moves.
   surface a fade sinks toward), `Pin` (a row's part in the header stack a
   scrolled region pins, top down: a turn's prompt, then its opened run's digest down to the
   run's last row) and `Line` (a chrome line `App.join` meets with the
-  lines it touches, after all placement: text, Lua content and the snail art never join); `dimRows`
+  lines it touches, after all placement: text and the snail art never join); `dimRows`
   drops them (a box's answered rows are not targets); `fadeRows`, which sinks the backdrop of a modal
   toward the canvas, keeps a segment's text, style and effect, so a spinner behind a box keeps
   stepping, and drops what acts or joins (`Hit`, `Click`, `Widget`, `Line`, `Bar`), so the backdrop
@@ -79,7 +78,7 @@ the highest first (`fitClusters`), so what lasts sits outermost and never moves.
   region to the unit its selected item names by `OverlayItem.Anchor`, the number the chat stamps on
   every row of a unit (`Segment.Anchor`, `unitAt`, `jumpTop`: centered when the message fits, else
   its first row under the pins), and bands the rows the pick draws with `FillBand` (`bandSpan`, the
-  scrollbar cell aside, and the reply's readout, which `chat.lua` keeps out of the anchor) while
+  scrollbar cell aside, and the reply's readout, which `internal/ui/chat.go` keeps out of the anchor) while
   keeping it out of the modal fade (`fadeRows`); it opens on the item the reader is at (`followRow`:
   the row the view was placed at, kept in `scrollState.focus` with the top its jump left in `placed`
   because a clamped centered placement cannot name its message from the viewport alone, and good only
@@ -113,13 +112,18 @@ the highest first (`fitClusters`), so what lasts sits outermost and never moves.
   (`App.background`); Go commands stay inline. Keymaps, clicks, one-shot timers and async
   callbacks call `refresh` when they return. The frame tick sleeps 250 ms unless something
   moves by itself (a turn, a shown run, a drawn spinner or shimmer, a toast, an armed flag) and always lands on a 50 ms wall boundary,
-  so `ctx.frame` steps one per tick while a turn re-renders every one; a change goes through
+  so `ScreenState.Frame` steps one per tick while a turn re-renders every one; a change goes through
   `App.bump`, which wakes it, and all stale widgets render as one message; a widget a message
   resized (a composer newline, a resize) renders on that message, so no frame draws lines
-  rendered for another size. A render's ctx
-  builds `todos`, `recent`, `projects`, `regions` and `instructions` on first read (`Host.ScreenState`): keep new expensive fields lazy, and cache one that reads disk or the
-  store (`recentSessions`, `splashProjects`, `instructionsCached`). A widget's rows are wrapped once per
-  width and cached, and `Host.Session` shares the transcript
+  rendered for another size. `Host.ScreenState` builds a frame's
+  `todos`, `projects`, `instructions` and log row count on first read: keep new
+  expensive fields lazy, and cache one that reads disk or the
+  store (`instructionsCached`, `recentSessions`, `splashProjects`). A widget's rows are wrapped once per
+  width and cached, and the chat keeps its settled rows until the state they were
+  built from moves (`chatFolds.settledKey`, `internal/ui/chat.go`: the log's epoch, cut
+  and edit, its row count, the width, the rail's view, the folds' version, the run on
+  screen and whether a reply streams), so a live frame rebuilds only the tail.
+  `Host.Session` shares the transcript
   rows, which are appended or replaced whole, never written in place. A render returning
   `true` second runs again next frame and wakes the tick, which is how the chat fills a
   long chat under a 30 ms budget, latest units first, each render at least a full view topped
@@ -129,18 +133,20 @@ the highest first (`fitClusters`), so what lasts sits outermost and never moves.
   a second esc within 2s (`App.arm`, shared with the idle ctrl+c quit) stops all of them;
   a second ctrl+c while "Cancelling" quits. A job the user waits on that is not a turn
   (`/btw`, `/plugin` network work, `/model update`, `/health`, an MCP start,
-  the idle recap) holds a `Host.Busy` entry: `ctx.busy` is the list of
+  the idle recap) holds a `Host.Busy` entry: `ScreenState.Busy` is the list of
   them, newest first, the chat's pending row names the oldest as one part (`and N more`
   when more run), the working rule draws
-  `ctx.busy[1]`, and the same double esc
+  `Busy[0]`, and the same double esc
   (`CancelBusy`, never `zemi.agent.cancel`) cancels every entry that has a cancel func.
   An empty session has one such row and no chat rows: `internal/ui/textfmt.go`'s `emptyChat` is the
-  one predicate both widgets read, the chat yielding the region and `splash.lua` drawing
+  one predicate both widgets read, the chat yielding the region and `splash.go` drawing
   the pending row on a row its block reserves, since the splash pads to the whole region
   and a row of the chat's would scroll it out of the top as boot work starts and ends.
-- **Widgets read UI flags, never Go-drawn text.** The composer frame's rules and the quit, key
-  sequence and scroll flags are `tui/` widgets reading `hostapi.UIState`; a new flag goes
-  into `UIState` and the ctx table, not into `statusRow` or `compose`. Animation a widget
+- **Widgets read the frame's state, never Go-drawn text.** The statusline widgets, the
+  composer's rule and the quit, key sequence and scroll flags are Go widgets reading
+  `hostapi.ScreenState`, which `Host.ScreenState` fills from the app's `hostapi.UIState` and
+  the host's own state; a new flag goes into those two, not into `statusRow` or `compose`.
+  No Lua draws. Animation a widget
   cannot render at the 50 ms frame clock is a segment `effect` the UI applies (`shimmer`, and `spin`, which steps a `hostapi.Marks` spinner). A
   turn's end (the `ui.notify` alert, the done eyes, the recap timer) applies once per chain of
   turns, on the first frame that reads the agent idle (`onFrame`). OSC 9;4 progress and the OSC

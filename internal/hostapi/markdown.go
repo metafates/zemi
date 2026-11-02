@@ -93,8 +93,9 @@ func (c *markdownCache) get(k mdKey) ([][]Segment, bool) {
 	return v, ok
 }
 
-// Markdown renders text as styled segment lines at most width cells wide
-// (zemi.ui.markdown, DESIGN §8). Input is sanitized before glamour sees it.
+// Markdown renders text as styled segment lines at most width cells wide,
+// what the chat's replies and the overlay bodies draw. Input is sanitized
+// before glamour sees it.
 func (h *Host) Markdown(text string, width int) [][]Segment {
 	width = max(width, 1)
 	c := &h.md
@@ -452,7 +453,7 @@ var codeGroups = [...]struct {
 }
 
 // Highlight draws code in lang as one row per line in codeGroups' groups,
-// each wrapped to width when it is over 0 (zemi.ui.highlight). A lang chroma
+// each wrapped to width when it is over 0. A lang chroma
 // has no lexer for draws plain; rows are cached with the markdown ones.
 func (h *Host) Highlight(text, lang string, width int) [][]Segment {
 	c := &h.md
@@ -659,7 +660,7 @@ func swatchColors(row []Segment) []Segment {
 }
 
 // WrapText wraps plain text into rows of at most w cells, one logical line
-// per line break, sanitized like markdown (zemi.ui.wrap).
+// per line break, sanitized like markdown.
 func WrapText(text string, w int) [][]Segment {
 	var rows [][]Segment
 	for line := range strings.SplitSeq(text, "\n") {
@@ -670,8 +671,8 @@ func WrapText(text string, w int) [][]Segment {
 
 var hunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)`)
 
-// DiffRows renders a unified diff as rows at most width cells wide
-// (zemi.ui.diff): one number column (the old line on a removed row, the new
+// DiffRows renders a unified diff as rows at most width cells wide:
+// one number column (the old line on a removed row, the new
 // one otherwise) and the sign in DiffAddNum, DiffDelNum or DiffCtxNum, the
 // text wrapped in DiffAdd, DiffDel or DiffCtx with the tint out to the edge,
 // so a diff line's rows are exactly width wide, "⋯" between hunks, and any

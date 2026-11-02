@@ -110,7 +110,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   workflows of every other session (`agentRunItems`, the desc ending in that session's title,
   `fromSession`): they block `/reset`, so their stop must be reachable. Every run, agent and job
   row there and in `/workflows` leads with the chat's mark for its status word (`RunMarks`,
-  `tools.Job.Mark`, into `hostapi.Marks`, the one table `zemi.ui.marks` hands chat.lua), as
+  `tools.Job.Mark`, into `hostapi.Marks`, the one table the chat and the lists draw and
+  `zemi.ui.marks` hands Lua), as
   does the status field of its detail and of a run's view (`Overlay.Mark`), and a run's view
   heads each phase with its rows' combined mark (`Overlay.Phases`); an agent its run never
   started reads cancelled once the run ended.

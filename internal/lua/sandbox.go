@@ -537,7 +537,7 @@ func (s *Sandbox) protectNamespace(tb *glua.LTable, what, path string) *glua.LTa
 }
 
 // deepProtect replaces every table-valued member of tbl (recursively) with
-// its protected proxy, so nested namespaces like zemi.ui.widget are frozen
+// its protected proxy, so nested namespaces like zemi.ui.overlay are frozen
 // too. Go keeps its references to the real tables.
 func (s *Sandbox) deepProtect(tbl *glua.LTable, path string) {
 	type entry struct {

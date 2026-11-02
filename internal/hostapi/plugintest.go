@@ -505,7 +505,7 @@ func (t *PluginTest) set(L *glua.LState) int {
 
 // keys is test.keys(seq): what the plugin bound a key sequence to.
 func (t *PluginTest) keys(L *glua.LState) int {
-	seq, err := t.h.keySeq(L.CheckString(1), false)
+	seq, err := t.h.keySeq(L.CheckString(1))
 	if err != nil {
 		raise(L, "test.keys: %v", err)
 	}

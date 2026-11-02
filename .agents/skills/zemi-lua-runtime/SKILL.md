@@ -90,7 +90,7 @@ keys are `plugin:<name>:<key>`, its state principal and its overlay badge `plugi
 (`Host.principal` raises for plugin code with no file of its plugin on the stack). Registries
 enforce the one collision rule left (`mayReplace`, which every add and remove runs): **the last
 registration wins**, except that one plugin can neither replace nor remove another's command,
-keymap, theme, event handler, tool, completion source, health row or config watch. No
+keymap, event handler, tool, completion source, health row or config watch. No
 origin can emit host-owned events. A plugin's manifest (`uses`) is the capability model: a gated
 call a plugin makes without its declared word is refused, and registering a
 `permission.request` handler or calling `zemi.perm.ask` needs `perm`. When adding a registry,

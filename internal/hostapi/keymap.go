@@ -75,7 +75,7 @@ func checkKey(key string) error {
 // ("ctrl+x ctrl+s"), where a leading "<leader>" expands to keymap.leader
 // ("<leader>gs" is leader, g, s). A global binding cannot start with a
 // printable key: those belong to the composer, so it would never fire.
-func (h *Host) keySeq(key string, focused bool) (string, error) {
+func (h *Host) keySeq(key string) (string, error) {
 	key = strings.TrimSpace(key)
 	var tokens []string
 	if rest, ok := strings.CutPrefix(key, "<leader>"); ok {
@@ -102,7 +102,7 @@ func (h *Host) keySeq(key string, focused bool) (string, error) {
 			return "", errors.New("ctrl+c is reserved for cancel and quit")
 		}
 	}
-	if len([]rune(tokens[0])) == 1 && !focused {
+	if len([]rune(tokens[0])) == 1 {
 		return "", fmt.Errorf("%q is a printable key and only ever reaches the composer: start with a non-printable key such as ctrl+x", tokens[0])
 	}
 	return strings.Join(tokens, " "), nil
@@ -153,7 +153,7 @@ var defaultKeymap = []struct {
 // again.
 func (h *Host) installDefaultKeymap() error {
 	for _, d := range defaultKeymap {
-		key, err := h.keySeq(d.key, false)
+		key, err := h.keySeq(d.key)
 		if err != nil {
 			return fmt.Errorf("default keymap %q: %w", d.key, err)
 		}
@@ -180,13 +180,11 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 		if opts != nil {
 			list = rawBool(L, opts, "list")
 		}
-		key, err := h.keySeq(L.CheckString(1), list)
+		key, err := h.keySeq(L.CheckString(1))
 		if err == nil && list {
 			switch {
 			case strings.Contains(key, " "):
 				err = errors.New("a list key is one key")
-			case len([]rune(key)) == 1:
-				err = errors.New("a list key is non-printable: printable keys filter the list")
 			case slices.Contains([]string{"enter", "esc", "tab", "shift+tab", "space", "backspace"}, key):
 				// taking one would leave a prompt no way to answer or close
 				err = fmt.Errorf("%s is a key the lists answer with", key)

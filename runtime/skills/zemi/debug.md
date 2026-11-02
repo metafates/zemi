@@ -29,7 +29,7 @@
    return zemi.ui.screenshot() -- the drawn screen as plain text, nil, err before the first frame
    ```
 
-   It is the frame the user is looking at, at their real terminal width, with styling and padding dropped (a plugin's overlay and its rows are checked by `test.overlay` in its tests, `plugins.md`). Save one before a change and one after and diff them. Colors and attributes do not survive it, so for a highlight question read the group with `zemi.ui.hl.get(group)` instead. For a layout question, `zemi.ui.layout.rects()` says where each node with an id, the stage and the composer landed. SKILL.md's Check a change runs these reads as one script against a config change.
+   It is the frame the user is looking at, at their real terminal width, with styling and padding dropped (a plugin's overlay and its rows are checked by `test.overlay` in its tests, `plugins.md`). Save one before a change and one after and diff them. Colors and attributes do not survive it, so for a highlight question read the group in `internal/hostapi/themes.go` and run `make golden`, whose frames keep the truecolor SGRs. A layout question is `internal/ui/layout.go`'s `screen` tree, or the golden frame's rows. SKILL.md's Check a change runs these reads as one script against a config change.
 5. A `print()` or `zemi.log` line from config code (a keymap, a timer, an event handler) is in `/logs` and `zemi.log.list()`, the last 100, newest first. Without a TUI (`zemi health`) it goes only to the log file, as `msg="print: ..."` lines.
 6. Read the log of the run (reading the log directory needs the user's approval: MCP and LSP server output is logged as written and may hold tokens). One file per start:
 
@@ -60,7 +60,7 @@
 | one plugin fails at boot | the others still load; `/errors` has the message (`plugin <name>: ...`) and the `/health` plugins row counts the failed ones. A local plugin named like an installed one, or a symlinked plugin dir, never loads |
 | a plugin registers nothing, with no error | it has no `init.lua` at `<data>/plugins/installed/<name>/.zemi/` or `local/<name>/.zemi/` (a library-only plugin has just `.zemi/lua/`), or its name is in `<data>/plugins/disabled` |
 | a plugin is refused in `/errors` with "`<name>` is at the plugin root, where zemi no longer loads it" | the plugin predates the `.zemi/` layout: move its `init.lua`, `lua/`, `tests/` and `workflows/` under `.zemi/` |
-| `... is registered by plugin x, not y` | two plugins want one command, key, theme, event handler id, tool, completion source or health row, or y tried to remove x's; the first by name keeps it |
+| `... is registered by plugin x, not y` | two plugins want one command, key, event handler id, tool, completion source or health row, or y tried to remove x's; the first by name keeps it |
 
 ## Stores
 

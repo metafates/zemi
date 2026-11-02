@@ -1,7 +1,7 @@
 # AGENTS.md - zemi
 
-zemi is a terminal AI agent harness whose userland (default UI, keymaps, widgets, the chat's
-summary builder surface) is written in embedded Lua while Go owns the runtime: the agent loop
+zemi is a terminal AI agent harness whose userland (keymaps, the chat's summary builder surface)
+is written in embedded Lua while Go owns the runtime and the screen (internal/ui): the agent loop
 over
 `charm.land/fantasy`, the bubbletea v2 TUI, the sandboxed gopher-lua interpreter, and SQLite
 persistence. `DESIGN.md` is the spec; code comments cite its sections (`DESIGN §4`, `§6.2`).
@@ -12,8 +12,7 @@ always wrong. When spec and tree disagree, the tree is the truth.
 Prior art with local checkouts under `~/Code/github/` (study, don't copy): `crush` (same Go
 stack; tool descriptions, permission flow and store patterns trace back to it), `pi` (prompt
 wording), `codex` and `opencode` (tool behavior), `neovim`
-(the model for the Lua userland: `runtime/lua/vim/` for keymap, highlight, health and loader
-patterns).
+(the model for the Lua userland: keymap, health and loader patterns).
 
 ## House rules
 

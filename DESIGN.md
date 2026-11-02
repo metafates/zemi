@@ -4,8 +4,9 @@ Status: draft
 Module: `github.com/metafates/zemi`
 
 zemi is a terminal AI agent harness (coding agent first, general assistant by
-configuration) whose entire userland, including its default UI, is written
-in embedded Lua. Go owns the runtime (agent
+configuration): its userland - config, keys, commands, pickers, hooks, tools -
+is written in embedded Lua, and the screen it draws is Go's (`internal/ui`).
+Go owns the runtime (agent
 loop, providers, I/O, rendering); Lua owns behavior. The user configures,
 extends, and observes the agent the same way a neovim user configures an
 editor: from `init.lua` against a stable host API.
@@ -595,7 +596,7 @@ step, no other plugin, no `~/.agents`. The file's top level runs where
 the case's setup, and a first boot collects the case names. `zemi.test`,
 registered only there, declares cases and drives what the plugin
 registered the way zemi runs it: `run`, `keys`, `tool` (through the
-adapter the model's call runs), `render`, `click`, `emit` (to the plugin's
+adapter the model's call runs), `emit` (to the plugin's
 own handlers, `tool.post` as tasks and vetoable events with their
 deadline), `complete` (a command's completer and the plugin's
 `zemi.composer.add` sources, as the palette asks them), `overlay`,
@@ -610,14 +611,13 @@ a job, HTTP request, model ask, agent send or `zemi.fs` write passes the
 gate only when a `test.stub` answers it, its reply standing in for the
 transport; a call no stub answers raises naming the stub line to add, and
 a `false` reply refuses it. Time is a fake clock at 2026-01-01 UTC
-that only `test.advance` moves, driving timers, `os.time`/`os.date`/`os.clock`,
-a render's `ctx.time` and log times; every driver returns once zemi is
+that only `test.advance` moves, driving timers, `os.time`/`os.date`/`os.clock`
+and log times; every driver returns once zemi is
 quiet (no host goroutine running, no timer due). An error zemi records in
 `/errors` while a driver runs fails the case. Output is the failures,
 paths relative to the plugin, each fact once, and one summary line; the exit status is 1
 on any failure or a pattern matching no case, 2 on a usage error.
-NOTE: one widget renders at a time (no screen layout), `keys` reaches no
-`{ focus = id }` binding, `answer` no list key or toggle list (a row
+NOTE: `answer` takes no list key and no toggle list (a row
 it picks runs its `run` when no callback takes it, only a command of the
 plugin), a stub answers at once (a timeout is untested), an assertion in a
 `tests/lib/` helper names the helper's line (the case's is in the FAIL
@@ -761,9 +761,8 @@ the binary's API version is `zemi.api.version`.
   one (§4). Everything else is a plain snapshot table; mutating it never
   feeds back into the host.
 - **Never silently accept**: a call that can never do what it says raises
-  where it is made, not three turns later in `/errors`. A color outside the
-  palette, a printable key
-  with no `focus`, a watch on a path outside the schema and a tool spec the
+  where it is made, not three turns later in `/errors`. A printable key,
+  a watch on a path outside the schema and a tool spec the
   provider would reject are all misuse, not runtime failure. Where the
   wrong shape is a decision zemi must take anyway, it takes the closed one:
   a `tool.pre` or `permission.request` handler returning something that is
@@ -853,10 +852,8 @@ zemi.event.emit("user.my-thing", { any = "payload" })
 ```
 
 There are no editor modes, so a binding is just a key: the composer has
-the keys unless a focusable layout node does (below), and commands are
-slash commands typed in it. A binding with `{ focus = "<node id>" }` works
-only while that node has the keys, and may be a plain letter there; it
-comes before the global bindings while that node has the keys.
+the keys, and commands are
+slash commands typed in it.
 A binding with `{ list = true }` is a list alias: while a list, a
 composer popup or a prompt has the keys, its key makes the move its action
 names (`down`, `ctrl+d`, ...), swapped in Go before the list sees it, so a
@@ -1521,49 +1518,43 @@ zemi.ui.select(zemi.model.list(), {
 	prompt = "Model",
 	format_item = function(m) return m.display end,
 }, function(m) if m then zemi.model.set(m.id) end end)
-
--- Themes: a palette of roles, the rest derived; groups name roles and are
--- defined once for every theme (Go resolves them, colorprofile-aware)
-zemi.ui.theme.add("mine", { bg = "#1a1b26", fg = "#c0caf5", ansi = { --[[ 16 colors ]] } })
-zemi.ui.hl.set("Dim", { fg = "dim", italic = true })
-zemi.config.set("ui.theme", "mine")
 ```
 
 UI extensibility contract:
 
-- The screen is a layout tree of regions (`header`, `chat`, `working`, `composer`,
-  `statusline`, or any name) that Lua sets with `zemi.ui.layout.set`
-  and Go solves and paints every frame (§8), plus an overlay stack. The screen itself - the
-  splash, the chat, the composer's rule and the statusline - is Go (`internal/ui`), so a plugin
-  shows what it has to say through overlays, toasts, the composer, keymaps and commands. The composer is
+- The screen is Go's (`internal/ui`): one fixed layout of regions it solves
+  and paints every frame (§8), plus an overlay stack. Nothing in Lua sets the
+  layout or draws into it, so a plugin
+  shows what it has to say through overlays, toasts, the composer, keymaps and
+  commands, and reads the screen back as text with `zemi.ui.screenshot()`. The composer is
   Go-owned and zemi's own editor (`internal/ui/composer.go`; there is no
   bubbles dependency): visual wrapping, a large paste folded into a
   token, submitted-message history, `ctrl+z` undo, and a
   `$VISUAL`/`$EDITOR` handoff for the draft. Lua reacts to
   `composer.change`/`composer.submit`, reads and edits the draft through
-  `zemi.composer` (§6.7), and registers decoration widgets around it,
-  but cannot replace it.
-- Widgets return lines of `{ text, hl, click, effect, copy, soft_wrap, anchor }` segments; Go measures, wraps
-  (opt-in per widget), styles, and diffs via bubbletea v2. `copy = false`
+  `zemi.composer` (§6.7), but cannot replace or decorate it.
+- A row is segments (`hostapi.Segment`: `text`, `hl`, `click`, `effect`,
+  `copy`, `soft_wrap`, `pin`, `fill`, `anchor`); Go measures, wraps
+  (opt-in per region), styles, and diffs via bubbletea v2. `copy = false`
   marks decoration (gutter bars, bullets, borders, line numbers): a
   selection neither lights nor copies those cells. Wrapping ends a row that
   continues on the next in a `soft_wrap` segment, so a copy rejoins the
-  line and skips what follows it on the row (padding, another column). No lipgloss in
-  Lua; highlight names only, and `zemi.ui.width(text)` measures cells the
-  way the renderer does, so Lua clips and pads wide glyphs correctly. Rich text goes through
-  `zemi.ui.markdown(text, width)`, a Go bridge to glamour returning
-  styled segment lines (how the default chat widget renders assistant
-  text). Glamour renders unwrapped and zemi wraps the result, so the rows
+  line and skips what follows it on the row (padding, another column).
+  `hl` is a group name or a `sgr:<params>` inline style, so a plugin names
+  colors the theme resolves, and `zemi.ui.width(text)` measures cells the
+  way the renderer does, so Lua clips and pads wide glyphs correctly. The chat's rich text is the host's:
+  `Host.Markdown(text, width)` renders glamour into
+  styled segment lines. Glamour renders unwrapped and zemi wraps the result, so the rows
   carry `soft_wrap`; its decorations (list bullets, task marks, quote bars,
   code block margins) come back `copy = false` in `Dim`, so what a
   selection copies is the text the model wrote. A `<` that would open raw
   HTML outside code is escaped first, since glamour drops inline HTML and a
   `Vec<String>` in prose would vanish. A table renders at the
   width instead: its rows are layout, not prose. Text the user typed is not
-  markdown: `zemi.ui.wrap(text, width)` wraps it plain, with the same
-  `soft_wrap` marks, and `zemi.ui.diff(text, width)` draws a unified diff in
+  markdown: `WrapText(text, width)` wraps it plain, with the same
+  `soft_wrap` marks, and `DiffRows(diff, width)` draws a unified diff in
   the `Diff*` groups, the renderer the permission prompt draws in its own
-  chrome. `zemi.ui.highlight(text, lang, width?)` lexes code with chroma
+  chrome. `Host.Highlight(text, lang, width)` lexes code with chroma
   into group names from the same table as the code blocks' chroma style
   (how the chat draws a shell command), plain rows when no lexer matches.
   Glamour's styles come from the active theme's groups (`Normal`,
@@ -1579,15 +1570,14 @@ UI extensibility contract:
   spinner. The state marks
   (`zemi.ui.marks`: spin, ok, warn, err, stop, bg, wait, thought, note) are
   one Go table the chat's rows and the host's lists draw alike.
-- Clicks: a segment's `click` is a plain string id and the widget spec
-  carries one `on_click(ev)` (`ev = { id, button, clicks, mods, x, y }`),
-  the shape of neovim's statusline `%N@Func@`. Render stays pure data, so
-  cached frames hold no closures from an old generation; the handler is
-  looked up by widget id at click time, dropped after a reload, and runs
-  on the UI worker under the widget's origin like a keymap, so a plugin
-  widget can open nothing a plugin keymap could not. An id without a
-  handler draws no hover and does nothing. Ids from model text must not
-  become command arguments: use host ids.
+- Clicks: a segment's `click` is a plain string id, and the widget that drew
+  the row is stamped on it (`Segment.Widget`); the click runs that widget's
+  `onClick` with `ev = { id, button, clicks, mods, x, y }` on the UI
+  goroutine, and an id the widget does not take falls to `runClick` as the
+  command it names, which is how a statusline pill reaches `/errors`. Rows
+  stay pure data, so hit testing reads the last frame's segments and never
+  the layout tree; an id neither takes draws no hover and does nothing. Ids
+  from model text must not become command arguments: use host ids.
 - Terminal title: the tab reads the project's marker emoji and base name -
   the marker derived from the repository root, so windows on different
   projects tell themselves apart at a glance - until
@@ -1622,8 +1612,8 @@ UI extensibility contract:
   unfocused.
 - Themes: a theme is a palette of fixed roles (`bg`, `fg`, `accent`,
   `literal`, `ok`, `warn`, `danger`, `dim`, `rule`, `panel`, `band`, `addbg`,
-  `delbg`, `well`); `zemi.ui.theme.add` takes `bg`, `fg` and the four hues, or a
-  terminal's 16 `ansi` colors in their place, and derives the rest once in Go
+  `delbg`, `well`); a spec names `bg`, `fg` and the four hues, or a
+  terminal's 16 `ansi` colors in their place, and Go derives the rest once
   (OkLab mixes: dim is fg toward bg, rule and panel bg toward fg, band the
   panel toward the accent, the diff tints bg toward ok and danger; the literal
   the OKLCH midpoint of danger and warn, each scheme's own orange; and a
@@ -1634,19 +1624,17 @@ UI extensibility contract:
   `panel` and `band`, a spec's own included, are kept within 0.13 of bg's
   OKLCH lightness, and every text role is then moved along OKLCH lightness,
   hue kept, to a WCAG floor on the least contrasting of bg, panel, band and
-  well (fg 7, warn 3.5, the rest 4.5), so no theme, a plugin's included, can hide
+  well (fg 7, warn 3.5, the rest 4.5), so no theme can hide
   prompt text. The shipped ones are whorl (and whorl-light) plus ports of
   Ghostty's catppuccin, tokyonight, gruvbox, nord, dracula, solarized,
   rose-pine, kanagawa, one, everforest and github, most with a `-light`
   twin, which draws on a light terminal when it is registered, its theme
   itself included;
-  `ui.theme` names one: `zemi.config.set` takes any name, since a plugin's
-  or the project's theme may be added after it, and a name no theme answers
-  to once boot is done draws whorl and is an `/errors` entry; `/config`
-  refuses one, and `/theme` picks one with the list open, enter on a row
-  repainting the screen in it as the preview. The groups are defined once, for every theme, by the shipped
-  `theme.lua` through `zemi.ui.hl.set`, and any later `hl.set` replaces
-  one. The palette's `bg` is the app's canvas, which every group without a
+  `ui.theme` names one: a name no theme answers
+  to draws whorl and is an `/errors` entry; `zemi.config.set` and `/config`
+  refuse one, and `/theme` picks one with the list open, enter on a row
+  repainting the screen in it as the preview. The shipped themes and the
+  groups are Go tables (`internal/hostapi/themes.go`). The palette's `bg` is the app's canvas, which every group without a
   fill of its own sits on and which OSC 11 gives the terminal too
   (reset on every exit), while a `bg` on `Normal` recolors its text alone; every box
   (overlays, prompts, toasts, popups) and the composer sit on `panel`, a
@@ -1670,30 +1658,15 @@ UI extensibility contract:
   lightness and any other the entry nearest in OkLab; at 16 a background
   takes the grey of its lightness and a foreground the ANSI color its
   lightness (a grey) or hue falls in, bright when light, stepping to the
-  grey past its background when the two would be one color. `zemi.ui.hl.get(group)` reads
-  a group back resolved. `zemi.ui.hl.set` restyles a group for every theme
-  and `ui.theme` picks one, from any origin: the last write stands.
+  grey past its background when the two would be one color.
 - Key routing: bubbletea key -> normalized string -> Go-reserved cancel
   trigger -> Go-owned chrome (trust prompt, permission asks,
   question and plan prompts) -> the topmost overlay (Lua, or Go-built
-  lists like the model picker) -> a focused layout node (its scoped keymaps, then the global ones; an
-  unbound key does nothing, an unbound esc gives the keys back) ->
+  lists like the model picker) ->
   open composer popup -> keymap (keys and key sequences; printable keys
   stay with the composer) ->
   composer (there are no modes). Overlays capture first,
-  user maps override defaults, `zemi.keymap.del` unmaps.
-- Focus: a layout region or float with an id and `focusable = true` can
-  take the keys. `zemi.ui.focus.set(id)` (nil for the composer), `get`,
-  `next` and `prev` (drawn focusable nodes in tree then float order, the
-  composer counting as one), the `zemi.ui.focus.*` host actions and a
-  click on the node move it; a click on the composer, a
-  layout without the node, or esc give it back. The focus lives in Go and
-  every key still goes through normal keymap dispatch, so a panel costs no
-  Lua per key beyond its bindings. Widgets see it as `ctx.focus`, and the
-  composer hides its cursor and popups while a node has the keys. The
-  `zemi.ui.focus.*` calls and the keys that bind them are open to any
-  origin, like setting the layout, and a key the user presses runs whatever
-  bound it.
+  user maps override defaults, and `zemi.keymap.del` unmaps.
 - Slash palette: typing `/` in the composer opens a popup listing registered
   commands, matched fuzzily as you type and ranked best first, a name the
   typed one begins leading; `up`/`down`
@@ -1900,11 +1873,17 @@ view; a reset's wipe drops the row with the chat.
 
 ## 8. UI core detail
 
-- **Layout**: header (no default widget; the region stays for Lua), chat
-  (flex), then the composer (1..8 rows, those past either edge fading toward
-  the panel) inside a square frame two rows taller, whose rules carry
-  regions: the `working`
-  one on top, which gets the whole rule between the corners (the shipped
+- **Layout** (`internal/ui/layout.go`): one fixed tree, `screen`, that Go
+  solves and paints every frame; nothing in Lua or in config reaches it. The
+  main column centers past 124 cells. In it the stage - the chat, capped at
+  100 cells and centered - sits over the composer, and the
+  composer runs the column's width,
+  wider than the stage, with the statusline on a bar row below it. The stage
+  holds the chat, which fills it, and a blank row above the composer. The
+  composer takes 1..8 rows, those past either edge fading toward
+  the panel, inside a square frame two rows taller, whose top rule carries
+  the `working`
+  region: it gets the whole rule between the corners (the shipped
   `working` widget: the snail mascot a cell in from the left corner, a cell of
   rule either side of it, the state in its eyes alone: swapping while the model thinks or
   tools run, rewound while an interrupt winds the turn down,
@@ -1921,22 +1900,22 @@ view; a reset's wipe drops the row with the chat.
   right ever moves and the cells a part grows into come out of the rule on its
   left; a narrow rule sheds the least worth first, sized by the cells a part
   can grow to; the running call names
-  no cell of it, which the chat row already says. It reads `ctx.frame`,
-  `ctx.ended`, `ctx.cancelling`, `interrupt_armed`, `view`, `editing`,
-  `waiting`, `rows_below` and `agent.retry`/`checking_goal`),
-  the statusline on a bar row below the box. The mascot is always drawn and the frame's height
+  no cell of it, which the chat row already says. It reads the frame's
+  `Frame`, `Ended`, `Cancelling`, `InterruptArmed`, `View`, `Editing`,
+  `Waiting` and `RowsBelow` and the turn's `Agent.Retry` and
+  `Agent.CheckingGoal`).
+  The mascot is always drawn and the frame's height
   never moves with agent state, so no turn adds or removes a row.
-  Statusline
-  (`statusline.left` / `statusline.right` widgets ordered by
+  The statusline is two clusters on the bar; a cluster's widgets are ordered by
   `priority` ascending from each side's outer edge, the right one from the
   right edge, Go joins the ones that draw with a dim " · ",
   overflow drops the highest priority first; the
-  shipped left widgets also show an armed quit (`ctx.quit_armed`), a
-  pending key sequence (`key_seq`) and the rows below a scrolled chat
-  (`rows_below`); only the stuck and errors pills
-  are Go-drawn. A boot that
-  failed leaves the runtime hot, so no widget, theme, config text or composer
-  exists at all: the whole screen left is Go's, and the boot box states the
+  shipped left widgets also show an armed quit (`QuitArmed`), a
+  pending key sequence (`KeySeq`) and the rows below a scrolled chat
+  (`RowsBelow`); the stuck and errors pills
+  are Go's own. A boot that
+  failed leaves no composer to type in and no Lua to run a command: the boot
+  box states the
   error, the log that holds the whole traceback, and the two keys that work
   there, `c` to copy the error and `q` to quit. The
   shipped right widgets (`statusline.model`, `effort`,
@@ -1945,7 +1924,7 @@ view; a reset's wipe drops the row with the chat.
   session cost when the model spec carries prices (`pricing = { input`,
   `output`, `cache_write`, `cache_read }`),
   the reasoning effort, and, innermost
-  until the first message, the `/` and `@` keys).
+  until the first message, the `/` and `@` keys.
   Overlays float, centered or anchored (`anchor = "bottom-left"` or
   `"bottom-right"`: above the statusline row, the border in line with the
   composer frame on the side of the pill that opened it: a Lua picker
@@ -2090,30 +2069,24 @@ view; a reset's wipe drops the row with the chat.
   for its first file) and `off` (disabled). A list grouped by source
   (`/skills`, `/agents`, `/workflows`) puts the user's first, then builtin,
   plugin and project, by `sortBySource`'s order.
-- **Layout tree** (`zemi.ui.layout.set/get/rects`, `internal/ui/layout.go`): Lua hands
-  over plain data, Go validates it once and solves it every frame on the Update
-  goroutine, so the screen never waits on the interpreter. Boxes (row or col, optional
-  separators) hold leaves: a widget region (optionally scrolled, by node id), the
-  composer (exactly one, never hidden, optionally framed with a region in each rule,
-  with a `placeholder` an empty draft shows dim under the cursor),
-  the statusline bar, a spacer.
+- **The layout's nodes** (`internal/ui/layout.go`): `screen` is a tree of Go
+  values, solved every frame on the Update
+  goroutine from no input but the terminal's size. A node is a box laid out
+  along its `Dir`, or a leaf: a region, the
+  composer (framed, with a `Placeholder` an empty draft shows dim under the
+  cursor), a bar with a region on each side, a spacer.
   Each child claims cells, a percent, its content rows or a weighted fill share,
   clamped to min and max; a box too small takes cells from fill first, then percent,
-  content and cells, the last child first, down to min and then to 0, and hides its last
-  `collapse` child while the mins do not fit. A hidden or collapsed child takes no
-  separator. The solver is integer arithmetic and never
-  fails. Floats place a region like a neovim float (relative node, anchor corner,
-  row/col, size) in list order. A render's `ctx.regions` names the regions this
-  frame's solve draws, so a widget knows whether another is on screen. The shipped
-  `tui/layout.lua` sets the default: the main column, the composer's frame, centered
-  past 124 cells, and in it the header, then the stage, the chat column, centered
-  past 100 cells and a row above the
-  composer's frame, the composer's rules running wider than the stage so their
-  widgets fit; the working rule's key and clock sit at its right end. Any origin may replace the layout, the last one
-  set winning. `/reload` keeps drawing the old layout until the replay sets
-  one; a replay that sets none draws the Go copy of the default as it boots
-  (`hostapi.DefaultLayout`).
-  Go keeps the §8 chrome whatever the tree says: prompts and overlays center over the
+  content and cells, the last child first, down to min and then to 0. The solver
+  is integer arithmetic and never
+  fails (`FuzzSpan`). A node marked `Stage` is where prompts, overlays and
+  toasts go; the shipped stage is the box holding the chat, and the composer's
+  rules run wider than it, so the working rule's key and clock sit at its
+  right end. `screenLayout` keeps what the rest of the app asks of a solved
+  frame: the stage's cells, the composer's, the scrolled region and the leaves
+  a selection may not leave (`panes`); `shownWidgets` walks the same tree, so a
+  widget of a region the layout does not draw costs no render.
+  Go keeps the §8 chrome: prompts and overlays center over the
   stage node, or the whole screen when it is under 40 columns or 8 rows; the live toasts (five at
   most) are one tray of a fixed width at the stage's top, hugging its right edge (three
   cells over it, the rest in the margin, inside the screen), newest first, a section
@@ -2124,8 +2097,8 @@ view; a reset's wipe drops the row with the chat.
   beside it; completion popups stand in line with
   the composer, ending at the stage's bottom when the stage is above the composer,
   on the composer frame's top rule when it has one, in the draft's rule tint, else go
-  beside the composer on the side with room; Lua floats never cover the composer or the alarm
-  pills, and without a bar the pills float at the bottom-left. A scrolled region
+  beside the composer on the side with room; the alarm
+  pills sit at the bottom-left without a bar. A scrolled region
   keeps its last column for a thin scrollbar and a blank before it, or draws the bar in the
   separator column beside it, its own last cell left blank; its widgets
   render two cells narrower, so the bar appearing covers and rewraps nothing and chat
@@ -2138,7 +2111,7 @@ view; a reset's wipe drops the row with the chat.
   frame. Go's chrome lines (box borders, the
   composer frame and its plain rule runs, box separators) join where they touch once
   everything is placed (`App.join`): a line end facing a line becomes a T and a crossing a
-  `┼`, in the cell's own color; text, Lua content and the snail art never join. Under a
+  `┼`, in the cell's own color; text and the snail art never join. Under a
   modal the backdrop joins before it fades toward the canvas, and a faded line joins
   nothing placed over it, so the top box's border meets only its own lines - and the rule
   it stands on, whose cells under it become that border whatever the rule carried there.
@@ -2159,10 +2132,12 @@ view; a reset's wipe drops the row with the chat.
   bump it when they return, and `zemi.ui.redraw()` bumps it on demand (a
   repeating timer calls it itself, so an idle tick costs nothing). A
   widget a message resized renders on that message instead, so no frame
-  draws lines rendered for another size. A frame's screen state builds `todos`, `recent`, `projects` and `instructions` on first
+  draws lines rendered for another size. A frame's screen state (`hostapi.ScreenState`) builds
+  `todos`, `projects`, `instructions` and the log's row count on first
   read, so a widget that reads only scalars pays for none of them. A widget's rows are wrapped
-  only once per width, so a frame of a streaming reply over 500 turns costs 1.5 ms, not 40
-  (`BenchmarkStreamingFrame`). A render returning `true` as a second result
+  only once per width, and the chat's settled rows once per state they were
+  built from, so a frame of a streaming reply over 500 turns costs under a
+  millisecond (`BenchmarkStreamingFrame`). A render returning `true` as a second result
   runs again next frame, that widget alone: the chat fills a long chat
   window that way, latest messages first, 30 ms at a time but never less
   than a full view, topped with the prompt it pins even when that prompt
@@ -2177,10 +2152,13 @@ view; a reset's wipe drops the row with the chat.
   themselves.
 - **Chat transcript**: messages are stored as content blocks (text, tool
   call, tool result, reasoning); tool output is sanitized before render
-  (see below); the default chat widget maps blocks to
-  lines, applies markdown rendering via glamour for assistant text
-  (cached by style, width and text; a frame never re-runs glamour). The
-  view word-wraps (the widget sets `wrap`), so long lines stay visible
+  (see below); the chat (`internal/ui/chat.go`) maps blocks to
+  lines and draws assistant text as markdown through `Host.Markdown`
+  (memoized by width and text; a frame never re-runs glamour), and keeps its
+  settled rows until the state they were built from moves: the log's epoch,
+  cut and edit, its row count, the width, the rail's view, the folds'
+  version, the run on screen and the live turn's own rows. The
+  view word-wraps (the chat's widget declares `Wrap`), so long lines stay visible
   instead of truncating, and starts at its top row: a transcript shorter
   than the view leaves the blank under it. Scrollback (the scroll keys in Default
   keymaps below, and the mouse wheel) moves the viewport off the tail;
@@ -2191,11 +2169,11 @@ view; a reset's wipe drops the row with the chat.
   transcript opens at its tail and leaves the session's place parked, so esc
   lands where the session was left. Sending a message snaps back to the
   tail, a slash command does not. While a turn's prompt is above the view its first row
-  stays pinned over the chat's top row (a segment's `sticky`) as chrome,
+  stays pinned over the chat's top row (`PinTurn`) as chrome,
   dimmed (`Pinned`) on the panel, ending in `…` when the prompt has more rows,
-  and an opened run's digest of that turn (`sticky = "section"`) pins on the
+  and an opened run's digest of that turn (`PinSection`) pins on the
   row under it once it scrolls past that row, until its run's last row
-  (`sticky = "end"`) reaches it: the pins stack as one header block, a turn at
+  (`PinEnd`) reaches it: the pins stack as one header block, a turn at
   a time, and the next prompt starts the stack anew. A click on a pin scrolls
   back to its row, which lands under the pins above it, and `alt+up`/`alt+down`
   move between prompts and opened runs. Every row of a unit also carries its
@@ -2205,7 +2183,7 @@ view; a reset's wipe drops the row with the chat.
   opens on the unit the reader is at. The window sheds its head past
   `chatWindowRows`, onward to the next turn's first row so the window never
   opens on an answer whose question was shed; the chat then keys its cached rows by their place in the
-  log's tail (the index plus the ctx's `transcript_cut`) and restamps the
+  log's tail (the index plus `ScreenState.TranscriptCut`) and restamps the
   drawn rows' anchors and calls by the delta, so a trim neither re-renders
   the window nor drops a fold the reader opened. A banded message is the one thing a
   picker leaves undimmed: the map sinks the chat around what it looks at.
@@ -2410,7 +2388,7 @@ view; a reset's wipe drops the row with the chat.
   written; bare over a reply with code blocks opens their picker), `/messages` (the map of the conversation, `ctrl+m`), `/logs` (recent
   `print` and `zemi.log` lines), `/health` (one row per check, problems first: store,
   providers, catalog, model, context window, git, shell, notify,
-  the chat builder (§10), skills, the Lua runtime, layout, plugins,
+  the chat builder (§10), skills, the Lua runtime, plugins,
   recent errors, trust, MCP servers, language servers, and the rows Lua adds),
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/skills`,
@@ -2434,10 +2412,11 @@ view; a reset's wipe drops the row with the chat.
   multi-agent run is never one stray enter; esc goes back.
 - **Mouse**: one hit test (`App.target`) serves clicks and hover, so a
   highlight always means a click acts. Go chrome items carry a Go-only
-  item index; widget segments carry their `click` id (§6.6) and are
-  targets only while their widget has `on_click` and no modal chrome is
+  item index; a widget's rows carry their `click` id, stamped with the
+  widget that drew them (`Segment.Widget`), and are
+  targets only while their widget has `onClick` and no modal chrome is
   open, which takes every click. The shipped statusline is clickable from
-  `tui/statusline.lua`: the project path `/projects`, the model the model
+  `internal/ui/statusline.go`: the project path `/projects`, the model the model
   picker, the context and cost `/usage`,
   running agents `/agents`, running jobs `/jobs`. The chat widget marks a
   digest (`turn:<first
@@ -2452,11 +2431,11 @@ view; a reset's wipe drops the row with the chat.
   call handed off to (`job:<id>`, its output); the splash's rows switch to a
   project, and its tip's keys run their command or fill the composer (a `fill
   <text>` click id, which the chat's `runClick` puts there). The stuck
-  and errors pills stay Go-drawn, since they report a broken
-  Lua layer that could not draw its own alarm; a click on
+  and errors pills are Go's own, since they report a broken
+  Lua layer; a click on
   errors opens `/errors`, on stuck reloads. A drag selects inside the pane
-  or box it starts in: a modal's text, a popup's, a layout leaf or a
-  float; pulling past an edge selects to it, and a drag outside a modal
+  or box it starts in: a modal's text, a popup's or a layout leaf's;
+  pulling past an edge selects to it, and a drag outside a modal
   selects nothing.
 - **Permission overlays**: ask-style tool calls freeze the turn, render an
   overlay (diff preview for edits, command preview for shell and job asks),
@@ -2494,10 +2473,10 @@ view; a reset's wipe drops the row with the chat.
   each answer's key in brackets beside its label, the selected answer marked like a selected list row, the band under the accent `›`. The overlay
   is Go-owned and non-replaceable: a plugin cannot whitelist itself. Its
   chrome (frame, answer keys, subject, badge) renders in the active
-  palette's roles through `Host:` styles no group or `hl.set` reaches, and
-  every palette meets its contrast floors when it registers (§6.6), so a
+  palette's roles through `Host:` styles no group reaches, and
+  every palette meets its contrast floors (§6.6), so a
   theme can recolor the prompt but not hide it; Go draws it itself and Lua text never renders
-  inside that chrome, so a widget cannot fake a permission prompt. Modal
+  inside that chrome, so nothing Lua draws can fake a permission prompt. Modal
   chrome (overlays and prompts) draws over everything but the toast tray,
   as do the completion and palette popups, which are not modal; while a
   modal is open everything outside the top box, plugin overlays and widget
@@ -2535,13 +2514,13 @@ view; a reset's wipe drops the row with the chat.
   | `zemi projects` | `root`, `trust`, `used`, `sessions`, `stats_error` |
   | `zemi plugin` | `name`, `version`, `local`, `enabled`, `source`, `uses` |
   | `zemi health` | `level`, `name`, `detail`; an `error` level makes the exit status 1 |
-- **Golden tests**: the TUI renders each widget's segment rows to a string;
-  golden files per widget and per full frame via `charmbracelet/x/exp/golden`
-  (`go test ./internal/ui/... -update` regenerates).
+- **Golden tests**: the TUI paints a frame of segments into a string;
+  golden files of whole frames, one per screen and state, via `charmbracelet/x/exp/golden`
+  (`make golden`, which runs `go test ./internal/ui -update`, then the diff is read).
   A scrolled view sinks the rows at an edge content lies past toward the
   surface it sits on: a region's toward the canvas, a box's and the
   composer's toward the panel, which the fill a box puts its rows on carries.
-  A region fades the `fade` rows its layout node sets (the shipped chat uses
+  A region fades the `Fade` rows its layout node sets (the shipped chat uses
   4), a box and the composer two, and none more than a third of the view;
   deepest at the edge - under the pins while rows are scrolled above, and at
   the bottom while scrolled up - so each edge says there is more, easing off
@@ -2934,8 +2913,10 @@ internal/classify/          judging data with a model: protocol, logprobs, schem
 internal/tools/             builtin tools (fs, shell, jobs, net, misc) and the tool
                             pipeline (validate, tool.pre, permission gate, run)
 internal/perm/              path resolution, the pad, glob and subjects
-internal/ui/                program, regions, widgets, themes, palette, overlays,
-                            composer, mouse, and hit testing
+internal/ui/                program, the layout and its typed regions, the frame's
+                            widgets (chat, splash, statusline, the composer's rule,
+                            art), themes, palette, overlays, composer, mouse and
+                            hit testing
 internal/sanitize/          escape stripping at the render boundary (the log's slog handler
                             quotes), and the secret-shape scrubber for recipe writes
 internal/skill/             SKILL.md discovery and parsing
@@ -2949,7 +2930,7 @@ internal/filelock/          exclusive advisory file locks: store migrations
 internal/plugin/            plugin install, update, check and delete over plain git, and on/off
 internal/glob/              rg-style glob matching for the file tools and LSP paths
 internal/logging/           the slog log file, one per launch
-runtime/lua/                embedded Lua userland (tui: widgets, themes)
+runtime/lua/                embedded Lua userland: `zemi.util` and the test asserts
 runtime/skills/             the builtin skills (zemi, codescan); runtime/workflows/, the builtin ones
 runtime/types/              the LuaLS `---@meta` description of the whole zemi.* API
 ```

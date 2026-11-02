@@ -222,7 +222,7 @@ func sameColor(a, b color.Color) bool {
 	return ar == br && ag == bg && ab == bb
 }
 
-// sgrStyle decodes inline SGR params (zemi.ui.markdown output), cached
+// sgrStyle decodes inline SGR params (Host.Markdown's output), cached
 // because compose runs every frame.
 func (t themeResolver) sgrStyle(params string) uv.Style {
 	if st, ok := t.sgr[params]; ok {

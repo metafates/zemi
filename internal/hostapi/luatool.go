@@ -69,7 +69,7 @@ var luaReadOnly = set.Of(
 	"project.root", "project.trusted", "provider.list",
 	"session.id", "session.todos",
 	"skills.list", "state.get", "tool.describe", "tool.list",
-	"ui.focus.get", "ui.hl.get", "ui.layout.get", "ui.layout.rects", "ui.width", "ui.screenshot", "ui.theme.get", "ui.theme.list",
+	"ui.width", "ui.screenshot",
 	"workflow.list", "job:wait", "http:wait", "tool:wait",
 )
 

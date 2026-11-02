@@ -118,10 +118,9 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 }
 
 // bootBox draws the screen a failed boot leaves (DESIGN §8): the shipped Lua
-// layer never loaded, so the runtime is hot and no theme, widget or
-// config-driven text exists. Everything here is Go's, and it reads on a
-// terminal with no theme at all. The two keys are the ones that work in that
-// state: copy the error for a report, or quit.
+// layer never loaded, so nothing Lua drew or answered exists. Everything here
+// is Go's, and it reads on a terminal with no theme at all. The two keys are
+// the ones that work in that state: copy the error for a report, or quit.
 func (a *App) bootBox(w, h int) [][]hostapi.Segment {
 	width := min(boxInner(w), textBoxW-4)
 	text := func(width int) [][]hostapi.Segment {

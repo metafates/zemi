@@ -432,7 +432,7 @@ func TestKeymapFromLua(t *testing.T) {
 		assert(a and a.list and a.action == "down" and zemi.keymap.get("ctrl+u") == nil, "a list alias is its own binding")
 		for _, bad in ipairs({
 			{ "ctrl+x j", "down", { list = true }, "one key" },
-			{ "d", "down", { list = true }, "printable keys filter" },
+			{ "d", "down", { list = true }, "printable key" },
 			{ "ctrl+k", "help", { list = true }, "is a move" },
 			{ "ctrl+k", function() end, { list = true }, "is a move" },
 			{ "enter", "down", { list = true }, "lists answer with" },

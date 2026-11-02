@@ -22,7 +22,7 @@ A gated host-API call (`zemi.fs` writes, `zemi.http`, `zemi.job`, `zemi.classify
 - A wedged handler turns the runtime "hot"; `/reload` rebuilds it. Errors show in `/errors`.
 - Once a `pcall` catches an error, closures made before it stop sharing locals with the function that made them (gopher-lua): a later `n = n + 1` inside one is lost outside it. Share state through a table (`local got = {}`), or return values out of the `pcall`.
 - Module locals die on a reload. `zemi.state` is persisted and shared by every project and running zemi, so put the project in the key (`"branch:" .. zemi.project.root()`) and keep what only this run needs in a local. Each plugin gets its own space (stored under `plugin:<name>:`) and never sees another's; every other origin shares one space.
-- Nothing stores a value that can never work: a color that is not `#rrggbb`, a palette key or an ANSI color name, a printable key with no `focus`, a key sequence containing ctrl+c (cancel and quit), a `zemi.config.watch` path outside the schema, and a tool spec with no `description` or with a wrapped `input` all raise.
+- Nothing stores a value that can never work: a printable key, a key sequence containing ctrl+c (cancel and quit), a `zemi.config.watch` path outside the schema, and a tool spec with no `description` or with a wrapped `input` all raise.
 
 ## Waiting
 
@@ -38,7 +38,7 @@ One script for a whole step is called codemode: when calls chain, a shape of cal
 
 ## The API
 
-Zemi can read itself from a script: the current model is `zemi.agent.current().model`, the session id `zemi.session.id()`, the screen as text `zemi.ui.screenshot()`, errors `zemi.errors.list()`, health `zemi.health.list()` and the layout rects `zemi.ui.layout.rects()`. `zemi.model.pick()` opens the model picker (choosing one runs `/model`); it does not return the current model.
+Zemi can read itself from a script: the current model is `zemi.agent.current().model`, the session id `zemi.session.id()`, the screen as text `zemi.ui.screenshot()`, errors `zemi.errors.list()` and health `zemi.health.list()`. `zemi.model.pick()` opens the model picker (choosing one runs `/model`); it does not return the current model.
 
 Every member, with its parameters, is one shell grep of the types file (the system prompt names it): `grep -n '^function zemi\.'` lists all of them, `grep -n -B20 'function zemi.lsp.'` one namespace with the `---` lines above each hit, which are its rules: who may call it, what it returns, when it raises. `grep -n -A20 '@class zemi.<Name>'` gives the fields of the class a parameter names. `zemi.notify` and `zemi.log` are also callable, and `zemi.api.version` is the API version string. `lua.md` itself has `zemi.skills` with examples.
 

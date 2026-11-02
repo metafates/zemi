@@ -11,7 +11,7 @@ This file is what every zemi task needs. The rest is in files beside it: read on
 | --- | --- |
 | settings, providers and models, MCP and language servers, trust, the command line, what a slash command or key does | `config.md` |
 | Lua in init.lua or the lua tool: the API, origins, events, what may wait | `lua.md` |
-| keymaps, the statusline, themes and colors | `ui.md`, then `lua.md` for API |
+| keymaps, colors and the screen's layout | `ui.md`, then `lua.md` for API |
 | a plugin: new, changed, tested, published | `plugins.md` (and `ui.md` for a key), which says when `lua.md` is needed |
 | a subagent | `agents.md` |
 | the chat's memory: the view, zoom, what a summary owes, how to leave things for later | `memories.md` |
@@ -40,4 +40,4 @@ The prompt names the exact user config, project config and local plugins directo
 
 ## Check a change
 
-For a config change (a plugin is checked by its tests instead, `plugins.md`): read in one Lua tool script, which reloads the changed config first and needs no approval in a trusted project: `zemi.errors.list()` (what `/errors` shows, newest first), `zemi.health.list()` (the `/health` rows), `zemi.ui.screenshot()` (the screen as text), `zemi.ui.layout.rects()` (the rect of each layout node with an id, keyed by id) and, when the change is a color, `zemi.ui.hl.get(group)` (a screenshot renders styled text and its text capture drops the colors). An init.lua change may be tried live with the Lua tool first (one approval, gone at the next reload). Then tell the user the path and how to undo it.
+For a config change (a plugin is checked by its tests instead, `plugins.md`): read in one Lua tool script, which reloads the changed config first and needs no approval in a trusted project: `zemi.errors.list()` (what `/errors` shows, newest first), `zemi.health.list()` (the `/health` rows) and `zemi.ui.screenshot()` (the screen as text, styling dropped). A color change shows in `make golden`'s frame diff instead, whose frames carry the truecolor SGRs. An init.lua change may be tried live with the Lua tool first (one approval, gone at the next reload). Then tell the user the path and how to undo it.
