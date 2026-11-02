@@ -908,7 +908,8 @@ func TestScrollPendingEdge(t *testing.T) {
 			host.AppendMessage("user", fmt.Sprintf("%s row %d", tag, len(host.Session().Transcript)+1))
 		}
 		app.renderSync(t)
-		return app.scrolls[regionChat], ansi.Strip(app.Frame())
+		frame := ansi.Strip(app.Frame()) // compose makes the scroll state
+		return app.scrolls[regionChat], frame
 	}
 	if st, frame := rows("a", 40); st.top != 0 || st.follow || !strings.Contains(frame, "a row 1 ") {
 		t.Fatalf("a top before the rows arrived: top %d, follow %v\n%s", st.top, st.follow, frame)

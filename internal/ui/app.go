@@ -944,10 +944,13 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 			a.caches[msg.id] = c
 		}
 		c.gen, c.seq, c.width, c.height = msg.gen, msg.seq, msg.width, msg.height
-		// a dropped request (hot mode, a reload) keeps the lines unflagged
-		if !lua.Dropped(msg.err) && c.err != msg.err.Error() {
-			c.err = msg.err.Error()
-			a.host.RecordError("widget", msg.id, c.err)
+		// a dropped request (hot mode, a reload) keeps the lines unflagged,
+		// and the repeat test reads the panic's first line only: the stack
+		// under it differs every render
+		head, _, _ := strings.Cut(msg.err.Error(), "\n")
+		if !lua.Dropped(msg.err) && c.err != head {
+			c.err = head
+			a.host.RecordError("widget", msg.id, msg.err.Error())
 		}
 		a.log.Debug("widget render failed; keeping last good lines", "origin", "ui",
 			"widget", msg.id, "error", msg.err,
