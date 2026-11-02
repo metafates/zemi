@@ -631,10 +631,10 @@ Each message has a kind:
 - note: memories from before this chat
 
 The summaries form a binary tree: each message is compressed into a line (a
-short message is its own line), then adjacent lines are merged in pairs, again
-and again. So recent lines cover one message each, and older lines cover more.
-A message not summarized yet shows as "(not summarized yet: zoom it)". A text
-too long for one message is split over several in a row.
+short message is its own line), then adjacent lines are merged in pairs. So
+recent lines cover one message each, and older lines cover more. A message not
+summarized yet reads as its kind and head; a merged line as "(not summarized
+yet: zoom it)". A long text splits over several rows.
 
 Tools:
 - zoom(id, n) opens line id+n into the two lines it was made from;

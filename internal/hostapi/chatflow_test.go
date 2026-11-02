@@ -93,8 +93,8 @@ func TestViewGrowsOnlyAtItsEnd(t *testing.T) {
 	if _, marked := two.Content[1].(fantasy.TextPart).ProviderOptions["anthropic"]; !marked {
 		t.Fatal("the stable block lost its mark")
 	}
-	// the tail grew, unbuilt lines as placeholders, the view closed
-	if got := two.Content[2].(fantasy.TextPart).Text; !strings.HasSuffix(got, "10+1|(not summarized yet: zoom it)\n11+1|(not summarized yet: zoom it)\n</chat>") {
+	// the tail grew, unbuilt message lines as their own heads, the view closed
+	if got := two.Content[2].(fantasy.TextPart).Text; !strings.HasSuffix(got, "10+1|user: row 10\n11+1|user: row 11\n</chat>") {
 		t.Fatalf("the tail block = %q", got)
 	}
 	if !strings.HasPrefix(one.Content[0].(fantasy.TextPart).Text, "<chat>\n0+1|line 0 text\n") {
@@ -104,6 +104,36 @@ func TestViewGrowsOnlyAtItsEnd(t *testing.T) {
 	h2, _ := newTestHostDB(t)
 	if _, ok := h2.viewMessage(); ok {
 		t.Fatal("an empty log built a view message")
+	}
+}
+
+// TestPendingLineNamesAndClips: a line whose node is unbuilt stands in with
+// the message's kind (a tool's name too) and its own head, clipped to the
+// line budget, so a huge row cannot bloat the view.
+func TestPendingLineNamesAndClips(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	for _, c := range []struct {
+		name string
+		kind store.LogKind
+		meta string
+		text string
+		want string
+	}{
+		{"a reply", store.KindAgent, "", "hello there", "agent: hello there"},
+		{"a call", store.KindTool, `{"tool":"shell"}`, `{"command":"ls"}`, `tool shell: {"command":"ls"}`},
+		{
+			"a long row", store.KindUser, "", strings.Repeat("x", 4*nodeBytes),
+			"user: " + strings.Repeat("x", nodeBytes-6) + "...",
+		},
+	} {
+		seq, err := h.DB.AppendLog(c.kind, c.text, c.meta, "", "")
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if got := h.chat.pendingLine(seq); got != c.want {
+			t.Errorf("%s = %q, want %q", c.name, got, c.want)
+		}
 	}
 }
 

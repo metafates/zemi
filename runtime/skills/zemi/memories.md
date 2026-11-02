@@ -10,7 +10,7 @@ Every turn starts a fresh call. What carries over between turns is only the view
 
     id+n|text    the n messages from id on, summarized (newlines as spaces)
 
-So `40+8` is the summary of messages 40 to 47. A message not summarized yet reads `(not summarized yet: zoom it)`. The view holds only summaries, never a whole message - not even the last one - and it has no dates in it.
+So `40+8` is the summary of messages 40 to 47. A message whose line is not built yet still reads as its kind and its head; a merged line not built yet reads `(not summarized yet: zoom it)`. The view holds only summaries, never a whole message - not even the last one - and it has no dates in it.
 
 The view is your memory, and its latest word on a thing is the truth. Whenever you need any information, first find its latest mention in the view and zoom until you have it whole, before any other source, and before you act, guess or ask. Summaries keep little of tool output, so say in your reply what you learned that will matter later: the next turn starts from the view, and what your summaries omit is lost to it.
 

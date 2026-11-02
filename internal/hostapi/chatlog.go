@@ -479,6 +479,21 @@ func isViewMessage(msgs []fantasy.Message) bool {
 	return ok && strings.HasPrefix(part.Text, "<chat>")
 }
 
+// pendingLine is an unbuilt message line's stand-in text: the message's kind
+// and its own head, clipped to the line budget, so the newest exchange reads
+// without waiting for a build or a zoom round trip.
+func (c *chatLog) pendingLine(seq int64) string {
+	row, err := c.h.DB.LogAt(seq)
+	if err != nil {
+		return ""
+	}
+	head := string(row.Kind)
+	if name := rowTool(row); name != "" {
+		head += " " + name
+	}
+	return clipBytes(head+": "+strings.ReplaceAll(row.Text, "\n", " "), nodeBytes)
+}
+
 // viewMessage is the fresh turn's opening message: the persisted view, one
 // text part per viewLinesPerPart lines, oldest first. The mark sits on the
 // newest complete block that has a part after it - a complete last block
@@ -498,10 +513,14 @@ func (c *chatLog) viewMessage() (msg fantasy.Message, ok bool) {
 	for start := 0; start < len(lines); start += viewLinesPerPart {
 		var b strings.Builder
 		for _, ln := range lines[start:min(start+viewLinesPerPart, len(lines))] {
+			text := ln.Text
+			if text == "" && ln.L == 0 {
+				text = c.pendingLine(ln.I)
+			}
 			if b.Len() > 0 {
 				b.WriteByte('\n')
 			}
-			b.WriteString(renderLine(ln.L, ln.I, ln.Text))
+			b.WriteString(renderLine(ln.L, ln.I, text))
 		}
 		texts = append(texts, b.String())
 	}
