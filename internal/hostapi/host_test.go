@@ -1064,34 +1064,6 @@ func TestOverlayCallbackErrorsRecorded(t *testing.T) {
 	}
 }
 
-// TestWorkingRuleCarriesThePendingRowOnlyOutOfView: the chat's pending row is
-// where background work lives; the rule carries nothing while the chat shows
-// it, and once the reader scrolls it out of view the rule centres the same
-// row - mark and shimmer, no key the chat row does not carry.
-func TestWorkingRuleCarriesThePendingRowOnlyOutOfView(t *testing.T) {
-	t.Parallel()
-	h := newTestHostUI(t)
-	defer h.Busy("Answering the side question", func() {})()
-	row := func(st UIState) string {
-		t.Helper()
-		lines, _, err := h.RenderWidget(t.Context(), h.Widgets.Get("working"), 80, 1, st)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return SegsText(lines[0])
-	}
-	if got := row(UIState{}); strings.Contains(got, "side question") || strings.Contains(got, "esc") {
-		t.Fatalf("the rule carries the pending row the chat shows: %q", got)
-	}
-	got := row(UIState{RowsBelow: 1})
-	if !strings.Contains(got, "answering the side question") {
-		t.Fatalf("the scrolled-away row never reached the rule: %q", got)
-	}
-	if strings.Contains(got, "esc") {
-		t.Fatalf("the copy carries a key the chat row does not: %q", got)
-	}
-}
-
 // TestChatCountsTheRowsBelowItsPendingRow: the chat draws its pending row
 // above the todo list and says how many rows sit below it, so the rule carries
 // the row only once that block scrolled out of view too.

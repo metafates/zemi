@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -167,6 +168,25 @@ func costText(usd float64) string {
 		return "<$0.01"
 	}
 	return fmt.Sprintf("$%.2f", usd)
+}
+
+// duration is a duration as "4.2s" under ten seconds, then "42s", "3m 05s",
+// "1h 02m". A clock that ticks passes whole: its seconds only grow in width.
+func duration(s float64, whole bool) string {
+	if s < 9.95 && !whole {
+		return fmt.Sprintf("%.1fs", max(s, 0))
+	}
+	n := int(math.Floor(max(s, 0) + 0.5))
+	if whole {
+		n = int(math.Floor(max(s, 0)))
+	}
+	switch {
+	case n < 60:
+		return strconv.Itoa(n) + "s"
+	case n < 3600:
+		return fmt.Sprintf("%dm %02ds", n/60, n%60)
+	}
+	return fmt.Sprintf("%dh %02dm", n/3600, n/60%60)
 }
 
 // clockText is a wall clock, "14:05".
