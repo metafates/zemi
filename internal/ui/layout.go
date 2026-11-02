@@ -302,7 +302,10 @@ func regionWidth(n *hostapi.LayoutNode, w int) int {
 // shownWidget is a widget of a region the layout draws, with the cells it
 // renders at.
 type shownWidget struct {
-	*hostapi.Widget
+	ID, Region    string
+	Wrap          bool
+	Lua           *hostapi.Widget // a Lua widget, nil for a Go one
+	Go            *widget         // a Go widget, nil for a Lua one
 	width, height int
 }
 
@@ -320,8 +323,8 @@ func (a *App) shownWidgets() []shownWidget {
 		if region != "" {
 			regions.Add(region)
 		}
-		for _, wg := range a.host.Widgets.InRegion(region) {
-			out = append(out, shownWidget{Widget: wg, width: w, height: h})
+		for _, wg := range a.regionWidgets(region) {
+			out = append(out, shownWidget{ID: wg.ID, Region: wg.Region, Wrap: wg.Wrap, Lua: wg.Lua, Go: wg.Go, width: w, height: h})
 		}
 	}
 	var walk func(l laid)
@@ -674,7 +677,7 @@ func (a *App) paintScrolled(n *hostapi.LayoutNode, r uv.Rectangle) [][]hostapi.S
 		}
 	}
 	st.filling = false
-	for _, wgt := range a.host.Widgets.InRegion(n.Region) {
+	for _, wgt := range a.regionWidgets(n.Region) {
 		if c := a.caches[wgt.ID]; c != nil && c.partial {
 			st.filling = true
 		}

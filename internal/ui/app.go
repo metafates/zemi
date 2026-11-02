@@ -170,7 +170,9 @@ type App struct {
 	fadeKeys map[float64]string // a fade's key text, rebuilt each frame
 	// tree is the screen's layout: zemi draws one fixed tree, and only a
 	// test replaces it
-	tree          *hostapi.Layout
+	tree *hostapi.Layout
+	// widgets are the screen's own pieces, drawn from the frame's state
+	widgets       []*widget
 	caches        map[string]*widgetCache
 	pending       map[string]renderKey // widget id -> the render in flight
 	renderSeq     int64                // counts render dispatches, so the latest one wins
@@ -278,6 +280,7 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 		fadeKeys: map[float64]string{},
 		scrolls:  map[string]*scrollState{},
 		lastSel:  map[string]string{},
+		widgets:  shippedWidgets(),
 		timeStr:  "--:--",
 		now:      time.Now,
 		focused:  true,
@@ -1009,7 +1012,8 @@ func (a *App) renderStaleWidgetsCmd(sizeOnly bool) tea.Cmd {
 	return func() tea.Msg {
 		out := make(widgetsRenderedMsg, 0, len(stale))
 		for _, w := range stale {
-			lines, more, err := a.host.RenderWidget(context.Background(), w.Widget, w.width, w.height, st)
+			screen := a.host.ScreenState(w.width, w.height, st)
+			lines, more, err := a.renderWidget(w, screen, st)
 			out = append(out, widgetRender{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: gen, seq: seq, err: err})
 		}
 		return out
@@ -1634,7 +1638,7 @@ func headerAt(lines [][]hostapi.Segment, i int) bool {
 
 func (a *App) regionLines(region string, width, clip int) [][]hostapi.Segment {
 	var out [][]hostapi.Segment
-	for _, wgt := range a.host.Widgets.InRegion(region) {
+	for _, wgt := range a.regionWidgets(region) {
 		c := a.caches[wgt.ID]
 		if c == nil {
 			continue
@@ -1810,7 +1814,7 @@ var statusDot = hostapi.Segment{Text: " · ", HL: hostapi.GroupDim, NoCopy: true
 // statusItems are the widgets of region that draw, by priority.
 func (a *App) statusItems(region string) []statusItem {
 	var out []statusItem
-	for _, wgt := range a.host.Widgets.InRegion(region) {
+	for _, wgt := range a.regionWidgets(region) {
 		if lines := a.widgetLines(wgt.ID); len(lines) > 0 && hostapi.SegsWidth(lines[0]) > 0 {
 			out = append(out, statusItem{lines[0], wgt.Priority})
 		}

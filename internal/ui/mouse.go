@@ -644,6 +644,16 @@ func (a *App) clickWidget(s hostapi.Segment, x, y int) {
 		"button": button,
 		"mods":   map[string]any{"shift": p.mod.Contains(tea.ModShift), "ctrl": p.mod.Contains(tea.ModCtrl), "alt": p.mod.Contains(tea.ModAlt)},
 	}
+	if w := a.widgetByID(s.Widget); w != nil {
+		// a shipped widget's click is Go: it runs here, like a Go pill's
+		if w.onClick != nil {
+			w.onClick(ev)
+		} else {
+			a.runClick(ev)
+		}
+		a.Refresh()
+		return
+	}
 	a.background(func() {
 		err := a.host.ClickWidget(context.Background(), s.Widget, ev)
 		a.Refresh()

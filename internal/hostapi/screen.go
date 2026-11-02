@@ -17,6 +17,7 @@ type ScreenState struct {
 	// the frame
 	Width, Height  int
 	Time           string
+	Now            time.Time
 	Frame          int
 	Ended          TurnEnd
 	QuitArmed      bool
@@ -209,7 +210,7 @@ func (h *Host) ScreenState(width, height int, state UIState) *ScreenState {
 		h.tMu.RUnlock()
 	}
 	st := &ScreenState{
-		Width: width, Height: height, Time: state.Time, Frame: state.Frame,
+		Width: width, Height: height, Time: state.Time, Now: h.now(), Frame: state.Frame,
 		Ended: state.Ended, QuitArmed: state.QuitArmed, InterruptArmed: state.InterruptArmed,
 		KeySeq: state.KeySeq, RowsBelow: state.RowsBelow, Cancelling: state.Cancelling,
 		Editing: state.Editing, Waiting: state.Waiting, Regions: state.Regions, Rail: state.Rail,
