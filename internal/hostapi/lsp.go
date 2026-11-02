@@ -168,7 +168,7 @@ func (h *Host) lspFor(path string) (lspDef, bool) {
 	if d, ok := h.zemiLua(path); ok {
 		return d, true
 	}
-	if !h.inRoots(path, h.Dirs.RepoRoot()) {
+	if !h.inRoots(path, h.repoRoot()) {
 		return lspDef{}, false
 	}
 	ext := strings.ToLower(filepath.Ext(path))
@@ -238,7 +238,7 @@ func (h *Host) lualsDef() (lspDef, bool) {
 // the root alone. An untrusted project gets none: a user-added server runs
 // the repository's code as much as a builtin does.
 func (h *Host) lspDefs(path string) []lspDef {
-	root := h.Dirs.RepoRoot()
+	root := h.repoRoot()
 	dirs := []string{root}
 	if abs, err := filepath.Abs(path); err == nil && path != "" {
 		for dir := filepath.Dir(abs); dir != root && strings.HasPrefix(dir, root+string(filepath.Separator)); dir = filepath.Dir(dir) {
@@ -269,7 +269,7 @@ func (h *Host) lspKnown() []lspDef {
 			}
 			if d.Name == "typescript" {
 				// without tsserver.path the server prefers node_modules/typescript
-				ts := globalTSServer(h.Dirs.RepoRoot())
+				ts := globalTSServer(h.repoRoot())
 				if ts == "" {
 					continue
 				}
@@ -395,7 +395,7 @@ func (h *Host) lspSync(force bool) {
 		}
 	}
 	h.lsp.mu.Unlock()
-	root, head := h.Dirs.RepoRoot(), ""
+	root, head := h.repoRoot(), ""
 	// a repository is the root with a .git beside it, the signal RepoRoot
 	// itself uses; the zemiLua trees have none, so a walk stands in there
 	repo := root != ""
@@ -565,7 +565,7 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 			sctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			cfg := lsp.Config{
-				Command: def.Command, Args: def.Args, Env: env, Root: cmp.Or(def.Root, h.Dirs.RepoRoot()),
+				Command: def.Command, Args: def.Args, Env: env, Root: cmp.Or(def.Root, h.repoRoot()),
 				InitOptions: def.Init, Settings: def.Config,
 				Stderr: serverLogWriter{h: h, source: "lsp", server: def.Name},
 			}

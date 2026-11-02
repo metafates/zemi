@@ -114,7 +114,7 @@ func (h *Host) shownArg(req tools.Request) string {
 func (h *Host) relPath(path string) string {
 	roots := []string{h.Dirs.ProjectDir}
 	if h.ProjectTrusted() {
-		roots = append(roots, h.Dirs.RepoRoot())
+		roots = append(roots, h.repoRoot())
 	}
 	for _, root := range roots {
 		// as given, then resolved (/var is /private/var on macOS)

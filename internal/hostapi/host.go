@@ -729,9 +729,12 @@ type Host struct {
 	// trustRoot is the repository the session belongs to (a worktree maps to
 	// its main checkout), found once: it keys the store and the scratchpad,
 	// and finding it walks the disk. project is the same
-	// path ~-shortened, which widgets read every frame.
+	// path ~-shortened, which widgets read every frame. repoRoot is the
+	// un-resolved checkout, which the HEAD and prompt paths read; the walk
+	// behind it stats every ancestor, so the statusline's render cannot pay it.
 	trustRoot func() string
 	project   func() string
+	repoRoot  func() string
 	// branchMu guards the HEAD cache the statusline reads every render; a
 	// branch switch rewrites HEAD, whose stat keys it
 	branchMu  sync.Mutex
@@ -784,7 +787,7 @@ func (h *Host) projectNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 	tb.RawSetString("root", L.NewFunction(func(L *glua.LState) int {
-		L.Push(glua.LString(h.Dirs.RepoRoot()))
+		L.Push(glua.LString(h.repoRoot()))
 		return 1
 	}))
 	return tb
@@ -960,6 +963,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	settings.SetChoices("agent.effort", append(slices.Clone(agent.Efforts), ""))
 	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)
 	h.project = sync.OnceValue(func() string { return perm.TildePath(h.trustRoot()) })
+	h.repoRoot = sync.OnceValue(h.Dirs.RepoRoot)
 	h.pluginsRoot = sync.OnceValue(func() string {
 		root := dirs.PluginsRoot()
 		// RealPath, not EvalSymlinks: the memo may run before the root exists
@@ -1813,7 +1817,7 @@ func (h *Host) instructionsCached() []string {
 		return h.instr
 	}
 	h.instr = nil
-	if root := h.Dirs.RepoRoot(); h.ProjectTrusted() && !TrustUnsaved(root) {
+	if root := h.repoRoot(); h.ProjectTrusted() && !TrustUnsaved(root) {
 		h.instr = []string{}
 		mine := filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
 		for _, p := range h.instructionFiles() {

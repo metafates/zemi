@@ -135,7 +135,7 @@ func (h *Host) splashProjects() []Project {
 		return h.splash
 	}
 	h.splash = nil
-	if _, err := os.Stat(filepath.Join(h.Dirs.RepoRoot(), ".git")); err == nil && !TrustUnsaved(root) {
+	if _, err := os.Stat(filepath.Join(h.repoRoot(), ".git")); err == nil && !TrustUnsaved(root) {
 		return nil
 	}
 	for _, p := range ListProjects(h.Dirs, false) {

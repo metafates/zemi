@@ -26,7 +26,7 @@ func (h *Host) gitEnv(dir string, env []string, args ...string) (string, error) 
 // or, when .git names another git dir (a linked worktree, a submodule), that
 // one's. "" when there is none to read.
 func (h *Host) headPath() string {
-	root := h.Dirs.RepoRoot()
+	root := h.repoRoot()
 	if root == "" {
 		return ""
 	}

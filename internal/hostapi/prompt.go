@@ -239,7 +239,7 @@ func (h *Host) instructionSections(files []string, budget int) string {
 			continue
 		}
 		name := f
-		if rel, ok := perm.Under(h.Dirs.RepoRoot(), f); ok {
+		if rel, ok := perm.Under(h.repoRoot(), f); ok {
 			name = rel
 		}
 		sections.WriteString("\n\n## Instructions: " + name + "\n" + texts[i])
@@ -268,7 +268,7 @@ func (h *Host) instructionPaths() []string {
 		return out
 	}
 	var dirs []string
-	root := h.Dirs.RepoRoot()
+	root := h.repoRoot()
 	for dir := h.Dirs.ProjectDir; dir != ""; dir = filepath.Dir(dir) {
 		dirs = append([]string{dir}, dirs...)
 		if dir == root || filepath.Dir(dir) == dir {
@@ -299,7 +299,7 @@ func (h *Host) nearestInstructions(path string, prompted []string, sent func(str
 	for _, p := range prompted {
 		inPrompt.Add(p)
 	}
-	root := h.Dirs.RepoRoot()
+	root := h.repoRoot()
 	if root == "" || !h.ProjectTrusted() {
 		return ""
 	}
@@ -383,7 +383,7 @@ func (h *Host) instructionEdits() string {
 				continue
 			}
 			name := p
-			if rel, ok := perm.Under(h.Dirs.RepoRoot(), p); ok {
+			if rel, ok := perm.Under(h.repoRoot(), p); ok {
 				name = rel
 			}
 			block, whole := instructionBlock(name, "New or changed since the system prompt was built: this version replaces any copy there.", data)
@@ -407,7 +407,7 @@ func (h *Host) instructionEdits() string {
 // It refuses a symlink out of the repository.
 func (h *Host) instructionFile(p string) bool {
 	fi, err := os.Stat(p)
-	return err == nil && fi.Mode().IsRegular() && h.inRoots(p, h.Dirs.RepoRoot())
+	return err == nil && fi.Mode().IsRegular() && h.inRoots(p, h.repoRoot())
 }
 
 // scratchUse, scratchWrite, scratchRead and recipesUse are the rules for
@@ -502,7 +502,7 @@ const recentCommits = "\nRecent commits:\n"
 // hides is left out, as are dot entries and a name with a control
 // character, which would write a line of its own here.
 func (h *Host) topLevel() string {
-	if h.Dirs.RepoRoot() == "" {
+	if h.repoRoot() == "" {
 		return ""
 	}
 	f, err := os.Open(h.Dirs.ProjectDir)
