@@ -58,8 +58,9 @@ the highest first (`fitClusters`), so what lasts sits outermost and never moves.
   rejoining a row that ends in a `Segment.Soft` one with the next. `hostapi.WrapSegs` sets
   both, so a wrapped prompt, reply or code block copies as the text that was written, which is
   also why `Host.Markdown` renders glamour unwrapped (tables aside) and wraps it itself. A
-  click acts on `Segment.Hit` (chrome rows) or `Segment.Click`/`Segment.Widget` (a widget's
-  `on_click`, run on the background worker), which also leaves the tail of the scrolled
+  click acts on `Segment.Hit` (chrome rows) or `Segment.Click`/`Segment.Widget` (the widget
+  that drew the row; an id it has no handler for runs as a command, on the
+  background worker), which also leaves the tail of the scrolled
   region that widget draws in (`App.leaveTail`), so the rows the click has it redraw stay
   under the reader; a click id with no widget is a Go statusline pill
   naming its command. Helpers that rebuild segments must copy those fields, `Fill` (the

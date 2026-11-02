@@ -44,7 +44,7 @@ func (a *App) renderWidget(w shownWidget, st *hostapi.ScreenState) (lines [][]ho
 	for _, row := range lines {
 		for i := range row {
 			if row[i].Click != "" {
-				row[i].Widget = w.ID
+				row[i].Widget = w.Go
 			}
 		}
 	}

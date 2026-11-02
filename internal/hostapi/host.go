@@ -1528,10 +1528,12 @@ type Segment struct {
 	Text string
 	HL   string
 	Hit  int // Go chrome only: 1-based index of the clickable item this text belongs to
-	// Click is the id a click passes to the on_click of Widget; a Go
-	// statusline pill sets it with no Widget
-	Click  string
-	Widget string
+	// Click is the id a click on the text passes to the widget that drew it;
+	// text drawn outside a widget names a command instead
+	Click string
+	// Widget is the Go widget that drew the text, set as the frame is
+	// painted: a click on the text goes to it. Go chrome only.
+	Widget any
 	// Link is the URL the text stands for, drawn as a terminal hyperlink and
 	// opened by a click: a markdown link or a bare URL, and nothing else
 	Link   string

@@ -1571,7 +1571,8 @@ UI extensibility contract:
   (`zemi.ui.marks`: spin, ok, warn, err, stop, bg, wait, thought, note) are
   one Go table the chat's rows and the host's lists draw alike.
 - Clicks: a segment's `click` is a plain string id, and the widget that drew
-  the row is stamped on it (`Segment.Widget`); the click runs that widget's
+  it is stamped on it as itself (`Segment.Widget`); the click runs that
+  widget's
   `onClick` with `ev = { id, button, clicks, mods, x, y }` on the UI
   goroutine, and an id the widget does not take falls to `runClick` as the
   command it names, which is how a statusline pill reaches `/errors`. Rows
@@ -2414,8 +2415,10 @@ view; a reset's wipe drops the row with the chat.
   highlight always means a click acts. Go chrome items carry a Go-only
   item index; a widget's rows carry their `click` id, stamped with the
   widget that drew them (`Segment.Widget`), and are
-  targets only while their widget has `onClick` and no modal chrome is
-  open, which takes every click. The shipped statusline is clickable from
+  targets while no modal chrome is
+  open, which takes every click. An id the widget has no handler for runs
+  as the command it names, which is how the statusline reaches `/errors`.
+  The shipped statusline is clickable from
   `internal/ui/statusline.go`: the project path `/projects`, the model the model
   picker, the context and cost `/usage`,
   running agents `/agents`, running jobs `/jobs`. The chat widget marks a

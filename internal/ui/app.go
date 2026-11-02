@@ -1472,10 +1472,10 @@ func (a *App) scrolledUp(widget string) bool {
 // leaveTail takes the scrolled region a widget draws in off its tail, so
 // the rows a click has it redraw (a digest opening over its rail, a thought
 // unrolling) grow under the reader's place instead of scrolling it away.
-func (a *App) leaveTail(widget string) {
-	if r, ok := a.widgetRegion(widget); ok {
+func (a *App) leaveTail(w *widget) {
+	if w != nil {
 		for _, st := range a.scrolls {
-			if st.region == r {
+			if st.region == w.region {
 				st.follow, st.focus = false, 0
 			}
 		}

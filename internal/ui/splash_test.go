@@ -82,7 +82,7 @@ func TestSplashProjects(t *testing.T) {
 	app.renderSync(t)
 	// a long path keeps its tail
 	x, y := findCell(t, app, root[len(root)-20:])
-	if seg := dropCells(app.lastRows[y], x)[0]; seg.Click != "projects switch "+root || seg.Widget != "splash" {
+	if seg := dropCells(app.lastRows[y], x)[0]; seg.Click != "projects switch "+root || seg.Widget != app.widgetByID("splash") {
 		t.Fatalf("the path's segment: %+v", seg)
 	}
 }

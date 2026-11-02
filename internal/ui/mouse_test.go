@@ -282,7 +282,7 @@ func TestHoverTargets(t *testing.T) {
 		{"a quiet click id takes no hover style", widgets, "quiet", 1, 1, ""},
 		{"right of a thought row is not a target", thought, "thought 1.0s", 60, 0, ""},
 		{"a widget click id with a handler is a target", widgets, "clickme", 1, 1, "Hover"},
-		{"a widget click id without a handler is not", widgets, "noclick", 1, 0, ""},
+		{"a widget click id without a handler runs its command", widgets, "noclick", 1, 1, "Hover"},
 		{"the space right of a widget click id is not", widgets, "clickme", 7, 0, ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {

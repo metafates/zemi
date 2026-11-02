@@ -299,7 +299,8 @@ func (a *App) solve(n *node, r uv.Rectangle) laid {
 func (a *App) measure(n *node, width int) int {
 	switch n.Kind {
 	case layoutRegion:
-		return len(a.regionLines(n.Region, regionWidth(n, width), 0))
+		rows := a.regionLines(n.Region, regionWidth(n, width), 0)
+		return len(rows)
 	case layoutComposer:
 		if n.Frame {
 			return len(a.composerRows(frameInner(width), n.Placeholder)) + 2
@@ -999,7 +1000,7 @@ func (st *scrollState) pinRows(lines [][]hostapi.Segment, width int) {
 func pinCopy(row []hostapi.Segment, more bool, width int) []hostapi.Segment {
 	row = slices.Clone(row)
 	for i := range row {
-		row[i].HL, row[i].Effect, row[i].NoCopy, row[i].Soft, row[i].Click, row[i].Widget = "Pinned", "", true, false, "", ""
+		row[i].HL, row[i].Effect, row[i].NoCopy, row[i].Soft, row[i].Click, row[i].Widget = "Pinned", "", true, false, "", nil
 		row[i].Fill = hostapi.FillPanel
 	}
 	if more {

@@ -119,7 +119,7 @@ func (a *App) handleMouse(msg tea.Msg) tea.Cmd {
 		if m.Button != tea.MouseLeft {
 			// right and middle presses start no selection: they click a widget at once
 			if (m.Button == tea.MouseRight || m.Button == tea.MouseMiddle) && m.Y >= 0 && m.Y < len(a.lastRows) {
-				if rest := dropCells(a.lastRows[m.Y], m.X); len(rest) > 0 && rest[0].Widget != "" {
+				if rest := dropCells(a.lastRows[m.Y], m.X); len(rest) > 0 && rest[0].Widget != nil {
 					a.click(m.X, m.Y)
 				}
 			}
@@ -517,8 +517,11 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		spans, ok := at(func(s hostapi.Segment) bool { return s.Link == under.Link })
 		return firstRow(spans), func() { a.openLink(under.Link) }, ok
 	case top == noModal && under.Click != "":
-		act := func() { a.clickWidget(under, x, y) }
-		if under.Widget == "" { // a Go pill or dock entry names its command
+		w, _ := under.Widget.(*widget)
+		act := func() { a.clickWidget(w, under, x, y) }
+		if w == nil || w.onClick == nil {
+			// a pill or dock entry names its command, and so does a widget
+			// without a handler of its own (the statusline's do)
 			name, args := hostapi.SplitCommand(under.Click)
 			act = func() {
 				if name != "reload" {
@@ -527,8 +530,6 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 					a.host.GoSafe("reload", a.host.Reload) // off the UI goroutine, as the typed /reload
 				}
 			}
-		} else if !a.clickable(under.Widget) {
-			break
 		}
 		spans, ok := at(func(s hostapi.Segment) bool { return s.Click == under.Click && s.Widget == under.Widget })
 		// a click acts anywhere on the target, but only its first row lights:
@@ -622,18 +623,12 @@ func (a *App) itemSpans(y int, same func(hostapi.Segment) bool) []cellSpan {
 	return spans
 }
 
-// clickable says whether a widget takes clicks itself: one with a handler.
-func (a *App) clickable(id string) bool {
-	w := a.widgetByID(id)
-	return w != nil && w.onClick != nil
-}
-
 // clickWidget runs the on_click of the widget that drew s on the background
 // worker, like a keymap. The click leaves the region it acts in off its
 // tail: the rows that widget redraws move under the reader, and a following
 // viewport would scroll them away instead of leaving the reader's place.
-func (a *App) clickWidget(s hostapi.Segment, x, y int) {
-	a.leaveTail(s.Widget)
+func (a *App) clickWidget(w *widget, s hostapi.Segment, x, y int) {
+	a.leaveTail(w)
 	p := a.press
 	button := ""
 	switch p.button {
@@ -651,7 +646,7 @@ func (a *App) clickWidget(s hostapi.Segment, x, y int) {
 	}
 	// a widget's click takes the ids it knows itself and the rest run as
 	// commands, like a Go pill's
-	if w := a.widgetByID(s.Widget); w == nil || w.onClick == nil || !w.onClick(a, ev) {
+	if w == nil || w.onClick == nil || !w.onClick(a, ev) {
 		a.runClick(ev)
 	}
 	a.Refresh()
