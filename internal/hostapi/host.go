@@ -1665,7 +1665,7 @@ func (h *Host) renderWidget(ctx context.Context, w *Widget, width, height int, s
 		// trust prompt)
 		h.rendering.Store(true)
 		defer h.rendering.Store(false)
-		ctxTb, done := h.widgetCtxTable(L, width, height, state)
+		ctxTb, done := h.widgetCtxTable(L, h.ScreenState(width, height, state))
 		defer done()
 		if over != nil {
 			over.ForEach(ctxTb.RawSet)
@@ -1991,74 +1991,59 @@ type UIState struct {
 	Regions *set.Set[string]
 }
 
-// widgetCtxTable builds a render's ctx. The fields that copy the transcript,
-// the live turn, todos, recent sessions or projects are built on first read, so a
-// widget that never reads them does not pay for them (a statusline widget
-// over a long session renders 50 times faster), and read nil once the
-// render returned, so a ctx kept in an upvalue pins nothing. done ends it.
-func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) (tb *glua.LTable, done func()) {
-	// the edit counter before the rows: a join landing between them would move it
-	// past a snapshot without the chunk, and nothing moves it again
-	edit := h.trEdit.Load()
-	sess, stream := h.liveView()
-	// Showing an agent run, the chat renders its transcript alone and the run
-	// reports its own state: the session's turn, todos and stream stay out of
-	// it. Before the ctx writes below, which read stream.
-	run := h.viewedRun()
-	transcript := sess.Transcript
-	// The head cut reads with the rows it names: a trim landing between the
-	// two would shift the chat's keys past the rows they index. A run's
-	// transcript is no cut of the log, so it reports none.
-	cut := int64(0)
-	if run == nil {
-		h.tMu.RLock()
-		transcript, cut = h.session.Transcript, h.trCut.Load()
-		h.tMu.RUnlock()
-	}
-	var view *glua.LTable
-	var rev uint64
-	if run != nil {
-		status, rows, live, vrev := run.view(stream)
-		transcript, stream, rev = rows, live, vrev
-		v := L.NewTable()
-		v.RawSetString("id", glua.LString(run.id))
-		v.RawSetString("agent", glua.LString(sanitize.String(run.label())))
-		v.RawSetString("description", glua.LString(sanitize.String(run.description)))
-		v.RawSetString("status", glua.LString(status))
-		view = v
-	}
+// widgetCtxTable turns a frame's ScreenState into the ctx table a Lua widget
+// renders with. The fields that read the store or disk are filled on first
+// read, so a widget that never reads them does not pay for them, and read nil
+// once the render returned, so a ctx kept in an upvalue pins nothing. done
+// ends it.
+func (h *Host) widgetCtxTable(L *glua.LState, st *ScreenState) (tb *glua.LTable, done func()) {
 	tb = L.CreateTable(0, 32)
-	tb.RawSetString("width", glua.LNumber(width))
-	tb.RawSetString("time", glua.LString(state.Time))
-	tb.RawSetString("frame", glua.LNumber(state.Frame))
-	tb.RawSetString("ended", glua.LString(state.Ended))
-	tb.RawSetString("height", glua.LNumber(height))
-	tb.RawSetString("quit_armed", glua.LBool(state.QuitArmed))
-	tb.RawSetString("interrupt_armed", glua.LBool(state.InterruptArmed))
-	tb.RawSetString("key_seq", glua.LString(state.KeySeq))
-	tb.RawSetString("rows_below", glua.LNumber(state.RowsBelow))
-	tb.RawSetString("cancelling", glua.LBool(state.Cancelling))
-	tb.RawSetString("editing", glua.LString(state.Editing))
-	tb.RawSetString("waiting", glua.LString(state.Waiting))
-	tb.RawSetString("version", glua.LString(h.Version))
-	tb.RawSetString("cwd", glua.LString(perm.TildePath(sess.CWD)))
-	home, _ := os.UserHomeDir()
-	tb.RawSetString("home", glua.LString(home))
-	tb.RawSetString("project", glua.LString(h.project()))
-	tb.RawSetString("branch", glua.LString(h.gitBranch()))
-	tb.RawSetString("trusted", glua.LBool(h.ProjectTrusted()))
-	tb.RawSetString("init_error", glua.LString(h.InitError()))
+	tb.RawSetString("width", glua.LNumber(st.Width))
+	tb.RawSetString("time", glua.LString(st.Time))
+	tb.RawSetString("frame", glua.LNumber(st.Frame))
+	tb.RawSetString("ended", glua.LString(st.Ended))
+	tb.RawSetString("height", glua.LNumber(st.Height))
+	tb.RawSetString("quit_armed", glua.LBool(st.QuitArmed))
+	tb.RawSetString("interrupt_armed", glua.LBool(st.InterruptArmed))
+	tb.RawSetString("key_seq", glua.LString(st.KeySeq))
+	tb.RawSetString("rows_below", glua.LNumber(st.RowsBelow))
+	tb.RawSetString("cancelling", glua.LBool(st.Cancelling))
+	tb.RawSetString("editing", glua.LString(st.Editing))
+	tb.RawSetString("waiting", glua.LString(st.Waiting))
+	tb.RawSetString("version", glua.LString(st.Version))
+	tb.RawSetString("cwd", glua.LString(st.CWD))
+	tb.RawSetString("home", glua.LString(st.Home))
+	tb.RawSetString("project", glua.LString(st.Project))
+	tb.RawSetString("branch", glua.LString(st.Branch))
+	tb.RawSetString("trusted", glua.LBool(st.Trusted))
+	tb.RawSetString("init_error", glua.LString(st.InitError))
 	tb.RawSetString("init_path", glua.LString(h.initPath()))
-	tb.RawSetString("model_hint", glua.LString(h.NoModelHint()))
-	tb.RawSetString("model", glua.LString(stream.Model))
-	tb.RawSetString("effort", glua.LString(h.Effort(stream.Model)))
-	tb.RawSetString("agent_active", glua.LBool(stream.Active))
-	if state.Rail != 0 {
-		tb.RawSetString("rail", glua.LNumber(state.Rail))
+	tb.RawSetString("model_hint", glua.LString(st.ModelHint))
+	tb.RawSetString("model", glua.LString(st.Model))
+	tb.RawSetString("effort", glua.LString(st.Effort))
+	tb.RawSetString("agent_active", glua.LBool(st.AgentActive))
+	tb.RawSetString("agents_running", glua.LNumber(st.AgentsRunning))
+	tb.RawSetString("workflows_running", glua.LNumber(st.WorkflowsRunning))
+	tb.RawSetString("jobs_running", glua.LNumber(st.JobsRunning))
+	tb.RawSetString("transcript_count", glua.LNumber(st.TranscriptCount))
+	tb.RawSetString("transcript_epoch", glua.LNumber(st.TranscriptEpoch))
+	tb.RawSetString("transcript_cut", glua.LNumber(st.TranscriptCut))
+	tb.RawSetString("transcript_edit", glua.LNumber(st.TranscriptEdit))
+	tb.RawSetString("view_revision", glua.LNumber(st.ViewRevision))
+	if st.Rail != 0 {
+		tb.RawSetString("rail", glua.LNumber(st.Rail))
 	}
-	if jobs := h.BusyList(); len(jobs) > 0 {
-		b := L.CreateTable(len(jobs), 0)
-		for _, j := range jobs {
+	if st.View != nil {
+		v := L.CreateTable(0, 4)
+		v.RawSetString("id", glua.LString(st.View.ID))
+		v.RawSetString("agent", glua.LString(st.View.Agent))
+		v.RawSetString("description", glua.LString(st.View.Description))
+		v.RawSetString("status", glua.LString(st.View.Status))
+		tb.RawSetString("view", v)
+	}
+	if len(st.Busy) > 0 {
+		b := L.CreateTable(len(st.Busy), 0)
+		for _, j := range st.Busy {
 			e := L.CreateTable(0, 3)
 			e.RawSetString("label", glua.LString(j.Label))
 			e.RawSetString("elapsed", glua.LNumber(j.Elapsed.Seconds()))
@@ -2067,52 +2052,38 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		}
 		tb.RawSetString("busy", b)
 	}
-	sid := h.AgentSessionID()
-	agents, flows := h.tasks.live(func(p string) bool { return p == sid })
-	tb.RawSetString("agents_running", glua.LNumber(agents))
-	tb.RawSetString("workflows_running", glua.LNumber(flows))
-	tb.RawSetString("jobs_running", glua.LNumber(h.jobsRunningCount()))
-	if g, ok := h.Goal(); ok {
+	if g := st.Goal; g != nil {
 		gt := L.CreateTable(0, 3)
-		gt.RawSetString("condition", glua.LString(clipLine(g.Condition, 48)))
+		gt.RawSetString("condition", glua.LString(g.Condition))
 		gt.RawSetString("turns", glua.LNumber(g.Turns))
-		gt.RawSetString("reason", glua.LString(sanitize.String(g.Reason)))
+		gt.RawSetString("reason", glua.LString(g.Reason))
 		tb.RawSetString("goal", gt)
 	}
-	if l, ok := h.Loop(); ok {
+	if l := st.Loop; l != nil {
 		lt := L.CreateTable(0, 4)
-		lt.RawSetString("prompt", glua.LString(sanitize.String(l.Prompt)))
+		lt.RawSetString("prompt", glua.LString(l.Prompt))
 		lt.RawSetString("every", glua.LNumber(l.Every.Seconds()))
 		lt.RawSetString("next", glua.LNumber(l.Next.Unix()))
 		lt.RawSetString("runs", glua.LNumber(l.Runs))
 		tb.RawSetString("loop", lt)
 	}
-	u, c := h.usageTables(L, stream, h.modelPriced(h.turnModelID()))
+	u := L.CreateTable(0, 5)
+	u.RawSetString("in", glua.LNumber(st.Usage.In))
+	u.RawSetString("out", glua.LNumber(st.Usage.Out))
+	u.RawSetString("total", glua.LNumber(st.Usage.Total))
+	u.RawSetString("cost", glua.LNumber(st.Usage.Cost))
+	u.RawSetString("priced", glua.LBool(st.Usage.Priced))
 	tb.RawSetString("usage", u)
+	c := L.CreateTable(0, 3)
+	c.RawSetString("tokens", glua.LNumber(st.Context.Tokens))
+	c.RawSetString("window", glua.LNumber(st.Context.Window))
+	c.RawSetString("pct", glua.LNumber(st.Context.Pct))
 	tb.RawSetString("context", c)
-	tb.RawSetString("transcript_count", glua.LNumber(len(transcript)))
-	if view != nil { // absent while the session shows
-		tb.RawSetString("view", view)
-	}
-	// 0 while an agent run is shown: the session's epoch counts replacements
-	// of its own rows, and a shown run reports the revision of its own rows
-	// beside it.
-	epoch := h.trEpoch.Load()
-	if run != nil {
-		epoch = 0
-	}
-	tb.RawSetString("transcript_epoch", glua.LNumber(epoch))
-	tb.RawSetString("transcript_cut", glua.LNumber(cut))
-	tb.RawSetString("view_revision", glua.LNumber(rev))
-	tb.RawSetString("transcript_edit", glua.LNumber(edit))
 
 	lazy := map[string]func(L *glua.LState) glua.LValue{
 		"todos": func(L *glua.LState) glua.LValue {
 			todos := L.NewTable()
-			if run != nil {
-				return todos
-			}
-			for _, td := range h.todoSnapshot() {
+			for _, td := range st.Todos() {
 				row := L.NewTable()
 				row.RawSetString("content", glua.LString(sanitize.String(td.Content)))
 				row.RawSetString("status", glua.LString(td.Status))
@@ -2123,58 +2094,41 @@ func (h *Host) widgetCtxTable(L *glua.LState, width, height int, state UIState) 
 		},
 		"regions": func(L *glua.LState) glua.LValue {
 			out := L.NewTable()
-			if state.Regions != nil {
-				for r := range *state.Regions {
+			if st.Regions != nil {
+				for r := range *st.Regions {
 					out.RawSetString(r, glua.LTrue)
 				}
 			}
 			return out
 		},
-		"agent":      func(L *glua.LState) glua.LValue { return h.agentTable(L, stream, h.now()) },
-		"transcript": func(L *glua.LState) glua.LValue { return h.transcriptTable(L, epoch, edit, rev, transcript, cut) },
-		"log_count": func(L *glua.LState) glua.LValue {
-			// log rows the window's head cut off: the oldest stamped row's
-			// seq, the log's seqs dense from 0 - the same head /messages
-			// pages back from. Live rows of kinds that pair with nothing (a
-			// report, a thought) draw log rows of their own below the first
-			// stamped one: they are on screen, not earlier. A row whose log
-			// write failed counts as earlier it is not - rare, and the
-			// honest direction to miss.
-			if run != nil {
-				return glua.LNumber(0)
-			}
-			shown := int64(0)
-			for i := range transcript {
-				if transcript[i].Seq != NoSeq {
-					return glua.LNumber(max(transcript[i].Seq-shown, 0))
-				}
-				shown++
-			}
-			return glua.LNumber(0)
+		"agent": func(L *glua.LState) glua.LValue { return agentTable(L, st.Agent) },
+		"transcript": func(L *glua.LState) glua.LValue {
+			return h.transcriptTable(L, st.TranscriptEpoch, st.TranscriptEdit, st.ViewRevision, st.Transcript, st.TranscriptCut)
 		},
+		"log_count": func(L *glua.LState) glua.LValue { return glua.LNumber(st.LogRows()) },
 		"instructions": func(L *glua.LState) glua.LValue {
-			files := h.instructionsCached()
-			if files == nil {
+			files, ok := st.Instructions()
+			if !ok {
 				return glua.LNil
 			}
-			tb := L.CreateTable(len(files), 0)
+			out := L.CreateTable(len(files), 0)
 			for _, p := range files {
-				tb.Append(glua.LString(p))
+				out.Append(glua.LString(p))
 			}
-			return tb
+			return out
 		},
-		"trustable": func(L *glua.LState) glua.LValue { return glua.LBool(!TrustUnsaved(h.trustRoot())) },
+		"trustable": func(L *glua.LState) glua.LValue { return glua.LBool(st.Trustable) },
 		"projects": func(L *glua.LState) glua.LValue {
-			ps := h.splashProjects()
-			if len(sess.Transcript) > 0 || len(ps) == 0 {
+			ps := st.Projects()
+			if ps == nil {
 				return glua.LNil
 			}
-			out := L.NewTable()
+			out := L.CreateTable(len(ps), 0)
 			for _, p := range ps {
-				row := L.NewTable()
-				row.RawSetString("path", glua.LString(sanitize.String(perm.TildePath(p.Root))))
+				row := L.CreateTable(0, 3)
+				row.RawSetString("path", glua.LString(p.Path))
 				row.RawSetString("root", glua.LString(p.Root))
-				row.RawSetString("ago", glua.LString(ago(p.Used.UnixMilli())))
+				row.RawSetString("ago", glua.LString(p.Ago))
 				out.Append(row)
 			}
 			return out
@@ -2227,57 +2181,33 @@ func (h *Host) instructionsCached() []string {
 	return h.instr
 }
 
-// agentTable is ctx.agent: the live turn. now is the host's clock, which
-// the tool stamps were taken on. A finished tool's fields never change, so
-// its subtable is reused between renders and only a running row's elapsed
-// moves; the snapshot's tools compare by value, which no field escapes.
-func (h *Host) agentTable(L *glua.LState, stream StreamSnapshot, now time.Time) *glua.LTable {
+// agentTable is ctx.agent: the live turn.
+func agentTable(L *glua.LState, a AgentState) *glua.LTable {
 	at := L.CreateTable(0, 12)
-	at.RawSetString("active", glua.LBool(stream.Active))
-	at.RawSetString("model", glua.LString(stream.Model))
-	at.RawSetString("text", glua.LString(stream.Text))
-	at.RawSetString("reasoning", glua.LString(stream.Reasoning))
-	at.RawSetString("thinking", glua.LBool(stream.Thinking))
-	steering := L.CreateTable(len(stream.Steering), 0)
-	for _, s := range stream.Steering {
+	at.RawSetString("active", glua.LBool(a.Active))
+	at.RawSetString("model", glua.LString(a.Model))
+	at.RawSetString("text", glua.LString(a.Text))
+	at.RawSetString("reasoning", glua.LString(a.Reasoning))
+	at.RawSetString("thinking", glua.LBool(a.Thinking))
+	steering := L.CreateTable(len(a.Steering), 0)
+	for _, s := range a.Steering {
 		q := L.CreateTable(0, 1)
-		q.RawSetString("text", glua.LString(s.Text))
+		q.RawSetString("text", glua.LString(s))
 		steering.Append(q)
 	}
 	at.RawSetString("steering", steering)
-	at.RawSetString("thought", glua.LNumber(stream.Thought.Seconds()))
-	at.RawSetString("elapsed", glua.LNumber(stream.Elapsed.Seconds()))
-	at.RawSetString("checking_goal", glua.LBool(stream.CheckingGoal))
-	if stream.Retrying {
+	at.RawSetString("thought", glua.LNumber(a.Thought.Seconds()))
+	at.RawSetString("elapsed", glua.LNumber(a.Elapsed.Seconds()))
+	at.RawSetString("checking_goal", glua.LBool(a.CheckingGoal))
+	if r := a.Retry; r != nil {
 		retry := L.CreateTable(0, 3)
-		retry.RawSetString("attempt", glua.LNumber(stream.Retries+1))
-		retry.RawSetString("why", glua.LString(sanitize.String(stream.RetryWhy)))
-		retry.RawSetString("next_in", glua.LNumber(stream.RetryIn.Seconds()))
+		retry.RawSetString("attempt", glua.LNumber(r.Attempt))
+		retry.RawSetString("why", glua.LString(r.Why))
+		retry.RawSetString("next_in", glua.LNumber(r.NextIn.Seconds()))
 		at.RawSetString("retry", retry)
 	}
-	toolsTb := L.CreateTable(len(stream.Tools), 0)
-	c := &h.agentRows
-	// a new generation's tables are another LState's; a turn only appends
-	// calls, and prev holds what each row was built from, its own array so a
-	// retry's cut cannot alias the next snapshot over a stale row
-	n := len(stream.Tools)
-	switch {
-	case c.gen != h.currentGen():
-		c.prev, c.rows = slices.Clone(stream.Tools), make([]*glua.LTable, n)
-	case len(c.prev) < n:
-		prev := make([]StreamTool, n)
-		copy(prev, c.prev)
-		c.prev, c.rows = prev, append(c.rows, make([]*glua.LTable, n-len(c.rows))...)
-	}
-	c.gen = h.currentGen()
-	for i, t := range stream.Tools {
-		if row := c.rows[i]; row != nil && c.prev[i] == t {
-			if t.Status == CallRun && !t.Started.IsZero() {
-				row.RawSetString("elapsed", glua.LNumber(now.Sub(t.Started).Seconds()))
-			}
-			toolsTb.Append(row)
-			continue
-		}
+	toolsTb := L.CreateTable(len(a.Tools), 0)
+	for _, t := range a.Tools {
 		row := L.CreateTable(0, 9)
 		row.RawSetString("name", glua.LString(t.Name))
 		row.RawSetString("input", glua.LString(t.Input))
@@ -2286,12 +2216,9 @@ func (h *Host) agentTable(L *glua.LState, stream StreamSnapshot, now time.Time) 
 		row.RawSetString("run", glua.LString(t.Run))
 		row.RawSetString("job", glua.LString(t.Job))
 		row.RawSetString("label", glua.LString(sanitize.String(t.Label)))
-		if !t.Started.IsZero() {
-			row.RawSetString("elapsed", glua.LNumber(now.Sub(t.Started).Seconds()))
-		}
+		row.RawSetString("elapsed", glua.LNumber(t.Elapsed.Seconds()))
 		row.RawSetString("diff", glua.LString(sanitize.String(t.Diff)))
 		row.RawSetString("output", glua.LString(t.Output))
-		c.rows[i], c.prev[i] = row, t
 		toolsTb.Append(row)
 	}
 	at.RawSetString("tools", toolsTb)

@@ -335,58 +335,6 @@ func TestInstructionsCached(t *testing.T) {
 	}
 }
 
-// TestAgentTableCachesToolRows: a render reuses a finished tool's subtable,
-// refreshes only a running row's elapsed, and rebuilds one whose fields
-// moved - same length included - so a long turn builds each row once.
-func TestAgentTableCachesToolRows(t *testing.T) {
-	t.Parallel()
-	h := newTestHostUI(t)
-	start := time.Unix(1000, 0)
-	tools := func() []StreamTool {
-		return []StreamTool{
-			{Name: "read", Input: "a.go", Status: CallOK, Label: "read it", Diff: "+ x", Started: start},
-			{Name: "shell", Input: "ls", Status: CallRun, Detail: "working", Started: start},
-		}
-	}
-	rows := func(stream []StreamTool, now time.Time) []*glua.LTable {
-		var out []*glua.LTable
-		_, err := h.RT.Do(t.Context(), lua.ClassUI, 0, 0, "test", func(L *glua.LState) ([]any, error) {
-			tb := h.agentTable(L, StreamSnapshot{Tools: stream}, now).RawGetString("tools").(*glua.LTable)
-			for i := 1; i <= tb.Len(); i++ {
-				out = append(out, tb.RawGetInt(i).(*glua.LTable))
-			}
-			return nil, nil
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return out
-	}
-	first := rows(tools(), start)
-	again := rows(tools(), start.Add(3*time.Second))
-	for i := range first {
-		if first[i] != again[i] {
-			t.Fatalf("tool %d rebuilt", i+1)
-		}
-	}
-	if n := again[1].RawGetString("elapsed"); n != glua.LNumber(3) {
-		t.Fatalf("the running row's elapsed is %v, want 3", n)
-	}
-	moved := tools()
-	moved[1].Detail, moved[1].Status = "workign", CallOK
-	got := rows(moved, start)
-	if got[0] != first[0] || got[1] == first[1] {
-		t.Fatal("the wrong rows rebuilt")
-	}
-	if s := got[1].RawGetString("status"); s != glua.LString(CallOK) {
-		t.Fatalf("the rebuilt row reads %v, want ok", s)
-	}
-	got = rows(append(moved, StreamTool{Name: "edit", Status: CallRun, Started: start}), start)
-	if got[0] != first[0] || got[1] == first[1] || len(got) != 3 {
-		t.Fatal("an appended tool moved the rows before it")
-	}
-}
-
 // TestUsageTablesCache: the usage and context tables are reused while the
 // tallies hold and rebuilt when one moves, so a turn's frames build them once.
 func TestUsageTablesCache(t *testing.T) {
