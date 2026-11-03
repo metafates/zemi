@@ -214,7 +214,13 @@ func (h *Host) ExportSession(path string, full bool) (string, error) {
 	if err := os.WriteFile(path, []byte(md), 0o644); err != nil {
 		return "", err
 	}
-	h.Notify(slog.LevelInfo, "Chat exported", "saved to "+perm.TildePath(h.relPath(path)))
+	// the bare name says nothing of where: a file under the project says so,
+	// anything else its whole tilde path
+	note := "saved to " + perm.TildePath(path)
+	if rel, err := filepath.Rel(h.Dirs.ProjectDir, path); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		note = "saved to " + rel + " in the project"
+	}
+	h.Notify(slog.LevelInfo, "Chat exported", note)
 	return path, nil
 }
 

@@ -38,11 +38,12 @@ func TestExportAndCopy(t *testing.T) {
 	if md, _ = os.ReadFile(path); !strings.Contains(string(md), "## You\n\nping") {
 		t.Fatalf("full export:\n%s", md)
 	}
-	// the toast names the file as the user finds it, short enough to read whole
+	// the toast says where: a file under the project names it, so the bare
+	// name never stands alone
 	if _, err := h.ExportSession("", false); err != nil {
 		t.Fatal(err)
 	}
-	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.body != "saved to zemi-chat.md" {
+	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.body != "saved to zemi-chat.md in the project" {
 		t.Fatalf("export toast: %q", n.body)
 	}
 
