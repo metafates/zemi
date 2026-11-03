@@ -625,7 +625,7 @@ type Host struct {
 	busyMu sync.RWMutex
 	busy   []*busyJob // user-visible jobs that are not a turn, oldest first
 
-	md        markdownCache
+	md markdownCache
 
 	selectSeq atomic.Int64 // ids for overlays each call opens anew (select, input, /btw)
 

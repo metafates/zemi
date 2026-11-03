@@ -282,15 +282,15 @@ var quiesceWait = 15 * time.Second
 func newMemTree(ctx context.Context, h *Host) *memTree {
 	ctx, cancel := context.WithCancel(ctx)
 	b := &memTree{
-		h:       h,
-		ctx:     ctx,
-		cancel:  cancel,
-		done:    make(chan struct{}),
-		wake:    make(chan struct{}, 1),
-		rebld:   make(chan struct{}, 1),
-		force:   make(chan compactReq, 1),
-		results: make(chan buildResult),
-		built:   map[nodeID]int{},
+		h:        h,
+		ctx:      ctx,
+		cancel:   cancel,
+		done:     make(chan struct{}),
+		wake:     make(chan struct{}, 1),
+		rebld:    make(chan struct{}, 1),
+		force:    make(chan compactReq, 1),
+		results:  make(chan buildResult),
+		built:    map[nodeID]int{},
 		released: make(chan struct{}),
 	}
 	b.callCtx, b.callCancel = context.WithCancel(ctx)

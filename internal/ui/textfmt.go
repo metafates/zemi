@@ -28,7 +28,7 @@ var (
 // rules require a non-space edge so "2 * 3 * 4" keeps its asterisks.
 func stripMarkdown(s string) string {
 	var lines []string
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		t := strings.TrimSpace(line)
 		if strings.HasPrefix(t, "```") || strings.HasPrefix(t, "~~~") {
 			continue

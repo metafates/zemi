@@ -16,7 +16,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	glua "github.com/yuin/gopher-lua"
 
-
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"

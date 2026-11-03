@@ -1728,7 +1728,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 				}
 				headEnd++
 			}
-			for k := len(units) - 1; k >= 0; k-- {
+			for k := range slices.Backward(units) {
 				if e := tr[units[k].first]; e.role == fantasy.MessageRoleUser && e.kind == hostapi.RowMessage {
 					if k >= headEnd && k < newX {
 						island = k
@@ -1748,7 +1748,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 			if len(tr) > 0 {
 				lines = append(lines, []hostapi.Segment{{Text: ""}})
 			}
-			for k := 0; k < len(units); k++ {
+			for k := range units {
 				switch {
 				case k < headEnd, k == island, k >= newX:
 					if l, ok := built[k]; ok {

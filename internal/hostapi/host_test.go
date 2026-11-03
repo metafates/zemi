@@ -516,7 +516,6 @@ func TestConfigSetAnyOrigin(t *testing.T) {
 	}
 }
 
-
 // TestConfigSet: /config set takes the words /config and the pickers show
 // for a value, and /config lua writes a number as typed.
 func TestConfigSet(t *testing.T) {

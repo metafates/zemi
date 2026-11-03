@@ -83,14 +83,6 @@ func (p *Palette) Color(ref string) color.Color {
 	return nil
 }
 
-// ansiRoles are the terminal colors a role left out comes from: red, green,
-// yellow and blue are the slots every scheme sets with care.
-var ansiRoles = [...]struct {
-	role string
-	slot int
-}{{"danger", 1}, {"ok", 2}, {"warn", 3}, {"accent", 4}}
-
-
 // mixes derive the rest, each role mixed from one toward another in OkLab.
 // The band tints the panel, since only a box draws it.
 // The diff tints are mixed far enough to keep an OKLCH chroma over the
