@@ -57,8 +57,7 @@ func (h *Host) ResetChat(yes bool) error {
 		return err
 	}
 	// the wipe's one visible trace, a system note the chat draws nothing of:
-	// zoom and the messages picker reach it, and the splash a fresh chat
-	// opens with stays
+	// zoom reaches it, and the splash a fresh chat opens with stays
 	if err := h.chat.systemNote("the chat was reset"); err != nil {
 		h.Log.Warn("reset note not logged", "origin", "reset", "error", err)
 	}

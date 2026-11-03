@@ -7,6 +7,7 @@
 package hostapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/v2"
 	"errors"
@@ -858,4 +859,31 @@ func (h *Host) notice(text, detail string) {
 		}
 	}
 	h.AppendChat(m)
+}
+
+// messageHead is the line a message reads by: its first non-blank one, a
+// fence line passed over so a reply that opens with a block reads as its
+// code, a bare <zemi-note> wrapper passed over so a system note reads as its
+// content; the first non-blank line when it is all wrappers.
+func messageHead(text string) string {
+	head := ""
+	for line := range strings.Lines(text) {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// an attachment's chrome names what rode along, not what was said:
+		// the head skips it for the content under the tags
+		switch line {
+		case "<zemi-note>", "<attached-files>", "<command>", "<loop>":
+			head = cmp.Or(head, line)
+			continue
+		}
+		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") {
+			head = cmp.Or(head, line)
+			continue
+		}
+		return line
+	}
+	return head
 }

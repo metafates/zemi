@@ -2,14 +2,15 @@
 // live view - the lines the next model call sends, placeholders included,
 // each without its id prefix - one row per line, the model's id for it as
 // the right-hand tag. l drills into a line's two children as an overlay of
-// its own, the way /messages descends into turns and rails, and h climbs
-// back. It is read-only: no key here mutates the log or the tree.
+// its own, and h climbs back. It is read-only: no key here mutates the log
+// or the tree.
 
 package hostapi
 
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -61,16 +62,76 @@ func parseNodeArgs(rest string) (int64, int64, error) {
 	return li, ii, nil
 }
 
-// openMemories opens the browser and tracks it, so a flush rebuilds it the
-// way the messages picker's levels are.
+// openMemories opens the browser and tracks it, so a flush rebuilds it
+// while it is open.
 func (h *Host) openMemories() error {
 	ui, err := h.Screen()
 	if err != nil {
 		return err
 	}
 	ui.OpenOverlay(h.memoriesOverlay())
-	h.trackMessages("memories")
+	h.trackLevels("memories")
 	return nil
+}
+
+// refreshLevels rebuilds the tracked levels and the call view open, if any:
+// a transcript that grows rebuilds each where it is open, and a level the
+// chat view no longer holds (a reset, a compaction) closes.
+func (h *Host) refreshLevels() {
+	h.refreshCall()
+	ui := h.hooks()
+	if ui == nil {
+		return
+	}
+	h.levelMu.Lock()
+	tracked := slices.Clone(h.tracked)
+	h.levelMu.Unlock()
+	if len(tracked) == 0 {
+		return
+	}
+	var open []string
+	for _, id := range tracked {
+		o, ok := h.trackedLevel(id)
+		if !ok {
+			ui.CloseOverlay(id, lua.OriginBuiltin, "")
+			continue
+		}
+		open = append(open, id)
+		ui.RefreshOverlay(id, func() Overlay { return o })
+	}
+	// a level the view dropped leaves the store; one a caller tracked while
+	// the rebuild ran stays, or its first flush would never reach it
+	h.levelMu.Lock()
+	h.tracked = slices.DeleteFunc(h.tracked, func(id string) bool {
+		return slices.Contains(tracked, id) && !slices.Contains(open, id)
+	})
+	h.levelMu.Unlock()
+}
+
+// trackedLevel builds one tracked level from the chat view, ok false for an
+// id it no longer holds. A refresh keeps whatever the reader selected, so it
+// names no row to open on.
+func (h *Host) trackedLevel(id string) (Overlay, bool) {
+	if id == "memories" {
+		return h.memoriesOverlay(), true
+	}
+	if _, rest, ok := strings.Cut(id, " zoom "); ok { // a drill-in level
+		if l, i, err := parseNodeArgs(rest); err == nil {
+			return h.memoriesZoomOverlay(nodeID{l, i})
+		}
+	}
+	return Overlay{}, false
+}
+
+// trackLevels remembers the overlays a transcript that grows rebuilds.
+func (h *Host) trackLevels(ids ...string) {
+	h.levelMu.Lock()
+	defer h.levelMu.Unlock()
+	for _, id := range ids {
+		if !slices.Contains(h.tracked, id) {
+			h.tracked = append(h.tracked, id)
+		}
+	}
 }
 
 // openMemoriesZoom drills into one view node: an overlay of its own holding
@@ -108,13 +169,13 @@ func (h *Host) openMemoriesZoom(id nodeID) error {
 		return errors.New("no chat log in this boot")
 	}
 	ui.OpenOverlay(o)
-	h.trackMessages(o.ID)
+	h.trackLevels(o.ID)
 	return nil
 }
 
 // memoriesOverlay is the browser: one row per line of the live view, oldest
 // first, an overview of what the model reads. The chat stays where it is:
-// finding a turn's place on the screen is /messages' job.
+// the chat keeps its own place.
 func (h *Host) memoriesOverlay() Overlay {
 	o := Overlay{
 		ID: "memories", Title: "Memories", Origin: lua.OriginBuiltin,

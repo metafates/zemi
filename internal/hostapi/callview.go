@@ -50,9 +50,9 @@ func (h *Host) openCall(n int) error {
 	if row.Kind != RowTool && row.Kind != RowReasoning {
 		return Usagef("row %d is not a call", n)
 	}
-	h.msgMu.Lock()
+	h.levelMu.Lock()
 	h.callRow, h.callID = n, row.CallID
-	h.msgMu.Unlock()
+	h.levelMu.Unlock()
 	ui.OpenOverlay(h.callView(n, row, took))
 	// a live view follows the turn as it is written; a settled one is put
 	// right by the transcript hook when the rows it steps along land
@@ -66,9 +66,9 @@ func (h *Host) openCall(n int) error {
 // and the status it shows come from a transcript that just grew, and a call
 // that settled after the view opened is a step target at once.
 func (h *Host) refreshCall() {
-	h.msgMu.Lock()
+	h.levelMu.Lock()
 	n := h.callRow
-	h.msgMu.Unlock()
+	h.levelMu.Unlock()
 	ui := h.hooks()
 	if ui == nil || n == 0 {
 		return
@@ -98,9 +98,9 @@ func (h *Host) callRowAt(n int) (ChatMessage, time.Duration, bool) {
 // still runs or the view has moved on: a turn settles its calls under the
 // agent lock, so this reads the transcript and the id the view opened on.
 func (h *Host) settledRow(n int) int {
-	h.msgMu.Lock()
+	h.levelMu.Lock()
 	id, tracked := h.callID, h.callRow
-	h.msgMu.Unlock()
+	h.levelMu.Unlock()
 	// a live call is a session turn's: a run on screen has none, and a turn
 	// settles under the agent lock, which this path must never take
 	if id == "" || tracked != n || h.viewedRun() != nil {
@@ -158,18 +158,18 @@ func (h *Host) chatRow(n int) (row ChatMessage, took time.Duration, ok bool) {
 // host no longer serves stops, so stepping through live calls never piles
 // watchers up whose clustered ticks blink the view's timer.
 func (h *Host) watchCall(n int) {
-	h.msgMu.Lock()
+	h.levelMu.Lock()
 	h.callServe = n
-	h.msgMu.Unlock()
+	h.levelMu.Unlock()
 	h.overlayTicker("call view", nil, func() bool { return h.callWatchTick(n) })
 }
 
 // callWatchTick is the live call view watcher's tick: it rebuilds the view
 // while it is the one the host serves and reports whether to keep ticking.
 func (h *Host) callWatchTick(n int) bool {
-	h.msgMu.Lock()
+	h.levelMu.Lock()
 	live := h.callServe == n
-	h.msgMu.Unlock()
+	h.levelMu.Unlock()
 	if !live {
 		return false
 	}
@@ -195,9 +195,9 @@ func (h *Host) callViewRow(n int) (row ChatMessage, took time.Duration, ok bool)
 	if n > 0 {
 		return h.chatRow(n)
 	}
-	h.msgMu.Lock()
+	h.levelMu.Lock()
 	id := h.callID
-	h.msgMu.Unlock()
+	h.levelMu.Unlock()
 	if id == "" { // an unnamed call (a seeded stream): the index is all there is
 		return h.chatRow(n)
 	}
@@ -338,7 +338,7 @@ func (h *Host) callBody(m ChatMessage, took time.Duration) Overlay {
 }
 
 // openLogCall opens the view of one logged call: the row a loaded page of
-// the messages picker names by its seq, drawn like the chat's own call view.
+// the log row's seq names, drawn like the chat's own call view.
 func (h *Host) openLogCall(seq int64) error {
 	ui, err := h.Screen()
 	if err != nil {
@@ -593,4 +593,15 @@ func callOutput(m ChatMessage) string {
 		return ""
 	}
 	return m.Output
+}
+
+// viewedTranscript is the chat's rows: the session's, or the shown run's,
+// read the way a render reads them.
+func (h *Host) viewedTranscript() []ChatMessage {
+	sess, stream := h.liveView()
+	if run := h.viewedRun(); run != nil {
+		_, rows, _, _ := run.view(stream)
+		return rows
+	}
+	return sess.Transcript
 }

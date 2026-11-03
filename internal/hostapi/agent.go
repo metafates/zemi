@@ -1570,7 +1570,7 @@ func (h *Host) flushOutput(stat TurnStat) int {
 	// land after them, in the log and in the window alike
 	h.drainWork()
 	ag.unflushed = false
-	h.refreshMessagesFrom(h.pickerTranscriptLocked()) // the picker shows a row as it settles
+	h.refreshLevels()
 	return len(rows)
 }
 

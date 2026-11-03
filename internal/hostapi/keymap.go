@@ -144,7 +144,6 @@ var defaultKeymap = []struct {
 	{"ctrl+j", RHS{API: "zemi.ui.scroll.line_down"}, "scroll chat down a line"},
 	{"alt+up", RHS{API: "zemi.ui.scroll.sticky_up"}, "scroll chat to the previous prompt or opened run"},
 	{"alt+down", RHS{API: "zemi.ui.scroll.sticky_down"}, "scroll chat to the next prompt or opened run"},
-	{"ctrl+m", RHS{Command: "messages"}, "read or copy a message"},
 	{"alt+o", RHS{Command: "memories"}, "browse the chat's memory"},
 }
 

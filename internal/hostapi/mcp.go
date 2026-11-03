@@ -467,8 +467,8 @@ func (h *Host) mcpChanged() {
 // mcpOpenGroup is the group whose level /mcp opened last, "" for none: a
 // closed one builds nothing (RefreshOverlay draws only open overlays).
 func (h *Host) mcpOpenGroup() string {
-	h.msgMu.Lock()
-	defer h.msgMu.Unlock()
+	h.levelMu.Lock()
+	defer h.levelMu.Unlock()
 	return h.mcpLevel
 }
 
@@ -1171,9 +1171,9 @@ func (h *Host) openMCPGroup(group string) error {
 		return Usagef("no MCP group %q", group)
 	}
 	ui.OpenOverlay(h.mcpGroupOverlay(group))
-	h.msgMu.Lock()
+	h.levelMu.Lock()
 	h.mcpLevel = group
-	h.msgMu.Unlock()
+	h.levelMu.Unlock()
 	return nil
 }
 

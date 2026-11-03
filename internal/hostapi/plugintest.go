@@ -1014,7 +1014,6 @@ func (*testUI) TurnDone(string, bool)                               {}
 func (*testUI) AskPermission(PermRequest) (bool, string)            { return false, tools.ByUser }
 func (*testUI) DismissAsk()                                         {}
 func (*testUI) Screenshot() string                                  { return "" }
-func (*testUI) ChatRow() int                                        { return 0 }
 func (*testUI) AskQuestion([]tools.Question) ([]tools.Answer, bool) { return nil, false }
 func (*testUI) AskPlan(string) (tools.PlanVerdict, bool) {
 	return tools.PlanVerdict{}, false

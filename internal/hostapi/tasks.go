@@ -951,7 +951,7 @@ func (h *Host) work(run, who, agent, status, body string) {
 	h.appendWork(run, who, agent, status, text)
 	ag.mu.Unlock()
 	h.refresh()
-	h.refreshMessages()
+	h.refreshLevels()
 }
 
 // workNote is a work row parked behind an unsettled step.
@@ -983,7 +983,7 @@ func (h *Host) drainWork() {
 	}
 	ag.pendingWork = nil
 	ag.workHeld = false
-	h.refreshMessagesFrom(h.pickerTranscriptLocked()) // ag.mu held, as flushOutput's
+	h.refreshLevels()
 	h.refresh()
 }
 

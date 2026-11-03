@@ -384,11 +384,11 @@ func TestCallViewFollowsTheTranscript(t *testing.T) {
 	}
 }
 
-// TestRefreshMessagesUnderTheTurnLock: a turn settles its rows under the
-// agent lock and refreshes the picker there, so nothing that hook reaches may
-// take that lock again - a live call's view maps to the row it lands on
-// through the transcript alone.
-func TestRefreshMessagesUnderTheTurnLock(t *testing.T) {
+// TestRefreshLevelsUnderTheTurnLock: a turn settles its rows under the
+// agent lock and refreshes the tracked levels there, so nothing that hook
+// reaches may take that lock again - a live call's view maps to the row it
+// lands on through the transcript alone.
+func TestRefreshLevelsUnderTheTurnLock(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHost(t)
 	h.AppendMessage("user", "ping")
@@ -401,13 +401,13 @@ func TestRefreshMessagesUnderTheTurnLock(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		h.agents.mu.Lock()
-		h.refreshMessagesFrom(h.pickerTranscriptLocked())
+		h.refreshLevels()
 		h.agents.mu.Unlock()
 		close(done)
 	}()
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("refreshMessages deadlocks under the agent lock a turn's flush holds")
+		t.Fatal("refreshLevels deadlocks under the agent lock a turn's flush holds")
 	}
 }

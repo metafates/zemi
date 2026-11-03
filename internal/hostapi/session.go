@@ -87,15 +87,10 @@ func (h *Host) SetTranscript(tr []ChatMessage) {
 	h.session.Transcript, h.view = tr, nil
 	h.trEpoch.Add(1)
 	h.tMu.Unlock()
-	// the loaded pages and the stamping cursor speak the cut log's shape, and
-	// the window is stamped whole from the log
-	h.msgMu.Lock()
-	h.msgOld, h.msgFrom = nil, -1
-	h.msgMu.Unlock()
 	h.stampReset(tr)
 	h.scroll(ScrollBottom)
 	h.refresh()
-	h.refreshMessages()
+	h.refreshLevels()
 }
 
 // stampedTail is the seq the transcript's stamping resumes from: the last

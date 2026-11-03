@@ -70,10 +70,6 @@ type UIHooks interface {
 	// Screenshot is the last drawn frame as plain text, "" before the
 	// first one; safe from any goroutine.
 	Screenshot() string
-	// ChatRow is the transcript row the reader is at in the last drawn
-	// frame, down to the call of a rail a row draws; 0 for none. Safe from
-	// any goroutine.
-	ChatRow() int
 	AskQuestion(qs []tools.Question) (answers []tools.Answer, ok bool)
 	// AskPlan shows a plan for approval; ok is false when the user dismisses it.
 	AskPlan(plan string) (tools.PlanVerdict, bool)
@@ -153,16 +149,6 @@ type Overlay struct {
 	// and band that message's rows while it is open: enter keeps the place,
 	// esc puts the region back where it found it
 	Follow bool
-	// OpenAt is the transcript row the reader was at when the open was
-	// made, pinned by a host that opens several levels of one list: the
-	// levels the open itself puts up move the chat, and a level deriving
-	// its selection from the moved chat would open on the parent's pick
-	// instead of the reader's row. 0 derives from the chat as usual.
-	OpenAt int
-	// Rail is the transcript row opening the activity run the chat draws
-	// whole while this list is up, 0 for none: a rail's own list walks its
-	// calls, and the run under them has to be open to show them
-	Rail int
 	// CloseOnCopy makes a copy act (enter on a copy row, y) close the
 	// overlay after it copies: a picker whose rows are only values, where
 	// copying is the pick (/copy). Other lists stay open to copy again.
@@ -564,21 +550,16 @@ type Host struct {
 	viewBack string    // the command that reopens the screen view came from
 	viewMenu string    // the overlay left open under view, whose esc goes to the view
 
-	// msgMu guards the messages picker's levels opened in this session, the
-	// call view on top of them, and mcp's open group level: a transcript that
-	// grows rebuilds each where it is open, and a server's state its level
-	msgMu     sync.Mutex
-	msgLevels []string
+	// levelMu guards the overlay levels a transcript that grows rebuilds
+	// where they are open (the memories browser), the call view on top of
+	// them, and mcp's open group level: a server's state rebuilds its level
+	levelMu   sync.Mutex
+	tracked   []string
 	mcpLevel  string // the group level /mcp opened last, "" for none
 	callRow   int    // the row the open call view shows
 	callID    string // that call's id, which names the row it settles at
 	callServe int    // the row the live call view's watcher serves, so an
 	// opened view supersedes the last watcher instead of adding one
-	// msgOld the pages of log rows a page-up loaded past the window.
-	// NOTE: it grows to the whole log as the reader pages up; bounded today
-	// by the pages being indexed rows, not text (viewCeiling caps a level).
-	msgOld  []ChatMessage
-	msgFrom int64 // the oldest log seq the pages loaded, -1 for none
 
 	// stampFrom is the log seq the transcript's seq stamping pairs from, and
 	// stampRow the window row it pairs at: rows before it are claimed
@@ -650,7 +631,7 @@ type Host struct {
 	selectSeq atomic.Int64 // ids for overlays each call opens anew (select, input, /btw)
 
 	errs  errLog   // recent runtime errors for /errors
-	msgs  msgLog   // recent print and zemi.log lines for /messages
+	msgs  msgLog   // recent print and zemi.log lines, for /logs
 	evlog eventLog // recent events and notifications for Lua reflection
 
 	pluginLoads atomic.Pointer[[]pluginLoad] // the last boot's enabled plugins, for /health and /plugin
@@ -859,12 +840,6 @@ func (h *Host) trimTranscript(tr []ChatMessage) []ChatMessage {
 		tr = slices.Clone(kept)
 		h.trCut.Add(int64(cut))
 		h.stampCursor(cut)
-		// the page anchor may name a row the shed dropped: the next page
-		// re-derives it from the head the window can still see, or every
-		// later page finds nothing older than a cursor below the shed
-		h.msgMu.Lock()
-		h.msgFrom = -1
-		h.msgMu.Unlock()
 	}
 	return tr
 }
@@ -966,9 +941,6 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		mcp:       &mcpReg{},
 		tasks:     newTaskReg(settings),
 		lsp:       &lspReg{},
-		// the boot window fills straight from the log, past SetTranscript:
-		// "no pages loaded" is the value here, not the field's zero
-		msgFrom: -1,
 	}
 	if dirs.StateHome != "" {
 		// the rate limiters share their buckets with every other zemi
@@ -1268,7 +1240,7 @@ func (h *Host) AppendMessage(role fantasy.MessageRole, text string) {
 func (h *Host) AppendChat(m ChatMessage) {
 	h.appendTranscript(m)
 	h.refresh()
-	h.refreshMessages()
+	h.refreshLevels()
 }
 
 // OpenHelp opens the help overlay listing keys and slash commands. A
@@ -1822,7 +1794,6 @@ type UIState struct {
 	Cancelling     bool    // interrupt sent, turn not finished yet
 	Editing        string  // title of the file open in the editor
 	Waiting        Waiting // while a prompt holds the turn
-	Rail           int     // the activity run the chat draws whole, negative when it holds no settled rows, 0 for none
 }
 
 // instructionsCached is ctx.instructions: the project's instruction files,
@@ -2289,4 +2260,9 @@ func (h *Host) Close() {
 type turnScope struct {
 	ctx    context.Context
 	cancel context.CancelFunc
+}
+
+// pluralCount is "1 line", "2 code blocks".
+func pluralCount(n int, one, many string) string {
+	return fmt.Sprintf("%d %s", n, Plural(n, one, many))
 }

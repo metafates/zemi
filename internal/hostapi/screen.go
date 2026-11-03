@@ -26,7 +26,6 @@ type ScreenState struct {
 	Cancelling     bool
 	Editing        string
 	Waiting        Waiting
-	Rail           int
 
 	// where zemi is
 	Version   string
@@ -178,8 +177,7 @@ func (s *ScreenState) Instructions() ([]string, bool) {
 	return s.instructions()
 }
 
-// LogRows is how many log rows the chat window's head cut off: the head
-// /messages pages back from.
+// LogRows is how many log rows the chat window's head cut off.
 func (s *ScreenState) LogRows() int {
 	if s.logRows == nil {
 		return 0
@@ -211,7 +209,7 @@ func (h *Host) ScreenState(width, height int, state UIState) *ScreenState {
 		Width: width, Height: height, Time: state.Time, Now: h.now(), Frame: state.Frame,
 		Ended: state.Ended, QuitArmed: state.QuitArmed, InterruptArmed: state.InterruptArmed,
 		KeySeq: state.KeySeq, RowsBelow: state.RowsBelow, Cancelling: state.Cancelling,
-		Editing: state.Editing, Waiting: state.Waiting, Rail: state.Rail,
+		Editing: state.Editing, Waiting: state.Waiting,
 
 		Version: h.Version, CWD: perm.TildePath(sess.CWD),
 		Trusted: h.ProjectTrusted(), InitError: h.InitError(), ModelHint: h.NoModelHint(),

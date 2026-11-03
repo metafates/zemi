@@ -139,15 +139,15 @@ func TestMemoriesZoom(t *testing.T) {
 	if got := lines(z); strings.Join(got, "|") != "msg 0|msg 1" {
 		t.Fatalf("the drill-in rows: %v", got)
 	}
-	if !slices.Contains(h.msgLevels, "memories zoom 1 0") {
-		t.Errorf("the level is untracked: %v", h.msgLevels)
+	if !slices.Contains(h.tracked, "memories zoom 1 0") {
+		t.Errorf("the level is untracked: %v", h.tracked)
 	}
 	if got := h.memoriesOverlay().Items[0].Text; got != "msgs 0-1" {
 		t.Errorf("the root row moved under the drill-in: %q", got)
 	}
 
 	// the flush rebuild reaches the drill-in level by its id
-	lv, ok := h.messagesLevel("memories zoom 1 0", pickTr{})
+	lv, ok := h.trackedLevel("memories zoom 1 0")
 	if !ok || lv.ID != "memories zoom 1 0" || len(lv.Items) != 2 {
 		t.Fatalf("the tracked level rebuilt as %v ok=%v", lv.ID, ok)
 	}
@@ -220,13 +220,13 @@ func TestMemoriesZoomDeep(t *testing.T) {
 	}
 	// the rebuild a flush runs: a level the log still reaches rebuilds, one
 	// past the log's end closes
-	if _, ok := h.messagesLevel("memories zoom 3 0", pickTr{}); !ok {
+	if _, ok := h.trackedLevel("memories zoom 3 0"); !ok {
 		t.Error("the log's level did not rebuild")
 	}
-	if lv, ok := h.messagesLevel("memories zoom 4 2", pickTr{}); ok || lv.ID != "memories zoom 4 2" {
+	if lv, ok := h.trackedLevel("memories zoom 4 2"); ok || lv.ID != "memories zoom 4 2" {
 		t.Errorf("a level past the log rebuilt as %v ok=%v, want closed", lv.ID, ok)
 	}
-	if _, ok := h.messagesLevel("memories", pickTr{}); !ok {
+	if _, ok := h.trackedLevel("memories"); !ok {
 		t.Error("the browser did not rebuild")
 	}
 }
@@ -361,15 +361,15 @@ func TestSeqZeroIsARealMessage(t *testing.T) {
 	if o.Items[0].Run != "memories view 0 0" || o.Items[0].Verb != VerbOpen {
 		t.Fatalf("the view's leaf = %+v, want the preview opened", o.Items[0])
 	}
-	if err := h.OpenMessages(); err != nil {
+	if err := h.openMemories(); err != nil {
 		t.Fatal(err)
 	}
 	list := ui.overlays()[len(ui.overlays())-1]
-	if list.Items[0].Anchor != 1 {
-		t.Fatalf("the picker's first row = %+v, want the row anchored at 1", list.Items[0])
+	if list.ID != "memories" || len(list.Items) != 1 {
+		t.Fatalf("the browser opened = %s with %d rows, want the one-line view", list.ID, len(list.Items))
 	}
-	if _, ok := h.messagesOlder(); ok {
-		t.Error("a page loaded before the log's first message")
+	if !slices.Contains(h.tracked, "memories") {
+		t.Errorf("the browser is untracked: %v", h.tracked)
 	}
 
 	// zoom opens message 0 whole

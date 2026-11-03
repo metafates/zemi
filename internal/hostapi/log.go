@@ -26,8 +26,8 @@ func (h *Host) logNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("warn", L.NewFunction(h.logFn(slog.LevelWarn)))
 	tb.RawSetString("error", L.NewFunction(h.logFn(slog.LevelError)))
 
-	// list() is the /messages ring: a widget reads the recent lines from
-	// here, never the per-launch log file.
+	// list() is the recent-lines ring: a widget reads it from here, never
+	// the per-launch log file.
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
 		var rows []any
 		for _, e := range slices.Backward(h.messages()) {
@@ -66,7 +66,7 @@ type msgLog struct {
 	entries []msgEntry
 }
 
-// RecordMessage keeps one print or zemi.log line for /messages. The file
+// RecordMessage keeps one print or zemi.log line for /logs. The file
 // log holds them all, but it is per launch and the agent may not read it,
 // so a print from a keymap, a timer or an event handler would otherwise be
 // invisible while zemi runs.
