@@ -669,10 +669,11 @@ func TestBoxFade(t *testing.T) {
 	if !near(at(n-1), 2.0/3) || !near(at(n-2), 1.0/3) || at(n-3) != 0 {
 		t.Fatalf("the bottom ramp is %v %v %v, want 0, 1/3, 2/3", at(n-3), at(n-2), at(n-1))
 	}
-	// every row of the box is on the panel, so a fade of its own sinks there
+	// every row of the box is on the panel, so a fade of its own sinks there;
+	// the backdrop under it fades toward the canvas and sits off the panel
 	for y := app.chromeRect.Min.Y; y < app.chromeRect.Max.Y; y++ {
 		for _, s := range app.lastRows[y] {
-			if strings.TrimSpace(s.Text) != "" && !s.OnPanel {
+			if strings.TrimSpace(s.Text) != "" && !s.OnPanel && s.Fade == 0 {
 				t.Fatalf("the box's row %d is not on the panel: %+v", y, s)
 			}
 		}

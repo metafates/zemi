@@ -40,6 +40,13 @@ const (
 	runRail                  // a rail of one row per step: the live turn, a view
 )
 
+// the window fill: a pass draws the view plus this slack at once, and the
+// older rows it still owes another fillBudget at a time (DESIGN §Rendering loop).
+const (
+	fillSlack  = 60
+	fillBudget = 30 * time.Millisecond
+)
+
 // blockKind is the block a row belongs to: blocks stand one blank row apart,
 // activity rows together.
 type blockKind int
@@ -635,10 +642,12 @@ type chatFolds struct {
 	md map[string][][]hostapi.Segment
 	hl map[string][]hostapi.Segment
 	// settled is the transcript's rows as they were built, and the state they
-	// were built from.
+	// were built from. fillUnit is the first unit the build still owes: 0
+	// once the window is whole, len(units) before the first pass drew.
 	settled     [][]hostapi.Segment
 	settledKey  settledKey
 	settledPrev blockKind
+	fillUnit    int
 	ver         int // the folds' version: any change draws the rows again
 }
 
@@ -1623,19 +1632,11 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		rows: len(st.Transcript), older: st.LogRows(), width: b.width,
 		folds: f.ver, view: viewID(st), tail: tailFirst, replying: st.Agent.Text == "",
 	}
-	if key == f.settledKey {
+	if key == f.settledKey && f.fillUnit == 0 {
 		// appending may write into the spare capacity, which the settled
 		// slice's own rows never reach
 		b.lines, b.prev = f.settled, f.settledPrev
 	} else {
-		// the transcript's first row stands one row off the window's top edge, and
-		// the window is the log's tail: name what the head cut left out
-		if key.older > 0 {
-			b.push([]hostapi.Segment{{
-				Text: "… " + strconv.Itoa(key.older) + " earlier " + hostapi.Plural(key.older, "message", "messages"),
-				HL:   "Dim", NoCopy: true, NoHover: true,
-			}})
-		}
 		tr := make([]entry, len(st.Transcript))
 		for i, m := range st.Transcript {
 			tr[i] = entryOf(m)
@@ -1654,18 +1655,123 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 			}
 			return runFold
 		}
-		if len(tr) > 0 {
-			b.push([]hostapi.Segment{{Text: ""}})
-		}
+		// The window fills newest first, 30 ms at a time but never less than a
+		// full view, topped with the prompt it pins even when that prompt sits
+		// hundreds of rows further back (DESIGN §Rendering loop). A unit's rows
+		// carry the leading gap its real predecessor asks for, so any run of
+		// them concatenates in order, half built included.
+		type unitSpan struct{ first, last int }
+		units := []unitSpan{}
 		for i := 0; i < len(tr); {
 			first, last := i, i
 			for last+1 < len(tr) && (activity(tr[first]) && activity(tr[last+1]) || notice(tr[first]) && notice(tr[last+1])) {
 				last++
 			}
-			b.unit(tr, first, last, modeOf(first))
+			units = append(units, unitSpan{first, last})
 			i = last + 1
 		}
-		f.settled, f.settledPrev, f.settledKey = slices.Clone(b.lines), b.prev, key
+		blockOf := func(k int) blockKind {
+			m, first := modeOf(units[k].first), units[k].first
+			switch {
+			case m == runFold || m == runUnfold || m == runRail:
+				return blockActivity
+			case tr[first].kind == hostapi.RowShell:
+				return blockUser
+			case notice(tr[first]), tr[first].kind == hostapi.RowError:
+				return blockNote
+			case tr[first].role == fantasy.MessageRoleUser:
+				return blockUser
+			default:
+				return blockText
+			}
+		}
+		unitLines := func(k int) [][]hostapi.Segment {
+			ub := &chatBuilder{width: b.width, st: b.st, host: b.host, folds: f}
+			if k > 0 {
+				ub.prev = blockOf(k - 1)
+			}
+			ub.unit(tr, units[k].first, units[k].last, modeOf(units[k].first))
+			return ub.lines
+		}
+		fresh := key != f.settledKey
+		if fresh {
+			f.fillUnit = len(units) // a new state rebuilds from the tail
+			f.settled = nil
+		}
+		// The pass builds the tail-most units the window still owes: on a
+		// first build down to the view plus slack, later ones 30 ms at a time.
+		// fillUnit is the first unit still owed; 0 once the window is whole.
+		newX, covered, t0 := f.fillUnit, 0, time.Now()
+		built := map[int][][]hostapi.Segment{}
+		for newX > 0 {
+			k := newX - 1
+			lines := unitLines(k)
+			built[k] = lines
+			covered += len(lines)
+			newX = k
+			if covered >= b.st.Height+fillSlack && (fresh || time.Since(t0) >= fillBudget) {
+				break
+			}
+		}
+		// The first pass carries the window's first exchange at the head (what
+		// the "… N earlier" row names) and the prompt the view pins, built out
+		// of order when the fill has not reached it; the middle waits.
+		if fresh {
+			headEnd, island := 0, -1
+			prompts := 0
+			for headEnd < len(units) {
+				if e := tr[units[headEnd].first]; e.role == fantasy.MessageRoleUser && e.kind == hostapi.RowMessage {
+					prompts++
+					if prompts > 1 {
+						break
+					}
+				}
+				headEnd++
+			}
+			for k := len(units) - 1; k >= 0; k-- {
+				if e := tr[units[k].first]; e.role == fantasy.MessageRoleUser && e.kind == hostapi.RowMessage {
+					if k >= headEnd && k < newX {
+						island = k
+					}
+					break
+				}
+			}
+			var lines [][]hostapi.Segment
+			// the transcript's first row stands one row off the window's top edge, and
+			// the window is the log's tail: name what the head cut left out
+			if key.older > 0 {
+				lines = append(lines, []hostapi.Segment{{
+					Text: "… " + strconv.Itoa(key.older) + " earlier " + hostapi.Plural(key.older, "message", "messages"),
+					HL:   "Dim", NoCopy: true, NoHover: true,
+				}})
+			}
+			if len(tr) > 0 {
+				lines = append(lines, []hostapi.Segment{{Text: ""}})
+			}
+			for k := 0; k < len(units); k++ {
+				switch {
+				case k < headEnd, k == island, k >= newX:
+					if l, ok := built[k]; ok {
+						lines = append(lines, l...)
+					} else {
+						lines = append(lines, unitLines(k)...)
+					}
+				}
+			}
+			f.settled = lines
+		} else {
+			var head [][]hostapi.Segment
+			for k := newX; k < f.fillUnit; k++ {
+				head = append(head, built[k]...)
+			}
+			f.settled = slices.Concat(head, f.settled)
+		}
+		f.fillUnit = newX
+		f.settledPrev, f.settledKey = blockNone, key
+		if len(units) > 0 {
+			f.settledPrev = blockOf(len(units) - 1)
+		}
+		b.lines, b.prev = f.settled, f.settledPrev
 	}
 
 	// the live turn: the thinking, the calls, the reply, drawn on the rail
@@ -1742,7 +1848,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 	if pendingAt > 0 {
 		setRowsAfterPending(len(b.lines) - pendingAt)
 	}
-	return b.lines, false
+	return b.lines, f.fillUnit > 0
 }
 
 // todos draws the list under the conversation until every item is done.

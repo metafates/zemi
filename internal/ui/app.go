@@ -902,6 +902,22 @@ func frameClock(now func() time.Time) int {
 // frame is the app's tick of the frame clock.
 func (a *App) frame() int { return frameClock(a.now) }
 
+// renderMissingWidgets renders the shown widgets that have never drawn
+// straight into the cache, so the frame this compose paints is whole: a
+// first paint without them is chrome only, and the queued render would land
+// a visible flash later. The queue renders everything after this frame.
+func (a *App) renderMissingWidgets() {
+	for _, w := range a.shownWidgets() {
+		if a.caches[w.ID] != nil {
+			continue
+		}
+		a.renderSeq++
+		st := a.host.ScreenState(w.width, w.height, a.uiState())
+		lines, more, err := a.renderWidget(w, st)
+		a.onWidgetRendered(widgetRender{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: a.frameGen, seq: a.renderSeq, err: err})
+	}
+}
+
 func (a *App) onWidgetRendered(msg widgetRender) {
 	if a.pending[msg.id] == (renderKey{gen: msg.gen, width: msg.width, height: msg.height}) {
 		delete(a.pending, msg.id)
@@ -1125,6 +1141,7 @@ func (a *App) compose(w, h int) string {
 	stage := lay.stage
 	a.scrollIDs, a.scrollDef = a.scrollIDs[:0], lay.scroll
 	a.syncFollow()
+	a.renderMissingWidgets()
 	rows := a.paint(lay.root)
 
 	pop := a.floatPopup(rows, lay, w)

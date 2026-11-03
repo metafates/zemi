@@ -280,7 +280,7 @@ func TestColdChatRender(t *testing.T) {
 				return slices.ContainsFunc(lines, func(l []hostapi.Segment) bool { return strings.Contains(hostapi.SegsText(l)+" ", s+" ") })
 			}
 			lines, more := renderChat(t, app, 138, c.height, app.uiState())
-			if len(lines) == 0 || more {
+			if len(lines) == 0 || !more {
 				t.Fatalf("render: %d lines, more %v", len(lines), more)
 			}
 			if !has(c.has[0]) || !has(c.has[1]) {
@@ -289,6 +289,14 @@ func TestColdChatRender(t *testing.T) {
 			// the transcript's own first row is the pad above the first message
 			if len(lines) < 2 || strings.TrimSpace(hostapi.SegsText(lines[0])) != "" || !strings.Contains(hostapi.SegsText(lines[1]), "question 0") || !has("reply 0") {
 				t.Fatalf("the fill ends without the first exchange: %d lines from %q", len(lines), hostapi.SegsText(lines[0]))
+			}
+			for more {
+				if lines, more = renderChat(t, app, 138, c.height, app.uiState()); len(lines) == 0 {
+					t.Fatal("the fill dried up")
+				}
+			}
+			if !has(c.has[0]) || !has("reply 0") {
+				t.Fatalf("the whole fill lost %q or %q", c.has[0], "reply 0")
 			}
 		})
 	}
