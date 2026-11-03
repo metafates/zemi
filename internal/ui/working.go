@@ -150,7 +150,7 @@ func workingRule(e *eyes, st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 			// the reason and countdown outlast the key hint and the clock: a
 			// narrow rule keeps the state the eyes alone cannot name
 			next := "retrying now"
-			if ag.Retry.NextIn > 0 {
+			if ag.Retry.NextIn >= time.Second {
 				next = "next try in " + duration(ag.Retry.NextIn.Seconds(), true)
 			}
 			// the cause is clipped to the cells the countdown leaves, so a long

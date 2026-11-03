@@ -2100,6 +2100,20 @@ func TestWorkingRowRetryNarrow(t *testing.T) {
 		})
 	}
 }
+
+// TestWorkingRowRetrySubSecond: a wait under a second reads as retrying now,
+// not as "next try in 0s".
+func TestWorkingRowRetrySubSecond(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 100, 16)
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 4 * time.Second, Retrying: true, RetryIn: 400 * time.Millisecond, Retries: 2, RetryWhy: "rate limited by the provider"})
+	app.renderSync(t)
+	row := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 100))
+	if !strings.Contains(row, "retrying now") || strings.Contains(row, "next try in 0s") {
+		t.Fatalf("a sub-second wait drew a 0s countdown: %q", row)
+	}
+}
+
 // TestWorkingRowMascot: the snail stays in the left corner on a plain rule
 // and the turn shows in its eyes alone.
 func TestWorkingRowMascot(t *testing.T) {
