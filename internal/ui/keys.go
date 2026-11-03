@@ -36,6 +36,7 @@ var goKeys = [][2]string{
 	{"delete", "forward delete"},
 	{"/", "command palette"},
 	{"@", "attach files, dirs and skills"},
+	{"tab", "focus the chat; j, k walk it, y copies, e opens the editor"},
 	{"ctrl+space", "reopen the @ or / popup at the word"},
 }
 
@@ -105,6 +106,17 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// printable keys stay with the composer, and an open popup keeps its
 	// keys. The composer is Go-drawn, so typing must not bump the frame
 	// generation: that would re-render every widget on every keystroke.
+	if a.chatFocus && top == noModal && !a.palette.open && !a.completion.shown() && key != "ctrl+c" {
+		// the chat cursor's keys: an esc here leaves focus, it never arms
+		// the interrupt, and a held sequence never outlives the focus
+		a.armed, a.keySeq = armed{}, nil
+		if cmd, took := a.chatCursorKey(key); took {
+			return cmd
+		}
+		// any other key hands focus back to the composer and acts as usual
+		a.chatFocus = false
+		a.bump()
+	}
 	if top == noModal && key != "ctrl+c" {
 		if a.palette.open || a.completion.shown() {
 			return a.composerKey(key, msg)
@@ -377,6 +389,8 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	switch key {
+	case "tab":
+		return a.chatFocusEnter()
 	case "enter":
 		a.submitComposer()
 		return nil

@@ -662,9 +662,14 @@ func (a *App) paintScrolled(n *node, r uv.Rectangle) [][]hostapi.Segment {
 	// tail would carry that row off the top as the run opened. Only a paint
 	// whose rows changed, so a scroll of the chat is never yanked back. A
 	// pick taller than the view never fits: only its first row escaping the
-	// top is lost, the growth below is what the reader watches.
-	if a.highlight != 0 && jumped == 0 && st.rows != prevRows {
-		if from, to := unitSpan(lines, a.highlight); from >= 0 {
+	// top is lost, the growth below is what the reader watches. The chat
+	// cursor's message follows the same way.
+	pick := a.highlight
+	if pick == 0 && a.chatFocus {
+		pick = a.chatSel
+	}
+	if pick != 0 && jumped == 0 && st.rows != prevRows {
+		if from, to := unitSpan(lines, pick); from >= 0 {
 			off := from < st.top || (to-from+1 <= st.viewH && to >= st.top+st.viewH)
 			if off {
 				st.top, st.follow = jumpTop(lines, from, to, st.viewH), false
@@ -677,12 +682,12 @@ func (a *App) paintScrolled(n *node, r uv.Rectangle) [][]hostapi.Segment {
 	st.pinRows(lines, w)
 	// the picker's message is banded under the pins, which stay chrome
 	draw := lines
-	if n.Region == a.scrollDef && a.highlight != 0 {
+	if n.Region == a.scrollDef && pick != 0 {
 		same := len(st.bandSrc) == len(lines) && (len(lines) == 0 || &st.bandSrc[0] == &lines[0])
-		if !same || st.bandAt != a.highlight || st.bandW != w-1 {
-			from, to := unitSpan(lines, a.highlight)
+		if !same || st.bandAt != pick || st.bandW != w-1 {
+			from, to := unitSpan(lines, pick)
 			st.band = bandSpan(lines, from, to, w-1)
-			st.bandSrc, st.bandAt, st.bandW = lines, a.highlight, w-1
+			st.bandSrc, st.bandAt, st.bandW = lines, pick, w-1
 		}
 		draw = st.band
 	}

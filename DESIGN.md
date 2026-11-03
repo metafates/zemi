@@ -1658,7 +1658,8 @@ UI extensibility contract:
   lists like the model picker) ->
   open composer popup -> keymap (keys and key sequences; printable keys
   stay with the composer) ->
-  composer (there are no modes). Overlays capture first,
+  composer (there are no modes), the chat cursor (`tab`, below) between
+  popup and keymap while it holds the keys. Overlays capture first,
   user maps override defaults, and `zemi.keymap.del` unmaps.
 - Slash palette: typing `/` in the composer opens a popup listing registered
   commands, matched fuzzily as you type and ranked best first, a name the
@@ -2316,6 +2317,14 @@ view; a reset's wipe drops the row with the chat.
   names the scroll keys. A scrolled-back viewport is anchored on the rows it
   shows, not on a row number, so a resize, an expanded thought or a new
   turn leaves the same content in view.
+  `tab` on a bare composer gives the chat the keys: a cursor walks its
+  messages (`j`, `k`, the arrows, `g`/`G`, `home`/`end`; a run of activity
+  rows or a burst of notices is one step, the live turn's own run none),
+  bands the selected message the way a picked list row is banded and keeps
+  it in view, `y` copies it, `e` opens it in the editor to copy from (what
+  is saved there is discarded), `tab`/`esc` return to the composer, and any
+  other key goes back to typing; while the cursor holds the keys, keymaps
+  wait.
   Commands are slash commands: `/quit`, `/help`, `/model`,
   `/reset` (wipe the chat's log, every summary and the view, vacuum the
   store so the text is gone from disk, and start the log over at seq 0;

@@ -106,6 +106,11 @@ type App struct {
 	// the paint bands; 0 when nothing follows. The row names a whole unit,
 	// a run's drawing included.
 	highlight int
+	// chatFocus is tab's chat cursor: the composer handed the keys to the
+	// chat, and chatSel is the message it walks (the transcript row the
+	// paint bands, like highlight; 0 none).
+	chatFocus bool
+	chatSel   int
 	// byRow says an overlay is opening from a key on another list's row, so
 	// it reopens where that list left it instead of following the chat
 	byRow bool
@@ -1610,6 +1615,143 @@ func (a *App) applyScroll(kind hostapi.ScrollAction, id region) {
 func headerAt(lines [][]hostapi.Segment, i int) bool {
 	p := pinOf(lines[i])
 	return (p == hostapi.PinTurn || p == hostapi.PinSection) && (i == 0 || pinOf(lines[i-1]) != p)
+}
+
+// chatFocusEnter gives the chat the keys (tab on a bare composer): the
+// cursor takes the message at the viewport's bottom row, where the reader is.
+func (a *App) chatFocusEnter() tea.Cmd {
+	units := a.chatUnits()
+	if len(units) == 0 {
+		return nil
+	}
+	sel := 0
+	if s := a.scrolls[a.scrollDef]; s != nil && len(s.lines) > 0 {
+		sel = unitAt(s.lines, min(s.top+s.viewH, len(s.lines))-1)
+	}
+	if n := units[len(units)-1] + 1; sel < 1 || sel > n {
+		sel = n
+	}
+	a.chatFocus, a.chatSel = true, sel
+	a.bump()
+	return nil
+}
+
+// chatUnits lists the transcript rows the cursor stops on, ascending: each
+// drawing unit's first row, a run of activity rows or a burst of notices
+// being one block, every other row its own. The live turn's own run draws
+// with its run's anchor, not a transcript row's, so the cursor cannot take
+// it while the turn runs.
+func (a *App) chatUnits() []int {
+	st := a.host.ScreenState(a.width, a.height, a.uiState())
+	var out []int
+	for i := 0; i < len(st.Transcript); {
+		out = append(out, i)
+		k := chatKind(st.Transcript[i])
+		for i++; i < len(st.Transcript) && k != 0 && chatKind(st.Transcript[i]) == k; i++ {
+		}
+	}
+	if n := len(out); n > 0 && st.AgentActive && st.Agent.Text == "" &&
+		chatKind(st.Transcript[out[n-1]]) == 1 {
+		out = out[:n-1]
+	}
+	return out
+}
+
+// chatKind groups the transcript rows into units the way the chat draws
+// them: 1 a run of activity rows, 2 a burst of notices, 0 a row alone.
+func chatKind(m hostapi.ChatMessage) int {
+	switch {
+	case activityKind(m):
+		return 1
+	case m.Kind == hostapi.RowNotice:
+		return 2
+	default:
+		return 0
+	}
+}
+
+// chatCursorKey is one key on the focused chat: j, k and the arrows walk the
+// messages, y copies, e opens the editor, tab and esc hand the keys back to
+// the composer. A key the cursor does not take leaves focus and acts as usual.
+func (a *App) chatCursorKey(key string) (tea.Cmd, bool) {
+	units := a.chatUnits()
+	at := slices.Index(units, a.chatSel-1)
+	moved := false
+	switch key {
+	case "j", "down":
+		if at >= 0 && at+1 < len(units) {
+			a.chatSel, moved = units[at+1]+1, true
+		}
+	case "k", "up":
+		if at > 0 {
+			a.chatSel, moved = units[at-1]+1, true
+		}
+	case "g", "home":
+		if len(units) > 0 {
+			a.chatSel, moved = units[0]+1, true
+		}
+	case "G", "end":
+		if len(units) > 0 {
+			a.chatSel, moved = units[len(units)-1]+1, true
+		}
+	case "y":
+		return a.copied(chatCopyText(a.host.ScreenState(a.width, a.height, a.uiState()).Transcript[a.chatSel-1])), true
+	case "e":
+		return a.editInEditor(chatCopyText(a.host.ScreenState(a.width, a.height, a.uiState()).Transcript[a.chatSel-1]), "the message", false), true
+	case "tab", "esc":
+		a.chatFocus = false
+	case "shift+up":
+		a.applyScroll(hostapi.ScrollLineUp, regionNone)
+	case "shift+down":
+		a.applyScroll(hostapi.ScrollLineDown, regionNone)
+	case "ctrl+d", "pgdown":
+		a.applyScroll(hostapi.ScrollUp, regionNone)
+	case "ctrl+u", "pgup":
+		a.applyScroll(hostapi.ScrollDown, regionNone)
+	default:
+		return nil, false
+	}
+	if moved {
+		a.followChatSel()
+	}
+	a.bump()
+	return nil, true
+}
+
+// chatCopyText is what y copies: the message's text, a tool row's output
+// tail under it; a notice's hint never copies, the way a drag does not.
+func chatCopyText(m hostapi.ChatMessage) string {
+	if m.Output != "" {
+		return strings.TrimSpace(m.Text) + "\n" + m.Output
+	}
+	return m.Text
+}
+
+// followChatSel puts the selected message in view: the paint's jump lands it
+// once its rows are drawn, and a page's scroll drags the window toward one
+// the chat has not built yet, so the next move lands.
+func (a *App) followChatSel() {
+	a.syncChatScroll()
+	st := a.scrolls[a.scrollDef]
+	if st == nil {
+		return
+	}
+	if from, _ := unitRows(st.lines, a.chatSel); from >= 0 {
+		a.pendingAnchor[a.scrollDef] = a.chatSel
+		return
+	}
+	page := max(st.viewH-1, 1)
+	drawn := 0
+	for _, row := range st.lines {
+		if at := rowAnchor(row); at > drawn {
+			drawn = at
+		}
+	}
+	if a.chatSel > drawn {
+		a.scrollRows(a.scrollDef, page)
+	} else {
+		a.scrollRows(a.scrollDef, -page)
+	}
 }
 
 func (a *App) regionLines(r region, width, clip int) [][]hostapi.Segment {

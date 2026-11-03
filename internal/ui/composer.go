@@ -616,9 +616,11 @@ type editorMsg struct {
 	err  error
 }
 
-// openEditor edits the draft in the user's editor (ctrl+g) through
-// EditFile, off the UI goroutine; the saved text comes back as editorMsg.
-func (a *App) openEditor() tea.Cmd {
+// editInEditor opens text in the user's editor (ctrl+g on the draft, e on a
+// focused chat message) on a temp file removed when the editor exits.
+// readBack hands the saved text to the composer; e on the chat reads
+// nothing back — NOTE: its edits are discarded, it is a copying aid.
+func (a *App) editInEditor(text, title string, readBack bool) tea.Cmd {
 	fail := func(err error) tea.Cmd {
 		a.pushToast(slog.LevelError, "Could not open the editor", err.Error())
 		return nil
@@ -632,7 +634,7 @@ func (a *App) openEditor() tea.Cmd {
 		return fail(err)
 	}
 	path := f.Name()
-	_, err = f.WriteString(a.composer.expand(a.composer.text))
+	_, err = f.WriteString(text)
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -640,10 +642,10 @@ func (a *App) openEditor() tea.Cmd {
 		_ = os.Remove(path)
 		return fail(err)
 	}
-	a.host.GoSafe("edit draft", func() {
+	a.host.GoSafe("edit "+title, func() {
 		defer os.Remove(path)
 		var msg editorMsg
-		if msg.err = a.EditFile(context.Background(), hostapi.EditRequest{Path: path, Title: "the draft"}); msg.err == nil {
+		if msg.err = a.EditFile(context.Background(), hostapi.EditRequest{Path: path, Title: title}); msg.err == nil && readBack {
 			b, err := os.ReadFile(path)
 			msg.text, msg.err = strings.TrimRight(string(b), "\n"), err
 		}
@@ -651,4 +653,9 @@ func (a *App) openEditor() tea.Cmd {
 		a.await(func() tea.Cmd { _, cmd := a.Update(msg); return cmd })
 	})
 	return nil
+}
+
+// openEditor edits the draft in the user's editor (ctrl+g).
+func (a *App) openEditor() tea.Cmd {
+	return a.editInEditor(a.composer.expand(a.composer.text), "the draft", true)
 }
