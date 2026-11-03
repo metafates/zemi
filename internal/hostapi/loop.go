@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -12,9 +13,14 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
+// a broken duration reads as one, "5x": refusing it beats a silent loop
+// over a typo (NOTE: a prompt that begins this way must be reworded)
+var loopDuration = regexp.MustCompile(`^\d+(\.\d+)?[a-z]+$`)
+
 const (
-	loopMin      = time.Minute      // the shortest interval, and the shortest delay the model may pick
-	loopMaxEvery = 24 * time.Hour   // a longer interval belongs to cron
+	loopMin      = time.Minute    // the shortest interval, and the shortest delay the model may pick
+	loopMaxEvery = 24 * time.Hour // a longer interval belongs to cron
+
 	loopPaceMax  = time.Hour        // the longest delay the model may pick
 	loopFallback = 20 * time.Minute // after a self-paced run that named no delay
 	// NOTE: a busy agent delays a run by up to loopRetry; an idle hook is the
@@ -94,6 +100,10 @@ func (h *Host) SetLoop(args string) error {
 			return Usagef("%s is under the 1m floor; a loop runs every 1m to 24h", first)
 		}
 		every, prompt = d, strings.TrimSpace(rest)
+	} else if loopDuration.MatchString(first) {
+		// NOTE: a prompt that begins like a broken duration ("5x go") must be
+		// reworded; a silent loop over it runs the typo forever
+		return Usagef("%s is not a duration; /loop 5m <prompt> runs it every 5m, /loop <prompt> lets the model pace it", first)
 	}
 	name, _ := SplitCommand(strings.TrimPrefix(prompt, "/"))
 	switch {

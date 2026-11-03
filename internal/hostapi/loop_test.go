@@ -282,6 +282,19 @@ func TestLoopEveryAlias(t *testing.T) {
 	}
 }
 
+// TestLoopBrokenDuration: a first word that reads as a duration but parses
+// as none ("5x") is refused, not taken as a prompt a silent loop runs.
+func TestLoopBrokenDuration(t *testing.T) {
+	t.Parallel()
+	h, _ := newLoopHost(t)
+	if err := h.SetLoop("5x do something"); err == nil || !strings.Contains(err.Error(), "is not a duration") {
+		t.Errorf("/loop 5x do something: %v, want the duration refusal", err)
+	}
+	if _, on := h.Loop(); on {
+		t.Error("the broken duration started a loop")
+	}
+}
+
 // TestLoopStopNamesItsRuns: the manual stop's notice counts runs, like
 // every other stop path.
 func TestLoopStopNamesItsRuns(t *testing.T) {
