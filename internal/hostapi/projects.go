@@ -351,14 +351,15 @@ func (h *Host) projectItems() (items []OverlayItem, sel int) {
 		case p.Root == h.trustRoot():
 			item.Tag = "current"
 			item.Detail = "zemi runs here: /trust changes its trust. Switch to another project to delete this one's data."
-			items = append(items, item)
-			continue
 		case p.Missing:
 			item.Detail = perm.TildePath(p.Root) + " no longer exists. Delete erases what zemi kept for it."
 		default:
 			item.Detail = "Switch restarts zemi there: a job still running here stops, as on quit. Delete erases what zemi keeps for it: sessions, recipes and the trust decision. The project's own files stay."
 		}
-		if sel < 0 && !p.Missing {
+		// the current project keeps its switch and delete keys: the verbs
+		// refuse it themselves ("zemi already runs in"), so the refusal
+		// names the act, never the row's whole detail
+		if sel < 0 && !p.Missing && p.Root != h.trustRoot() {
 			sel = i
 		}
 		var keys []ItemKey
