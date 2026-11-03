@@ -14,7 +14,6 @@ var splashTips = []struct{ key, click, text string }{
 	{"@", "fill @", " attaches project files, dirs and skills to the prompt"},
 	{"/goal ", "fill /goal ", " keeps working until a condition holds"},
 	{"/review", "fill /review", " has several agents review your changes"},
-	{"/messages", "fill /messages", " opens the message picker: read or copy"},
 	{"alt+o", "", " browses the chat's whole memory, however old"},
 }
 

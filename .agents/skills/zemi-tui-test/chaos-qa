@@ -91,7 +91,7 @@ act() {
         ;;
     4) tmux -L z$NAME send-keys -t $NAME Escape ;;
     5) tmux -L z$NAME send-keys -t $NAME '/health' Enter; sleep 1; tmux -L z$NAME send-keys -t $NAME Escape ;;
-    6) tmux -L z$NAME send-keys -t $NAME '/messages' Enter; sleep 1; tmux -L z$NAME send-keys -t $NAME Escape ;;
+    6) tmux -L z$NAME send-keys -t $NAME '/usage' Enter; sleep 1; tmux -L z$NAME send-keys -t $NAME Escape ;;
     7) echo $(( (i % 5) + 1 )) > "$T/out/rate_fail" ;;
     8) echo $(( (i % 3) + 1 )) > "$T/out/drop" ;;
     9) tmux -L z$NAME resize-window -t $NAME -x $(( 100 + (i % 4) * 20 )) -y $(( 30 + (i % 3) * 5 )) 2>/dev/null ;;

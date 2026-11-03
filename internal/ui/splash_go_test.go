@@ -50,7 +50,7 @@ func TestSplashTipPrecedence(t *testing.T) {
 		{"init.lua failed", hostapi.ScreenState{InitError: "/cfg/init.lua:12: boom"}, "● Tip  init.lua:12 failed: /errors"},
 		{"no model", hostapi.ScreenState{ModelHint: hint}, "● Tip  No model yet: export ANTHROPIC_API_KEY and start zemi again, or\npress enter on a provider in /model to paste its key"},
 		{"untrusted", hostapi.ScreenState{Model: "a/b", Trusted: false, Trustable: true}, "● Tip  /trust lets zemi read this project's instructions and run code"},
-		{"at home", hostapi.ScreenState{Model: "a/b", Trusted: false, Trustable: false}, "● Tip  /btw  asks a side question the conversation does not keep"},
+		{"at home", hostapi.ScreenState{Model: "a/b", Trusted: false, Trustable: false}, "● Tip  @  attaches project files, dirs and skills to the prompt"},
 	} {
 		st := c.st
 		st.Width, st.Height, st.Now = 100, 31, time.Unix(1767225600, 0)

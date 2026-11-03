@@ -227,33 +227,6 @@ func TestPopupKeepsSize(t *testing.T) {
 	}
 }
 
-// TestGoldenMessages pins the messages picker (§8): the conversation a
-// section per turn, a reply's code blocks hanging under it, and the row at
-// the reader's place selected.
-func TestGoldenMessages(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 24)
-	host.AppendChat(hostapi.ChatMessage{Role: "user", Text: "fix the failing auth test"})
-	appendReasoning(host, "the token expires too early", hostapi.TurnStat{ThoughtMS: 2100})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "internal/auth/token.go", Status: "ok"})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "internal/auth/token.go", Status: "ok", Diff: "- ttl\n+ ttl * 2\n"})
-	appendReply(host, "The token's lifetime doubled:\n\n```go\nconst ttl = 2 * time.Hour\n```\n\nThe test should pass now.", hostapi.TurnStat{Out: 120, Ended: 1_700_000_000, Model: "anthropic/claude-sonnet-4-5"})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "notice", Text: "auth test passed", Status: "ok"})
-	host.AppendChat(hostapi.ChatMessage{Role: "user", Text: "now add a logout test"})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "agent", Label: "look at the session store", Run: "a1b2c3d4", Status: "ok"})
-	appendReply(host, "Logout is covered in session_test.go.", hostapi.TurnStat{Out: 60, Ended: 1_700_000_100})
-
-	app.timeStr = "09:41"
-	app.renderSync(t)
-	app.Frame()
-	if err := host.OpenMessages(); err != nil {
-		t.Fatal(err)
-	}
-	for app.Pump() {
-	}
-	app.renderSync(t)
-	golden.RequireEqual(t, app.Frame())
-}
-
 // TestGoldenMemories pins the memories browser (§8): the live view one row
 // per line, each the line's text with its id as the right-hand tag, the
 // unbuilt tail's placeholder, the stats line in the footer, and the selected

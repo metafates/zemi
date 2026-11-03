@@ -390,7 +390,7 @@ calls blank the user's global filter drivers too.
 
 Load order is a list of boot steps: host `zemi.*` namespaces
 -> builtin commands (main's own plus every domain
-file's: note, skills, agents, jobs, call, messages, memories, workflow,
+file's: note, skills, agents, jobs, call, memories, workflow,
 mcp, lsp, plugins, config, projects) -> the project trust
 decision (the prompt above; before any config that may start an MCP
 server) -> plugins (each enabled plugin's `.zemi/init.lua`, sorted by name) ->
@@ -1743,7 +1743,7 @@ UI extensibility contract:
   space), since a subsequence finds nearly every line of prose; any word
   may instead appear in the row's other text. Popups under the composer
   rank best first (`hostapi.Rank`); overlays keep list
-  order, so sections stay whole and `/messages` keeps its order. `@` files
+  order, so sections stay whole. `@` files
   rank a file name the token begins first, then by the score of the name,
   or of the path when only the path matches. Every list draws the matched
   runes of a label in the accent (`listRowsW`, `matchSegs`), bold on the
@@ -2178,10 +2178,10 @@ view; a reset's wipe drops the row with the chat.
   a time, and the next prompt starts the stack anew. A click on a pin scrolls
   back to its row, which lands under the pins above it, and `alt+up`/`alt+down`
   move between prompts and opened runs. Every row of a unit also carries its
-  transcript index as an `anchor`, which nothing draws: `/messages` names the
-  same numbers, so the picker's selection scrolls the chat to that unit's
-  first row and bands all of its rows (`Overlay.Follow`), while the picker
-  opens on the unit the reader is at. The window sheds its head past
+  transcript index as an `anchor`, which nothing draws: a Lua list opened
+  with `follow` names the same numbers, so its selection scrolls the chat to
+  that unit's first row and bands all of its rows (`Overlay.Follow`), while
+  the list opens on the unit the reader is at. The window sheds its head past
   `chatWindowRows`, onward to the next turn's first row so the window never
   opens on an answer whose question was shed; the chat then keys its cached rows by their place in the
   log's tail (the index plus `ScreenState.TranscriptCut`) and restamps the
@@ -2284,57 +2284,8 @@ view; a reset's wipe drops the row with the chat.
   starts past it.
   The rendered view is derived from host-held blocks: the raw message text
   is always in the log, reachable via
-  `zoom` and `/copy` (the last reply as the model wrote it),
-  so no widget can hide what the model actually received. `/messages` is the
-  map of it (`ctrl+m`): one builtin list of the whole conversation, every turn
-  a section header over the rows it held (a prompt, reply, notice, error or
-  command), saying the turn's clock and what it counted, and a turn's whole
-  activity as one row saying how many steps it took, as the chat draws that
-  rail folded. `l` on that row opens the rail's own list, one row per call and
-  thought, and the chat draws that run whole while it is up: no row of it
-  stays behind the rail's own `… N earlier`, each call keeps its body folded,
-  and the call the list names is the one banded and kept in view as the run
-  opens under it, the view growing down rather than sliding to the tail, the
-  run this turn is still
-  adding to included: its calls are open whole while the list is up and go
-  back to the short tail a live rail keeps once it closes. It opens where the
-  reader is, the way muffin opens on the symbol under the cursor, not on its
-  first row: the list opens on the row the chat names, with the rail of the
-  run holding that row under the list when the reader sits in one, and each
-  level opens on the row that place names - a blank line between two messages
-  hands over to the one under it, the row the chat itself resolves there - so
-  a level and the chat always say the same message. `esc` closes the whole
-  menu: a level's id starts with the list's own, so a rail is its child and
-  the menu closes whole from any of them, and `h` backs the rail or a view
-  out, each on the row it was left on. `l` is
-  the one way down a level: a row's own view or the run its keys open. `enter`
-  on a row of any level is the place itself - the menu closes and the chat
-  stays there, the run folding under it - so enter answers "open in chat"
-  everywhere. What a row offers past that is its flat keys; a call's job
-  opens from its view, never by a second key on the list. The list is
-  a window on the transcript, not a copy of it: a row that lands while it is
-  open shows there at once, and a level the transcript no longer holds (a
-  reset) closes. Prompt and reply rows lead with the
-  speaker's kind glyph, `▌` in the accent and `◆` in dim, and the state rows
-  keep their marks, a marked row drawing no glyph of its own. It follows the
-  chat: moving the selection scrolls the transcript to the row the item
-  names, centers the message in the view when the whole of it fits (else its
-  first row just under the pinned header) and bands every row of it, the
-  scrollbar column and a reply's readout aside; `y` copies the row, and `esc`
-  closes the menu with the chat back where it was found, the way muffin's
-  popup cancels. A view a key opens sits over the level it came from, so esc
-  there returns to it as it was. A jump records the row
-  it placed the view at, because the viewport alone cannot say which message
-  it is when a centered placement clamps at the top or the tail and many share
-  one top row: the list opens on that row again while the view still sits
-  where the jump left it, and so does closing the menu on a row, which lands
-  the reader there. A scroll landing the view at the transcript's end drops
-  it, because the reader is at the newest content then, and so do a submit
-  and a click. Without it the list opens on the message whose rows
-  hold the view's middle row, else the last one above it: a wheel line or two
-  keeps the message a jump centered, scrolling on moves to the message the
-  middle passes, and a blank line or a run of calls hands over to a message
-  still on screen rather than an off-screen one.
+  `zoom` (any line whole, by its id) and `/copy` (the last reply as the
+  model wrote it), so no widget can hide what the model actually received.
 - **Composer**: zemi's own Go editor (`internal/ui/composer.go`), not a
   bubbles textarea; `enter` sends, `shift+enter`, `alt+enter` and `ctrl+enter` newline
   (configurable); a large paste folds into a token that expands on submit.
@@ -2364,8 +2315,7 @@ view; a reset's wipe drops the row with the chat.
   `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j`, `ctrl+home` and `ctrl+b`
   scroll the transcript (the wheel too: mouse cell motion is captured because the
   altscreen has no native scrollback), and `alt+up`/`alt+down` jump to the previous or
-  next prompt or opened run; `ctrl+m` opens `/messages`, the map of the
-  conversation, which scrolls the chat as its selection moves; `ctrl+d`/`ctrl+u` scroll it half a view, the one step
+  next prompt or opened run; `ctrl+d`/`ctrl+u` scroll it half a view, the one step
   a list moves on them and a box's text takes as it overflows, which the footer
   names as `ctrl+d/u scroll`. The pair is never the typed line's, so a prompt's
   line keeps its text and the pair scrolls the text above it, the draft under a
@@ -2386,7 +2336,7 @@ view; a reset's wipe drops the row with the chat.
   answered in an overlay, from the view so far,
   never stored), `/note <text>` (one note-kind row into the chat, a chapter
   mark, mid-turn too), `/copy [reply|code [n]]` (the last reply or its code blocks as
-  written; bare over a reply with code blocks opens their picker), `/messages` (the map of the conversation, `ctrl+m`), `/logs` (recent
+  written; bare over a reply with code blocks opens their picker), `/logs` (recent
   `print` and `zemi.log` lines), `/health` (one row per check, problems first: store,
   providers, catalog, model, context window, git, shell, notify,
   the chat builder (§10), skills, the Lua runtime, plugins,
@@ -2819,7 +2769,7 @@ was the hardest correctness surface, and the spec has none).
   (`ResetLog`), vacuums and truncates the WAL so the text is gone from
   disk, and logs one note row - "the chat was reset", the wipe's only trace,
   which the chat draws nothing of (the fresh chat opens on its splash) while
-  zoom and the messages picker keep the why. The next content append starts
+  `zoom` keeps the why. The next content append starts
   at seq 1.
 - The todo list clears, every goal drops with its kv row, the runner is
   dropped, and the transcript swaps to the empty log. It refuses a live
@@ -2880,8 +2830,7 @@ There are none: no eval harness, mock provider or CI gate.
   carries a `group` label: `/mcp` draws each group as one row with its own
   switch (on only when every member is on, so space turns a mixed or off
   group on and an all-on group off; enter and space toggle, `l` opens the
-  group's level, its servers listed there the way a `/messages` row nests a
-  rail) and `/mcp enable|disable|toggle` and `zemi.mcp.enable`
+  group's level, its servers listed there) and `/mcp enable|disable|toggle` and `zemi.mcp.enable`
   act on a group or one server. The switches persist per server in the
   global store's kv (`mcp:<name>`, sparse: absent is on); a disabled server
   registers as `off` and never starts, and a name is a server or a group,

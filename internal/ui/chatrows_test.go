@@ -7,7 +7,6 @@ package ui
 
 import (
 	"encoding/json"
-	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -60,7 +59,13 @@ func TestZoomAndDateRowsPreviewTheirLine(t *testing.T) {
 	seed("zoom", "16032+8", "16032+4|Rate-limit fixed: real quotas (big 50000)\n16034+2|second child line", hostapi.CallOK)
 	seed("date", "16033", "2026-10-29 11:03", hostapi.CallOK)
 	seed("zoom", "9+8", "no line 9+8 in a chat of 10 messages", hostapi.CallErr)
-	open := frameText(renderAt(t, app, "chat", host.ScreenState(78, 40, hostapi.UIState{Rail: 1})))
+	app.renderSync(t)
+	app.Frame()
+	// the run opens the way a click opens its digest, and the fold outlives
+	// the frames the test draws under its own state
+	x, y := findCell(t, app, "zoom")
+	clickAt(app, x, y)
+	open := frameText(renderAt(t, app, "chat", host.ScreenState(78, 40, app.uiState())))
 	if !strings.Contains(open, "zoom 16032+8") || !strings.Contains(open, "date 16033") {
 		t.Fatalf("the rows' heads are not their addresses:\n%s", open)
 	}
@@ -73,7 +78,13 @@ func TestZoomAndDateRowsPreviewTheirLine(t *testing.T) {
 	if n := strings.Count(open, "no line 9+8 in a chat of 10 messages"); n != 2 {
 		t.Fatalf("the failed zoom's error drew %d times open, want the digest and its row:\n%s", n, open)
 	}
-	folded := frameText(renderAt(t, app, "chat", host.ScreenState(78, 40, app.uiState())))
+	folded := func() string {
+		// the digest's own click folds the run back: the fold lives in the
+		// widget, not the state
+		x, y := findCell(t, app, "zoom failed")
+		clickAt(app, x, y)
+		return frameText(renderAt(t, app, "chat", host.ScreenState(78, 40, app.uiState())))
+	}()
 	if n := strings.Count(folded, "no line 9+8 in a chat of 10 messages"); n != 1 {
 		t.Fatalf("the failed zoom's error drew %d times folded, want its digest's once:\n%s", n, folded)
 	}
@@ -139,22 +150,18 @@ func TestGrownRowRedrawsWhileTheCacheHolds(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	host.AppendMessage("user", "look around")
-	appendReasoning(host, "ponder", hostapi.TurnStat{})
-	open := func() *hostapi.ScreenState {
-		st := host.ScreenState(78, 24, app.uiState())
-		st.Rail = 2 // the run's first row, one-based: drawn open, its text on the rail
-		return st
+	appendReply(host, "short.", hostapi.TurnStat{})
+	st := func() *hostapi.ScreenState { return host.ScreenState(78, 24, app.uiState()) }
+	if got := frameText(renderAt(t, app, "chat", st())); !strings.Contains(got, "short.") {
+		t.Fatalf("the reply's row is not drawn:\n%s", got)
 	}
-	if got := frameText(renderAt(t, app, "chat", open())); !strings.Contains(got, "ponder") {
-		t.Fatalf("the thought's row is not drawn open:\n%s", got)
-	}
-	grown := open()
+	grown := st()
 	grown.Transcript = slices.Clone(grown.Transcript)
-	grown.Transcript[1].Text = "pondering."
+	grown.Transcript[1].Text = "short answer."
 	grown.TranscriptEdit++
 	// twice: the first render fills the cache, the second reads it back
 	for _, pass := range []string{"fill", "hit"} {
-		if got := frameText(renderAt(t, app, "chat", grown)); !strings.Contains(got, "pondering.") {
+		if got := frameText(renderAt(t, app, "chat", grown)); !strings.Contains(got, "short answer.") {
 			t.Fatalf("the %s drew the stale row:\n%s", pass, got)
 		}
 	}
@@ -226,37 +233,6 @@ func TestViewedRunThinksLive(t *testing.T) {
 	}
 	if strings.Contains(got, "✻ thought") {
 		t.Fatalf("the run's thought settled before the call that ends it:\n%s", got)
-	}
-}
-
-// TestLiveRailOpensTheWholeRun: the rail the picker opens for the run a live
-// turn holds draws every call a row, and the run folded without it keeps its
-// head behind a digest.
-func TestLiveRailOpensTheWholeRun(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 100, 30)
-	host.AppendMessage("user", "watch the dev server")
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: hostapi.RowTool, Tool: "shell", Text: "npm run dev", Label: "start the dev server", Status: hostapi.CallBG, Job: "job-1", Output: "started job-1"})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: hostapi.RowTool, Tool: "job_read", Text: "job-1", Status: hostapi.CallOK, Output: "job-1: running"})
-	var calls []hostapi.StreamTool
-	for i := range 8 {
-		calls = append(calls, hostapi.StreamTool{
-			ID: fmt.Sprintf("c%d", i+3), Name: "read", Input: fmt.Sprintf("f%d.go", i),
-			Label: fmt.Sprintf("step %d", i+3), Status: hostapi.CallOK,
-		})
-	}
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: calls})
-	open := frameText(renderAt(t, app, "chat", host.ScreenState(98, 30, hostapi.UIState{Rail: -1})))
-	for i := 3; i <= 10; i++ {
-		if step := fmt.Sprintf("step %d", i); !strings.Contains(open, step) {
-			t.Fatalf("step %d drew no row in the rail the picker opened:\n%s", i, open)
-		}
-	}
-	if strings.Contains(open, "earlier") {
-		t.Fatalf("the live run drew folded behind an earlier row:\n%s", open)
-	}
-	if folded := frameText(renderAt(t, app, "chat", host.ScreenState(98, 30, app.uiState()))); !strings.Contains(folded, "earlier") {
-		t.Fatalf("the live rail kept every call with no rail open:\n%s", folded)
 	}
 }
 

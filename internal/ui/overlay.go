@@ -211,7 +211,6 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 		a.replaceOverlay(i, o)
 		a.refreshDetail(i)
 		a.byRow = false
-		a.syncRail()
 		a.armOverlayConfirm(o)
 		return
 	}
@@ -225,15 +224,7 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 	a.byRow = false
 	if o.Follow {
 		if sel := a.lastSel[o.ID]; !byRow || sel == "" {
-			// an open that names its row (OpenAt) brings the selection the
-			// host computed for it: the levels one open puts up move the chat
-			// as they open, and a level deriving the place from the moved chat
-			// would land on the parent level's pick, not the reader's row
-			if o.OpenAt > 0 {
-				st.selected = max(0, min(o.Selected, len(st.visible)-1))
-			} else {
-				st.selected = a.followRow(&st)
-			}
+			st.selected = a.followRow(&st)
 		} else if n := slices.IndexFunc(st.visible, func(idx int) bool { return itemKey(st.o.Items[idx]) == sel }); n >= 0 {
 			st.selected = n
 		}
@@ -245,7 +236,7 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 			delete(a.pendingAnchor, a.scrollDef)
 			// a pick whose row the view does not show (a turn's prompt over
 			// the tail) is brought into view as any move would
-			if from, to := spanOf(chat.lines, st.followed, o.Rail != 0); from < 0 || from < chat.top || to >= chat.top+chat.viewH {
+			if from, to := unitSpan(chat.lines, st.followed); from < 0 || from < chat.top || to >= chat.top+chat.viewH {
 				a.pendingAnchor[a.scrollDef] = st.followed
 			}
 			st.restore = &followMark{top: chat.top, focus: chat.focus, follow: chat.follow}
@@ -261,7 +252,6 @@ func (a *App) openOverlay(o hostapi.Overlay) {
 		st.size.w = a.overlays[n-1].size.w
 	}
 	a.overlays = append(a.overlays, st)
-	a.syncRail()
 	a.armOverlayConfirm(o)
 }
 
@@ -389,39 +379,12 @@ func (a *App) syncFollow() {
 		return
 	}
 	st := &a.overlays[i]
-	// a rail level's pick is one call of the rail it walks; every other
-	// following list's pick names the whole unit its anchor draws
-	a.railPick = st.o.Rail != 0
 	if a.highlight = st.selectedAnchor(); a.highlight == 0 {
 		return
 	}
 	if a.highlight != st.followed {
 		st.followed = a.highlight
 		a.pendingAnchor[a.scrollDef] = a.highlight
-	}
-}
-
-// railOf is the transcript row the topmost following list draws whole, 0 for
-// none: a list on its way out already reads as closed.
-func (a *App) railOf() int {
-	if a.railClose != "" {
-		return 0
-	}
-	for i := range slices.Backward(a.overlays) {
-		if a.overlays[i].o.Follow {
-			return a.overlays[i].o.Rail
-		}
-	}
-	return 0
-}
-
-// syncRail keeps the chat's whole-run view in step with the overlay stack as
-// it changes, never during a paint: the chat renders the run whole from the
-// state it reads, so a level opening or closing lands in the same frame.
-func (a *App) syncRail() {
-	if r := a.railOf(); r != a.rail {
-		a.rail = r
-		a.bump()
 	}
 }
 
@@ -753,14 +716,6 @@ func (a *App) reloadOverlay(o hostapi.Overlay, call func()) {
 // that draws a run whole folds it at once and closes once the chat has
 // rendered it folded, so the run is never seen open beside a closed list.
 func (a *App) closeOverlayByID(id string) {
-	closes := func(st overlayState) bool {
-		return st.o.ID == id || strings.HasPrefix(st.o.ID, id+" ") || strings.HasPrefix(st.o.ID, id+detailSuffix)
-	}
-	if a.rail != 0 && a.railClose == "" && slices.ContainsFunc(a.overlays, func(st overlayState) bool { return st.o.Rail != 0 && closes(st) }) {
-		a.railClose, a.railGen = id, a.frameGen
-		a.syncRail()
-		return
-	}
 	a.closeOverlays(id)
 }
 
@@ -791,7 +746,6 @@ func (a *App) closeOverlays(id string) {
 	if top && len(a.overlays) > 0 && a.overlays[len(a.overlays)-1].o.Reload != nil {
 		a.reloadOverlay(a.overlays[len(a.overlays)-1].o, nil)
 	}
-	a.syncRail()
 }
 
 // menuRoot is the id of the browsing-menu level id belongs to, "" when id is
@@ -1087,7 +1041,6 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		if len(a.overlays) > 1 {
 			if st.back {
 				a.overlays = a.overlays[:len(a.overlays)-1] // back, with nothing to rebuild
-				a.syncRail()
 				return nil
 			}
 			a.cancelOverlay(o) // the chat back where this level found it
@@ -1096,7 +1049,6 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	case "esc":
 		if st.back {
 			a.overlays = a.overlays[:len(a.overlays)-1] // back, with nothing to rebuild
-			a.syncRail()
 			return nil
 		}
 		// a browsing menu closes whole, the chat back where it was found

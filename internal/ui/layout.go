@@ -646,7 +646,7 @@ func (a *App) paintScrolled(n *node, r uv.Rectangle) [][]hostapi.Segment {
 	jumped := 0
 	if at, ok := a.pendingAnchor[n.Region]; ok {
 		if unit := unitAt(lines, at); unit != 0 {
-			from, to := spanOf(lines, at, a.railPick)
+			from, to := unitSpan(lines, at)
 			st.top = jumpTop(lines, from, to, st.viewH)
 			st.follow = st.top >= st.rows-st.viewH
 			st.focus, jumped = at, at
@@ -668,7 +668,7 @@ func (a *App) paintScrolled(n *node, r uv.Rectangle) [][]hostapi.Segment {
 	// pick taller than the view never fits: only its first row escaping the
 	// top is lost, the growth below is what the reader watches.
 	if a.highlight != 0 && jumped == 0 && st.rows != prevRows {
-		if from, to := spanOf(lines, a.highlight, a.railPick); from >= 0 {
+		if from, to := unitSpan(lines, a.highlight); from >= 0 {
 			off := from < st.top || (to-from+1 <= st.viewH && to >= st.top+st.viewH)
 			if off {
 				st.top, st.follow = jumpTop(lines, from, to, st.viewH), false
@@ -684,7 +684,7 @@ func (a *App) paintScrolled(n *node, r uv.Rectangle) [][]hostapi.Segment {
 	if n.Region == a.scrollDef && a.highlight != 0 {
 		same := len(st.bandSrc) == len(lines) && (len(lines) == 0 || &st.bandSrc[0] == &lines[0])
 		if !same || st.bandAt != a.highlight || st.bandW != w-1 {
-			from, to := spanOf(lines, a.highlight, a.railPick)
+			from, to := unitSpan(lines, a.highlight)
 			st.band = bandSpan(lines, from, to, w-1)
 			st.bandSrc, st.bandAt, st.bandW = lines, a.highlight, w-1
 		}
@@ -876,19 +876,6 @@ func (sp unitSpans) rows(n int) (from, to int) {
 	}
 	s := sp.msg[sp.anchors[pos-1]]
 	return s[0], s[1]
-}
-
-// spanOf is the rows a picker's pick draws: a rail level's pick names one
-// call of the rail, the root list's names the whole unit the chat draws for
-// its anchor - the digest alone when the run folded, the digest and its rail
-// when it did not, the live turn's tail included.
-func spanOf(lines [][]hostapi.Segment, n int, rail bool) (from, to int) {
-	if rail {
-		if from, to := callRows(lines, n); from >= 0 {
-			return from, to
-		}
-	}
-	return unitSpan(lines, n)
 }
 
 // jumpTop is where a following list puts the view for a unit's rows: the

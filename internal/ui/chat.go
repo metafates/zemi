@@ -649,7 +649,7 @@ type settledKey struct {
 	rows, older      int
 	tail             int  // the run the turn is working in starts here
 	replying         bool // its answer streams: the run it closes folds
-	width, rail      int
+	width            int
 	folds            int
 	view             string
 }
@@ -879,7 +879,7 @@ func (b *chatBuilder) user(text string, waiting bool) {
 	if len(wrapped) > draw {
 		b.push([]hostapi.Segment{
 			{Text: "▌ ", HL: barHL, NoCopy: true, NoHover: true, Pin: pin},
-			{Text: "… +" + strconv.Itoa(len(wrapped)-draw) + " lines  /messages to read", HL: "Dim", NoCopy: true},
+			{Text: "… +" + strconv.Itoa(len(wrapped)-draw) + " lines", HL: "Dim", NoCopy: true},
 		})
 	}
 }
@@ -1215,7 +1215,6 @@ func zoomHead(head string) bool {
 
 // railOpts is how a rail draws.
 type railOpts struct {
-	full   bool        // every row of the run, the bodies folded
 	live   bool        // the turn running now
 	run    int         // the run's own first index, 1-based; 0 for a live rail
 	unroll bool        // draw a thought as its text
@@ -1225,9 +1224,6 @@ type railOpts struct {
 // foldRun draws a folded run: its digest alone, a click away from its whole
 // rail; a digest of nothing folds nothing, and the rail is drawn alone.
 func (b *chatBuilder) foldRun(list []entry, first, last int, opened bool) {
-	// the messages picker's rail view names this run: it draws whole, so every
-	// call the list walks has a row to band
-	full := b.st.Rail == first+1
 	key := keyOf(b.st.TranscriptCut, first+1)
 	b.folds.runs[key] = keyOf(b.st.TranscriptCut, last+1)
 	text := digest(list, first, last, b.st.CWD, b.st.Home)
@@ -1235,7 +1231,7 @@ func (b *chatBuilder) foldRun(list []entry, first, last int, opened bool) {
 		// no digest row to pin: the rail's own head takes the section, so the
 		// prompt's pin never draws over the rail's rows
 		at := len(b.lines)
-		b.rail(list, first, last, railOpts{full: full, head: hostapi.PinSection})
+		b.rail(list, first, last, railOpts{head: hostapi.PinSection})
 		if len(b.lines) > at {
 			b.lines[len(b.lines)-1][0].Pin = hostapi.PinEnd
 		}
@@ -1260,7 +1256,7 @@ func (b *chatBuilder) foldRun(list []entry, first, last int, opened bool) {
 	at := len(b.lines)
 	// a lone thought opens as its text: the digest above it already says how
 	// long it thought
-	b.rail(list, first, last, railOpts{unroll: one, full: full})
+	b.rail(list, first, last, railOpts{unroll: one})
 	if len(b.lines) > at {
 		b.lines[len(b.lines)-1][0].Pin = hostapi.PinEnd
 	}
@@ -1339,13 +1335,11 @@ func (b *chatBuilder) rail(list []entry, first, last int, o railOpts) {
 		key = keyOf(b.st.TranscriptCut, first+1)
 	}
 	n := 0
-	if !o.full {
-		for i := first; i <= last; {
-			i = nextStep(list, i, last)
-			n++
-		}
-		n -= railKeep
+	for i := first; i <= last; {
+		i = nextStep(list, i, last)
+		n++
 	}
+	n -= railKeep
 	from := first
 	if n >= 2 && !b.folds.whole[key] {
 		for range n {
@@ -1421,7 +1415,7 @@ func (b *chatBuilder) steps(list []entry, first, last int, o railOpts, headed bo
 			// closes them again
 			stepKey := keyOf(b.st.TranscriptCut, oneBased)
 			b.group(group, "step:"+strconv.FormatInt(stepKey, 10))
-			if o.full || b.folds.steps[stepKey] {
+			if b.folds.steps[stepKey] {
 				for k, g := range group {
 					at := len(b.lines)
 					nest := "├ "
@@ -1440,7 +1434,7 @@ func (b *chatBuilder) steps(list []entry, first, last int, o railOpts, headed bo
 			// the newest entry, a running one, a failure and an ask keep the
 			// rows under theirs
 			keep := i == last || t.status == hostapi.CallRun || fail || kind == "question" || kind == "plan"
-			b.toolRow(t, oneBased, toolOpts{terse: o.live && !o.full && !keep})
+			b.toolRow(t, oneBased, toolOpts{terse: o.live && !keep})
 			b.markCall(at, oneBased)
 			i++
 		}
@@ -1485,9 +1479,7 @@ func (b *chatBuilder) unit(tr []entry, first, last int, mode runMode) {
 		b.foldRun(tr, first, last, mode == runUnfold)
 	case mode == runRail:
 		b.gap(blockActivity)
-		// the picker's rail view draws the run whole, the live turn's own
-		// included: every call it walks has a row to band
-		b.rail(tr, first, last, railOpts{run: first + 1, full: b.st.Rail == first+1})
+		b.rail(tr, first, last, railOpts{run: first + 1})
 	case m.kind == hostapi.RowShell:
 		// a shell command: the command, then its output, already cut to a head
 		// and a tail by the host; a failure's mark takes the prompt's place
@@ -1624,7 +1616,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 	// so neither the reader's wrap cache nor the app rebuilds them.
 	key := settledKey{
 		epoch: st.TranscriptEpoch, cut: st.TranscriptCut, edit: st.TranscriptEdit,
-		rows: len(st.Transcript), older: st.LogRows(), width: b.width, rail: st.Rail,
+		rows: len(st.Transcript), older: st.LogRows(), width: b.width,
 		folds: f.ver, view: viewID(st), tail: tailFirst, replying: st.Agent.Text == "",
 	}
 	if key == f.settledKey {
@@ -1636,7 +1628,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		// the window is the log's tail: name what the head cut left out
 		if key.older > 0 {
 			b.push([]hostapi.Segment{{
-				Text: "… " + strconv.Itoa(key.older) + " earlier " + hostapi.Plural(key.older, "message", "messages") + "  /messages to browse",
+				Text: "… " + strconv.Itoa(key.older) + " earlier " + hostapi.Plural(key.older, "message", "messages"),
 				HL:   "Dim", NoCopy: true, NoHover: true,
 			}})
 		}
@@ -1653,7 +1645,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 			if first+1 == liveFirst {
 				return runRail
 			}
-			if st.Rail == first+1 || f.unfolded[keyOf(st.TranscriptCut, first+1)] {
+			if f.unfolded[keyOf(st.TranscriptCut, first+1)] {
 				return runUnfold
 			}
 			return runFold
@@ -1705,10 +1697,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		if len(calls) > 0 {
 			liveFrom = len(b.lines)
 			b.gap(blockActivity)
-			// the picker's rail view opens this run as it opens a settled one: a
-			// negative rail names the live-only run a text tail leaves the calls
-			// in, which has no settled rows to unfold
-			b.rail(calls, 0, len(calls)-1, railOpts{live: true, full: st.Rail < 0 || tailFirst > 0 && tailFirst == st.Rail})
+			b.rail(calls, 0, len(calls)-1, railOpts{live: true})
 		}
 		// the live rail is rows of the run it extends: the settled tail's run,
 		// else the live-only one the picker names by its first call

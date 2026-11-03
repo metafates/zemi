@@ -752,7 +752,7 @@ func (a *App) background(fn func()) {
 }
 
 // runCommand runs a slash command fire-and-forget: Lua and Go alike on the
-// background worker, so a Go command that loads the store (/messages, /usage)
+// background worker, so a Go command that loads the store (/usage)
 // never blocks a key. confirm says an armed danger key ran it.
 func (a *App) runCommand(name, args string, confirm bool) {
 	if c := a.host.Commands.Lookup(name); c != nil && c.GoFn != nil {

@@ -102,23 +102,13 @@ type App struct {
 	// paint, for a following list: the rows a jump was issued for may still
 	// be filling in above.
 	pendingAnchor map[region]int
-	// highlight is the transcript row the open messages picker selects, whose
-	// rows the paint bands; 0 when nothing follows. railPick says the row
-	// names one call of a rail (the picker's rail level), so the band and the
-	// jump cover that call alone; otherwise the row names a whole unit, a
-	// run's drawing included.
+	// highlight is the transcript row the open picker selects, whose rows
+	// the paint bands; 0 when nothing follows. The row names a whole unit,
+	// a run's drawing included.
 	highlight int
-	railPick  bool
-	// rail is the activity run the open list walks call by call, which the
-	// chat draws whole so each call it names has a row; 0 when none.
-	rail int
 	// byRow says an overlay is opening from a key on another list's row, so
 	// it reopens where that list left it instead of following the chat
 	byRow bool
-	// railClose is the list that folds a run: it closes once the chat has
-	// rendered that run folded, whose generation is railGen
-	railClose string
-	railGen   int64
 	// stepFrom is the view a step (ctrl+j/k) held open; the walk's run posts
 	// its landing (stepOpening marks the run on the worker) and the settle
 	// swaps the two in one mutation. stepSettledSeq is the last served run.
@@ -222,7 +212,6 @@ type App struct {
 	// without waiting on the Update goroutine.
 	frameMu   sync.Mutex
 	lastFrame string
-	readRow   int // the transcript row the paint placed the reader at
 	// what lastFrame drew: a generation or size change recomposes, and the
 	// changes that move neither (the draft, a widget's lines, the toasts)
 	// set frameDirty, so a View with nothing behind it returns the frame
@@ -858,7 +847,7 @@ func (a *App) uiState() hostapi.UIState {
 		QuitArmed:      a.isArmed("ctrl+c") && a.composer.empty() && !a.host.AgentActive(),
 		InterruptArmed: a.isArmed("esc") && a.armed.what == "interrupt",
 		RowsBelow:      a.rowsBelow(),
-		Cancelling:     a.cancelling, Editing: a.editing, Rail: a.rail,
+		Cancelling:     a.cancelling, Editing: a.editing,
 	}
 	if !a.turnActive && a.now().Sub(a.turnEnd) < doneLinger {
 		st.Ended = a.turnEnded
@@ -917,17 +906,6 @@ func (a *App) frame() int { return frameClock(a.now) }
 func (a *App) onWidgetRendered(msg widgetRender) {
 	if a.pending[msg.id] == (renderKey{gen: msg.gen, width: msg.width, height: msg.height}) {
 		delete(a.pending, msg.id)
-	}
-	// the chat drew the run a closing list had open: the list can go now, and
-	// the frame that shows it gone shows the run folded. The chat is the
-	// widget in the default scroll's region; the node's id is the layout's.
-	if id := a.railClose; id != "" && msg.gen >= a.railGen {
-		if st := a.scrolls[a.scrollDef]; st != nil {
-			if region, ok := a.widgetRegion(msg.id); ok && region == st.region {
-				a.railClose = ""
-				a.closeOverlays(id)
-			}
-		}
 	}
 	// renders of one generation at two sizes run concurrently: one dispatched
 	// earlier that finishes last must not replace newer lines
@@ -1241,23 +1219,15 @@ func (a *App) compose(w, h int) string {
 	}
 	out := b.String()
 	a.frameMu.Lock()
-	a.lastFrame, a.readRow = out, a.chatRow()
+	a.lastFrame = out
 	a.frameMu.Unlock()
 	a.drawn, a.frameDirty = renderKey{gen: a.frameGen, width: w, height: h}, false
 	return out
 }
 
-// ChatRow implements hostapi.UIHooks from the last composed frame.
-func (a *App) ChatRow() int {
-	a.frameMu.Lock()
-	defer a.frameMu.Unlock()
-	return a.readRow
-}
-
 // chatRow is the transcript row the reader is at: the message a jump placed
 // the view at while it still sits there, the last one the view draws at the
-// transcript's end, else the row over its middle, down to the call a rail
-// row names.
+// transcript's end, else the row over its middle.
 func (a *App) chatRow() int {
 	chat := a.scrolls[a.scrollDef]
 	switch {
@@ -1370,7 +1340,7 @@ const modalFade = 0.7
 func (a *App) fadeRows(rows [][]hostapi.Segment) [][]hostapi.Segment {
 	out := make([][]hostapi.Segment, len(rows))
 	for i, row := range rows {
-		if a.highlight != 0 && (rowCall(row) == a.highlight || (!a.railPick && rowAnchor(row) == a.highlight)) {
+		if a.highlight != 0 && (rowCall(row) == a.highlight || rowAnchor(row) == a.highlight) {
 			out[i] = row
 			continue
 		}
