@@ -6,6 +6,7 @@ package hostapi
 
 import (
 	"cmp"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strconv"
@@ -436,13 +437,19 @@ func (h *Host) messagesList(p pickTr, at int) Overlay {
 	// counts it
 	if h.DB != nil {
 		if first, err := h.DB.LogFrom(0, 1); err == nil && len(first) == 1 && first[0].Kind == store.KindNote {
-			o.Items = append(o.Items, OverlayItem{
-				Text:    firstLine(first[0].Text),
-				Desc:    "a reset wiped the chat before this",
-				Section: "Earlier",
-				Run:     "messages view #" + strconv.FormatInt(first[0].Seq, 10),
-				Verb:    VerbOpen,
-			})
+			var meta struct {
+				System bool `json:"system"`
+			}
+			_ = json.Unmarshal([]byte(first[0].MetaJSON), &meta)
+			if meta.System { // a plain /note leads no wipe; only the wipe's own system note does
+				o.Items = append(o.Items, OverlayItem{
+					Text:    firstLine(first[0].Text),
+					Desc:    "a reset wiped the chat before this",
+					Section: "Earlier",
+					Run:     "messages view #" + strconv.FormatInt(first[0].Seq, 10),
+					Verb:    VerbOpen,
+				})
+			}
 		}
 	}
 	for _, e := range turnElements(p, rows) {
@@ -969,7 +976,14 @@ func messageHead(text string) string {
 		if line == "" {
 			continue
 		}
-		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") || line == "<zemi-note>" {
+		// an attachment's chrome names what rode along, not what was said:
+		// the head skips it for the content under the tags
+		switch line {
+		case "<zemi-note>", "<attached-files>", "<command>", "<loop>":
+			head = cmp.Or(head, line)
+			continue
+		}
+		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") {
 			head = cmp.Or(head, line)
 			continue
 		}

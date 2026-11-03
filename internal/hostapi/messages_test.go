@@ -211,6 +211,8 @@ func TestMessageHead(t *testing.T) {
 		{"a reply opening with a block", "```go\nx := 1\n```", "x := 1"},
 		{"a system note", "<zemi-note>\n2 todos are open from earlier\n</zemi-note>", "2 todos are open from earlier"},
 		{"a file echo keeps its wrapper", "<file path=\"w.txt\">\nwords\n</file>", "<file path=\"w.txt\">"},
+		{"a loop echo names its run", "\n\n<attached-files>\n<loop>\ncheck the deploy", "check the deploy"},
+		{"a command attachment gives way", "<attached-files>\n<command>\nStudy this repository", "Study this repository"},
 	}
 	for _, c := range cases {
 		if got := messageHead(c.text); got != c.want {
@@ -1023,5 +1025,29 @@ func TestRealLines(t *testing.T) {
 		if got := realLines(c.out); got != c.want {
 			t.Errorf("%s: realLines = %d, want %d", c.name, got, c.want)
 		}
+	}
+}
+
+// TestMessagesPlainNoteLeadsNoWipe: a /note as the log's first row leads no
+// wipe; only the reset's own system note does.
+func TestMessagesPlainNoteLeadsNoWipe(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	if _, err := h.chat.Note("the secret word is POMELO"); err != nil {
+		t.Fatal(err)
+	}
+	o := h.messagesList(h.withBrowseEchoes(h.pickerTranscript()), 0)
+	for _, it := range o.Items {
+		if it.Desc == "a reset wiped the chat before this" {
+			t.Fatalf("a plain note read as a wipe: %+v", it)
+		}
+	}
+	h2, _ := newTestHostDB(t)
+	if err := h2.chat.systemNote("the chat was reset"); err != nil {
+		t.Fatal(err)
+	}
+	o = h2.messagesList(h2.withBrowseEchoes(h2.pickerTranscript()), 0)
+	if len(o.Items) == 0 || o.Items[0].Desc != "a reset wiped the chat before this" {
+		t.Fatalf("the wipe's own note lost its item: %+v", o.Items)
 	}
 }
