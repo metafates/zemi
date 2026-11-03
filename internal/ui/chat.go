@@ -1352,19 +1352,18 @@ func (b *chatBuilder) rail(list []entry, first, last int, o railOpts) {
 			from = nextStep(list, from, last)
 		}
 	}
+	// the fold row bounds the rail's head where its bar would stand, so the
+	// kept tail draws no opening bar of its own; steps' own leading frame
+	// collapses into the air row under it
+	if n >= 2 {
+		b.push([]hostapi.Segment{barSeg(""), {Text: foldLabel(b.folds.whole[key], n), HL: "Dim", Click: "more:" + strconv.FormatInt(key, 10)}})
+		b.push(airRow())
+	}
 	b.steps(list, from, last, o, from > first)
 	if o.head != hostapi.PinNone && len(b.lines) > at {
 		b.lines[at][0].Pin = o.head
 	}
 	b.frame()
-	if n < 2 {
-		return
-	}
-	row := []hostapi.Segment{barSeg(""), {Text: foldLabel(b.folds.whole[key], n), HL: "Dim", Click: "more:" + strconv.FormatInt(key, 10)}}
-	// the fold row bounds the rail's head where its bar would stand, so the
-	// kept tail draws no opening bar of its own
-	b.lines = slices.Insert(b.lines, at+1, row)
-	b.lines = slices.Insert(b.lines, at+2, airRow())
 }
 
 // markCall stamps every row from at on with the call or thought it draws, so a

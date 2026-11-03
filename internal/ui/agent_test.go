@@ -525,7 +525,8 @@ func TestRailWindow(t *testing.T) {
 	rows() // the first render forgets what was opened before it
 	// the opened run shows its last six entries behind one for the rest
 	got := click("turn:2")
-	if !slices.Contains(got, "│ … 4 earlier") || slices.Contains(got, "✓ list dir 3") || !slices.Contains(got, "│ ✓ list dir 4") || !slices.Contains(got, "│ ✓ list dir 9") {
+	fold, first := slices.Index(got, "│ … 4 earlier"), slices.Index(got, "│ ✓ list dir 4")
+	if fold < 0 || first < 0 || fold > first || slices.Contains(got, "✓ list dir 3") || !slices.Contains(got, "│ ✓ list dir 9") {
 		t.Fatalf("the rail is not windowed:\n%s", strings.Join(got, "\n"))
 	}
 	if got = click("more:2"); !slices.Contains(got, "│ … collapse") || !slices.Contains(got, "│ ✓ list dir 0") {
