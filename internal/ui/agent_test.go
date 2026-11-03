@@ -2100,7 +2100,6 @@ func TestWorkingRowRetryNarrow(t *testing.T) {
 		})
 	}
 }
-
 // TestWorkingRowMascot: the snail stays in the left corner on a plain rule
 // and the turn shows in its eyes alone.
 func TestWorkingRowMascot(t *testing.T) {
@@ -3103,4 +3102,34 @@ func TestPermTitle(t *testing.T) {
 			t.Errorf("%+v: %q %q", c.req, title, target)
 		}
 	}
+}
+
+// TestAskWrappedChoiceContinuesUnderItsDescription: at a width the t
+// choice's description wraps under, its continuation lines up under the
+// description's first row — no seam floating where no label precedes it.
+func TestAskWrappedChoiceContinuesUnderItsDescription(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 60, 20)
+	done := make(chan struct{})
+	go func() {
+		app.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "make deploy", Reason: "deploy"})
+		close(done)
+	}()
+	waitPrompt(t, app, func() bool { return app.permAsk != nil })
+	app.renderSync(t)
+	for line := range strings.SplitSeq(ansi.Strip(app.Frame()), "\n") {
+		// the ask's box interior: a seam belongs only right after a label,
+		// never at a row's start where no label precedes it
+		_, rest, ok := strings.Cut(line, "│")
+		if !ok {
+			continue
+		}
+		inner, _, _ := strings.Cut(rest, "│")
+		if strings.HasPrefix(strings.TrimLeft(inner, " "), "· ") {
+			t.Fatalf("a wrapped description drew a floating seam: %q", line)
+		}
+	}
+	app.askSwallow = time.Time{}
+	app.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	<-done
 }

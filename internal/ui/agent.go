@@ -342,10 +342,16 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 				r = label[j]
 			}
 			if j < len(desc) {
-				// the seam between a label and its description reads as a
-				// sentence break when the label fills its column: a dot marks it
-				pad := max(lw+1-hostapi.SegsWidth(r), 1)
-				r = slices.Concat(r, []hostapi.Segment{{Text: strings.Repeat(" ", pad) + "· ", HL: hostapi.ChromeHint}}, desc[j])
+				if j < len(label) {
+					// the seam between a label and its description reads as a
+					// sentence break when the label fills its column: a dot marks it
+					pad := max(lw+1-hostapi.SegsWidth(r), 1)
+					r = slices.Concat(r, []hostapi.Segment{{Text: strings.Repeat(" ", pad) + "· ", HL: hostapi.ChromeHint}}, desc[j])
+				} else {
+					// a wrapped description continues under the first row's
+					// description: no seam, no label column to cross
+					r = slices.Concat([]hostapi.Segment{{Text: strings.Repeat(" ", lw+3)}}, desc[j])
+				}
 			}
 			row := slices.Concat(btn, r)
 			if j > 0 {
