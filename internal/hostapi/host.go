@@ -1582,7 +1582,8 @@ const (
 )
 
 // Fill is a surface of the active palette (DESIGN §6.6): the chat sits on
-// the canvas, every box on the panel, a box's selected row on the band.
+// the canvas but the user's prompt lifts to the panel, every box on the
+// panel, a box's selected row on the band.
 type Fill uint8
 
 const (

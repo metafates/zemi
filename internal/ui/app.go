@@ -1999,8 +1999,13 @@ func padSeg(segs []hostapi.Segment, w int) (hostapi.Segment, bool) {
 		text = strings.Repeat(" ", pad)
 	}
 	// a Normal fill cell sits on the canvas, the palette's bg, instead of
-	// leaving the terminal's background showing
-	return hostapi.Segment{Text: text, HL: "Normal"}, true
+	// leaving the terminal's background showing; a row that ends on a fill
+	// (the prompt's slab, a band) keeps it out to the edge
+	fill := hostapi.FillAuto
+	if n := len(segs); n > 0 {
+		fill = segs[n-1].Fill
+	}
+	return hostapi.Segment{Text: text, HL: "Normal", Fill: fill}, true
 }
 
 func padSegs(segs []hostapi.Segment, w int) []hostapi.Segment {

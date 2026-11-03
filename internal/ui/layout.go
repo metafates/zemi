@@ -495,11 +495,7 @@ func (v *viewport) window(lines [][]hostapi.Segment, width, fade int) [][]hostap
 			row = v.pins[i]
 		}
 		if bar.on() {
-			p := padSegs(truncateSegs(row, width), width)
-			if n := len(row); n > 0 && len(p) > n {
-				p[n].Fill = row[n-1].Fill // a band runs on to the border
-			}
-			row = bar.row(p, i)
+			row = bar.row(padSegs(truncateSegs(row, width), width), i)
 		}
 		out = append(out, row)
 	}

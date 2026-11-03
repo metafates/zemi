@@ -54,9 +54,9 @@ and it is never a security boundary - a run that must not touch the machine
 runs in a container or VM. An ask no one can answer fails closed.
 
 The UI has one identity in every theme: neutrals from its fg and bg, one accent (whorl's
-periwinkle), one literal for text quoted as written (whorl's apricot), the chat on the canvas and
-every box and the composer on the panel, square corners joined where two lines touch, and the `@`
-snail whose state lives in its eyes, plain eye color in every state.
+periwinkle), one literal for text quoted as written (whorl's apricot), the chat on the canvas but
+the user's prompt on the panel, every box and the composer on the panel, square corners joined
+where two lines touch, and the `@` snail whose state lives in its eyes, plain eye color in every state.
 Widgets use the semantic theme groups (`Accent`, `Dim`, `Rule`, `Title`, `Literal`, `Danger`,
 `Warn`, `Ok`); every other group links to one or names a palette role. No state change may
 add or remove a row or shift text. Hover in the chat is minimal: body rows get none, a header

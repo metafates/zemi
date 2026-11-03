@@ -1639,7 +1639,8 @@ UI extensibility contract:
   fill of its own sits on and which OSC 11 gives the terminal too
   (reset on every exit), while a `bg` on `Normal` recolors its text alone; every box
   (overlays, prompts, toasts, popups) and the composer sit on `panel`, a
-  box's selected row on `band`. A group names a role, hex or an ANSI color,
+  box's selected row on `band`, and the user's prompt is the one chat row on
+  a surface: its rows carry `panel`, padded out to the scrollbar's column. A group names a role, hex or an ANSI color,
   or `link`s to another group (neovim's `link`, followed
   8 deep, a cycle draws unstyled); a group takes `fg`, `bg`, `sp` (underline
   color), `bold`, `italic`, `reverse` and `underline` (`true` or a kind: `double`,

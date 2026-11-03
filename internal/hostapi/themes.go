@@ -125,7 +125,7 @@ var themeSpecs = map[string]map[string]any{
 	"nord":             ansiTheme("#2e3440", "#d8dee9", [16]string{"#3b4252", "#bf616a", "#a3be8c", "#ebcb8b", "#81a1c1", "#b48ead", "#88c0d0", "#e5e9f0", "#596377", "#bf616a", "#a3be8c", "#ebcb8b", "#81a1c1", "#b48ead", "#8fbcbb", "#eceff4"}),
 	"dracula":          ansiTheme("#282a36", "#f8f8f2", [16]string{"#21222c", "#ff5555", "#50fa7b", "#f1fa8c", "#bd93f9", "#ff79c6", "#8be9fd", "#f8f8f2", "#6272a4", "#ff6e6e", "#69ff94", "#ffffa5", "#d6acff", "#ff92df", "#a4ffff", "#ffffff"}),
 	"solarized":        ansiTheme("#002b36", "#839496", [16]string{"#073642", "#dc322f", "#859900", "#b58900", "#268bd2", "#d33682", "#2aa198", "#eee8d5", "#335e69", "#cb4b16", "#586e75", "#657b83", "#839496", "#6c71c4", "#93a1a1", "#fdf6e3"}),
-	"solarized-light":  ansiTheme("#fdf6e3", "#657b83", [16]string{"#073642", "#dc322f", "#859900", "#b58900", "#268bd2", "#d33682", "#2aa198", "#bbb5a2", "#002b36", "#cb4b16", "#586e75", "#657b83", "#839496", "#6c71c4", "#93a1a1", "#fdf6e3"}),
+	"solarized-light":  ansiPanelTheme("#fdf6e3", "#657b83", "#eee8d5", [16]string{"#073642", "#dc322f", "#859900", "#b58900", "#268bd2", "#d33682", "#2aa198", "#bbb5a2", "#002b36", "#cb4b16", "#586e75", "#657b83", "#839496", "#6c71c4", "#93a1a1", "#fdf6e3"}),
 	"rose-pine":        ansiTheme("#191724", "#e0def4", [16]string{"#26233a", "#eb6f92", "#31748f", "#f6c177", "#9ccfd8", "#c4a7e7", "#ebbcba", "#e0def4", "#6e6a86", "#eb6f92", "#31748f", "#f6c177", "#9ccfd8", "#c4a7e7", "#ebbcba", "#e0def4"}),
 	"rose-pine-light":  ansiTheme("#faf4ed", "#575279", [16]string{"#f2e9e1", "#b4637a", "#286983", "#ea9d34", "#56949f", "#907aa9", "#d7827e", "#575279", "#9893a5", "#b4637a", "#286983", "#ea9d34", "#56949f", "#907aa9", "#d7827e", "#575279"}),
 	"kanagawa":         ansiTheme("#1f1f28", "#dcd7ba", [16]string{"#090618", "#c34043", "#76946a", "#c0a36e", "#7e9cd8", "#957fb8", "#6a9589", "#c8c093", "#727169", "#e82424", "#98bb6c", "#e6c384", "#7fb4ca", "#938aa9", "#7aa89f", "#dcd7ba"}),
@@ -144,6 +144,14 @@ func ansiTheme(bg, fg string, ansi [16]string) map[string]any {
 		slots[i] = c
 	}
 	return map[string]any{"bg": bg, "fg": fg, "ansi": slots}
+}
+
+// ansiPanelTheme is ansiTheme with an explicit panel: the scheme's own raised
+// surface, where the derived one would sit on the canvas at 256 colors.
+func ansiPanelTheme(bg, fg, panel string, ansi [16]string) map[string]any {
+	spec := ansiTheme(bg, fg, ansi)
+	spec["panel"] = panel
+	return spec
 }
 
 // shippedThemeMap derives every palette once: a bad literal is a bug in this

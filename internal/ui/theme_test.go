@@ -88,7 +88,7 @@ func TestThemes(t *testing.T) {
 				t.Errorf("%s: literal %s is %.0f degrees from %s", th.Name, hostapi.Hex(th.Palette.Literal), d, other)
 			}
 		}
-		for _, p := range [][2]string{{"band", "panel"}, {"rule", "panel"}, {"fg", "dim"}} {
+		for _, p := range [][2]string{{"band", "panel"}, {"panel", "bg"}, {"rule", "panel"}, {"fg", "dim"}} {
 			if ansi256(th.Color(p[0])) == ansi256(th.Color(p[1])) {
 				t.Errorf("%s: %s and %s are one color at 256 colors", th.Name, p[0], p[1])
 			}

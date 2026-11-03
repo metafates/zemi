@@ -869,17 +869,18 @@ func (b *chatBuilder) user(text string, waiting bool) {
 		draw = 9
 	}
 	for i := range draw {
-		row := []hostapi.Segment{{Text: "▌ ", HL: barHL, NoCopy: true, NoHover: true, Pin: pin}}
+		row := []hostapi.Segment{{Text: "▌ ", HL: barHL, NoCopy: true, NoHover: true, Pin: pin, Fill: hostapi.FillPanel}}
 		for _, sg := range wrapped[i] {
 			sg.HL = textHL
+			sg.Fill = hostapi.FillPanel
 			row = append(row, sg)
 		}
 		b.push(row)
 	}
 	if len(wrapped) > draw {
 		b.push([]hostapi.Segment{
-			{Text: "▌ ", HL: barHL, NoCopy: true, NoHover: true, Pin: pin},
-			{Text: "… +" + strconv.Itoa(len(wrapped)-draw) + " lines", HL: "Dim", NoCopy: true},
+			{Text: "▌ ", HL: barHL, NoCopy: true, NoHover: true, Pin: pin, Fill: hostapi.FillPanel},
+			{Text: "… +" + strconv.Itoa(len(wrapped)-draw) + " lines", HL: "Dim", NoCopy: true, Fill: hostapi.FillPanel},
 		})
 	}
 }
@@ -1558,9 +1559,6 @@ func (b *chatBuilder) readout(tr []entry, last int, m entry) int {
 	}
 	if out := tokens(m.out); out != "" {
 		stat(out + " out")
-	}
-	if m.ended > 0 {
-		stat(clockText(time.Unix(m.ended, 0)))
 	}
 	// the model leads and sheds first: a narrow row keeps what the turn cost
 	// over the name that wrote it
