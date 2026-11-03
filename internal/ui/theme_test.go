@@ -3,10 +3,8 @@ package ui
 import (
 	"image/color"
 	"math"
-	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/lucasb-eyer/go-colorful"
 
@@ -36,14 +34,14 @@ func TestANSI16(t *testing.T) {
 	}
 }
 
-// TestThemes: every shipped theme keeps each text role over its contrast
+// TestWhorl: the one palette keeps each text role over its contrast
 // floor on bg, panel, band and well, the literal apart in hue from warn and
-// danger, its surfaces, rule and dim apart, danger a hue and whorl's diff
+// danger, its surfaces, rule and dim apart, danger a hue and the diff
 // tints apart at 256 colors, and the Go chrome draws in the colors of the
 // groups it stands for.
-func TestThemes(t *testing.T) {
+func TestWhorl(t *testing.T) {
 	t.Parallel()
-	app, host := bootAgentApp(t, 80, 24)
+	app, _ := bootAgentApp(t, 80, 24)
 	floors := map[string]float64{"fg": 7, "dim": 4.5, "accent": 4.5, "literal": 4.5, "ok": 4.5, "danger": 4.5, "warn": 3.5}
 	chrome := [][2]string{
 		{"Host:Value", "Normal"},
@@ -59,60 +57,49 @@ func TestThemes(t *testing.T) {
 		{"Host:DiffDel", "DiffDel"},
 		{"Host:DiffDelNum", "DiffDelNum"},
 	}
-	themes := hostapi.ThemeList()
-	if len(themes) < 21 {
-		t.Fatalf("%d themes", len(themes))
-	}
+	pal := hostapi.Whorl
 	hue := func(c color.Color) float64 {
 		v, _ := colorful.MakeColor(c)
 		_, _, h := v.OkLch()
 		return h
 	}
-	for _, th := range themes {
-		if _, err := host.Settings.SetQuiet("ui.theme", th.Name); err != nil {
-			t.Fatal(err)
-		}
-		if host.ActiveTheme() != th {
-			t.Fatalf("%s: %s draws", th.Name, host.ActiveTheme().Name)
-		}
-		for role, floor := range floors {
-			for _, on := range []string{"bg", "panel", "band", "well"} {
-				if r := hostapi.Contrast(th.Color(role), th.Color(on)); r < floor {
-					t.Errorf("%s: %s is %.2f:1 on %s, under %.1f", th.Name, role, r, on, floor)
-				}
+	for role, floor := range floors {
+		for _, on := range []string{"bg", "panel", "band", "well"} {
+			if r := hostapi.Contrast(pal.Color(role), pal.Color(on)); r < floor {
+				t.Errorf("%s is %.2f:1 on %s, under %.1f", role, r, on, floor)
 			}
 		}
-		for _, other := range []string{"warn", "danger"} {
-			d := math.Abs(hue(th.Palette.Literal) - hue(th.Color(other)))
-			if d = min(d, 360-d); d < 15 {
-				t.Errorf("%s: literal %s is %.0f degrees from %s", th.Name, hostapi.Hex(th.Palette.Literal), d, other)
-			}
+	}
+	for _, other := range []string{"warn", "danger"} {
+		d := math.Abs(hue(pal.Literal) - hue(pal.Color(other)))
+		if d = min(d, 360-d); d < 15 {
+			t.Errorf("literal %s is %.0f degrees from %s", hostapi.Hex(pal.Literal), d, other)
 		}
-		for _, p := range [][2]string{{"band", "panel"}, {"panel", "bg"}, {"rule", "panel"}, {"fg", "dim"}} {
-			if ansi256(th.Color(p[0])) == ansi256(th.Color(p[1])) {
-				t.Errorf("%s: %s and %s are one color at 256 colors", th.Name, p[0], p[1])
-			}
+	}
+	for _, p := range [][2]string{{"band", "panel"}, {"panel", "bg"}, {"rule", "panel"}, {"fg", "dim"}} {
+		if ansi256(pal.Color(p[0])) == ansi256(pal.Color(p[1])) {
+			t.Errorf("%s and %s are one color at 256 colors", p[0], p[1])
 		}
-		if strings.HasPrefix(th.Name, "whorl") && ansi256(th.Palette.AddBg) == ansi256(th.Palette.DelBg) {
-			t.Errorf("%s: an added and a removed row are one color at 256 colors", th.Name)
-		}
-		if e := xterm[ansi256(th.Palette.Danger).(ansi.IndexedColor)]; math.Hypot(e[1], e[2]) < 1e-3 {
-			t.Errorf("%s: danger is a grey at 256 colors", th.Name)
-		}
-		for _, p := range chrome {
-			h, g := app.hlStyle(p[0]), app.hlStyle(p[1])
-			if !sameColor(h.Fg, g.Fg) || !sameColor(h.Bg, g.Bg) {
-				t.Errorf("%s: %s is %v on %v, %s %v on %v", th.Name, p[0], h.Fg, h.Bg, p[1], g.Fg, g.Bg)
-			}
+	}
+	if ansi256(pal.AddBg) == ansi256(pal.DelBg) {
+		t.Error("an added and a removed row are one color at 256 colors")
+	}
+	if e := xterm[ansi256(pal.Danger).(ansi.IndexedColor)]; math.Hypot(e[1], e[2]) < 1e-3 {
+		t.Error("danger is a grey at 256 colors")
+	}
+	for _, p := range chrome {
+		h, g := app.hlStyle(p[0]), app.hlStyle(p[1])
+		if !sameColor(h.Fg, g.Fg) || !sameColor(h.Bg, g.Bg) {
+			t.Errorf("%s is %v on %v, %s %v on %v", p[0], h.Fg, h.Bg, p[1], g.Fg, g.Bg)
 		}
 	}
 }
 
-// TestThemeCVD: whorl and whorl-light keep the pairs that must stay apart
-// separated under deuteranopia and protanopia (Vienot 1999 in linear sRGB)
-// and in greyscale, where zemi's marks already carry the state and literal
-// is the one text-vs-text neighbor of warn.
-func TestThemeCVD(t *testing.T) {
+// TestWhorlCVD: whorl keeps the pairs that must stay apart separated under
+// deuteranopia and protanopia (Vienot 1999 in linear sRGB) and in greyscale,
+// where zemi's marks already carry the state and literal is the one
+// text-vs-text neighbor of warn.
+func TestWhorlCVD(t *testing.T) {
 	t.Parallel()
 	deutan := [3][3]float64{{0.625, 0.375, 0}, {0.7, 0.3, 0}, {0, 0.3, 0.7}}
 	protan := [3][3]float64{{0.567, 0.433, 0}, {0.558, 0.442, 0}, {0, 0.242, 0.758}}
@@ -133,71 +120,25 @@ func TestThemeCVD(t *testing.T) {
 		l, _, _ := v.OkLch()
 		return l
 	}
-	for _, c := range []struct {
-		theme     string
-		pairs     map[[2]string]float64
-		greyFloor float64
-	}{
-		{theme: "whorl", greyFloor: 0.07, pairs: map[[2]string]float64{{"warn", "literal"}: 0.04, {"danger", "literal"}: 0.045, {"warn", "danger"}: 0.05}},
-		{theme: "whorl-light", greyFloor: 0.05, pairs: map[[2]string]float64{{"warn", "literal"}: 0.035, {"danger", "literal"}: 0.045, {"warn", "danger"}: 0.04}},
-	} {
-		th := hostapi.ThemeByName(c.theme)
-		if th == nil {
-			t.Fatalf("no %s", c.theme)
+	pairs := map[[2]string]float64{{"warn", "literal"}: 0.04, {"danger", "literal"}: 0.045, {"warn", "danger"}: 0.05}
+	color := func(role string) color.Color {
+		v := hostapi.Whorl.Color(role)
+		if v == nil {
+			t.Fatalf("whorl has no %s", role)
 		}
-		color := func(role string) color.Color {
-			v := th.Color(role)
-			if v == nil {
-				t.Fatalf("%s has no %s", c.theme, role)
-			}
-			return v
-		}
-		for pair, floor := range c.pairs {
-			a, b := color(pair[0]), color(pair[1])
-			for name, m := range map[string][3][3]float64{"deutan": deutan, "protan": protan} {
-				pa, pb := project(a, m), project(b, m)
-				d := math.Hypot(math.Hypot(pa[0]-pb[0], pa[1]-pb[1]), pa[2]-pb[2])
-				if d < floor {
-					t.Errorf("%s: %s and %s are %.3f apart under %s, under %.3f", c.theme, pair[0], pair[1], d, name, floor)
-				}
+		return v
+	}
+	for pair, floor := range pairs {
+		a, b := color(pair[0]), color(pair[1])
+		for name, m := range map[string][3][3]float64{"deutan": deutan, "protan": protan} {
+			pa, pb := project(a, m), project(b, m)
+			d := math.Hypot(math.Hypot(pa[0]-pb[0], pa[1]-pb[1]), pa[2]-pb[2])
+			if d < floor {
+				t.Errorf("%s and %s are %.3f apart under %s, under %.3f", pair[0], pair[1], d, name, floor)
 			}
 		}
-		if d := math.Abs(grey(color("warn")) - grey(color("literal"))); d < c.greyFloor {
-			t.Errorf("%s: warn and literal are %.3f apart in greyscale, under %.3f", c.theme, d, c.greyFloor)
-		}
 	}
-}
-
-// TestActiveTheme: a light terminal draws the theme's light twin, chrome
-// included, a dark one the theme itself, a theme with no twin draws as it is,
-// and a name no theme answers to draws whorl and is named in /errors.
-func TestActiveTheme(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 80, 24)
-	title := func() color.Color { return app.hlStyle("Host:Title").Fg }
-	whorl, light := hostapi.ThemeByName("whorl"), hostapi.ThemeByName("whorl-light")
-	for _, c := range []struct {
-		name  string
-		bg    uint32
-		theme string
-		want  *hostapi.Theme
-	}{
-		{"light terminal", 0xfafafa, "whorl", light},
-		{"dark terminal", 0x141414, "whorl", whorl},
-		{"light theme on a dark terminal", 0x141414, "whorl-light", light},
-		{"a theme with no light twin", 0xfafafa, "nord", hostapi.ThemeByName("nord")},
-		{"unknown name", 0x141414, "gone", whorl},
-	} {
-		app.Update(tea.BackgroundColorMsg{Color: rgb(c.bg)})
-		if _, err := host.Settings.SetQuiet("ui.theme", c.theme); err != nil {
-			t.Fatal(err)
-		}
-		if got := host.ActiveTheme(); got != c.want || !sameColor(title(), c.want.Palette.Accent) {
-			t.Errorf("%s: %s draws, title %v", c.name, got.Name, title())
-		}
-	}
-	host.CheckTheme()
-	if !host.Recorded(`ui.theme "gone" names no theme, so whorl draws; /theme lists them`) {
-		t.Error("a stale ui.theme is not in /errors")
+	if d := math.Abs(grey(color("warn")) - grey(color("literal"))); d < 0.07 {
+		t.Errorf("warn and literal are %.3f apart in greyscale, under %.3f", d, 0.07)
 	}
 }

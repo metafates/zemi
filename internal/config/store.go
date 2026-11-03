@@ -25,7 +25,6 @@ const (
 	KeyModelsCompact      Key = "models.compact"
 	KeyModelsFavorites    Key = "models.favorites"
 	KeyProvidersBuiltin   Key = "providers.builtin"
-	KeyUITheme            Key = "ui.theme"
 	KeyAgentEffort        Key = "agent.effort"
 	KeySessionRecap       Key = "session.recap"
 	KeyAgentMaxBackground Key = "agent.max_background"
@@ -159,7 +158,6 @@ func (s *Store) defineDefaults() {
 		{Path: KeyModelsCompact, Kind: KindString, Default: "", Check: checkModelRef, Desc: "the model that writes compaction summaries (provider/model; empty follows models.default)"},
 		{Path: KeyModelsFavorites, Kind: KindList, Default: []string{}, Desc: "the models /model lists first, marked with f (provider/model ids)"},
 		{Path: KeyProvidersBuiltin, Kind: KindBool, Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
-		{Path: KeyUITheme, Kind: KindString, Default: "whorl", Desc: "theme name (/theme picks one): whorl, catppuccin, tokyonight, gruvbox, nord, dracula, solarized, rose-pine, kanagawa, one, everforest, github, a <name>-light twin draws on a light terminal"},
 		{Path: KeyAgentEffort, Kind: KindString, Default: "", Desc: "reasoning effort: low, medium, high, or empty for the model's default"},
 		{Path: KeySessionRecap, Kind: KindDuration, Default: "3m", Desc: "after a turn with tool calls, if there is no input for this long, add a one-line recap from a short model call on the cached conversation (billed to the session); 0 turns it off, empty for the 3m default"},
 		{Path: KeyAgentMaxBackground, Kind: KindNumber, Default: 4.0, Desc: "background agents and workflows running at once; one more is refused until one ends (1 at least)"},

@@ -344,11 +344,8 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 		ImageText:      gansi.StylePrimitive{Format: "Image: {{.text}}"},
 		CodeBlock:      gansi.StyleCodeBlock{StyleBlock: gansi.StyleBlock{Margin: new(uint(2))}},
 	}
-	theme := h.ActiveTheme()
+	theme := Whorl
 	var key strings.Builder
-	if theme != nil {
-		key.WriteString(theme.Name)
-	}
 	apply := func(p *gansi.StylePrimitive, group string) {
 		spec, ok := Group(group)
 		if !ok {
@@ -387,15 +384,12 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 	apply(&cfg.Enumeration, "Dim")
 
 	// Code takes the groups through a chroma style of its own: glamour
-	// registers its Chroma config once per process, so a theme switch would
-	// keep the first theme's colors.
+	// registers its Chroma config once per process.
 	var code [len(codeGroups)]gansi.StylePrimitive
 	for i, cg := range codeGroups {
 		apply(&code[i], cg.group)
 	}
 	cfg.CodeBlock.Theme = "zemi:" + key.String()
-	// NOTE: every distinct theme key stays registered for the process; a
-	// session that sets thousands of highlight overrides would grow it.
 	styleMu.RLock()
 	_, ok := styles.Registry[cfg.CodeBlock.Theme]
 	styleMu.RUnlock()
@@ -516,11 +510,11 @@ func highlight(text, lang string) [][]Segment {
 
 // color resolves a color reference for glamour: hex, or an ANSI color name
 // as its number, which is how lipgloss takes one. "" when nothing resolves.
-func (t *Theme) color(ref string) string {
+func (p *Palette) color(ref string) string {
 	if c, ok := ANSIColors[ref]; ok {
 		return strconv.Itoa(int(c))
 	}
-	return Hex(t.Color(ref))
+	return Hex(p.Color(ref))
 }
 
 // styledLines parses glamour's ANSI output into segments: runs of equal

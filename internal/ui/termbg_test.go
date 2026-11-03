@@ -18,7 +18,7 @@ import (
 func TestTerminalBackground(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
-	canvas := hostapi.ThemeByName("whorl").Palette.Bg
+	canvas := hostapi.Whorl.Bg
 	hint := hostapi.Segment{Text: " ", HL: "Host:Hint"}
 	for _, c := range []struct {
 		name    string

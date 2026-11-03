@@ -133,9 +133,7 @@ the section, so esc pops back. A key changes on a screen of its own, its picker 
 with the text), which closes back onto the rebuilt list; a value the command refuses keeps the
 prompt open with the error it named. `/config` and `/effort` write through
 `Host.SetConfig`, which sends `models.*` through their
-own setters and refuses a `ui.theme` no theme answers to (`checkTheme`); `zemi.config.set` takes
-any name, since a plugin's or the project's theme may not be added yet, and `CheckTheme`
-records one nothing added once boot is done, while whorl draws. A key's `Choices` refuse any other value in `config.checkKind`,
+own setters. A key's `Choices` refuse any other value in `config.checkKind`,
 which also takes `default` for a "" choice, `zemi.config.set` included; every runtime write,
 those setters included, fires the key's watches through `setWatched`. zemi never edits
 init.lua. A `/config` verb that opens a screen refuses without one; only `config set` runs.

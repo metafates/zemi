@@ -516,57 +516,6 @@ func TestConfigSetAnyOrigin(t *testing.T) {
 	}
 }
 
-// TestThemeCommand: /theme <name> sets a theme and refuses a name nothing
-// added; bare, it lists every theme, the light twins included, and the
-// list stays open over a pick with the current row moved.
-func TestThemeCommand(t *testing.T) {
-	t.Parallel()
-	h := newTestHostUI(t)
-	ui := &fakeUI{}
-	h.SetUIHooks(ui)
-	theme := h.configCommands()[1]
-	for _, c := range []struct{ args, want, err string }{
-		{"nord", "nord", ""},
-		{"nope", "nord", "unknown theme"},
-		{"", "nord", ""},
-	} {
-		err := theme.GoFn(h, c.args, false)
-		if c.err == "" && err != nil || c.err != "" && (err == nil || !strings.Contains(err.Error(), c.err)) || h.Settings.Str("ui.theme") != c.want {
-			t.Fatalf("/theme %s: %v, ui.theme %q", c.args, err, h.Settings.Str("ui.theme"))
-		}
-	}
-	opened := ui.overlays()
-	if len(opened) != 1 || opened[0].Reload == nil {
-		t.Fatalf("opened %d overlays, want the pick as a toggle list", len(opened))
-	}
-	row := func(items []OverlayItem, name string) (OverlayItem, bool) {
-		i := slices.IndexFunc(items, func(it OverlayItem) bool { return it.Text == name })
-		if i < 0 {
-			return OverlayItem{}, false
-		}
-		return items[i], true
-	}
-	key := func(items []OverlayItem, name string) string {
-		r, _ := row(items, name)
-		return r.Tag
-	}
-	items := opened[0].Items
-	if _, ok := row(items, "catppuccin-light"); !ok || key(items, "nord") != "current" {
-		t.Fatalf("rows: %+v", items)
-	}
-	if err := h.configCommand("set ui.theme dracula"); err != nil {
-		t.Fatal(err)
-	}
-	if items := opened[0].Reload(); key(items, "dracula") != "current" || key(items, "nord") != "" {
-		t.Fatalf("after a pick: %+v", items)
-	}
-	if err := h.configCommand("set ui.theme catppuccin-light"); err != nil {
-		t.Fatal(err)
-	}
-	if items := opened[0].Reload(); key(items, "catppuccin-light") != "current" {
-		t.Fatalf("after a light pick: %+v", items)
-	}
-}
 
 // TestConfigSet: /config set takes the words /config and the pickers show
 // for a value, and /config lua writes a number as typed.
@@ -596,7 +545,7 @@ func TestConfigSet(t *testing.T) {
 	}
 	// every other row changes on a screen of its own, which /config edit is
 	// unless the key has a picker
-	for path, section := range map[string]string{"editor.command": "editor", "ui.theme": "ui", "models.compact": "models"} {
+	for path, section := range map[string]string{"editor.command": "editor", "models.compact": "models"} {
 		items := h.configItems(section)
 		row := items[slices.IndexFunc(items, func(it OverlayItem) bool { return it.Text == path })]
 		if act := row.Keys[0]; act.Run != configPicker(config.Key(path)) || act.Desc != "change" {

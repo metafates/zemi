@@ -86,7 +86,7 @@ PREVIOUS turn's reply: after an errored turn (a mid-stream drop) the settled scr
 shows turn N-1's rows, so `wait 'done, here is the reply.'` exits 0 on the old row. Assert
 the turn via the request counter (`last`) or the events, never `wait` alone.
 `up` flags: `-x W -y H`
-(default 140x40), `--theme whorl-light`, `--untrusted` (drops `--trust`; the boot then
+(default 140x40), `--untrusted` (drops `--trust`; the boot then
 stops at the trust overlay, which `up` reports and both backends see as a permission
 ask, so `ask y` answers it on either), `--asks` (installs a
 gate plugin whose `permission.request` handler returns

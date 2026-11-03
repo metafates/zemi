@@ -16,7 +16,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	glua "github.com/yuin/gopher-lua"
 
-	"github.com/metafates/zemi/internal/config"
+
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
@@ -737,33 +737,3 @@ func (h *Host) EmitAsync(name string, payload map[string]any) {
 		}
 	})
 }
-
-// checkTheme refuses a ui.theme value no theme answers to; the picker, not
-// a refusal line, is where the names live.
-func (h *Host) checkTheme(name string) error {
-	if ThemeByName(name) != nil {
-		return nil
-	}
-	return Usagef("unknown theme %q; /theme lists them", name)
-}
-
-// CheckTheme records a ui.theme no theme answers to once boot is done: a
-// typo, or a pick of a removed plugin's theme, draws whorl instead.
-func (h *Host) CheckTheme() {
-	if name := h.Settings.Str(config.KeyUITheme); ThemeByName(name) == nil {
-		h.RecordErrorOnce("ui.theme", "", fmt.Sprintf("ui.theme %q names no theme, so whorl draws; /theme lists them", name))
-	}
-}
-
-// ActiveTheme is the theme drawing now: the configured one, whorl when that
-// names none, and its light twin on a light terminal.
-func (h *Host) ActiveTheme() *Theme {
-	t := cmp.Or(ThemeByName(h.Settings.Str(config.KeyUITheme)), ThemeByName("whorl"))
-	if t == nil || !h.lightTerm.Load() {
-		return t
-	}
-	return cmp.Or(ThemeByName(t.Name+"-light"), t)
-}
-
-// SetLightTerminal records whether the terminal's background is light.
-func (h *Host) SetLightTerminal(light bool) { h.lightTerm.Store(light) }

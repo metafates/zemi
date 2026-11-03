@@ -126,7 +126,7 @@ func emptyChat(st *hostapi.ScreenState) bool {
 }
 
 // runClick is the shipped widgets' on_click: a click id is a command and its
-// arguments ("theme whorl"), or "fill <text>", which puts the text in the
+// arguments ("model gpt"), or "fill <text>", which puts the text in the
 // composer for the user to send. Runs on the UI goroutine.
 func (a *App) runClick(ev map[string]any) {
 	id, _ := ev["id"].(string)

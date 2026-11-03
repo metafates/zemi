@@ -626,7 +626,6 @@ type Host struct {
 	busy   []*busyJob // user-visible jobs that are not a turn, oldest first
 
 	md        markdownCache
-	lightTerm atomic.Bool // the terminal reported a light background
 
 	selectSeq atomic.Int64 // ids for overlays each call opens anew (select, input, /btw)
 

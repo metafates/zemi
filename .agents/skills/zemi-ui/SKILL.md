@@ -152,8 +152,8 @@ the highest first (`fitClusters`), so what lasts sits outermost and never moves.
   turn's end (the `ui.notify` alert, the done eyes, the recap timer) applies once per chain of
   turns, on the first frame that reads the agent idle (`onFrame`). OSC 9;4 progress and the OSC
   11 background go through `tea.View.ProgressBar` and `tea.View.BackgroundColor`, so bubbletea
-  resets them on every exit, a signal included. Host chrome draws in the active palette's
-  roles (`chromeStyles`, built again when the theme changes), and a segment's `Fill` says
+  resets them on every exit, a signal included. Host chrome draws in whorl's
+  roles (`chromeStyles`, built once), and a segment's `Fill` says
   what it sits on: `hostBox` and the composer frame put theirs on the panel, where a
   style that paints the canvas takes the panel instead (`segStyle`).
 - **Drag and drop is a paste.** `ui/drop.go` turns a paste made only of existing paths into

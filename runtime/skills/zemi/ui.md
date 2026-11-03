@@ -18,9 +18,9 @@ Lists, popups and prompts keep their keys (`/help` lists them): up, down, j, k, 
 
 ## Colors
 
-A theme is one of the palettes zemi ships, named by `ui.theme`: whorl (the default) and whorl-light, plus ports of Ghostty's catppuccin, tokyonight, gruvbox, nord, dracula, solarized, rose-pine, kanagawa, one, everforest and github, most with a `-light` twin that draws on a light terminal. `/theme` picks one with the list open: enter on a row repaints the screen in it, so you can try the next. A name no theme answers to is refused (`unknown theme "x"; /theme lists them`). A palette is a set of roles (`bg`, `fg`, `accent`, `literal`, `ok`, `warn`, `danger`, `dim`, `rule`, `panel`, `band`, `addbg`, `delbg`, `well`) and Go derives the rest, keeping every text role readable on every surface and `panel` and `band` near `bg` (DESIGN §6.6).
+The palette is whorl, baked in Go (`internal/hostapi/themes.go`): a set of roles (`bg`, `fg`, `accent`, `literal`, `ok`, `warn`, `danger`, `dim`, `rule`, `panel`, `band`, `addbg`, `delbg`, `well`), derived where the spec leaves a role out so every text role stays readable on every surface and `panel` and `band` stay near `bg` (DESIGN §6.6). There are no other themes and no theme command.
 
-Groups are defined once, for every theme, in Go (`internal/hostapi/themes.go`): `Accent`, `Dim`, `Rule`, `Title`, `Literal`, `Danger`, `Warn`, `Ok` and the rest, each naming a role, a hex or an ANSI color, or linking to another group (`Snail`, the mascot's shell, links to `Accent`). A plugin colors what it draws by naming these groups in an overlay's segments and never a hex: an `hl` a group does not answer to draws unstyled.
+Groups are defined once, for whorl, in the same file: `Accent`, `Dim`, `Rule`, `Title`, `Literal`, `Danger`, `Warn`, `Ok` and the rest, each naming a role, a hex or an ANSI color, or linking to another group (`Snail`, the mascot's shell, links to `Accent`). A plugin colors what it draws by naming these groups in an overlay's segments and never a hex: an `hl` a group does not answer to draws unstyled.
 
 ## Layout
 

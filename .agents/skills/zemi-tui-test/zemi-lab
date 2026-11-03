@@ -9,7 +9,7 @@ usage() {
 	cat <<'U'
 usage: zemi-lab [-n name] command [args]
 
-  up [-x W -y H] [--theme T] [--asks] [--untrusted] [--rex]
+  up [-x W -y H] [--asks] [--untrusted] [--rex]
                      build, throwaway tree, fake model, TUI, wait for boot.
                      --rex runs zemi in a Rex block: the terminal acts on the
                      sequences tmux swallows (OSC 7501, OSC 9, titles) and
@@ -387,7 +387,6 @@ write_config() {
 		echo "	api_key = \"x\", base_url = \"http://127.0.0.1:$PORT/v1\","
 		echo '	models = { { id = "m", context_window = 128000, pricing = { input = 0.27, output = 1.1 } } } })'
 		echo 'zemi.config.set("models.default", "fake/m")'
-		[ -n "${THEME:-}" ] && echo "zemi.config.set(\"ui.theme\", \"$THEME\")"
 	} >"$TREE/config/init.lua"
 
 	[ -n "${ASKS:-}" ] || return 0
@@ -437,16 +436,15 @@ trust_note() {
 }
 
 cmd_up() {
-	W=140 H=40 THEME="" ASKS="" TRUST=--trust
+	W=140 H=40 ASKS="" TRUST=--trust
 	BACKEND=tmux
 	while [ $# -gt 0 ]; do
 		case "$1" in
-			-x | -y | --theme)
+			-x | -y)
 				[ $# -ge 2 ] || die "up: $1 needs a value"
 				case "$1" in
 					-x) W=$2 ;;
 					-y) H=$2 ;;
-					--theme) THEME=$2 ;;
 				esac
 				shift 2
 				;;

@@ -411,63 +411,52 @@ func TestHighlight(t *testing.T) {
 	}
 }
 
-// TestMarkdownTheme: markdown draws only the theme's colors, in the dark
-// and the light variant, blocks sit one blank row apart and a quote keeps
-// its bar on every row it wraps to.
+// TestMarkdownTheme: markdown draws only whorl's colors, blocks sit one
+// blank row apart and a quote keeps its bar on every row it wraps to.
 func TestMarkdownTheme(t *testing.T) {
 	t.Parallel()
 	h := newTestHostUI(t)
 	text := "intro\n\n```go\nfunc f() int {\n\t// why\n\treturn 42 + len(\"s\")\n}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n" +
 		"- one\n  - two\n1. three\n\n> a quote long enough to wrap over more than one row of the pane\n"
-	for _, c := range []struct {
-		light bool
-		theme string
-	}{{false, "whorl"}, {true, "whorl-light"}} {
-		h.SetLightTerminal(c.light)
-		theme := h.ActiveTheme()
-		if theme == nil || theme.Name != c.theme {
-			t.Fatalf("light=%v: theme %v, want %s", c.light, theme, c.theme)
+	palette := map[string]bool{}
+	for _, role := range Roles {
+		r, g, b, _ := Whorl.Color(role).RGBA()
+		palette[fmt.Sprintf("%d;%d;%d", r>>8, g>>8, b>>8)] = true
+	}
+	var blank, quote int
+	prevBlank := false
+	for _, row := range h.Markdown(text, 30) {
+		isBlank := strings.TrimSpace(plainText(row)) == ""
+		if isBlank && prevBlank {
+			t.Error("two blank rows")
 		}
-		palette := map[string]bool{}
-		for _, role := range Roles {
-			r, g, b, _ := theme.Color(role).RGBA()
-			palette[fmt.Sprintf("%d;%d;%d", r>>8, g>>8, b>>8)] = true
+		if isBlank {
+			blank++
 		}
-		var blank, quote int
-		prevBlank := false
-		for _, row := range h.Markdown(text, 30) {
-			isBlank := strings.TrimSpace(plainText(row)) == ""
-			if isBlank && prevBlank {
-				t.Errorf("%s: two blank rows", c.theme)
+		prevBlank = isBlank
+		if strings.Contains(plainText(row), "quote") || strings.Contains(plainText(row), "pane") {
+			if !strings.HasPrefix(row[0].Text, "│") {
+				t.Errorf("quote row without its bar: %q", plainText(row))
 			}
-			if isBlank {
-				blank++
-			}
-			prevBlank = isBlank
-			if strings.Contains(plainText(row), "quote") || strings.Contains(plainText(row), "pane") {
-				if !strings.HasPrefix(row[0].Text, "│") {
-					t.Errorf("%s: quote row without its bar: %q", c.theme, plainText(row))
+			quote++
+		}
+		for _, s := range row {
+			p := strings.Split(strings.TrimPrefix(s.HL, SGRPrefix), ";")
+			for i := 0; i+1 < len(p); i++ {
+				if p[i] != "38" && p[i] != "48" {
+					continue
 				}
-				quote++
-			}
-			for _, s := range row {
-				p := strings.Split(strings.TrimPrefix(s.HL, SGRPrefix), ";")
-				for i := 0; i+1 < len(p); i++ {
-					if p[i] != "38" && p[i] != "48" {
-						continue
-					}
-					if p[i+1] != "2" || i+4 >= len(p) || !palette[strings.Join(p[i+2:i+5], ";")] {
-						t.Errorf("%s: %q draws %s, off the palette", c.theme, s.Text, s.HL)
-						break
-					}
-					i += 4
+				if p[i+1] != "2" || i+4 >= len(p) || !palette[strings.Join(p[i+2:i+5], ";")] {
+					t.Errorf("%q draws %s, off the palette", s.Text, s.HL)
+					break
 				}
+				i += 4
 			}
 		}
-		// intro, code, table, list, the ordered list, quote
-		if blank != 5 || quote < 2 {
-			t.Errorf("%s: %d blank rows, %d quote rows", c.theme, blank, quote)
-		}
+	}
+	// intro, code, table, list, the ordered list, quote
+	if blank != 5 || quote < 2 {
+		t.Errorf("%d blank rows, %d quote rows", blank, quote)
 	}
 	// a list in a quote marks its first row only and a task mark is a
 	// decoration

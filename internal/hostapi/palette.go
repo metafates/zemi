@@ -3,25 +3,16 @@ package hostapi
 import (
 	"fmt"
 	"image/color"
-	"maps"
 	"math"
-	"slices"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/lucasb-eyer/go-colorful"
 )
 
-// Theme is one of the shipped palettes; the groups that draw with it are
-// defined once, apart from any theme (DESIGN §6.6).
-type Theme struct {
-	Name    string
-	Palette Palette
-}
-
-// Palette is a theme's colors by role, each set: what the spec leaves out
+// Palette is the screen's colors by role, each set: what the spec leaves out
 // is derived, Panel and Band stay near Bg, and every text role meets its
-// contrast floor on all three, so no theme can hide a prompt's text.
+// contrast floor on all three, so nothing can hide a prompt's text.
 type Palette struct {
 	Bg, Fg, Accent, Literal, Ok, Warn, Danger, Dim, Rule, Panel, Band, AddBg, DelBg, Well color.Color
 }
@@ -72,7 +63,7 @@ func (p *Palette) role(name string) *color.Color {
 
 // Color resolves a group's color: a role, hex, or an ANSI color name the
 // terminal decides. nil when it names nothing.
-func (t *Theme) Color(ref string) color.Color {
+func (p *Palette) Color(ref string) color.Color {
 	if c, ok := ANSIColors[ref]; ok {
 		return c
 	}
@@ -83,11 +74,11 @@ func (t *Theme) Color(ref string) color.Color {
 		}
 		return rgb(c)
 	}
-	if t == nil {
+	if p == nil {
 		return nil
 	}
-	if p := t.Palette.role(ref); p != nil {
-		return *p
+	if r := p.role(ref); r != nil {
+		return *r
 	}
 	return nil
 }
@@ -99,30 +90,28 @@ var ansiRoles = [...]struct {
 	slot int
 }{{"danger", 1}, {"ok", 2}, {"warn", 3}, {"accent", 4}}
 
+
 // mixes derive the rest, each role mixed from one toward another in OkLab.
 // The band tints the panel, since only a box draws it.
 // The diff tints are mixed far enough to keep an OKLCH chroma over the
-// 256-color quantizer's grey cut (0.03) on whorl and whorl-light.
-// NOTE: on a greyish bg they may still round to one grey at 256 colors
-// (everforest, kanagawa, one); the diff's colored numbers tell the rows apart.
+// 256-color quantizer's grey cut (0.03) on whorl.
+// NOTE: on a greyish bg they may still round to one grey at 256 colors;
+// the diff's colored numbers tell the rows apart.
 var mixes = [...]struct {
 	role, from, to string
 	t              float64
-	// cast is how much of a scheme's own grey the role takes: a line of text
-	// carries its tint, a surface fills an area and takes less of it
-	cast float64
 }{
-	{"dim", "fg", "bg", 0.4, 0.025},
-	{"rule", "bg", "fg", 0.28, 0.025},
+	{"dim", "fg", "bg", 0.4},
+	{"rule", "bg", "fg", 0.28},
 	// a box lifts far enough off the canvas to read as one above a whole
 	// screen of canvas, and no further
-	{"panel", "bg", "fg", 0.07, 0.015},
-	{"band", "panel", "accent", 0.16, 0},
-	{"addbg", "bg", "ok", 0.28, 0},
-	{"delbg", "bg", "danger", 0.28, 0},
+	{"panel", "bg", "fg", 0.07},
+	{"band", "panel", "accent", 0.16},
+	{"addbg", "bg", "ok", 0.28},
+	{"delbg", "bg", "danger", 0.28},
 	// a command well sinks to the canvas; what it answered lifts a step off
 	// the box, far enough to stay a surface of its own at 256 colors
-	{"well", "panel", "fg", 0.08, 0},
+	{"well", "panel", "fg", 0.08},
 }
 
 // surfaceSpan is how far in OKLCH lightness panel and band may sit from bg,
@@ -146,32 +135,14 @@ var floors = [...]struct {
 	{"warn", 3.5},
 }
 
-// parsePalette checks a theme spec and derives what it leaves out: bg and
-// fg, the four hues or ansi (16 colors, black to bright white), any other
-// role as an override.
+// parsePalette checks a palette spec and derives what it leaves out: bg and
+// fg, the four hues, any other role as an override.
 func parsePalette(spec map[string]any) (Palette, error) {
 	var p Palette
-	var slots []colorful.Color
-	for _, k := range slices.Sorted(maps.Keys(spec)) {
-		v := spec[k]
-		if k == "ansi" {
-			list, ok := v.([]any)
-			if !ok || len(list) != 16 {
-				return p, fmt.Errorf("ansi must list the 16 terminal colors, black to bright white")
-			}
-			for i, c := range list {
-				s, _ := c.(string)
-				col, err := parseHex(s)
-				if err != nil {
-					return p, fmt.Errorf("ansi[%d] = %q is not #rrggbb", i+1, s)
-				}
-				slots = append(slots, col)
-			}
-			continue
-		}
+	for k, v := range spec {
 		dst := p.role(k)
 		if dst == nil {
-			return p, fmt.Errorf("unknown key %q: a theme takes %s and ansi", k, strings.Join(Roles, ", "))
+			return p, fmt.Errorf("unknown key %q: a palette takes %s", k, strings.Join(Roles, ", "))
 		}
 		s, _ := v.(string)
 		col, err := parseHex(s)
@@ -180,18 +151,10 @@ func parsePalette(spec map[string]any) (Palette, error) {
 		}
 		*dst = rgb(col)
 	}
-	if p.Bg == nil || p.Fg == nil {
-		return p, fmt.Errorf("bg and fg are required")
+	if p.Bg == nil || p.Fg == nil || p.Accent == nil || p.Ok == nil || p.Warn == nil || p.Danger == nil {
+		return p, fmt.Errorf("bg, fg, accent, ok, warn and danger are required")
 	}
-	for _, a := range ansiRoles {
-		if dst := p.role(a.role); *dst == nil {
-			if slots == nil {
-				return p, fmt.Errorf("%s is required without ansi", a.role)
-			}
-			*dst = rgb(slots[a.slot])
-		}
-	}
-	derive(&p, slots)
+	derive(&p)
 	return p, nil
 }
 
@@ -203,13 +166,10 @@ func parseHex(s string) (colorful.Color, error) {
 }
 
 // derive fills the roles p leaves out, keeps the surfaces near bg and
-// clamps every text role to its floor on each surface. ansi is a scheme's
-// own 16 colors, nil for a hand-written palette: its greys give the neutrals
-// and the boxes the tint of the terminal the theme came from, instead of
-// looking like a mix of two end colors.
-func derive(p *Palette, ansi []colorful.Color) {
+// clamps every text role to its floor on each surface.
+func derive(p *Palette) {
 	if p.Literal == nil {
-		// each scheme's own orange: halfway between its red and its yellow
+		// the palette's own orange: halfway between its red and its yellow
 		l1, c1, h1 := col(p.Danger).OkLch()
 		l2, c2, h2 := col(p.Warn).OkLch()
 		d := math.Mod(h2-h1+540, 360) - 180
@@ -221,9 +181,6 @@ func derive(p *Palette, ansi []colorful.Color) {
 			continue
 		}
 		*dst = Mix(*p.role(m.from), *p.role(m.to), m.t)
-		if m.cast > 0 {
-			*dst = cast(*dst, ansi, m.cast)
-		}
 	}
 	lbg, _, _ := col(p.Bg).OkLch()
 	for _, s := range []*color.Color{&p.Panel, &p.Band} {
@@ -235,19 +192,6 @@ func derive(p *Palette, ansi []colorful.Color) {
 		dst := p.role(f.role)
 		*dst = clampContrast(col(*dst), on, f.min)
 	}
-}
-
-// cast is c at its own lightness in the hue and chroma of a scheme's bright
-// black, the grey its own surfaces and dimmed text are made of: a generated
-// theme keeps its terminal's cast, while the fg/bg ladder sets where the
-// role sits.
-func cast(c color.Color, ansi []colorful.Color, cap float64) color.Color {
-	if len(ansi) < 16 {
-		return c
-	}
-	l, _, _ := col(c).OkLch()
-	_, ch, h := ansi[8].OkLch()
-	return inGamut(l, min(ch, cap), h)
 }
 
 // Mix blends a toward b by t in OkLab, where equal steps look equal.

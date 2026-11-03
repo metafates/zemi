@@ -303,8 +303,9 @@ func TestColdChatRender(t *testing.T) {
 	app.Frame()
 	st := app.scrolls[app.scrollDef]
 	top, anchor := st.top, slices.Clone(st.anchor)
-	// the theme is part of the units cache key: flipping it renders every unit again
-	host.SetLightTerminal(true)
+	// an appended row rebuilds every unit from a changed transcript: the
+	// rebuild must not move the view
+	host.AppendMessage("user", "one more")
 	app.frameGen++
 	for more := true; more; app.Frame() {
 		var lines [][]hostapi.Segment

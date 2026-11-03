@@ -737,11 +737,7 @@ func TestBoxFade(t *testing.T) {
 func TestFadeGround(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
-	theme := app.thm.active()
-	if theme == nil {
-		t.Fatal("no theme")
-	}
-	fg, bg, panel := theme.Palette.Fg, theme.Palette.Bg, theme.Palette.Panel
+	fg, bg, panel := hostapi.Whorl.Fg, hostapi.Whorl.Bg, hostapi.Whorl.Panel
 	for _, c := range []struct {
 		name  string
 		panel bool

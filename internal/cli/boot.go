@@ -719,7 +719,7 @@ func (tg *trustGate) command() func() {
 
 // readyStep drops the builtin providers when init.lua turned them off
 // (config has run by now, and a replay re-seeds them first), names an
-// override no tool answers to and a ui.theme no theme does, and emits app.ready.
+// override no tool answers to, and emits app.ready.
 func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 	// once per process: a reload replays the step
 	updateLast := sync.OnceFunc(func() {
@@ -750,7 +750,6 @@ func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 				h.Providers.DropBuiltin()
 			}
 			h.CheckToolNames()
-			h.CheckTheme()
 			h.EmitOnState(g.L, hostapi.EventAppReady, nil)
 			// the marketplace pull runs off the boot, and only for the TUI:
 			// a headless boot stays quiet, its stderr is the work

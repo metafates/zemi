@@ -11,7 +11,7 @@ import (
 // one silent hole left, and it is what a mistyped literal reads as.
 func TestStoreReadUnknownKey(t *testing.T) {
 	s := NewStore()
-	if got := s.Str("ui.theme"); got != "whorl" {
+	if got := s.Str("session.recap"); got != "3m" {
 		t.Fatalf("a schema key holds its default: %q", got)
 	}
 	if got := s.Str("ui.theemes"); got != "" {
@@ -89,7 +89,7 @@ func TestKeyFamilies(t *testing.T) {
 	if name, ok := PluginOf(PluginKey("jira", "url")); !ok || name != "jira" {
 		t.Fatalf("PluginOf = %q, %v", name, ok)
 	}
-	if _, ok := PluginOf(KeyUITheme); ok {
+	if _, ok := PluginOf(KeyUIMouse); ok {
 		t.Fatal("a builtin key names a plugin")
 	}
 }

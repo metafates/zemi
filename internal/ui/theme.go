@@ -5,6 +5,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/colorprofile"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -15,19 +16,21 @@ import (
 )
 
 // themeResolver turns highlight-group names into ultraviolet styles in the
-// active theme's palette (DESIGN §6.6: groups name palette roles, hex or
-// ANSI colors; Go resolves them).
+// whorl palette (DESIGN §6.6: groups name palette roles, hex or ANSI colors;
+// Go resolves them).
 type themeResolver struct {
-	host *hostapi.Host
-	sgr  map[string]uv.Style // decoded "sgr:" hls; compose runs on the UI goroutine only
-	// the Host: styles in the palette of chromeOf, built again when the
-	// active theme changes
-	chromeOf *hostapi.Theme
-	chrome   map[string]uv.Style
-	// the knot ramp in the palette of the theme it was built from, the same
-	// lifetime as chrome
-	ramps map[*hostapi.Theme][32]color.Color
+	sgr map[string]uv.Style // decoded "sgr:" hls; compose runs on the UI goroutine only
 }
+
+// chrome is the whorl chrome, built once: the palette never changes.
+var chrome = sync.OnceValue(func() map[string]uv.Style {
+	return chromeStyles(hostapi.Whorl)
+})
+
+// knot is the whorl knot's ramp, built once with the chrome.
+var knot = sync.OnceValue(func() [32]color.Color {
+	return hostapi.KnotRamp(hostapi.Whorl)
+})
 
 // style resolves hl; what sets no fill, an unstyled span (a draft's typed
 // text) included, sits on the canvas.
@@ -35,8 +38,8 @@ func (t themeResolver) style(hl string) uv.Style {
 	var st uv.Style
 	if params, ok := strings.CutPrefix(hl, hostapi.SGRPrefix); ok {
 		st = t.sgrStyle(params)
-	} else if spec, theme, ok := t.group(hl); ok {
-		st = t.drawOver(st, spec, theme)
+	} else if spec, ok := t.group(hl); ok {
+		st = drawOver(st, spec, hostapi.Whorl)
 	}
 	if st.Bg == nil {
 		st.Bg = t.canvas()
@@ -44,46 +47,27 @@ func (t themeResolver) style(hl string) uv.Style {
 	return st
 }
 
-// canvas is the active theme's bg. Every group without a fill of its own
-// sits on it, so the app paints one canvas and the terminal's background
-// never shows through a gap.
+// canvas is whorl's bg. Every group without a fill of its own sits on it, so
+// the app paints one canvas and the terminal's background never shows through
+// a gap.
 func (t themeResolver) canvas() color.Color {
-	if theme := t.active(); theme != nil {
-		return theme.Palette.Bg
-	}
-	return nil
+	return hostapi.Whorl.Bg
 }
 
-// active resolves the theme in force; nil when no theme is registered.
-func (t themeResolver) active() *hostapi.Theme {
-	if t.host == nil {
-		return nil
+// group is a group's spec.
+func (t themeResolver) group(hl string) (hostapi.HLSpec, bool) {
+	if hl == "" {
+		return hostapi.HLSpec{}, false
 	}
-	return t.host.ActiveTheme()
+	return hostapi.Group(hl)
 }
 
-// group is a group's spec and the theme its roles resolve in.
-func (t themeResolver) group(hl string) (hostapi.HLSpec, *hostapi.Theme, bool) {
-	if hl == "" || t.host == nil {
-		return hostapi.HLSpec{}, nil, false
-	}
-	spec, ok := hostapi.Group(hl)
-	return spec, t.active(), ok
-}
-
-// chromeStyle is a Host: style in the active palette, on the canvas where
-// it sets no fill; false for any other name.
+// chromeStyle is a Host: style in the whorl palette, on the canvas where it
+// sets no fill; false for any other name.
 func (t *themeResolver) chromeStyle(hl string) (uv.Style, bool) {
-	theme := t.active()
-	if theme == nil {
-		return uv.Style{}, false
-	}
-	if t.chromeOf != theme {
-		t.chromeOf, t.chrome = theme, chromeStyles(&theme.Palette)
-	}
-	st, ok := t.chrome[hl]
+	st, ok := chrome()[hl]
 	if ok && st.Bg == nil {
-		st.Bg = theme.Palette.Bg
+		st.Bg = hostapi.Whorl.Bg
 	}
 	return st, ok
 }
@@ -123,15 +107,15 @@ func (t themeResolver) hover(base uv.Style, group string) uv.Style {
 	if !ok {
 		spec = hostapi.HLSpec{Underline: hostapi.UnderlineSingle}
 	}
-	return t.hoverSpec(base, spec, t.active())
+	return t.hoverSpec(base, spec)
 }
 
 // hoverSpec draws one hover group's spec over base.
-func (t themeResolver) hoverSpec(base uv.Style, spec hostapi.HLSpec, theme *hostapi.Theme) uv.Style {
+func (t themeResolver) hoverSpec(base uv.Style, spec hostapi.HLSpec) uv.Style {
 	if spec.Replace {
 		base = uv.Style{}
 	}
-	st := t.drawOver(base, spec, theme)
+	st := drawOver(base, spec, hostapi.Whorl)
 	if spec.Brighten != 0 {
 		fg := st.Fg
 		if fg == nil { // the terminal's own fg: brighten Normal instead
@@ -152,13 +136,13 @@ func (t themeResolver) hoverSpec(base uv.Style, spec hostapi.HLSpec, theme *host
 }
 
 // drawOver sets the keys spec sets on base and keeps the rest.
-func (t themeResolver) drawOver(st uv.Style, spec hostapi.HLSpec, theme *hostapi.Theme) uv.Style {
+func drawOver(st uv.Style, spec hostapi.HLSpec, pal *hostapi.Palette) uv.Style {
 	set := func(dst *color.Color, ref string) {
 		switch {
 		case ref == "NONE":
 			*dst = nil
 		case ref != "":
-			if c := theme.Color(ref); c != nil {
+			if c := pal.Color(ref); c != nil {
 				*dst = c
 			}
 		}
@@ -182,23 +166,9 @@ func (t themeResolver) drawOver(st uv.Style, spec hostapi.HLSpec, theme *hostapi
 		st.Underline = u
 	}
 	if spec.Shade != nil {
-		st.Fg = t.rampColor(theme, *spec.Shade)
+		st.Fg = knot()[min(31, max(0, int(math.Round(*spec.Shade*31))))]
 	}
 	return st
-}
-
-// rampColor is the shade's stop of the active theme's knot ramp, built once
-// per theme like the chrome styles.
-func (t themeResolver) rampColor(theme *hostapi.Theme, at float64) color.Color {
-	r, ok := t.ramps[theme]
-	if !ok {
-		r = hostapi.KnotRamp(&theme.Palette)
-		if len(t.ramps) >= 4 {
-			clear(t.ramps)
-		}
-		t.ramps[theme] = r
-	}
-	return r[min(31, max(0, int(math.Round(at*31))))]
 }
 
 //exhaustive:enforce

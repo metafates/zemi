@@ -30,25 +30,6 @@ func (h *Host) configCommands() []*Command {
 			}
 			return paths
 		}),
-	}, {
-		Name: "theme", NArgs: NArgsOptional, Desc: "pick the theme; the screen repaints in it as you pick",
-		GoFn: func(h *Host, args string, confirm bool) error {
-			if args = strings.TrimSpace(args); args != "" {
-				return h.SetConfig(config.KeyUITheme, args)
-			}
-			ui, err := h.Screen()
-			if err != nil {
-				return err
-			}
-			return h.openConfigEdit(ui, config.KeyUITheme)
-		},
-		GoComplete: func(h *Host, _, _ string) []string {
-			var names []string
-			for _, t := range ThemeList() {
-				names = append(names, t.Name)
-			}
-			return names
-		},
 	}}
 }
 
@@ -205,13 +186,6 @@ func (h *Host) SetConfig(path config.Key, val any) error {
 	if role, ok := config.ModelRole(path); ok {
 		return h.SetTargetModel(role, cmp.Or(s, defaultRole))
 	}
-	// a model target's key is no builtin constant, so exhaustive has nothing to check
-	switch path {
-	case config.KeyUITheme:
-		if err := h.checkTheme(s); err != nil {
-			return err
-		}
-	}
 	err := h.setWatched(path, val)
 	if _, bad := errors.AsType[*config.BadValueError](err); bad {
 		return usageError{err}
@@ -308,8 +282,6 @@ func configPicker(path config.Key) string {
 	switch role, ok := config.ModelRole(path); {
 	case ok:
 		return "model " + role
-	case path == config.KeyUITheme:
-		return "theme"
 	default:
 		return "config edit " + string(path)
 	}
@@ -337,22 +309,12 @@ func settingGhost(s config.Setting) string {
 
 // configChoices is what /config edit offers for path; "" is the default.
 func (h *Host) configChoices(path config.Key) []string {
-	// a model target's key is no builtin constant, so exhaustive has nothing to check
-	switch path {
-	case config.KeyUITheme:
-		var names []string
-		for _, t := range ThemeList() {
-			names = append(names, t.Name)
-		}
-		return names
-	}
 	s, _ := h.setting(path)
 	return s.Choices
 }
 
 // openConfigEdit prompts for path's value, or lists its choices, where
-// enter sets one and keeps the list open, so a theme repaints the screen,
-// the list's own box included, as its preview. Closing either rebuilds
+// enter sets one and keeps the list open. Closing either rebuilds
 // /config under it.
 func (h *Host) openConfigEdit(ui UIHooks, path config.Key) error {
 	s, err := h.setting(path)
@@ -379,9 +341,6 @@ func (h *Host) openConfigEdit(ui UIHooks, path config.Key) error {
 	}
 	items, sel := h.pickItems(path)
 	title := string(path)
-	if path == config.KeyUITheme { // /theme opens it
-		title = "Theme"
-	}
 	ui.OpenOverlay(Overlay{
 		ID: "config edit", Title: title, Origin: lua.OriginBuiltin, Items: items, Selected: sel,
 		Reload: func() []OverlayItem { items, _ := h.pickItems(path); return items },

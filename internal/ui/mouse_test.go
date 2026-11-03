@@ -432,7 +432,7 @@ func TestHoverStyle(t *testing.T) {
 			if !ok {
 				spec = hostapi.HLSpec{Underline: hostapi.UnderlineSingle}
 			}
-			if got := app.thm.hoverSpec(base, spec, app.host.ActiveTheme()); !got.Equal(&c.want) {
+			if got := app.thm.hoverSpec(base, spec); !got.Equal(&c.want) {
 				t.Fatalf("got %+v, want %+v", got, c.want)
 			}
 		})

@@ -255,7 +255,7 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 	return &App{
 		host:     host,
 		log:      log,
-		thm:      themeResolver{host: host, sgr: map[string]uv.Style{}, ramps: map[*hostapi.Theme][32]color.Color{}},
+		thm:      themeResolver{sgr: map[string]uv.Style{}},
 		caches:   map[string]*widgetCache{},
 		wake:     make(chan struct{}, 1),
 		prefixes: map[string]string{},
@@ -401,7 +401,7 @@ type hookMsg struct{ inner tea.Msg }
 // tea.Model
 
 func (a *App) Init() tea.Cmd {
-	// the background query also picks the theme's light variant
+	// the background query learns whether the terminal repaints its own bg
 	return tea.Batch(a.frameTickCmd(frameInterval), a.drainHooksCmd(), tea.RequestBackgroundColor,
 		func() tea.Msg { return tea.RequestProgramStatusSupport() })
 }
@@ -460,10 +460,9 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 	case tea.ColorProfileMsg:
 		a.colors = msg.Profile
 	case tea.BackgroundColorMsg:
-		// The answer picks the light variant and means the terminal replies
-		// to OSC 11, so its own background can be repainted to match the theme.
+		// The answer means the terminal replies to OSC 11, so its own
+		// background can be repainted to match whorl's.
 		a.termBG = msg.Color
-		a.host.SetLightTerminal(msg.Color != nil && luma(msg.Color) > 1<<15)
 		a.bump()
 	case tea.ProgramStatusSupportMsg:
 		// the terminal keeps the program-status records, so they already
@@ -1118,7 +1117,7 @@ func (a *App) compose(w, h int) string {
 	if !a.host.AgentActive() {
 		a.cancelling = false
 	}
-	clear(a.prefixes) // a theme cannot change inside one frame
+	clear(a.prefixes)
 	clear(a.fadeKeys)
 
 	a.syncChatScroll()
@@ -1861,26 +1860,26 @@ func (a *App) segStyle(hl, over string, fill hostapi.Fill, fade float64, panel b
 	if over != "" {
 		st = a.thm.hover(st, over)
 	}
-	if theme := a.thm.active(); theme != nil {
+	if pal := hostapi.Whorl; pal != nil {
 		switch fill {
 		case hostapi.FillBand:
-			st.Bg = theme.Palette.Band
+			st.Bg = pal.Band
 		case hostapi.FillWell:
-			st.Bg = theme.Palette.Well
+			st.Bg = pal.Well
 		case hostapi.FillPanel:
-			if sameColor(st.Bg, theme.Palette.Bg) {
-				st.Bg = theme.Palette.Panel
+			if sameColor(st.Bg, pal.Bg) {
+				st.Bg = pal.Panel
 			}
 		case hostapi.FillAuto, hostapi.FillCanvas:
 		}
 		// a faded segment sinks toward the surface it sits on, its fill
 		// included, before the colors are quantized
 		if fade > 0 {
-			to := theme.Palette.Bg
+			to := pal.Bg
 			if panel {
-				to = theme.Palette.Panel
+				to = pal.Panel
 			}
-			st.Fg = hostapi.Mix(cmp.Or(st.Fg, theme.Palette.Fg), to, fade)
+			st.Fg = hostapi.Mix(cmp.Or(st.Fg, pal.Fg), to, fade)
 			if st.Bg != nil {
 				st.Bg = hostapi.Mix(st.Bg, to, fade)
 			}

@@ -778,7 +778,7 @@ the binary's API version is `zemi.api.version`.
 
 ```lua
 zemi.config.get("models.compact")            -- dotted path lookup
-zemi.config.set("ui.theme", "whorl")
+zemi.config.set("session.recap", "5m")
 zemi.config.watch("models.compact", function(new, old) end)
 zemi.config.off(watch_id)                    -- drop one watch, true when it did
 zemi.env.get("EDITOR")                        -- env-read
@@ -1612,31 +1612,21 @@ UI extensibility contract:
   carries — an MCP sign-in finishing or failing, a turn that crashed —
   alert in the `ui.notify` style (osc by default) while the window is
   unfocused.
-- Themes: a theme is a palette of fixed roles (`bg`, `fg`, `accent`,
+- Palette: whorl is a fixed set of roles (`bg`, `fg`, `accent`,
   `literal`, `ok`, `warn`, `danger`, `dim`, `rule`, `panel`, `band`, `addbg`,
-  `delbg`, `well`); a spec names `bg`, `fg` and the four hues, or a
-  terminal's 16 `ansi` colors in their place, and Go derives the rest once
+  `delbg`, `well`); its spec names `bg`, `fg` and the four hues, and Go
+  derives the rest once
   (OkLab mixes: dim is fg toward bg, rule and panel bg toward fg, band the
   panel toward the accent, the diff tints bg toward ok and danger; the literal
-  the OKLCH midpoint of danger and warn, each scheme's own orange; and a
-  palette that came from `ansi` takes the hue and a little of the chroma of
-  the scheme's own bright black into dim, rule and panel, a surface taking
-  less than a line of text, so a generated theme's greys and boxes belong to
-  the terminal it came from).
-  `panel` and `band`, a spec's own included, are kept within 0.13 of bg's
+  the OKLCH midpoint of danger and warn, the scheme's own orange).
+  `panel` and `band` are kept within 0.13 of bg's
   OKLCH lightness, and every text role is then moved along OKLCH lightness,
   hue kept, to a WCAG floor on the least contrasting of bg, panel, band and
-  well (fg 7, warn 3.5, the rest 4.5), so no theme can hide
-  prompt text. The shipped ones are whorl (and whorl-light) plus ports of
-  Ghostty's catppuccin, tokyonight, gruvbox, nord, dracula, solarized,
-  rose-pine, kanagawa, one, everforest and github, most with a `-light`
-  twin, which draws on a light terminal when it is registered, its theme
-  itself included;
-  `ui.theme` names one: a name no theme answers
-  to draws whorl and is an `/errors` entry; `zemi.config.set` and `/config`
-  refuse one, and `/theme` picks one with the list open, enter on a row
-  repainting the screen in it as the preview. The shipped themes and the
-  groups are Go tables (`internal/hostapi/themes.go`). The palette's `bg` is the app's canvas, which every group without a
+  well (fg 7, warn 3.5, the rest 4.5), so nothing can hide
+  prompt text. The one palette is whorl: slate greys, a periwinkle accent and
+  an apricot literal, with red, amber and mint for state, hand-picked and
+  baked in Go; there are no other themes and no theme command. The groups
+  are a Go table (`internal/hostapi/themes.go`). The palette's `bg` is the app's canvas, which every group without a
   fill of its own sits on and which OSC 11 gives the terminal too
   (reset on every exit), while a `bg` on `Normal` recolors its text alone; every box
   (overlays, prompts, toasts, popups) and the composer sit on `panel`, a
@@ -2348,7 +2338,7 @@ view; a reset's wipe drops the row with the chat.
   `/agents`, `/jobs`, `/workflows`, `/review`, `/mcp`,
   `/keys`, `/lsp`, `/plugin`, `/note`,
   `/projects` (the projects zemi keeps state for; switch restarts zemi there)),
-  the boot's own (`/config` (§5), `/theme`, `/effort`, `/usage` (tokens and cost),
+  the boot's own (`/config` (§5), `/effort`, `/usage` (tokens and cost),
   `/prompt` (the system prompt the model gets), `/init` (write AGENTS.md for this project))
   and `/trust` (§5). A hidden `/call <row>` opens the view of a chat row that
   its own click opens, listed in /help and out of the palette's default list.
