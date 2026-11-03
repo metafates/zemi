@@ -79,6 +79,69 @@ func aScroll(app *App) *scrollState {
 	return app.scrolls[app.scrollDef]
 }
 
+// TestChatCursorEntersWhereTheReaderIs: tab takes the message at the
+// viewport's bottom row, so a view scrolled away from the tail selects
+// what is on screen, not the newest message.
+func TestChatCursorEntersWhereTheReaderIs(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 80, 14)
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome, Mod: tea.ModCtrl})
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyTab})
+	if !app.chatFocus {
+		t.Fatal("tab: the chat took no focus")
+	}
+	st := aScroll(app)
+	bottom := min(st.top+st.viewH, len(st.lines)) - 1
+	want := 0
+	for i := bottom; i >= st.top && want == 0; i-- {
+		want = rowAnchor(st.lines[i])
+	}
+	if app.chatSel != want {
+		t.Fatalf("tab: sel %d, want %d, the anchor at the view's bottom row", app.chatSel, want)
+	}
+}
+
+// TestChatCursorBandsItsOwnRows: the first message bands itself, not the
+// whole window (its rows are the only ones carrying its anchor).
+func TestChatCursorBandsItsOwnRows(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 80, 14)
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyTab})
+	for app.chatSel != 1 {
+		before := app.chatSel
+		app.Update(tea.KeyPressMsg{Code: 'k'})
+		app.Pump()
+		if app.chatSel == before {
+			t.Fatalf("k never reached the first message (stuck at %d)", before)
+		}
+	}
+	app.Frame()
+	st := aScroll(app)
+	from, to := unitSpan(st.lines, 1)
+	if from < 0 {
+		t.Fatal("the first message drew no rows")
+	}
+	banded := 0
+	for _, row := range st.band {
+		for _, s := range row {
+			if s.Fill == hostapi.FillBand {
+				banded++
+				break
+			}
+		}
+	}
+	if banded != to-from+1 {
+		t.Fatalf("the first message banded %d rows, want %d", banded, to-from+1)
+	}
+}
+
 // banded says the scroll state's band carries the FillBand tint.
 func banded(st *scrollState) bool {
 	for _, row := range st.band {

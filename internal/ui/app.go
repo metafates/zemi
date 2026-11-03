@@ -1626,10 +1626,23 @@ func (a *App) chatFocusEnter() tea.Cmd {
 	}
 	sel := 0
 	if s := a.scrolls[a.scrollDef]; s != nil && len(s.lines) > 0 {
-		sel = unitAt(s.lines, min(s.top+s.viewH, len(s.lines))-1)
+		for i := min(s.top+s.viewH, len(s.lines)) - 1; i >= max(s.top, 0) && sel == 0; i-- {
+			sel = rowAnchor(s.lines[i])
+		}
 	}
-	if n := units[len(units)-1] + 1; sel < 1 || sel > n {
-		sel = n
+	if sel > 0 {
+		// the row's anchor names a transcript row the cursor groups into a
+		// block with its run or burst: take the block the anchor falls in
+		at, ok := slices.BinarySearch(units, sel-1)
+		if !ok {
+			at--
+		}
+		if at >= 0 {
+			sel = units[at] + 1
+		}
+	}
+	if sel < 1 {
+		sel = units[len(units)-1] + 1
 	}
 	a.chatFocus, a.chatSel = true, sel
 	a.bump()
