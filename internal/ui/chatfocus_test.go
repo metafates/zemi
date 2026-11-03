@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -139,6 +141,97 @@ func TestChatCursorBandsItsOwnRows(t *testing.T) {
 	}
 	if banded != to-from+1 {
 		t.Fatalf("the first message banded %d rows, want %d", banded, to-from+1)
+	}
+}
+
+// TestChatCursorRemembersItsMessage: tab away and back re-selects the
+// message the cursor held, even after the view scrolled away from it.
+func TestChatCursorRemembersItsMessage(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 80, 14)
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame()
+	tab := tea.KeyPressMsg{Code: tea.KeyTab}
+	press(t, app, tab)
+	held := app.chatSel
+	for range 3 {
+		app.Update(tea.KeyPressMsg{Code: 'k'})
+		if app.chatSel == held {
+			t.Fatal("k did not move the cursor; the memo case would be vacuous")
+		}
+		held = app.chatSel
+	}
+	press(t, app, tab) // away
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome, Mod: tea.ModCtrl})
+	press(t, app, tab) // back
+	if app.chatSel != held {
+		t.Fatalf("tab twice: sel %d, want the held %d", app.chatSel, held)
+	}
+	st := aScroll(app)
+	if from, _ := unitRows(st.lines, app.chatSel); from < 0 {
+		t.Fatalf("the restored message %d drew no rows", app.chatSel)
+	}
+}
+
+// TestChatCursorFoldsTheRun: on the selected run's digest, enter and space
+// toggle the rail, l opens a folded one, h folds an open one back.
+func TestChatCursorFoldsTheRun(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 140, 30)
+	host.AppendMessage("user", "run it")
+	appendReasoning(host, strings.Repeat("plan it word by word ", 8)+"\n\nthen build", hostapi.TurnStat{ThoughtMS: 6000})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "make", Status: "ok", Output: "built\nok"})
+	appendReasoning(host, "done then", hostapi.TurnStat{ThoughtMS: 400})
+	appendReply(host, "done", hostapi.TurnStat{})
+	app.renderSync(t)
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyTab}) // lands on the run's digest, the unit above the reply
+	rows := func() []string { return chatRows(t, app, 138) }
+	const digest = "1 command: make  thought 6.4s"
+	if got := rows(); !slices.Contains(got, "▸ "+digest) {
+		t.Fatalf("the cursor is not on the folded run:\n%s", strings.Join(got, "\n"))
+	}
+	// foldKey runs a key and lands its widget render, as the loop does: the
+	// toggle's re-render reaches the cache the cursor reads.
+	foldKey := func(key tea.KeyPressMsg) {
+		for app.Pump() {
+		}
+		app.Update(key)
+		app.renderSync(t) // the toggle's re-render lands, as the tick's queue does
+		app.Frame()       // repaint, so the scrolls the cursor reads are current
+	}
+	open := func() bool {
+		got := rows()
+		return slices.Contains(got, "▾ "+digest) && slices.ContainsFunc(got, func(r string) bool { return strings.HasPrefix(r, "│ ✓ run make") })
+	}
+	foldKey(tea.KeyPressMsg{Code: 'l'})
+	if !open() {
+		t.Fatal("l did not open the run's rail")
+	}
+	foldKey(tea.KeyPressMsg{Code: 'l'})
+	if !open() {
+		t.Fatal("l on an open rail closed it")
+	}
+	foldKey(tea.KeyPressMsg{Code: 'h'})
+	if open() {
+		t.Fatal("h did not fold the rail back")
+	}
+	foldKey(tea.KeyPressMsg{Code: 'h'})
+	if open() {
+		t.Fatal("h on a folded run opened it")
+	}
+	foldKey(tea.KeyPressMsg{Code: ' '})
+	if !open() {
+		t.Fatal("space did not open the run's rail")
+	}
+	foldKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if open() {
+		t.Fatal("enter did not fold the rail back")
+	}
+	foldKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !open() {
+		t.Fatal("enter did not open the run's rail")
 	}
 }
 

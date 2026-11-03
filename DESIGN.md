@@ -2322,9 +2322,10 @@ view; a reset's wipe drops the row with the chat.
   rows or a burst of notices is one step, the live turn's own run none),
   bands the selected message the way a picked list row is banded and keeps
   it in view, `y` copies it, `e` opens it in the editor to copy from (what
-  is saved there is discarded), `tab`/`esc` return to the composer, and any
-  other key goes back to typing; while the cursor holds the keys, keymaps
-  wait.
+  is saved there is discarded), `enter` and `space` toggle the selected
+  run's rail, `l` opens it, `h` folds it back, and `tab`/`esc` return to
+  the composer holding the message the cursor had, so the next `tab`
+  re-selects it; any other key is ignored, and keymaps wait.
   Commands are slash commands: `/quit`, `/help`, `/model`,
   `/reset` (wipe the chat's log, every summary and the view, vacuum the
   store so the text is gone from disk, and start the log over at seq 0;

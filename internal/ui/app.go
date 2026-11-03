@@ -111,6 +111,9 @@ type App struct {
 	// paint bands, like highlight; 0 none).
 	chatFocus bool
 	chatSel   int
+	// chatSelMemo is the message the cursor held when the chat last had the
+	// keys: tab re-selects it rather than re-deriving one from the view.
+	chatSelMemo int
 	// byRow says an overlay is opening from a key on another list's row, so
 	// it reopens where that list left it instead of following the chat
 	byRow bool
@@ -1618,33 +1621,49 @@ func headerAt(lines [][]hostapi.Segment, i int) bool {
 }
 
 // chatFocusEnter gives the chat the keys (tab on a bare composer): the
-// cursor takes the message at the viewport's bottom row, where the reader is.
+// cursor takes the message it held last time, or the one at the viewport's
+// bottom row a screen-tenth up when it never had the keys.
 func (a *App) chatFocusEnter() tea.Cmd {
 	units := a.chatUnits()
 	if len(units) == 0 {
 		return nil
 	}
-	sel := 0
-	if s := a.scrolls[a.scrollDef]; s != nil && len(s.lines) > 0 {
-		for i := min(s.top+s.viewH, len(s.lines)) - 1; i >= max(s.top, 0) && sel == 0; i-- {
-			sel = rowAnchor(s.lines[i])
-		}
-	}
-	if sel > 0 {
-		// the row's anchor names a transcript row the cursor groups into a
-		// block with its run or burst: take the block the anchor falls in
-		at, ok := slices.BinarySearch(units, sel-1)
-		if !ok {
-			at--
-		}
-		if at >= 0 {
-			sel = units[at] + 1
+	sel, restored := 0, false
+	if a.chatSelMemo > 0 {
+		if at, ok := slices.BinarySearch(units, a.chatSelMemo-1); ok {
+			sel, restored = a.chatSelMemo, true
+		} else if at > 0 { // the memo's row merged into an earlier unit (a /reset)
+			sel, restored = units[at-1]+1, true
 		}
 	}
 	if sel < 1 {
-		sel = units[len(units)-1] + 1
+		if s := a.scrolls[a.scrollDef]; s != nil && len(s.lines) > 0 {
+			// start a screen-tenth above the bottom so j still walks down
+			// and the band does not sit against the composer
+			bottom := min(s.top+s.viewH, len(s.lines)) - 1 - s.viewH/10
+			for i := bottom; i >= max(s.top, 0) && sel == 0; i-- {
+				sel = rowAnchor(s.lines[i])
+			}
+		}
+		if sel > 0 {
+			// the row's anchor names a transcript row the cursor groups into a
+			// block with its run or burst: take the block the anchor falls in
+			at, ok := slices.BinarySearch(units, sel-1)
+			if !ok {
+				at--
+			}
+			if at >= 0 {
+				sel = units[at] + 1
+			}
+		}
+		if sel < 1 {
+			sel = units[len(units)-1] + 1
+		}
 	}
 	a.chatFocus, a.chatSel = true, sel
+	if restored {
+		a.followChatSel() // the memo may sit off-screen after scrolling away
+	}
 	a.bump()
 	return nil
 }
@@ -1711,7 +1730,10 @@ func (a *App) chatCursorKey(key string) (tea.Cmd, bool) {
 		return a.copied(chatCopyText(a.host.ScreenState(a.width, a.height, a.uiState()).Transcript[a.chatSel-1])), true
 	case "e":
 		return a.editInEditor(chatCopyText(a.host.ScreenState(a.width, a.height, a.uiState()).Transcript[a.chatSel-1]), "the message", false), true
+	case "enter", "space", "l", "h":
+		a.chatFoldKey(key)
 	case "tab", "esc":
+		a.chatSelMemo = a.chatSel
 		a.chatFocus = false
 	case "shift+up":
 		a.applyScroll(hostapi.ScrollLineUp, regionNone)
@@ -1729,6 +1751,38 @@ func (a *App) chatCursorKey(key string) (tea.Cmd, bool) {
 	}
 	a.bump()
 	return nil, true
+}
+
+// chatFoldKey works the fold the selected message carries, what its click
+// does: enter and space toggle the run's rail, l opens it, h folds it back.
+// A message that folds nothing takes none of them.
+func (a *App) chatFoldKey(key string) {
+	w := a.widgetByID("chat")
+	if w == nil || w.onClick == nil {
+		return
+	}
+	st := a.scrolls[a.scrollDef]
+	if st == nil {
+		return
+	}
+	from, to := unitSpan(st.lines, a.chatSel)
+	if from < 0 {
+		return
+	}
+	for _, row := range st.lines[from : to+1] {
+		for _, seg := range row {
+			if !strings.HasPrefix(seg.Click, "turn:") {
+				continue
+			}
+			// the digest's glyph says the fold's state: ▸ folded, ▾ open
+			open := strings.HasPrefix(seg.Text, "▾")
+			if key == "h" && !open || key == "l" && open {
+				return
+			}
+			w.onClick(a, map[string]any{"id": seg.Click})
+			return
+		}
+	}
 }
 
 // chatCopyText is what y copies: the message's text, a tool row's output

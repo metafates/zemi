@@ -43,7 +43,8 @@ the highest first (`fitClusters`), so what lasts sits outermost and never moves.
   the composer - scrolling is not on them (DESIGN §8, Default keymaps) - and chrome, an open
   palette and completion popups keep their keys before keymaps are consulted; the chat cursor
   `tab` hands the keys to, between popup and keymap (`App.chatCursorKey`), and any key it does
-  not take returns them to the composer. A `list = true`
+  not take is ignored while the chat holds focus (`App.chatFoldKey` works the selected run's
+  rail through the widget's own click path). A `list = true`
   binding swaps a key for a move there first (`Keymaps.ListAlias`, in Go), but for a move a typed
   line edits with while one types (`lineKey`, `App.typing`). Keys go through
   `Keymaps.Lookup(key)` once no overlay or popup claims them; unbound keys drop.
