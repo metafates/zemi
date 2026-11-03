@@ -904,3 +904,32 @@ func TestChatlogConcurrencyUnderTurns(t *testing.T) {
 		t.Fatalf("view holds %d lines, want 80", len(lines))
 	}
 }
+
+// TestTurnStatSkipsPromptWait: time the user spent at a prompt (ask, plan,
+// question) is not billed to the model in the reply's stat.
+func TestTurnStatSkipsPromptWait(t *testing.T) {
+	clock := &fakeClock{now: testEpoch}
+	h := newTestHostUI(t, clock)
+	h.SetUIHooks(&fakeUI{})
+	if _, err := h.chat.User("go", ""); err != nil {
+		t.Fatal(err)
+	}
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: "go"})
+	h.agents.mu.Lock()
+	h.agents.turnStart = testEpoch
+	h.agents.promptWait = 6 * time.Second
+	h.agents.mu.Unlock()
+	h.streamHooks().TextDelta("The answer.")
+	clock.set(testEpoch.Add(7500 * time.Millisecond))
+	(&streamAdapter{h: h}).TurnDone(nil, fantasy.Usage{OutputTokens: 100})
+	rows, err := h.DB.LogTail(chatWindowRows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.SetTranscript(logRows(rows))
+	tr := h.Session().Transcript
+	stat := tr[len(tr)-1].Stat
+	if stat == nil || stat.ElapsedMS != 1500 {
+		t.Fatalf("the reply's stat billed the prompt wait: %+v", stat)
+	}
+}

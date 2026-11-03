@@ -87,13 +87,28 @@ func (h *Host) ask(req tools.Request) (bool, string) {
 	if req.Script != "" {
 		pr.Script = "lua script"
 	}
+	done := h.holdPrompt()
 	allowed, by := ui.AskPermission(pr)
+	done()
 	return resolved(allowed, by)
 }
 
 // AsksWaiting is how many asks are at the prompt stage, the one shown
 // included; some may settle without a prompt.
 func (h *Host) AsksWaiting() int { return int(h.asksWaiting.Load()) }
+
+// holdPrompt starts timing a prompt wait; the returned func banks the time
+// it took: a turn blocked on the user at an ask, plan or question bills the
+// model for it no longer.
+func (h *Host) holdPrompt() func() {
+	start := h.now()
+	return func() {
+		ag := h.agents
+		ag.mu.Lock()
+		ag.promptWait += h.now().Sub(start)
+		ag.mu.Unlock()
+	}
+}
 
 // DenyWaitingAsks denies every ask waiting for the prompt now, as the user.
 func (h *Host) DenyWaitingAsks() { h.askCut.Add(1) }

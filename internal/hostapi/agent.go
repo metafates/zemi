@@ -172,6 +172,9 @@ type agentHost struct {
 	thought      time.Duration
 	turnThought  time.Duration
 	stepThinking time.Duration
+	// promptWait sums the time turns spent blocked on the user at a prompt
+	// (ask, plan, question): the reply's stat bills the model, not the reader
+	promptWait time.Duration
 
 	// retryAt is when the next provider retry fires, zero again once the
 	// retried call streams; retries counts them this turn (the working row
@@ -3055,7 +3058,11 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 		Instructions: h.mainInstructions,
 	}
 	if ui := h.hooks(); ui != nil {
-		p.Question = ui.AskQuestion
+		p.Question = func(qs []tools.Question) ([]tools.Answer, bool) {
+			done := h.holdPrompt()
+			defer done()
+			return ui.AskQuestion(qs)
+		}
 		p.ApprovePlan = h.approvePlan
 	}
 	if h.DB != nil {

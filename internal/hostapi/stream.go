@@ -260,9 +260,9 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	// reads it the way the rebuilt window reads the log's row
 	stat := TurnStat{In: usage.InputTokens, Out: usage.OutputTokens, Ended: now.Unix(), Model: model, ThoughtMS: (ag.turnThought + ag.thought).Milliseconds()}
 	if !ag.turnStart.IsZero() {
-		stat.ElapsedMS = now.Sub(ag.turnStart).Milliseconds()
+		stat.ElapsedMS = max(0, now.Sub(ag.turnStart)-ag.promptWait).Milliseconds()
 	}
-	ag.turnStart = time.Time{}
+	ag.turnStart, ag.promptWait = time.Time{}, 0
 	// the retry state is the turn's too: a turn that ended during a backoff
 	// (esc, or the last retry failing) reports no retry while idle
 	ag.retries, ag.retryAt, ag.retryWhy = 0, time.Time{}, ""

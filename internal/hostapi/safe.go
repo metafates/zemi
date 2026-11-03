@@ -61,6 +61,7 @@ func (h *Host) clearCrashedTurn(r any) {
 	ag.checkingGoal = false
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
 	ag.turnStart, ag.retryAt = time.Time{}, time.Time{}
+	ag.promptWait = 0
 	h.release()
 	ag.mu.Unlock()
 	// the tail must terminate: a panic left unlogged reads as a turn the

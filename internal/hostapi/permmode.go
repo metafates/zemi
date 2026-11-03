@@ -99,7 +99,9 @@ func (h *Host) approvePlan(plan, name string) (tools.PlanVerdict, bool) {
 	}
 	var v tools.PlanVerdict
 	h.appendAfterLive(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: sanitize.String(plan)})
+	done := h.holdPrompt()
 	verdict, ok := ui.AskPlan(sanitize.String(plan))
+	done()
 	if !ok {
 		return v, false
 	}
