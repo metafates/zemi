@@ -93,8 +93,8 @@ func statusGoal(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	if st.Goal == nil {
 		return nil, false
 	}
-	// the condition is the pill's value; the command is the way to change it
-	return [][]hostapi.Segment{pointAt("⚑ "+st.Goal.Condition, "/goal", "goal")}, false
+	// the pill is just a marker; /goal is the way to see or change it
+	return [][]hostapi.Segment{pointAt("⚑ goal", "/goal", "goal")}, false
 }
 
 // statusLoop is the session's loop and when its next run fires, five cells
