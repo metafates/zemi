@@ -120,13 +120,13 @@ func TestThoughtDigestHoldsWhileReplying(t *testing.T) {
 		return chatRows(t, app, 78)
 	}
 	digest := func(rows []string) bool {
-		return slices.ContainsFunc(rows, func(r string) bool { return strings.HasPrefix(r, "thought") })
+		return slices.ContainsFunc(rows, func(r string) bool { return strings.HasPrefix(r, "▸ thought") })
 	}
 	// a thought of nothing says nothing
 	if blank := draw(hostapi.StreamSnapshot{Active: true, Text: "The reply", Reasoning: "   ", Thought: 3 * time.Second}); digest(blank) {
 		t.Fatalf("a blank thought drew a digest row:\n%s", strings.Join(blank, "\n"))
 	}
-	const want = "thought 3.0s"
+	const want = "▸ thought 3.0s"
 	live := draw(hostapi.StreamSnapshot{Active: true, Text: "The reply", Reasoning: "pondering the ask.", Thought: 3 * time.Second})
 	if !slices.Contains(live, want) {
 		t.Fatalf("the thought's digest row is not drawn while the reply streams:\n%s", strings.Join(live, "\n"))

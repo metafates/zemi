@@ -1250,7 +1250,7 @@ func (b *chatBuilder) foldRun(list []entry, first, last int, opened bool) {
 	if one && !opened {
 		click = "call:" + strconv.Itoa(first+1)
 	}
-	b.digestRow(text, click, pin)
+	b.digestRow(text, click, pin, opened)
 	if !opened {
 		return
 	}
@@ -1263,10 +1263,16 @@ func (b *chatBuilder) foldRun(list []entry, first, last int, opened bool) {
 	}
 }
 
-// digestRow draws the digest row a run folds to, pinned as head says.
-func (b *chatBuilder) digestRow(text, click string, pin hostapi.Pin) {
+// digestRow draws the digest row a run folds to, pinned as head says. The
+// glyph says what the click does: ▸ opens the rail, ▾ folds it back.
+func (b *chatBuilder) digestRow(text, click string, pin hostapi.Pin, open bool) {
+	glyph := "▸ "
+	if open {
+		glyph = "▾ "
+	}
 	b.push([]hostapi.Segment{
-		{Text: clipText(text, max(b.width-railEdge, 8)), HL: "Dim", Click: click, Pin: pin},
+		{Text: glyph, HL: "Dim", NoCopy: true, NoHover: true, Click: click, Pin: pin},
+		{Text: clipText(text, max(b.width-railEdge-2, 6)), HL: "Dim", Click: click, Pin: pin},
 	})
 }
 
@@ -1683,7 +1689,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		// draws nothing: the digest names the calls, not the thought.
 		case tailFirst == 0 && st.View == nil && (ag.Thought >= 50*time.Millisecond || !settling(calls)) && strings.TrimSpace(ag.Reasoning) != "":
 			b.gap(blockActivity)
-			b.digestRow(thoughtText(ag.Thought), "", hostapi.PinNone)
+			b.digestRow(thoughtText(ag.Thought), "", hostapi.PinNone, false)
 		case ag.Text == "" && len(calls) == 0 && ag.Active && st.View == nil && ag.Retry == nil &&
 			!st.Cancelling && st.Waiting == "" && ag.Elapsed >= 300*time.Millisecond:
 			// the wait before any output: the thinking row opens with the turn,

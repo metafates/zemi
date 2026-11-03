@@ -838,7 +838,7 @@ func TestChatStickyDigest(t *testing.T) {
 	for i := range 12 {
 		appendReply(host, fmt.Sprintf("answer %d", i), hostapi.TurnStat{})
 	}
-	const prompt, digest = "▌ look around", "12 commands"
+	const prompt, digest = "▌ look around", "▾ 12 commands"
 	var st *scrollState
 	// pins scrolls the chat so the first row holding at tops the view, and
 	// reads the pins drawn over it, each on the panel running on to the bar

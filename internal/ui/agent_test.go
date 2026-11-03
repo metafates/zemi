@@ -341,7 +341,7 @@ func TestAgentViewFolds(t *testing.T) {
 	rows := func() []string { return chatRows(t, app, 98) }
 	rows() // the first render forgets what was opened before it
 	closed := rows()
-	if !slices.Contains(closed, "1 file: main.go") || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
+	if !slices.Contains(closed, "▸ 1 file: main.go") || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
 		t.Fatalf("the viewed run does not fold:\n%s", strings.Join(closed, "\n"))
 	}
 	clickChat(t, app, "turn:1")
@@ -568,7 +568,8 @@ func TestChatFoldOpensItsRun(t *testing.T) {
 		}
 		return out
 	}
-	const digest = "1 command: make  thought 6.4s"
+	const digest = "▸ 1 command: make  thought 6.4s"
+	const openDigest = "▾ 1 command: make  thought 6.4s"
 	closed := rows()
 	if !slices.Contains(closed, digest) || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
 		t.Fatalf("the settled turn does not fold into its digest:\n%s", strings.Join(closed, "\n"))
@@ -576,7 +577,7 @@ func TestChatFoldOpensItsRun(t *testing.T) {
 	// the digest stays as the run's header over a rail whose rows are framed
 	// once each, running or done
 	open := click("turn:2")
-	at := slices.Index(open, digest)
+	at := slices.Index(open, openDigest)
 	rail := []string{"│", "│ ✻ thought 6.0s", "│", "│ ✓ run make", "│", "│ ✻ thought 0.4s", "│"}
 	if at < 0 || !slices.Equal(open[at+1:at+1+len(rail)], rail) {
 		t.Fatalf("the opened run:\n%s", strings.Join(open, "\n"))
@@ -602,7 +603,7 @@ func TestBgTurnFolds(t *testing.T) {
 	appendReply(host, "the review is running", hostapi.TurnStat{})
 	rows := chatRows(t, app, 138)
 	// the fold row is the digest alone: the count, then the run's about
-	fold := slices.IndexFunc(rows, func(r string) bool { return strings.HasPrefix(r, "1 agent run") })
+	fold := slices.IndexFunc(rows, func(r string) bool { return strings.HasPrefix(r, "▸ 1 agent run") })
 	if fold < 0 || !strings.Contains(rows[fold], "Review rail-fold branch") {
 		t.Fatalf("the background turn does not fold:\n%s", strings.Join(rows, "\n"))
 	}
@@ -617,7 +618,7 @@ func TestDigestSaysWhatRan(t *testing.T) {
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "go vet ./...", Label: "vet the tree", Status: "ok"})
 	appendReply(host, "clean", hostapi.TurnStat{})
 	rows := chatRows(t, app, 138)
-	if got := slices.IndexFunc(rows, func(r string) bool { return strings.HasPrefix(r, "1 command") }); got < 0 ||
+	if got := slices.IndexFunc(rows, func(r string) bool { return strings.HasPrefix(r, "▸ 1 command") }); got < 0 ||
 		!strings.Contains(rows[got], "vet the tree") {
 		t.Fatalf("the digest row = %v", rows)
 	}
@@ -635,14 +636,15 @@ func TestLoneThoughtDigestOpensItsText(t *testing.T) {
 		clickChat(t, app, id)
 		return rows()
 	}
-	const digest = "thought 4.4s"
+	const digest = "▸ thought 4.4s"
+	const openDigest = "▾ thought 4.4s"
 	closed := rows()
 	if !slices.Contains(closed, digest) || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
 		t.Fatalf("the lone thought does not fold into its digest:\n%s", strings.Join(closed, "\n"))
 	}
 	open := click("turn:2")
 	rail := []string{"│", "│   hmm, the user asked to plan", "│   then build", "│"}
-	at := slices.Index(open, digest)
+	at := slices.Index(open, openDigest)
 	if at < 0 || !slices.Equal(open[at+1:at+1+len(rail)], rail) {
 		t.Fatalf("the opened lone thought:\n%s", strings.Join(open, "\n"))
 	}
@@ -661,7 +663,7 @@ func TestShortThoughtFolds(t *testing.T) {
 	appendReasoning(host, "both personas are still running", hostapi.TurnStat{})
 	appendReply(host, "holding for the two personas", hostapi.TurnStat{})
 	rows := chatRows(t, app, 138)
-	if !slices.Contains(rows, "thought") || slices.ContainsFunc(rows, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
+	if !slices.Contains(rows, "▸ thought") || slices.ContainsFunc(rows, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
 		t.Fatalf("the short thought does not fold into its digest:\n%s", strings.Join(rows, "\n"))
 	}
 }
@@ -695,7 +697,7 @@ func TestTurnStats(t *testing.T) {
 	host.SeedStream(hostapi.StreamSnapshot{})
 	app.AgentStream()
 	ended := rows()
-	if !slices.Contains(ended, "2 edits") {
+	if !slices.Contains(ended, "▸ 2 edits") {
 		t.Fatalf("the run of edits does not fold into its digest:\n%s", strings.Join(ended, "\n"))
 	}
 	open := click("turn:2")
@@ -2028,7 +2030,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 	}
 	// the reply closes that run as it streams, before its row settles
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Text: "now the next one"})
-	closed := []string{"▌ look around", "2 files, 1 command: list the data, 1 edit: a.go thought 9.6s", "now the next one"}
+	closed := []string{"▌ look around", "▸ 2 files, 1 command: list the data, 1 edit: a.go thought 9.6s", "now the next one"}
 	if got := rows(); !slices.Equal(got, closed) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}
@@ -2043,7 +2045,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}
 	host.SeedStream(hostapi.StreamSnapshot{})
-	if got, want := rows(), append(closed[:3:3], "1 file: c.go"); !slices.Equal(got, want) {
+	if got, want := rows(), append(closed[:3:3], "▸ 1 file: c.go"); !slices.Equal(got, want) {
 		t.Fatalf("ended turn:\n%s", strings.Join(got, "\n"))
 	}
 }
@@ -2492,7 +2494,7 @@ func TestCallRowClickIDs(t *testing.T) {
 		return click
 	}
 	for text, want := range map[string]string{
-		"1 file: b.go":            "turn:2",
+		"▸ 1 file: b.go":          "turn:2",
 		"│ ✻ thought 6.0s":        "call:6",
 		"│ ✓ edit /w/a.go +1 -1":  "call:-1",
 		"│ ✓ read 2 files":        "step:-2",
@@ -2665,22 +2667,22 @@ func TestDigestCountsEveryFamily(t *testing.T) {
 		want  string
 		rows  []hostapi.ChatMessage // when set, these ride instead of the tools
 	}{
-		{name: "mcp", tools: []string{"mcp_gitlab_get_commit", "mcp_gitlab_list_issues"}, want: "2 gitlab tools"},
-		{name: "agent", tools: []string{"agent"}, want: "1 agent run: x"},
-		{name: "workflow", tools: []string{"workflow"}, want: "1 workflow: x"},
-		{name: "lua", tools: []string{"lua"}, want: "1 script: x"},
-		{name: "tool_search", tools: []string{"tool_search"}, want: "1 tool: x"},
-		{name: "mixed names the unlabelled command", want: "1 file: a.go, 1 command: make", rows: []hostapi.ChatMessage{
+		{name: "mcp", tools: []string{"mcp_gitlab_get_commit", "mcp_gitlab_list_issues"}, want: "▸ 2 gitlab tools"},
+		{name: "agent", tools: []string{"agent"}, want: "▸ 1 agent run: x"},
+		{name: "workflow", tools: []string{"workflow"}, want: "▸ 1 workflow: x"},
+		{name: "lua", tools: []string{"lua"}, want: "▸ 1 script: x"},
+		{name: "tool_search", tools: []string{"tool_search"}, want: "▸ 1 tool: x"},
+		{name: "mixed names the unlabelled command", want: "▸ 1 file: a.go, 1 command: make", rows: []hostapi.ChatMessage{
 			{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"},
 			{Role: "assistant", Kind: "tool", Tool: "shell", Text: "make", Status: "ok"},
 		}},
-		{name: "a lone failed call names its target", want: "read failed: gone.txt", rows: []hostapi.ChatMessage{
+		{name: "a lone failed call names its target", want: "▸ read failed: gone.txt", rows: []hostapi.ChatMessage{
 			{Role: "assistant", Kind: "tool", Tool: "read", Text: "gone.txt", Status: "err"},
 		}},
-		{name: "a failed call reads its refusal", want: "update failed: todo 1: status must be pending, in_progress or done", rows: []hostapi.ChatMessage{
+		{name: "a failed call reads its refusal", want: "▸ update failed: todo 1: status must be pending, in_progress or done", rows: []hostapi.ChatMessage{
 			{Role: "assistant", Kind: "tool", Tool: "todos", Text: "1 todos, 0 done", Output: "todo 1: status must be pending, in_progress or done", Status: "err"},
 		}},
-		{name: "a denied call stays in the digest", want: "write denied by you", rows: []hostapi.ChatMessage{
+		{name: "a denied call stays in the digest", want: "▸ write denied by you", rows: []hostapi.ChatMessage{
 			{Role: "assistant", Kind: "tool", Tool: "write", Text: "b.go", Output: "permission denied (user): fs.write b.go: untrusted", Status: "stopped"},
 		}},
 	} {
