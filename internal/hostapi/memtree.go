@@ -242,6 +242,7 @@ type memTree struct {
 	burst      chan struct{}   // closed when the burst's first response starts
 	force      chan compactReq // the overflow guard's one batch, acked when it ran
 	ready      atomic.Bool     // the boot gate: no dispatch before the config step ran
+	released   chan struct{}   // closed by release: the boot's own store reads are done
 
 	// owned by the worker goroutine
 	msgs       int64          // messages in the log: seqs 0..msgs-1, dense
@@ -290,6 +291,7 @@ func newMemTree(ctx context.Context, h *Host) *memTree {
 		force:   make(chan compactReq, 1),
 		results: make(chan buildResult),
 		built:   map[nodeID]int{},
+		released: make(chan struct{}),
 	}
 	b.callCtx, b.callCancel = context.WithCancel(ctx)
 	h.GoSafe("memtree", b.run)
@@ -417,6 +419,7 @@ func (b *memTree) resume() {
 // the builds it held dispatch now. Idempotent, and a reload replays it.
 func (b *memTree) release() {
 	if b.ready.CompareAndSwap(false, true) {
+		close(b.released)
 		b.Wake()
 	}
 }
@@ -431,6 +434,14 @@ func (b *memTree) Close() {
 
 func (b *memTree) run() {
 	defer close(b.done)
+	// The boot rebuild reads and writes the store for a while: hold it
+	// behind the boot's own reads, which release marks done, so a big
+	// log's first frame does not queue behind the builder.
+	select {
+	case <-b.released:
+	case <-b.ctx.Done():
+		return
+	}
 	for b.ctx.Err() == nil {
 		if err := b.rebuild(); err == nil {
 			break

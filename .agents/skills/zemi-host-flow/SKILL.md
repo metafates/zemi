@@ -242,7 +242,8 @@ applied one. A store made before goose only gains its version table: the baselin
 - **The builder** (`memtree.go`): one worker per store owns the tree state. Dispatch waits on
   a boot gate (`memTree.release` through the builder-gate boot step, right after config): a
   resumed window's first builds would otherwise meet no provider and fail "no model yet" per
-  node. Leaves are
+  node, and the boot's own rebuild reads and writes the store behind that gate too, so a big
+  log's boot reads do not queue behind the builder. Leaves are
   message lines (a message of at most 512 bytes its own node verbatim; the tool, echo and
   thought leaves template-built in the append transaction), merges join siblings, and both go out as
   calls on `models.compact` carrying the compaction view as context and the 512-dash ruler.

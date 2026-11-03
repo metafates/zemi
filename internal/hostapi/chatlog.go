@@ -63,7 +63,8 @@ func newChatLog(ctx context.Context, h *Host) *chatLog {
 }
 
 // ReleaseBuilder opens the builder's boot gate: the config step ran, so its
-// compaction calls can resolve models. A host without a store has no builder.
+// compaction calls can resolve models and its boot rebuild may take the
+// store. A host without a store has no builder.
 func (h *Host) ReleaseBuilder() {
 	if h.chat != nil {
 		h.chat.tree.release()
