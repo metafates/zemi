@@ -644,10 +644,13 @@ type chatFolds struct {
 	// settled is the transcript's rows as they were built, and the state they
 	// were built from. fillUnit is the first unit the build still owes: 0
 	// once the window is whole, len(units) before the first pass drew.
+	// built is the rows per unit under that state, so the fill adds to it
+	// instead of rebuilding what the head pass already drew.
 	settled     [][]hostapi.Segment
 	settledKey  settledKey
 	settledPrev blockKind
 	fillUnit    int
+	built       map[int][][]hostapi.Segment
 	ver         int // the folds' version: any change draws the rows again
 }
 
@@ -1696,18 +1699,18 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		fresh := key != f.settledKey
 		if fresh {
 			f.fillUnit = len(units) // a new state rebuilds from the tail
-			f.settled = nil
+			f.built = map[int][][]hostapi.Segment{}
 		}
 		// The pass builds the tail-most units the window still owes: on a
 		// first build down to the view plus slack, later ones 30 ms at a time.
 		// fillUnit is the first unit still owed; 0 once the window is whole.
 		newX, covered, t0 := f.fillUnit, 0, time.Now()
-		built := map[int][][]hostapi.Segment{}
 		for newX > 0 {
 			k := newX - 1
-			lines := unitLines(k)
-			built[k] = lines
-			covered += len(lines)
+			if _, ok := f.built[k]; !ok {
+				f.built[k] = unitLines(k)
+				covered += len(f.built[k])
+			}
 			newX = k
 			if covered >= b.st.Height+fillSlack && (fresh || time.Since(t0) >= fillBudget) {
 				break
@@ -1717,7 +1720,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		// the "… N earlier" row names) and the prompt the view pins, built out
 		// of order when the fill has not reached it; the middle waits.
 		if fresh {
-			headEnd, island := 0, -1
+			headEnd := 0
 			prompts := 0
 			for headEnd < len(units) {
 				if e := tr[units[headEnd].first]; e.role == fantasy.MessageRoleUser && e.kind == hostapi.RowMessage {
@@ -1731,41 +1734,35 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 			for k := range slices.Backward(units) {
 				if e := tr[units[k].first]; e.role == fantasy.MessageRoleUser && e.kind == hostapi.RowMessage {
 					if k >= headEnd && k < newX {
-						island = k
+						f.built[k] = unitLines(k)
 					}
 					break
 				}
 			}
-			var lines [][]hostapi.Segment
-			// the transcript's first row stands one row off the window's top edge, and
-			// the window is the log's tail: name what the head cut left out
-			if key.older > 0 {
-				lines = append(lines, []hostapi.Segment{{
-					Text: "… " + strconv.Itoa(key.older) + " earlier " + hostapi.Plural(key.older, "message", "messages"),
-					HL:   "Dim", NoCopy: true, NoHover: true,
-				}})
-			}
-			if len(tr) > 0 {
-				lines = append(lines, []hostapi.Segment{{Text: ""}})
-			}
-			for k := range units {
-				switch {
-				case k < headEnd, k == island, k >= newX:
-					if l, ok := built[k]; ok {
-						lines = append(lines, l...)
-					} else {
-						lines = append(lines, unitLines(k)...)
-					}
+			for k := range headEnd {
+				if _, ok := f.built[k]; !ok {
+					f.built[k] = unitLines(k)
 				}
 			}
-			f.settled = lines
-		} else {
-			var head [][]hostapi.Segment
-			for k := newX; k < f.fillUnit; k++ {
-				head = append(head, built[k]...)
-			}
-			f.settled = slices.Concat(head, f.settled)
 		}
+		var lines [][]hostapi.Segment
+		// the transcript's first row stands one row off the window's top edge, and
+		// the window is the log's tail: name what the head cut left out
+		if key.older > 0 {
+			lines = append(lines, []hostapi.Segment{{
+				Text: "… " + strconv.Itoa(key.older) + " earlier " + hostapi.Plural(key.older, "message", "messages"),
+				HL:   "Dim", NoCopy: true, NoHover: true,
+			}})
+		}
+		if len(tr) > 0 {
+			lines = append(lines, []hostapi.Segment{{Text: ""}})
+		}
+		for k := range units {
+			if l, ok := f.built[k]; ok {
+				lines = append(lines, l...)
+			}
+		}
+		f.settled = lines
 		f.fillUnit = newX
 		f.settledPrev, f.settledKey = blockNone, key
 		if len(units) > 0 {
