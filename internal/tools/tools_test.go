@@ -700,8 +700,9 @@ func TestEditSafety(t *testing.T) {
 // TestScratchpad: the pad is outside every project rule, and its writes
 // gate like any other write - the ask-everything gate asks, one with no
 // asker runs - except a read-only agent, whose pad is the one place it may
-// write. A path a shell would expand is refused naming the real one, and a
-// command keeps the caller's environ.
+// write. A file-tool path expands $VARS ($ZEMI_SCRATCH names the pad); one
+// whose variable does not resolve is refused naming it, and
+// a command keeps the caller's environ.
 func TestScratchpad(t *testing.T) {
 	pad, proj := perm.RealPath(t.TempDir()), perm.RealPath(t.TempDir())
 	free := perm.RealPath(t.TempDir())
@@ -718,7 +719,9 @@ func TestScratchpad(t *testing.T) {
 		{"write asks", string(ToolWrite), `{"path":"PAD/n.md","content":"x"}`, nil, "permission denied (overlay): fs.write", true},
 		{"write in a temp dir asks", string(ToolWrite), `{"path":"FREE/notes.txt","content":"x"}`, nil, "permission denied (overlay): fs.write", true},
 		{"read", string(ToolRead), `{"path":"PAD/stale.txt","limit":0}`, nil, "1\ta", false},
-		{"$TMPDIR", string(ToolWrite), `{"path":"$TMPDIR/n.md","content":"x"}`, nil, `directory called "$TMPDIR" in the project. Write the absolute path: the scratchpad is PAD.`, false},
+		{"$ZEMI_SCRATCH write asks", string(ToolWrite), `{"path":"$ZEMI_SCRATCH/n.md","content":"x"}`, nil, "permission denied (overlay): fs.write", true},
+		{"$ZEMI_SCRATCH read", string(ToolRead), `{"path":"$ZEMI_SCRATCH/stale.txt","limit":0}`, nil, "1\ta", false},
+		{"$UNKNOWN", string(ToolWrite), `{"path":"$NOPE/n.md","content":"x"}`, nil, `directory called "$NOPE" in the project`, false},
 		{"~", string(ToolRead), `{"path":"~/n.md","limit":0}`, nil, "home is", false},
 		{"%TEMP%", string(ToolWrite), `{"path":"%TEMP%\\n.md","content":"x"}`, nil, "not expanded", false},
 	} {

@@ -427,8 +427,9 @@ func TestPromptBudget(t *testing.T) {
 	// NOTE: chars, not tokens (about 4.3 per o200k token): the owner's limit
 	// is 10k tokens. The ceiling is today's size rounded up to the next 500,
 	// so any real growth is a decision; raise it only with a reason. The
-	// last raise added the chat view section (the log is the memory).
-	const ceiling = 27500
+	// last raise added the chat view section (the log is the memory); the
+	// one before it named $VAR expansion in the file tools' path fields.
+	const ceiling = 28000
 	if n > ceiling {
 		t.Errorf("default prompt is %d chars, over %d: %v", n, ceiling, sizes)
 	}

@@ -403,7 +403,7 @@ const (
 
 // readArgs is the read tool's input and its schema source.
 type readArgs struct {
-	Path   string `json:"path" desc:"relative to the working directory, or absolute"`
+	Path   string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
 	Offset int    `json:"offset,omitempty" desc:"1-based line to start at"`
 	Limit  int    `json:"limit,omitempty" desc:"how many lines to read; omit for the whole file, still at most 2000 lines or 50000 bytes"`
 }
@@ -743,7 +743,7 @@ func init() { callOrder.cond = sync.NewCond(&callOrder.mu) }
 
 // writeArgs is the write tool's input and its schema source.
 type writeArgs struct {
-	Path    string `json:"path"`
+	Path    string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
 	Content string `json:"content"`
 }
 
@@ -822,7 +822,7 @@ func (p *Pipeline) ScriptWrite(path perm.Path, data []byte, mode os.FileMode) er
 
 // editArgs is the edit tool's input and its schema source.
 type editArgs struct {
-	Path      string `json:"path"`
+	Path      string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
 	OldString string `json:"old_string"`
 	NewString string `json:"new_string"`
 }

@@ -448,8 +448,14 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 	}
 	start, run := time.Now(), *pipe
 	defer func() { res = t.post(ctx, &run, input, res, time.Since(start)) }()
-	if t.gated && unexpanded.MatchString(str(input["path"])) {
-		return fantasy.NewTextErrorResponse(pipe.unexpandedText(str(input["path"]))), nil
+	if t.gated {
+		if expanded := pipe.expandEnv(str(input["path"])); expanded != str(input["path"]) {
+			input = maps.Clone(input)
+			input["path"] = expanded
+		}
+		if unexpanded.MatchString(str(input["path"])) {
+			return fantasy.NewTextErrorResponse(pipe.unexpandedText(str(input["path"]))), nil
+		}
 	}
 	if fi, err := os.Lstat(str(input["path"])); t.edits && err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		// a write through the link would change a file the row does not name
@@ -507,24 +513,42 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 	return t.run(ctx, &run, input)
 }
 
-// unexpanded is a path a shell would expand ($TMPDIR/x, ~/x, %TEMP%\x) and
-// the file tools would take as a directory of that name in the project.
+// unexpanded is a path whose shell variable did not resolve ($NOPE/x), and
+// one the file tools never expand (~/x, %TEMP%\x): it would name a directory
+// of that name in the project.
 var unexpanded = regexp.MustCompile(`^(\$|~|%\w+%)`)
 
-// unexpandedText refuses such a path and names the real ones: nothing is
-// expanded, so a guess would land where it did not mean.
+// expandEnv expands $VAR and ${VAR} in a file-tool path against the vars a
+// shell tool's child sees, plus the pad and the project dir; an unset
+// variable stays literal so unexpandedText can name it.
+func (p *Pipeline) expandEnv(path string) string {
+	return os.Expand(path, func(key string) string {
+		switch key {
+		case "ZEMI_SCRATCH":
+			return p.Pad
+		case "ZEMI_PROJECT_DIR":
+			return p.ProjectDir
+		}
+		if v, ok := os.LookupEnv(key); ok {
+			return v
+		}
+		return "$" + key
+	})
+}
+
+// unexpandedText refuses such a path and names the real ones: a guess would
+// land where it did not mean.
 func (p *Pipeline) unexpandedText(path string) string {
 	first, _, _ := strings.Cut(filepath.ToSlash(path), "/")
-	msg := fmt.Sprintf("%s: file tool paths are not expanded, so this would name a directory called %q in the project. Write the absolute path", path, first)
-	home, _ := os.UserHomeDir()
 	switch {
-	case strings.HasPrefix(path, "~") && home != "":
-		return msg + ": home is " + home + "."
-	case p.Pad != "":
-		return msg + ": the scratchpad is " + p.Pad + "."
-	default:
-		return msg + "."
+	case strings.HasPrefix(path, "~"):
+		if home, _ := os.UserHomeDir(); home != "" {
+			return fmt.Sprintf("%s: ~ is not expanded; home is %s.", path, home)
+		}
+	case strings.HasPrefix(path, "%"):
+		return fmt.Sprintf("%s: %%VAR%% is not expanded; write the absolute path.", path)
 	}
+	return fmt.Sprintf("%s: %s is not set, so this would name a directory called %q in the project. Write the absolute path", path, strings.Trim(first, "${}"), first)
 }
 
 // post runs the tool.post events over a text summary of the response, which

@@ -215,8 +215,9 @@ type planArgs struct {
 }
 
 // planFile reads a plan held in a file, under the file tools' path rules:
-// no shell expansion, project-relative or absolute.
+// $VARS expanded, no ~ or %VAR%, project-relative or absolute.
 func (p *Pipeline) planFile(raw string) (string, error) {
+	raw = p.expandEnv(raw)
 	if unexpanded.MatchString(raw) {
 		return "", errors.New(p.unexpandedText(raw))
 	}
