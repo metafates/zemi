@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +12,36 @@ import (
 
 	"github.com/metafates/zemi/internal/hostapi"
 )
+
+var (
+	mdCode    = regexp.MustCompile("`([^`\n]+)`")
+	mdLink    = regexp.MustCompile(`!?\[([^\]]*)\]\([^)]*\)`)
+	mdStrong  = regexp.MustCompile(`\*\*(\S(?:[^*\n]*\S)?)\*\*`)
+	mdEm      = regexp.MustCompile(`\*(\S(?:[^*\n]*\S)?)\*`)
+	mdHeading = regexp.MustCompile(`^#{1,6}\s+`)
+	mdBullet  = regexp.MustCompile(`^\s*[*+-]\s+`)
+)
+
+// stripMarkdown turns a reply's markdown into the plain text a notification
+// or the statusline can show: emphasis and code spans lose their marks,
+// links keep their words, headings, bullets and fence lines go. Emphasis
+// rules require a non-space edge so "2 * 3 * 4" keeps its asterisks.
+func stripMarkdown(s string) string {
+	var lines []string
+	for _, line := range strings.Split(s, "\n") {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, "```") || strings.HasPrefix(t, "~~~") {
+			continue
+		}
+		t = mdHeading.ReplaceAllString(t, "")
+		t = mdBullet.ReplaceAllString(t, "")
+		lines = append(lines, t)
+	}
+	s = mdCode.ReplaceAllString(strings.Join(lines, "\n"), "$1")
+	s = mdLink.ReplaceAllString(s, "$1")
+	s = mdStrong.ReplaceAllString(s, "$1")
+	return mdEm.ReplaceAllString(s, "$1")
+}
 
 // count is "3 workflows": the number and its noun, singular or plural.
 func count(n int, one, many string) string {

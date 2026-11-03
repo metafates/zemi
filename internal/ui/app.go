@@ -801,7 +801,7 @@ func (a *App) endTurn(msg turnDoneMsg) tea.Cmd {
 		a.turnEnded, a.recapAt = hostapi.TurnError, time.Time{}
 		a.turnErr = ansi.Truncate(sanitize.Line(msg.err), 200, "…")
 	} else {
-		a.turnReply = ansi.Truncate(sanitize.Line(strings.TrimLeft(a.host.LastReply(), "# \t")), 200, "…")
+		a.turnReply = ansi.Truncate(sanitize.Line(stripMarkdown(a.host.LastReply())), 200, "…")
 	}
 	a.unseen = ""
 	if !a.focused {
