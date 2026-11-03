@@ -88,7 +88,7 @@ func TestProgramStatus(t *testing.T) {
 		answered <- struct{}{}
 	}()
 	app.Update(<-app.testQueue)
-	if got := statusFrame(app); got != report(status.Blocked, status.KindPermission, "Run this command? · run the check") {
+	if got := statusFrame(app); got != report(status.Blocked, status.KindPermission, "Run this command? run the check") {
 		t.Fatalf("ask: sent %q", got)
 	}
 	app.answerPerm(true, "user:once")
@@ -99,14 +99,14 @@ func TestProgramStatus(t *testing.T) {
 
 	// the trust ask names the root the way the window spells it
 	app.trust = &trustPrompt{root: "/proj"}
-	if got := statusFrame(app); got != report(status.Blocked, status.KindPermission, "Trust this project? · /proj") {
+	if got := statusFrame(app); got != report(status.Blocked, status.KindPermission, "Trust this project? /proj") {
 		t.Fatalf("trust: sent %q", got)
 	}
 	app.trust = nil
 
 	// a plan review blocks as its own kind: it answers a/s/e/esc, not y|n
 	app.planAsk = &planAskPrompt{plan: "1. do it"}
-	if got := statusFrame(app); got != report(status.Blocked, status.KindPlan, "A plan to review · 1. do it") {
+	if got := statusFrame(app); got != report(status.Blocked, status.KindPlan, "A plan to review 1. do it") {
 		t.Fatalf("plan: sent %q", got)
 	}
 	app.planAsk = nil
@@ -153,11 +153,11 @@ func TestProgramStatus(t *testing.T) {
 // its heading marker off, and fall back to the bare label without one.
 func TestPlanStatus(t *testing.T) {
 	for _, c := range []struct{ plan, want string }{
-		{"add retry to the deploy step", "A plan to review · add retry to the deploy step"},
-		{"# Migration plan\nthen move the config", "A plan to review · Migration plan"},
+		{"add retry to the deploy step", "A plan to review  add retry to the deploy step"},
+		{"# Migration plan\nthen move the config", "A plan to review  Migration plan"},
 		{"```go\npackage main", "A plan to review"},
 		{"  \nsecond line first", "A plan to review"},
-		{strings.Repeat("x", 300), "A plan to review · " + strings.Repeat("x", 199) + "…"},
+		{strings.Repeat("x", 300), "A plan to review  " + strings.Repeat("x", 199) + "…"},
 	} {
 		if got := planStatus(c.plan); got != c.want {
 			t.Errorf("planStatus(%q) = %q, want %q", c.plan, got, c.want)

@@ -88,8 +88,8 @@ func TestCopyReply(t *testing.T) {
 		rows = append(rows, copyRow{it.Text, it.Desc, it.Copy})
 	}
 	wantRows := []copyRow{
-		{"1  go", "1 line · x := 1", "x := 1\n"},
-		{"2  text", "1 line · y", "y\n"},
+		{"1  go", "1 line  x := 1", "x := 1\n"},
+		{"2  text", "1 line  y", "y\n"},
 		{"every block", "2 code blocks", "x := 1\n\ny\n"},
 		{"the whole reply", "9 lines", reply},
 	}
@@ -321,7 +321,7 @@ func TestContextPct(t *testing.T) {
 	if err := h.OpenUsage(); err != nil {
 		t.Fatal(err)
 	}
-	if body := ui.opened[0].Body; !strings.Contains(body, "· 79%") {
+	if body := ui.opened[0].Body; !strings.Contains(body, "  79%") {
 		t.Fatalf("/cost reads another percent than the statusline:\n%s", body)
 	}
 }

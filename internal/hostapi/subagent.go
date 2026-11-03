@@ -662,7 +662,7 @@ func (h *Host) labelAsks(pipe *tools.Pipeline, run *agentRun, name string) {
 	}
 	who := name + " agent"
 	if f := h.tasks.flow(run.workflow); f != nil {
-		who = "workflow " + f.id + " · " + who // its descriptions are the model's words
+		who = "workflow " + f.id + "  " + who // its descriptions are the model's words
 	}
 	pipe.Ask = func(req tools.Request) (bool, string) {
 		req.Agent = who
@@ -874,7 +874,7 @@ func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	run.touch()
 	run.mu.Unlock()
 	// one line: the widget wraps, and a long command would push the chat around
-	s.report(fmt.Sprintf("%s · %d tool %s · %s %s", s.def.Name, n, Plural(n, "call", "calls"), name,
+	s.report(fmt.Sprintf("%s  %d tool %s  %s %s", s.def.Name, n, Plural(n, "call", "calls"), name,
 		clipLine(toolSummary(name, input), 60)))
 	s.h.refreshViewed(run)
 }
@@ -941,7 +941,7 @@ func (s *subagentHooks) Retrying(err error, delay time.Duration) {
 	run.retryAt = time.Now().Add(delay)
 	run.retryWhy, _ = s.h.explain(err)
 	run.mu.Unlock()
-	s.report(fmt.Sprintf("%s · retrying in %s", s.def.Name, fmtDuration(delay)))
+	s.report(fmt.Sprintf("%s  retrying in %s", s.def.Name, fmtDuration(delay)))
 	s.h.Log.Warn("subagent retry", "origin", "agents", "agent", s.def.Name, "run", run.id,
 		"error", errString(err), "delay_ms", delay.Milliseconds())
 	s.h.refreshViewed(run)
@@ -966,7 +966,7 @@ func (s *subagentHooks) TurnDone(err error, usage fantasy.Usage) {
 	}
 	_, n, _, _ := s.run.state()
 	n -= s.base
-	s.report(fmt.Sprintf("%s · %d tool %s", s.def.Name, n, Plural(n, "call", "calls")))
+	s.report(fmt.Sprintf("%s  %d tool %s", s.def.Name, n, Plural(n, "call", "calls")))
 	h.refresh()
 }
 
@@ -1332,7 +1332,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
-		t.h.setTool(call.ID, func(st *StreamTool) { st.Detail, st.Run = def.Name+" · background "+id+" (/agents)", id })
+		t.h.setTool(call.ID, func(st *StreamTool) { st.Detail, st.Run = def.Name+"  background "+id+" (/agents)", id })
 		t.h.setToolOutcome(call.ID, tools.Outcome{Run: id})
 		return fantasy.NewTextResponse(bgAgentText(id)), nil
 	}
@@ -1759,7 +1759,7 @@ func (t *agentTool) foreground(call context.Context, callID string, run *agentRu
 	if summary == "" {
 		summary = run.agent
 	}
-	t.h.setToolDetail(callID, summary+" · "+fmtDuration(time.Since(start)))
+	t.h.setToolDetail(callID, summary+"  "+fmtDuration(time.Since(start)))
 	if a.err != nil {
 		// the chat draws a failure's output, so the id rides its first line rather than a [run] head
 		msg := "agent " + run.id + " failed: " + t.h.friendlyError(a.err)

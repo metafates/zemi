@@ -1794,7 +1794,7 @@ func joinItems(items []statusItem, reverse bool) []hostapi.Segment {
 	return out
 }
 
-var statusDot = hostapi.Segment{Text: " · ", HL: hostapi.GroupDim, NoCopy: true}
+var statusDot = hostapi.Segment{Text: "  ", HL: hostapi.GroupDim, NoCopy: true}
 
 // statusItems are the widgets of r that draw, by priority.
 func (a *App) statusItems(r region) []statusItem {

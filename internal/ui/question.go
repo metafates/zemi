@@ -299,7 +299,7 @@ func questionTabs(qp *questionPrompt) []hostapi.Segment {
 		label := "Submit"
 		if i < len(qp.qs) {
 			label = cmp.Or(qp.qs[i].Header, fmt.Sprintf("Q%d", i+1))
-			mark := hostapi.Segment{Text: "· ", HL: hostapi.ChromeHint}
+			mark := hostapi.Segment{Text: "… ", HL: hostapi.ChromeHint}
 			if !qp.states[i].answer(qp.qs[i]).Open() {
 				mark = hostapi.Segment{Text: "✓ ", HL: hostapi.ChromeOk}
 			}
@@ -404,7 +404,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 		}
 		desc := opt.Description
 		if opt.Recommended {
-			desc = strings.TrimSuffix("recommended · "+desc, " · ")
+			desc = strings.TrimSuffix("recommended  "+desc, "  ")
 		}
 		paneWrapped[i] = a.host.Markdown(desc, inner)
 		paneN = max(paneN, min(len(paneWrapped[i]), 4))

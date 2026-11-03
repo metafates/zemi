@@ -299,15 +299,15 @@ for line in sys.stdin.read().splitlines():
     # the spinner animates wherever it runs; the eyes decay in the border
     line = re.sub(r"[\u2800-\u28ff]+", "@", line)
     line = re.sub(r"(┌ )@[.·?><^]{2}", r"\1@··", line)
-    # a turn telemetry ticks mid-screen: model · seconds · N out · clock;
+    # a turn telemetry ticks mid-screen: model  seconds  N out  clock;
     # narrow labs drop the model token, leaving the seconds at the head of
     # the row. The telemetry owns its row and is right-aligned, so both
     # rules anchor the head of the row (a provider/model token, or the
     # seconds) and its end (the clock): a user row quoting the shape -
-    # after a ▌ mark, a leading ·, or with words past the clock - keeps
+    # after a ▌ mark or with words past the clock - keeps
     # its figures
-    line = re.sub(r"^(\s*)(\S+/\S+) · \d+(?:\.\d+)?s · \d+ out · \d{1,2}:\d{2}[ │@█▌]*$", r"\1\2 · @ · @ out · @", line)
-    line = re.sub(r"^(\s*)\d+(?:\.\d+)?s · \d+ out · \d{1,2}:\d{2}[ │@█▌]*$", r"\1@ · @ out · @", line)
+    line = re.sub(r"^(\s*)(\S+/\S+)  \d+(?:\.\d+)?s  \d+ out  \d{1,2}:\d{2}[ │@█▌]*$", r"\1\2  @  @ out  @", line)
+    line = re.sub(r"^(\s*)\d+(?:\.\d+)?s  \d+ out  \d{1,2}:\d{2}[ │@█▌]*$", r"\1@  @ out  @", line)
     # the right rail thumb travels as rows scroll: read it as the empty
     # cell it lands on, so a box border keeps its column (a masked border
     # reads as a rail cell and eats a trailing duration with it)

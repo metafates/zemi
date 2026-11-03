@@ -29,7 +29,7 @@ func flowWord(v flowView) string {
 func flowFields(f *flowRun, v flowView) []string {
 	usage := fmtTokens(v.tokens) + " tok"
 	if v.cost > 0 {
-		usage += " · " + fmtCost(v.cost)
+		usage += "  " + fmtCost(v.cost)
 	}
 	script := ""
 	if f.script != "" {
@@ -38,7 +38,7 @@ func flowFields(f *flowRun, v flowView) []string {
 		script = filepath.Base(f.script)
 	}
 	fields := []string{
-		"status", flowWord(v), "agents", fmt.Sprintf("%d/%d done · %d running · %d at once", v.done, len(v.agents), v.running, v.limit),
+		"status", flowWord(v), "agents", fmt.Sprintf("%d/%d done  %d running  %d at once", v.done, len(v.agents), v.running, v.limit),
 		"usage", usage, "time", fmtDuration(v.took), "run", f.id, "script", script,
 	}
 	if f.err != nil {
@@ -52,9 +52,9 @@ func flowFields(f *flowRun, v flowView) []string {
 // flowDesc is a run's row desc in /workflows and /agents: the padded status
 // and the id, then what grows, the cost last since it appears late.
 func flowDesc(f *flowRun, v flowView) string {
-	desc := fmt.Sprintf("%s · %s · %d/%d agents · %s", statusCol(flowWord(v)), f.id, v.done, len(v.agents), fmtDuration(v.took))
+	desc := fmt.Sprintf("%s  %s  %d/%d agents  %s", statusCol(flowWord(v)), f.id, v.done, len(v.agents), fmtDuration(v.took))
 	if v.cost > 0 {
-		desc += " · " + fmtCost(v.cost)
+		desc += "  " + fmtCost(v.cost)
 	}
 	return desc
 }
@@ -155,13 +155,13 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 // failed one carries its error as a field. A running one also names what it
 // is doing, as the pending line under its body, never in its text.
 func (h *Host) agentView(a agentRow, run *agentRun) (fields []Field, detail string, parts []BodyPart, pending string) {
-	usage := fmt.Sprintf("%d %s · %s tok", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens))
+	usage := fmt.Sprintf("%d %s  %s tok", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens))
 	if a.cost > 0 {
-		usage += " · " + fmtCost(a.cost)
+		usage += "  " + fmtCost(a.cost)
 	}
 	def := a.def
 	if run != nil && run.model != "" {
-		def += " · " + run.model
+		def += "  " + run.model
 	}
 	fields = fieldList("status", string(a.status), "time", fmtDuration(a.took), "agent", def, "usage", usage, "run", a.id)
 	if run == nil {
@@ -196,12 +196,12 @@ func (h *Host) agentView(a agentRow, run *agentRun) (fields []Field, detail stri
 // index, which a call made later in an earlier phase does not move.
 func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) OverlayItem {
 	word := statusCol(string(a.status))
-	desc := word + " · " + a.def
+	desc := word + "  " + a.def
 	if a.reused {
-		desc = word + " · reused"
+		desc = word + "  reused"
 	}
 	if a.status != RunQueued {
-		desc += fmt.Sprintf(" · %d %s · %s tok · %s", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens), fmtDuration(a.took))
+		desc += fmt.Sprintf("  %d %s  %s tok  %s", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens), fmtDuration(a.took))
 	}
 	run := h.tasks.find(a.id)
 	fields, detail, parts, pending := h.agentView(a, run)

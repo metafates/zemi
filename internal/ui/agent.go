@@ -343,10 +343,10 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 			}
 			if j < len(desc) {
 				if j < len(label) {
-					// the seam between a label and its description reads as a
-					// sentence break when the label fills its column: a dot marks it
+					// the description starts at the same column on every row:
+					// label + pad + the two-cell gap a continuation aligns to
 					pad := max(lw+1-hostapi.SegsWidth(r), 1)
-					r = slices.Concat(r, []hostapi.Segment{{Text: strings.Repeat(" ", pad) + "· ", HL: hostapi.ChromeHint}}, desc[j])
+					r = slices.Concat(r, []hostapi.Segment{{Text: strings.Repeat(" ", pad) + "  ", HL: hostapi.ChromeHint}}, desc[j])
 				} else {
 					// a wrapped description continues under the first row's
 					// description: no seam, no label column to cross
@@ -1010,7 +1010,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	// the title says where a yes runs, so the badge gets what it leaves, a
 	// third of the box at least
 	title, bw := permTitle(req), min(w-4, maxW)
-	who := ansi.Truncate(strings.Join(slices.DeleteFunc(badge, func(s string) bool { return s == "" }), " · "), max(bw-ansi.StringWidth(title)-7, bw/3), "…")
+	who := ansi.Truncate(strings.Join(slices.DeleteFunc(badge, func(s string) bool { return s == "" }), "  "), max(bw-ansi.StringWidth(title)-7, bw/3), "…")
 	return promptBox(title, who, body, w, h, maxW, &pa.size)
 }
 
@@ -1182,7 +1182,7 @@ func hintSlot(p hintPair) int {
 	}
 }
 
-// hint is the one footer row every box draws: "enter pick · esc deny",
+// hint is the one footer row every box draws: "enter pick  esc deny",
 // the pairs in slot order. Past w cells the middle pairs give way,
 // scrolling and copy first, then the screen's state keys last first, and a
 // row's own key only once no state key is left; enter and esc never do.
@@ -1199,7 +1199,7 @@ func hint(w int, pairs ...hintPair) []hostapi.Segment {
 			case p == scrollGap:
 				continue
 			case len(out) > 0:
-				out = append(out, hostapi.Segment{Text: " · ", HL: hostapi.ChromeHint})
+				out = append(out, hostapi.Segment{Text: "  ", HL: hostapi.ChromeHint})
 			}
 			out = append(out, hostapi.Segment{Text: p.key, HL: hostapi.ChromeHintKey})
 			if p.verb != "" {

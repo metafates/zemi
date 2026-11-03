@@ -341,7 +341,7 @@ func TestAgentViewFolds(t *testing.T) {
 	rows := func() []string { return chatRows(t, app, 98) }
 	rows() // the first render forgets what was opened before it
 	closed := rows()
-	if !slices.Contains(closed, "· 1 file: main.go") || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
+	if !slices.Contains(closed, "1 file: main.go") || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
 		t.Fatalf("the viewed run does not fold:\n%s", strings.Join(closed, "\n"))
 	}
 	clickChat(t, app, "turn:1")
@@ -404,7 +404,7 @@ func TestReplyReadoutBehindANotice(t *testing.T) {
 			readouts = append(readouts, row)
 		}
 	}
-	if len(readouts) != 1 || !strings.Contains(readouts[0], "1.5s · 200 out") {
+	if len(readouts) != 1 || !strings.Contains(readouts[0], "1.5s  200 out") {
 		t.Fatalf("the reply's readout is %q, want one row naming 1.5s and 200 out", readouts)
 	}
 }
@@ -567,7 +567,7 @@ func TestChatFoldOpensItsRun(t *testing.T) {
 		}
 		return out
 	}
-	const digest = "· 1 command: make · thought 6.4s"
+	const digest = "1 command: make  thought 6.4s"
 	closed := rows()
 	if !slices.Contains(closed, digest) || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
 		t.Fatalf("the settled turn does not fold into its digest:\n%s", strings.Join(closed, "\n"))
@@ -601,7 +601,7 @@ func TestBgTurnFolds(t *testing.T) {
 	appendReply(host, "the review is running", hostapi.TurnStat{})
 	rows := chatRows(t, app, 138)
 	// the fold row is the digest alone: the count, then the run's about
-	fold := slices.IndexFunc(rows, func(r string) bool { return strings.HasPrefix(strings.TrimSpace(r), "· 1 agent run") })
+	fold := slices.IndexFunc(rows, func(r string) bool { return strings.HasPrefix(r, "1 agent run") })
 	if fold < 0 || !strings.Contains(rows[fold], "Review rail-fold branch") {
 		t.Fatalf("the background turn does not fold:\n%s", strings.Join(rows, "\n"))
 	}
@@ -616,7 +616,7 @@ func TestDigestSaysWhatRan(t *testing.T) {
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "go vet ./...", Label: "vet the tree", Status: "ok"})
 	appendReply(host, "clean", hostapi.TurnStat{})
 	rows := chatRows(t, app, 138)
-	if got := slices.IndexFunc(rows, func(r string) bool { return strings.HasPrefix(strings.TrimSpace(r), "· 1 command") }); got < 0 ||
+	if got := slices.IndexFunc(rows, func(r string) bool { return strings.HasPrefix(r, "1 command") }); got < 0 ||
 		!strings.Contains(rows[got], "vet the tree") {
 		t.Fatalf("the digest row = %v", rows)
 	}
@@ -634,7 +634,7 @@ func TestLoneThoughtDigestOpensItsText(t *testing.T) {
 		clickChat(t, app, id)
 		return rows()
 	}
-	const digest = "· thought 4.4s"
+	const digest = "thought 4.4s"
 	closed := rows()
 	if !slices.Contains(closed, digest) || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
 		t.Fatalf("the lone thought does not fold into its digest:\n%s", strings.Join(closed, "\n"))
@@ -660,7 +660,7 @@ func TestShortThoughtFolds(t *testing.T) {
 	appendReasoning(host, "both personas are still running", hostapi.TurnStat{})
 	appendReply(host, "holding for the two personas", hostapi.TurnStat{})
 	rows := chatRows(t, app, 138)
-	if !slices.Contains(rows, "· thought") || slices.ContainsFunc(rows, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
+	if !slices.Contains(rows, "thought") || slices.ContainsFunc(rows, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
 		t.Fatalf("the short thought does not fold into its digest:\n%s", strings.Join(rows, "\n"))
 	}
 }
@@ -694,7 +694,7 @@ func TestTurnStats(t *testing.T) {
 	host.SeedStream(hostapi.StreamSnapshot{})
 	app.AgentStream()
 	ended := rows()
-	if !slices.Contains(ended, "· 2 edits") {
+	if !slices.Contains(ended, "2 edits") {
 		t.Fatalf("the run of edits does not fold into its digest:\n%s", strings.Join(ended, "\n"))
 	}
 	open := click("turn:2")
@@ -709,7 +709,7 @@ func TestTurnStats(t *testing.T) {
 	if n := strings.Count(strings.Join(ended, "\n"), "0.9s"); n != 0 {
 		t.Fatalf("a sentence between runs carries a readout:\n%s", strings.Join(ended, "\n"))
 	}
-	if n := strings.Count(strings.Join(ended, "\n"), "1.5s · 200 out · "); n != 1 {
+	if n := strings.Count(strings.Join(ended, "\n"), "1.5s 200 out"); n != 1 {
 		t.Fatalf("the reply that ends the exchange carries the readout:\n%s", strings.Join(ended, "\n"))
 	}
 }
@@ -890,7 +890,7 @@ func TestPermissionBoxFits(t *testing.T) {
 		{
 			"one hidden line shows", 80, 24,
 			hostapi.PermRequest{Subject: "tool.shell", Arg: "cat > notes.txt <<EOT\nfirst line\nsecond line\nEOT"},
-			[]string{"EOT ", "enter pick · esc deny"},
+			[]string{"EOT ", "enter pick  esc deny"},
 		},
 		{
 			"a long path shows", 70, 30,
@@ -914,7 +914,7 @@ func TestPermissionBoxFits(t *testing.T) {
 		},
 		{
 			"title beats a long badge", 80, 24,
-			hostapi.PermRequest{Subject: "tool.shell", Arg: "rm -rf build", Owner: "plugin:" + strings.Repeat("x", 80), Agent: "workflow 7c25f526 · general agent"},
+			hostapi.PermRequest{Subject: "tool.shell", Arg: "rm -rf build", Owner: "plugin:" + strings.Repeat("x", 80), Agent: "workflow 7c25f526  general agent"},
 			[]string{"Run this command?", "workflow 7c2"},
 		},
 		{
@@ -2027,7 +2027,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 	}
 	// the reply closes that run as it streams, before its row settles
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Text: "now the next one"})
-	closed := []string{"▌ look around", "· 2 files, 1 command: list the data, 1 edit: a.go · thought 9.6s", "now the next one"}
+	closed := []string{"▌ look around", "2 files, 1 command: list the data, 1 edit: a.go thought 9.6s", "now the next one"}
 	if got := rows(); !slices.Equal(got, closed) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}
@@ -2042,7 +2042,7 @@ func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
 		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
 	}
 	host.SeedStream(hostapi.StreamSnapshot{})
-	if got, want := rows(), append(closed[:3:3], "· 1 file: c.go"); !slices.Equal(got, want) {
+	if got, want := rows(), append(closed[:3:3], "1 file: c.go"); !slices.Equal(got, want) {
 		t.Fatalf("ended turn:\n%s", strings.Join(got, "\n"))
 	}
 }
@@ -2058,7 +2058,7 @@ func TestWorkingRowRetry(t *testing.T) {
 	for _, c := range []struct {
 		in   time.Duration
 		want string
-	}{{0, ` esc interrupt · retrying now · elapsed 0m 20s ┐`}, {4 * time.Second, ` esc interrupt · next try in \ds · elapsed 0m 20s ┐`}} {
+	}{{0, ` esc interrupt  retrying now  elapsed 0m 20s ┐`}, {4 * time.Second, ` esc interrupt  next try in \ds  elapsed 0m 20s ┐`}} {
 		host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Retrying: true, RetryIn: c.in, Retries: 1})
 		app.renderSync(t)
 		if frame := ansi.Strip(app.Frame()); !regexp.MustCompile(c.want).MatchString(frame) {
@@ -2083,8 +2083,8 @@ func TestWorkingRowRetryNarrow(t *testing.T) {
 		why  string
 		want string
 	}{
-		{"short reason fits whole", "rate limited by the provider", "next try in 45s · rate limited by the provider"},
-		{"a long reason narrows", "network: the connection dropped mid-reply", "next try in 45s · network: the connection"},
+		{"short reason fits whole", "rate limited by the provider", "next try in 45s  rate limited by the provider"},
+		{"a long reason narrows", "network: the connection dropped mid-reply", "next try in 45s  network: the connection"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			app, host := bootAgentApp(t, 60, 16)
@@ -2160,10 +2160,10 @@ func TestWorkingRowMascot(t *testing.T) {
 	short := row(500)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 605 * time.Second})
 	r := row(500)
-	if at := strings.Index(r, " esc interrupt · 10m 05s"); at <= len(r)/2 {
+	if at := strings.Index(r, " esc interrupt  10m 05s"); at <= len(r)/2 {
 		t.Fatalf("the status does not end the rule: %q", r)
 	}
-	if !strings.HasSuffix(short, "esc interrupt · 0m 05s ") || !strings.HasSuffix(r, "esc interrupt · 10m 05s ") {
+	if !strings.HasSuffix(short, "esc interrupt  0m 05s ") || !strings.HasSuffix(r, "esc interrupt  10m 05s ") {
 		t.Fatalf("the block does not end the rule as the clock reads: %q then %q", short, r)
 	}
 	// the open prompt says what answers it, so the rule shrinks to the snail
@@ -2466,7 +2466,7 @@ func TestCallRowClickIDs(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 30)
 	host.AppendMessage("user", "look first")
 	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "b.go", Status: "ok"})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "notice", Text: "explore · found it", Status: "ok", Run: "r1", Tool: "explore"})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "notice", Text: "explore  found it", Status: "ok", Run: "r1", Tool: "explore"})
 	appendReply(host, "seen", hostapi.TurnStat{})
 	host.AppendMessage("user", "fix it")
 	appendReasoning(host, "how", hostapi.TurnStat{ThoughtMS: 6000})
@@ -2491,11 +2491,11 @@ func TestCallRowClickIDs(t *testing.T) {
 		return click
 	}
 	for text, want := range map[string]string{
-		"· 1 file: b.go":          "turn:2",
+		"1 file: b.go":            "turn:2",
 		"│ ✻ thought 6.0s":        "call:6",
 		"│ ✓ edit /w/a.go +1 -1":  "call:-1",
 		"│ ✓ read 2 files":        "step:-2",
-		"✓ explore · found it":    "agent:r1",
+		"✓ explore found it":      "agent:r1",
 		"│ backgrounded as job-1": "job:job-1",
 	} {
 		if got := ids()[text]; got != want {
@@ -2603,7 +2603,7 @@ func TestRailWaitsOnNestedRun(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 44)
 	host.AppendMessage("user", "review it")
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: []hostapi.StreamTool{
-		{Name: "workflow", Status: "run", Label: "review", Detail: "2/5 agents · paused · picking the diff apart"},
+		{Name: "workflow", Status: "run", Label: "review", Detail: "2/5 agents paused picking the diff apart"},
 		{Name: "agent", Status: "run", Label: "explore"},
 		{Name: "agent", Status: "run", Input: "all"},
 		{Name: "workflow", Status: "run", Input: "wait kg29k2v2"},
@@ -2615,7 +2615,7 @@ func TestRailWaitsOnNestedRun(t *testing.T) {
 	frame := ansi.Strip(app.Frame())
 	for _, want := range []string{
 		"│ ⠋ waiting on workflow review",
-		"│   ⎿ 2/5 agents · paused · picking the diff apart",
+		"│   ⎿ 2/5 agents paused picking the diff apart",
 		"│ ⠋ waiting on agent explore",
 		"│ ⠋ waiting for all agents and workflows",
 		"│ ⠋ waiting on workflow kg29k2v2",
@@ -2652,7 +2652,7 @@ func TestDigestCountsEveryFamily(t *testing.T) {
 		app.renderSync(t)
 		var out []string
 		for row := range strings.SplitSeq(ansi.Strip(app.Frame()), "\r\n") {
-			if row = strings.TrimSpace(row); strings.HasPrefix(row, "· ") {
+			if row = strings.TrimSpace(row); row != "" && !strings.Contains(row, "▌") {
 				out = append(out, row)
 			}
 		}
@@ -2694,7 +2694,7 @@ func TestDigestCountsEveryFamily(t *testing.T) {
 				host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: tools.ToolName(tool), Text: "x", Status: "ok"})
 			}
 			appendReply(host, "done", hostapi.TurnStat{})
-			if got := digests(); !slices.Contains(got, "· "+c.want) {
+			if got := digests(); !slices.Contains(got, c.want) {
 				t.Fatalf("no digest %q in %q", c.want, got)
 			}
 		})
@@ -3072,12 +3072,12 @@ func TestPermAlert(t *testing.T) {
 		req  hostapi.PermRequest
 		want string
 	}{
-		{hostapi.PermRequest{Subject: "tool.shell", Arg: "make check", Description: "run the check"}, "zemi: run this command? · run the check"},
-		{hostapi.PermRequest{Tool: "read", Subject: "fs.read", Arg: "/etc/hosts\nand more"}, "zemi: read this file? · /etc/hosts"},
-		{hostapi.PermRequest{Subject: "tool.workflow", Arg: "review"}, "zemi: run this workflow? · review"},
+		{hostapi.PermRequest{Subject: "tool.shell", Arg: "make check", Description: "run the check"}, "zemi: run this command? run the check"},
+		{hostapi.PermRequest{Tool: "read", Subject: "fs.read", Arg: "/etc/hosts\nand more"}, "zemi: read this file? /etc/hosts"},
+		{hostapi.PermRequest{Subject: "tool.workflow", Arg: "review"}, "zemi: run this workflow? review"},
 		{hostapi.PermRequest{Tool: "mcp_github_create_issue", Subject: "mcp.github", Arg: "create_issue"}, "zemi: use create_issue from github?"},
-		{hostapi.PermRequest{Subject: "tool.shell", Arg: "make", Description: "run the check\n\twith coverage"}, "zemi: run this command? · run the check with coverage"},
-		{hostapi.PermRequest{Subject: "tool.shell", Arg: "make", Description: strings.Repeat("x", 300)}, "zemi: run this command? · " + strings.Repeat("x", 179) + "…"},
+		{hostapi.PermRequest{Subject: "tool.shell", Arg: "make", Description: "run the check\n\twith coverage"}, "zemi: run this command? run the check with coverage"},
+		{hostapi.PermRequest{Subject: "tool.shell", Arg: "make", Description: strings.Repeat("x", 300)}, "zemi: run this command? " + strings.Repeat("x", 181) + "…"},
 		{hostapi.PermRequest{Subject: "tool.shell", Arg: "  ", Description: "  "}, "zemi: run this command?"},
 	} {
 		if got := permAlert(c.req); got != c.want {
@@ -3139,7 +3139,7 @@ func TestAskWrappedChoiceContinuesUnderItsDescription(t *testing.T) {
 			continue
 		}
 		inner, _, _ := strings.Cut(rest, "│")
-		if strings.HasPrefix(strings.TrimLeft(inner, " "), "· ") {
+		if strings.HasPrefix(strings.TrimLeft(inner, " "), "  ") {
 			t.Fatalf("a wrapped description drew a floating seam: %q", line)
 		}
 	}

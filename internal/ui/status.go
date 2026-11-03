@@ -48,7 +48,7 @@ func (a *App) statusReport() status.Report {
 		if hostapi.TrustUnsaved(a.trust.root) {
 			what = "directory"
 		}
-		r.State, r.Kind, r.Msg = status.Blocked, status.KindPermission, "Trust this "+what+"? · "+perm.TildePath(a.trust.root)
+		r.State, r.Kind, r.Msg = status.Blocked, status.KindPermission, "Trust this "+what+"?  "+perm.TildePath(a.trust.root)
 	case a.permAsk != nil:
 		r.State, r.Kind, r.Msg = status.Blocked, status.KindPermission, askStatus(a.permAsk.req)
 	case a.planAsk != nil:
@@ -84,11 +84,11 @@ func (a *App) statusReport() status.Report {
 func askStatus(req hostapi.PermRequest) string {
 	title := permTitle(req)
 	if d := strings.TrimSpace(req.Description); d != "" {
-		return title + " · " + d
+		return title + "  " + d
 	}
 	// an MCP ask's arg is the tool name the title already names
 	if arg, _, _ := strings.Cut(req.Arg, "\n"); strings.TrimSpace(arg) != "" && !strings.HasPrefix(req.Subject, "mcp.") {
-		return title + " · " + strings.TrimSpace(arg)
+		return title + "  " + strings.TrimSpace(arg)
 	}
 	return title
 }
@@ -102,5 +102,5 @@ func planStatus(plan string) string {
 	if head == "" || strings.HasPrefix(head, "```") {
 		return "A plan to review"
 	}
-	return "A plan to review · " + ansi.Truncate(head, 200, "…")
+	return "A plan to review  " + ansi.Truncate(head, 200, "…")
 }

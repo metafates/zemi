@@ -80,7 +80,7 @@ func statusCwd(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 		if p == "" {
 			line = nil
 		} else {
-			line = append(line[:1], hostapi.Segment{Text: " · ", HL: "Dim"})
+			line = append(line[:1], hostapi.Segment{Text: "  ", HL: "Dim"})
 		}
 		line = append(line, pointAt("untrusted", "/trust", "")...)
 	}
@@ -94,7 +94,7 @@ func statusGoal(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 		return nil, false
 	}
 	// the condition is the pill's value; the command is the way to change it
-	return [][]hostapi.Segment{pointAt("⚑ "+st.Goal.Condition, "· /goal", "goal")}, false
+	return [][]hostapi.Segment{pointAt("⚑ "+st.Goal.Condition, "/goal", "goal")}, false
 }
 
 // statusLoop is the session's loop and when its next run fires, five cells
@@ -119,7 +119,7 @@ func statusAgents(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	}
 	line := pointAt("⧗ "+strconv.Itoa(n), plural(word, n), word+"s")
 	if flows > 0 && agents > 0 {
-		line = append(line, hostapi.Segment{Text: " · ", HL: "Dim"})
+		line = append(line, hostapi.Segment{Text: "  ", HL: "Dim"})
 		line = append(line, pointAt(strconv.Itoa(agents), plural("agent", agents), "agents")...)
 	}
 	return [][]hostapi.Segment{line}, false

@@ -739,7 +739,7 @@ func TestOverlayNavigation(t *testing.T) {
 		},
 		{
 			"without a copy field, y copies the label alone, not its desc",
-			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "deepseek", Desc: "400k · 3m ago"}}},
+			hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "deepseek", Desc: "400k  3m ago"}}},
 			nil,
 			func(a *App) string {
 				batch, _ := a.overlayKey("y", "")().(tea.BatchMsg)
@@ -1370,26 +1370,26 @@ func TestOverlayHints(t *testing.T) {
 		filter string
 		want   string
 	}{
-		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "inert"}}}, "", "y copy · esc close"},
-		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Fill: "x"}}, Verb: "run"}, "", "enter fill · y copy · esc close"},
-		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Detail: "x"}}, Verb: "pick"}, "", "enter open · y copy · esc close"},
-		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Run: "x"}}, Origin: lua.OriginBuiltin, Verb: "pick"}, "", "enter pick · y copy · esc close"},
-		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Run: "x", Verb: "open"}}, Verb: "pick", Reload: reload}, "", "enter open · y copy · esc close"},
-		{hostapi.Overlay{Items: run, Verb: "copy"}, "", "enter copy · esc close"},
-		{hostapi.Overlay{Items: run}, "", "enter run · y copy · esc close"},
-		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a"}}, OnSelect: &glua.LFunction{}}, "", "enter pick · y copy · esc close"},
-		{hostapi.Overlay{Items: run, Reload: reload}, "", "enter toggle · y copy · esc close"},
-		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Run: "x", Detail: "d"}}, Reload: reload}, "", "enter open · space toggle · y copy · esc close"},
-		{hostapi.Overlay{Items: run, Keys: keys}, "", "enter run · y copy · e edit · esc close"},
-		{hostapi.Overlay{Keys: keys}, "", "e edit · esc close"},
+		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "inert"}}}, "", "y copy  esc close"},
+		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Fill: "x"}}, Verb: "run"}, "", "enter fill  y copy  esc close"},
+		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Detail: "x"}}, Verb: "pick"}, "", "enter open  y copy  esc close"},
+		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Run: "x"}}, Origin: lua.OriginBuiltin, Verb: "pick"}, "", "enter pick  y copy  esc close"},
+		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Run: "x", Verb: "open"}}, Verb: "pick", Reload: reload}, "", "enter open  y copy  esc close"},
+		{hostapi.Overlay{Items: run, Verb: "copy"}, "", "enter copy  esc close"},
+		{hostapi.Overlay{Items: run}, "", "enter run  y copy  esc close"},
+		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a"}}, OnSelect: &glua.LFunction{}}, "", "enter pick  y copy  esc close"},
+		{hostapi.Overlay{Items: run, Reload: reload}, "", "enter toggle  y copy  esc close"},
+		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Run: "x", Detail: "d"}}, Reload: reload}, "", "enter open  space toggle  y copy  esc close"},
+		{hostapi.Overlay{Items: run, Keys: keys}, "", "enter run  y copy  e edit  esc close"},
+		{hostapi.Overlay{Keys: keys}, "", "e edit  esc close"},
 		{hostapi.Overlay{Keys: []hostapi.OverlayKey{{Key: "r", Desc: "resume"}}}, "", "esc close"}, // a row's key waits for a row
-		{hostapi.Overlay{Items: run, Keys: keys}, "/", "enter run · esc clear"},
-		{hostapi.Overlay{Items: run, Keys: keys}, "=a", "enter run · y copy · e edit · esc clear"},
-		{hostapi.Overlay{Follow: true, Items: run}, "", "enter run · y copy · esc close"},
-		{hostapi.Overlay{Body: "text"}, "", "y copy · esc close"},
-		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Copy: "export X"}}}, "", "enter copy · esc close"},
-		{hostapi.Overlay{Body: "text", Items: []hostapi.OverlayItem{{Text: "a", Fill: "x"}}}, "/", "enter fill · esc clear"},
-		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]hostapi.OverlayItem{{Text: "a", Fill: "x"}}, 30)}, "", "enter fill · y copy · esc close · ctrl+d/u scroll"},
+		{hostapi.Overlay{Items: run, Keys: keys}, "/", "enter run  esc clear"},
+		{hostapi.Overlay{Items: run, Keys: keys}, "=a", "enter run  y copy  e edit  esc clear"},
+		{hostapi.Overlay{Follow: true, Items: run}, "", "enter run  y copy  esc close"},
+		{hostapi.Overlay{Body: "text"}, "", "y copy  esc close"},
+		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Copy: "export X"}}}, "", "enter copy  esc close"},
+		{hostapi.Overlay{Body: "text", Items: []hostapi.OverlayItem{{Text: "a", Fill: "x"}}}, "/", "enter fill  esc clear"},
+		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]hostapi.OverlayItem{{Text: "a", Fill: "x"}}, 30)}, "", "enter fill  y copy  esc close  ctrl+d/u scroll"},
 	} {
 		if got := strings.Trim(hints(c.o, c.filter), "│ "); got != c.want {
 			t.Errorf("%v: %q, want %q", c.o.Items, got, c.want)
@@ -1507,10 +1507,10 @@ func TestHintOrder(t *testing.T) {
 		w    int
 		want string
 	}{
-		{80, "enter open · y copy · a keep · d drop · v show · esc close · ctrl+d/u scroll"},
-		{55, "enter open · a keep · d drop · v show · esc close"},
-		{40, "enter open · a keep · v show · esc close"},
-		{5, "enter open · esc close"},
+		{80, "enter open  y copy  a keep  d drop  v show  esc close  ctrl+d/u scroll"},
+		{55, "enter open  y copy  a keep  d drop  v show  esc close"},
+		{40, "enter open  a keep  v show  esc close"},
+		{5, "enter open  esc close"},
 	} {
 		if got := hostapi.SegsText(hint(c.w, pairs...)); got != c.want {
 			t.Errorf("%d cells: %q, want %q", c.w, got, c.want)
@@ -1643,17 +1643,17 @@ func TestListDescColumn(t *testing.T) {
 		whole, wanted string // row 0 keeps whole, never shows wanted
 	}{
 		{"a long description gives way to a label that fits", 52, []listItem{
-			{label: "a much longer session title here", desc: "now · short"},
-			{label: "done", desc: "now · 2 messages · hello number 3 with a longer message to title it", key: tagSeg("current")},
+			{label: "a much longer session title here", desc: "now  short"},
+			{label: "done", desc: "now  2 messages  hello number 3 with a longer message to title it", key: tagSeg("current")},
 		}, "", ""},
 		{"the model picker cuts labels at the floor on a narrow box", 52, []listItem{
-			{label: "deepseek/deepseek-v4-flash", desc: "DeepSeek-V4-Flash · 1M · $0.14/$0.28"},
+			{label: "deepseek/deepseek-v4-flash", desc: "DeepSeek-V4-Flash  1M  $0.14/$0.28"},
 			{label: "fake/m", desc: "128k", key: tagSeg("current")},
 			{label: "fake/deepseek-v4-flash-long-model-name", desc: "1M"},
 		}, "", ""},
 		{"a workflow run reads its metadata whole and cuts its long title", 92, []listItem{
-			{label: "Review the changes: a very long workflow description that runs past the box", desc: "done · abc12345 · 1/1 agents · 1.5k tok · 0.0s"},
-			{label: "short run", desc: "running · def67890 · 0 calls"},
+			{label: "Review the changes: a very long workflow description that runs past the box", desc: "done  abc12345  1/1 agents  1.5k tok  0.0s"},
+			{label: "short run", desc: "running  def67890  0 calls"},
 			{label: "tiny", desc: "queued"},
 		}, "0.0s", "runs past the box"},
 		{"a stub description still draws beside its label", 52, []listItem{
@@ -1669,7 +1669,7 @@ func TestListDescColumn(t *testing.T) {
 			if i == 0 && c.whole != "" && (!strings.Contains(text, c.whole) || c.wanted != "" && strings.Contains(text, c.wanted)) {
 				t.Errorf("%s: row %q, want %q whole and %q cut", c.name, text, c.whole, c.wanted)
 			}
-			if !strings.HasSuffix(text, it.key.Text) || strings.Contains(text, "·…") || strings.Contains(text, ".…") {
+			if !strings.HasSuffix(text, it.key.Text) || strings.Contains(text, ".…") {
 				t.Errorf("%s: row %q", c.name, text)
 			}
 			x := 0
@@ -1757,7 +1757,7 @@ func TestOverlayTailLabel(t *testing.T) {
 	for _, w := range []int{40, 80, 120} {
 		app, _ := bootAgentApp(t, w, 20)
 		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Items: []hostapi.OverlayItem{
-			{Text: path, Tail: true, Desc: "undecided · 1 session · 5m ago", Tag: "current"},
+			{Text: path, Tail: true, Desc: "undecided  1 session  5m ago", Tag: "current"},
 		}})
 		var text string
 		for _, r := range app.overlayBox(&app.overlays[0], w, 20, true) {
@@ -1837,7 +1837,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { { keys = { { key = 
 		check             func() string
 	}{
 		{"the row's keys are named beside the list's", "", "j", func() string {
-			ok := strings.Contains(footer(), "y copy · e edit · d Delete · o Open · esc close")
+			ok := strings.Contains(footer(), "y copy  e edit  d Delete  o Open  esc close")
 			return fail(ok, fmt.Sprintf("%q", footer()))
 		}},
 		{"a key without an id or a run does nothing", "", "j o", func() string {
@@ -1847,7 +1847,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { { keys = { { key = 
 			return fail(len(app.overlays) == 1 && lastToast(app) == "", fmt.Sprintf("%d open, toast %q", len(app.overlays), lastToast(app)))
 		}},
 		{"a danger key arms, and says so", editKey, "j d", func() string {
-			ok := len(app.overlays) == 1 && app.overlays[0].keyArmed == "d" && strings.Contains(footer(), "d again to delete · esc cancel")
+			ok := len(app.overlays) == 1 && app.overlays[0].keyArmed == "d" && strings.Contains(footer(), "d again to delete  esc cancel")
 			return fail(ok, fmt.Sprintf("%d open, armed %q, footer %q", len(app.overlays), app.overlays[0].keyArmed, footer()))
 		}},
 		{"its second press runs it, with the key", "", "j d d", func() string {
@@ -2722,7 +2722,7 @@ func TestOverlayFootClipsBeforeItsKeys(t *testing.T) {
 	a.openOverlay(hostapi.Overlay{
 		ID: "m", Title: "Memories", Origin: lua.OriginBuiltin,
 		Items: []hostapi.OverlayItem{{Text: "line one", Detail: "the line's view"}},
-		Foot:  "1.9k · 46 lines · 1 level · 3 not summarized yet · tags are line ids",
+		Foot:  "1.9k  46 lines  1 level  3 not summarized yet  tags are line ids",
 	})
 	rows := a.overlayBox(&a.overlays[0], 60, 18, false)
 	foot := hostapi.SegsText(rows[len(rows)-2])

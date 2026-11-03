@@ -489,7 +489,7 @@ func diffstat(diff string) []hostapi.Segment {
 
 // digest is what rows first..last of a turn fold into, the chat's digest row:
 // "1 command: run the tests", what it did then what the model said about the
-// first call, or "6 files, 8 commands · thought 8s"; "" when it holds neither,
+// first call, or "6 files, 8 commands  thought 8s"; "" when it holds neither,
 // so its rail stays.
 func digest(rows []entry, first, last int, cwd, home string) string {
 	var calls, fails, works []entry
@@ -554,7 +554,7 @@ func digest(rows []entry, first, last int, cwd, home string) string {
 	if f, ok := family(oneName(calls)); len(calls) == 1 && ok && f.one == "agent run" {
 		body := ""
 		if len(works) == 1 {
-			if _, after, found := strings.Cut(works[0].text, " · "); found {
+			if _, after, found := strings.Cut(works[0].text, "  "); found {
 				body = after
 			}
 		} else {
@@ -614,7 +614,7 @@ func digest(rows []entry, first, last int, cwd, home string) string {
 	if secs >= 50*time.Millisecond || len(parts) == 0 && reasoned {
 		parts = append(parts, thoughtText(secs))
 	}
-	return strings.Join(parts, " · ")
+	return strings.Join(parts, "  ")
 }
 
 // chatFolds is what a chat render keeps between frames: the folds a click
@@ -879,7 +879,7 @@ func (b *chatBuilder) user(text string, waiting bool) {
 	if len(wrapped) > draw {
 		b.push([]hostapi.Segment{
 			{Text: "▌ ", HL: barHL, NoCopy: true, NoHover: true, Pin: pin},
-			{Text: "… +" + strconv.Itoa(len(wrapped)-draw) + " lines · /messages to read", HL: "Dim", NoCopy: true},
+			{Text: "… +" + strconv.Itoa(len(wrapped)-draw) + " lines  /messages to read", HL: "Dim", NoCopy: true},
 		})
 	}
 }
@@ -992,7 +992,7 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 	}
 	add := func(text string) {
 		if len(tail) > 0 {
-			tail = append(tail, hostapi.Segment{Text: " · ", HL: "Dim"})
+			tail = append(tail, hostapi.Segment{Text: "  ", HL: "Dim"})
 		}
 		tail = append(tail, hostapi.Segment{Text: text, HL: "Dim"})
 	}
@@ -1269,8 +1269,7 @@ func (b *chatBuilder) foldRun(list []entry, first, last int, opened bool) {
 // digestRow draws the digest row a run folds to, pinned as head says.
 func (b *chatBuilder) digestRow(text, click string, pin hostapi.Pin) {
 	b.push([]hostapi.Segment{
-		{Text: "· ", HL: "Dim", NoCopy: true, NoHover: true, Click: click, Pin: pin},
-		{Text: clipText(text, max(b.width-2-railEdge, 8)), HL: "Dim", Click: click},
+		{Text: clipText(text, max(b.width-railEdge, 8)), HL: "Dim", Click: click, Pin: pin},
 	})
 }
 
@@ -1556,7 +1555,7 @@ func (b *chatBuilder) readout(tr []entry, last int, m entry) int {
 	var stats []hostapi.Segment
 	stat := func(text string) {
 		if len(stats) > 0 {
-			stats = append(stats, hostapi.Segment{Text: " · ", HL: "Dim"})
+			stats = append(stats, hostapi.Segment{Text: "  ", HL: "Dim"})
 		}
 		stats = append(stats, hostapi.Segment{Text: text, HL: "Dim"})
 	}
@@ -1638,7 +1637,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		// the window is the log's tail: name what the head cut left out
 		if key.older > 0 {
 			b.push([]hostapi.Segment{{
-				Text: "… " + strconv.Itoa(key.older) + " earlier " + hostapi.Plural(key.older, "message", "messages") + " · /messages to browse",
+				Text: "… " + strconv.Itoa(key.older) + " earlier " + hostapi.Plural(key.older, "message", "messages") + "  /messages to browse",
 				HL:   "Dim", NoCopy: true, NoHover: true,
 			}})
 		}

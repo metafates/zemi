@@ -16,8 +16,8 @@ func TestAgentRowsKeepTheirNames(t *testing.T) {
 		{label: "New agent", row: hostapi.OverlayItem{Text: "New agent"}},
 		{
 			label: "Survey zemi run, how the mode behaves", mark: markSeg(tools.MarkSpin),
-			desc: "running   · 2m 39s · 74 tool calls · explore",
-			row:  hostapi.OverlayItem{Desc: "running   · 2m 39s · 74 tool calls · explore"},
+			desc: "running    2m 39s  74 tool calls  explore",
+			row:  hostapi.OverlayItem{Desc: "running    2m 39s  74 tool calls  explore"},
 		},
 		{
 			label: "fork", desc: "continues this conversation instead of starting fresh, so it needs no briefing",

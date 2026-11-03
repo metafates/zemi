@@ -624,7 +624,7 @@ func turnSection(p pickTr, t msgTurn, prevDay *string) string {
 	if len(desc) == 0 {
 		return "Turn " + strconv.Itoa(t.n)
 	}
-	return "Turn " + strconv.Itoa(t.n) + " · " + strings.Join(desc, " · ")
+	return "Turn " + strconv.Itoa(t.n) + "  " + strings.Join(desc, "  ")
 }
 
 // openMessagesRail lists the calls and thoughts of one activity run, the
@@ -829,13 +829,13 @@ func messageRow(idx int, m ChatMessage) OverlayItem {
 			desc = pluralCount(n, "line", "lines")
 		}
 		if len(blocks) > 0 {
-			desc = strings.TrimSpace(desc + " · " + pluralCount(len(blocks), "code block", "code blocks"))
+			desc = strings.TrimSpace(desc + "  " + pluralCount(len(blocks), "code block", "code blocks"))
 		}
 	case m.Kind == RowNotice, m.Kind == RowError, m.Kind == RowShell:
 		if text == "" {
 			return OverlayItem{}
 		}
-		head, glyph = messageHead(text), "·"
+		head, glyph = messageHead(text), ""
 		if m.Kind == RowError {
 			glyph = "✗"
 		}

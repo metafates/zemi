@@ -112,7 +112,7 @@ func (h *Host) SetLoop(args string) error {
 	case (prompt == "stop" || strings.HasPrefix(prompt, "stop ")) && every == 0:
 		why := "Loop stopped"
 		if l, ok := h.Loop(); ok {
-			why = fmt.Sprintf("Loop stopped (%d %s) · %s", l.Runs, Plural(l.Runs, "run", "runs"), h.spentSince(l.Tokens, l.Cost))
+			why = fmt.Sprintf("Loop stopped (%d %s)  %s", l.Runs, Plural(l.Runs, "run", "runs"), h.spentSince(l.Tokens, l.Cost))
 		}
 		return h.stopLoop(nil, why)
 	case prompt == "":

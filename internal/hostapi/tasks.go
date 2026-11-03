@@ -934,7 +934,7 @@ func (h *Host) work(run, who, agent, status, body string) {
 	body = strings.TrimSpace(body)
 	text := who
 	if body != "" {
-		text = who + " · " + body
+		text = who + "  " + body
 	}
 	ag := h.agents
 	ag.mu.Lock()
@@ -1275,12 +1275,12 @@ func (h *Host) agentRunItems() []OverlayItem {
 		}
 		if run != nil {
 			tokens, cost := run.usage()
-			item.Desc = statusCol(string(status)) + " · " + fmtDuration(took) +
-				fmt.Sprintf(" · %d tool %s", calls, Plural(calls, "call", "calls")) + " · " + desc
+			item.Desc = statusCol(string(status)) + "  " + fmtDuration(took) +
+				fmt.Sprintf("  %d tool %s", calls, Plural(calls, "call", "calls")) + "  " + desc
 			item.Fields, item.Detail, item.Parts, item.Empty = h.agentView(agentRow{id: id, def: run.agent, status: status, calls: calls, tokens: tokens, cost: cost, took: took}, run)
 		} else {
 			// a stored row holds what its session row says; its transcript loads on demand
-			item.Desc = statusCol(string(status)) + " · " + fmtDuration(took) + " · " + desc
+			item.Desc = statusCol(string(status)) + "  " + fmtDuration(took) + "  " + desc
 			item.Fields = fieldList("status", string(status), "time", fmtDuration(took), "agent", desc, "run", id)
 		}
 		item.Keys = []ItemKey{{Key: "v", Desc: "view its transcript", Run: "agents view " + id + " list"}}
@@ -1333,10 +1333,10 @@ func (h *Host) fromSession(parent string) string {
 	}
 	if h.DB != nil {
 		if sess, err := h.DB.GetSession(parent); err == nil && sess.Title != "" {
-			return " · from " + clipRunes(sess.Title, 60)
+			return "  from " + clipRunes(sess.Title, 60)
 		}
 	}
-	return " · from another session"
+	return "  from another session"
 }
 
 // statusCol pads a run's status or a project's trust word to the widest, so

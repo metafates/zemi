@@ -309,7 +309,7 @@ type MarkKind = tools.MarkKind
 // user, going on in the background, waiting, reasoning and a notice.
 var Marks = map[MarkKind]Mark{
 	tools.MarkSpin: {Spinner[0], "Dim"}, tools.MarkOK: {"✓", "Ok"}, tools.MarkWarn: {"!", "Warn"}, tools.MarkErr: {"✗", "Danger"}, tools.MarkStop: {"■", "Dim"},
-	tools.MarkBG: {"⧗", "Dim"}, tools.MarkWait: {"·", "Dim"}, tools.MarkThought: {"✻", "ThinkingMark"}, tools.MarkNote: {"◦", "Dim"},
+	tools.MarkBG: {"⧗", "Dim"}, tools.MarkWait: {"…", "Dim"}, tools.MarkThought: {"✻", "ThinkingMark"}, tools.MarkNote: {"◦", "Dim"},
 }
 
 // Spinner is the running mark's frames, one per frame tick.

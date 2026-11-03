@@ -238,7 +238,7 @@ func TestAskTrustNotifiesWhenAway(t *testing.T) {
 			}
 		}
 	}
-	if sent != "\x1b]9;zemi: trust this project? · /proj\x07" {
+	if sent != "\x1b]9;zemi: trust this project?  /proj\x07" {
 		t.Fatalf("sent %q", sent)
 	}
 	app.answerTrust("later")

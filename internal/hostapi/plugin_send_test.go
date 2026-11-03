@@ -69,7 +69,7 @@ func TestPluginText(t *testing.T) {
 			}
 			var want []string
 			if c.origin == lua.OriginPlugin && !c.rewrite {
-				want = []string{"plugin:a · the deploy key lives in vault"}
+				want = []string{"plugin:a  the deploy key lives in vault"}
 			}
 			if !slices.Equal(notices, want) {
 				t.Errorf("notice rows %q, want %q", notices, want)

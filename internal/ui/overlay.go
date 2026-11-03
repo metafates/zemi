@@ -1590,7 +1590,7 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 			// is exactly when they should stay one key away
 			if sel != nil && hasView(sel.row) {
 				foot = append(foot,
-					hostapi.Segment{Text: " · ", HL: hostapi.ChromeHint},
+					hostapi.Segment{Text: "  ", HL: hostapi.ChromeHint},
 					hostapi.Segment{Text: "l", HL: hostapi.ChromeHintKey},
 					hostapi.Segment{Text: " details", HL: hostapi.ChromeHint})
 			}
@@ -1599,7 +1599,7 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 			// the stats clip before the keys do: hint never drops enter and
 			// esc, so the foot takes only the cells the keys leave
 			if n := footW - hostapi.SegsWidth(foot) - 3; n > 0 {
-				foot = append([]hostapi.Segment{{Text: clipText(s, n), HL: hostapi.ChromeHint}, {Text: " · ", HL: hostapi.ChromeHint}}, foot...)
+				foot = append([]hostapi.Segment{{Text: clipText(s, n), HL: hostapi.ChromeHint}, {Text: "  ", HL: hostapi.ChromeHint}}, foot...)
 			}
 		}
 		tail = len(stack(tight, pane, oneRow))

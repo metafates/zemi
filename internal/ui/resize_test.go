@@ -232,7 +232,7 @@ func TestAnchoredBoxBottomBorder(t *testing.T) {
 		app, host := bootAgentApp(t, 100, 20)
 		host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
 		app.renderSync(t)
-		if label := ansi.Strip(app.Frame()); !strings.Contains(label, "esc interrupt · 0m 20s") {
+		if label := ansi.Strip(app.Frame()); !strings.Contains(label, "esc interrupt  0m 20s") {
 			t.Fatalf("%s: no working key and clock on the rule to cut:\n%s", anchor, label)
 		}
 		app.openOverlay(hostapi.Overlay{ID: "usage", Title: "Usage", Items: []hostapi.OverlayItem{{Text: "row one"}}, Anchor: anchor})
@@ -305,9 +305,9 @@ func TestFitClusters(t *testing.T) {
 		w    int
 		want string
 	}{
-		{80, "auto · proj · ctrl+c again to quit|$0.12 · 1.1k/128k ctx · 96% · fake/m"},
-		{45, "auto · proj|1.1k/128k ctx · 96% · fake/m"},
-		{20, "auto · proj|fake/m"},
+		{80, "auto  proj  ctrl+c again to quit|$0.12  1.1k/128k ctx  96%  fake/m"},
+		{45, "auto  proj|$0.12  1.1k/128k ctx  96%  fake/m"},
+		{20, "auto  proj|fake/m"},
 		{15, "auto|fake/m"},
 		{8, "auto|"},
 		{3, "au…|"},

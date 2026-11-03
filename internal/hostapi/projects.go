@@ -340,11 +340,11 @@ func (h *Host) projectItems() (items []OverlayItem, sel int) {
 		// moves only its own row's age
 		sessions := ""
 		if p.Messages > 0 {
-			sessions = fmt.Sprintf(" · %d %s", p.Messages, Plural(p.Messages, "message", "messages"))
+			sessions = fmt.Sprintf("  %d %s", p.Messages, Plural(p.Messages, "message", "messages"))
 		}
 		desc := fmt.Sprintf("%-24s", fmt.Sprintf("%-9s%s", h.trustWord(p), sessions))
 		if !p.Used.IsZero() {
-			desc += " · " + ago(p.Used.UnixMilli())
+			desc += "  " + ago(p.Used.UnixMilli())
 		}
 		item := OverlayItem{Glyph: ProjectMark(p.Root), Text: sanitize.String(perm.TildePath(p.Root)), Tail: true, Desc: strings.TrimRight(desc, " "), Fields: h.projectFields(p)}
 		switch {
@@ -399,7 +399,7 @@ func (h *Host) trustWord(p Project) string {
 func (h *Host) projectFields(p Project) []Field {
 	msgs, recipes, errText := "", "", ""
 	if p.Latest != nil {
-		msgs = fmt.Sprintf("%d · latest %s", p.Messages, ago(p.Latest.UpdatedAt))
+		msgs = fmt.Sprintf("%d  latest %s", p.Messages, ago(p.Latest.UpdatedAt))
 		if t := sanitize.Line(p.Latest.Title); t != "" {
 			msgs += ": " + markedTitle(p.Root, t)
 		}

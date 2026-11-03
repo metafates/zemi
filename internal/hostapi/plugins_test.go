@@ -241,7 +241,7 @@ func TestPluginsStep(t *testing.T) {
 			want: []string{
 				"skill s plugin:a true\n", "skill mine user true\n", "agent s plugin:a\n", "agent mine user\n",
 				"command s plugin:a\n", "command mine user\n", "workflow s plugin:a\n", "workflow mine user\n",
-				"provides: command /s · skill s · agent s · workflow s\n",
+				"provides: command /s  skill s  agent s  workflow s\n",
 			},
 			not: []string{"gone", "hook", "mine plugin", "error: plugins", "error: skills"},
 		},
@@ -341,7 +341,7 @@ func TestPluginsStep(t *testing.T) {
 					fmt.Fprintf(&out, "workflow %s %s\n", w.Name, h.sourceOf(w.Source, w.Path))
 				}
 			}
-			fmt.Fprintf(&out, "provides: %s\n", strings.Join(h.pluginProvides()["a"], " · "))
+			fmt.Fprintf(&out, "provides: %s\n", strings.Join(h.pluginProvides()["a"], "  "))
 			h.errs.mu.Lock()
 			for _, e := range h.errs.entries {
 				fmt.Fprintf(&out, "error: %s: %s\n", e.source(), strings.ReplaceAll(e.msg, h.pluginsRoot(), "<plugins>"))

@@ -135,11 +135,11 @@ func (h *Host) memoriesOverlay() Overlay {
 		o.Items = append(o.Items, h.memoriesRow(nodeID{ln.L, ln.I}, ln.Text, lo))
 	}
 	if n > 0 {
-		foot := fmt.Sprintf("%s · %s · %s", fmtBytes(int64(b)), pluralCount(n, "line", "lines"), pluralCount(levels, "level", "levels"))
+		foot := fmt.Sprintf("%s  %s  %s", fmtBytes(int64(b)), pluralCount(n, "line", "lines"), pluralCount(levels, "level", "levels"))
 		if unbuilt > 0 {
-			foot += fmt.Sprintf(" · %d not summarized yet", unbuilt)
+			foot += fmt.Sprintf("  %d not summarized yet", unbuilt)
 		}
-		foot += " · tags are line ids"
+		foot += "  tags are line ids"
 		o.Foot = foot
 	}
 	return o
@@ -163,7 +163,7 @@ func (h *Host) memoriesZoomOverlay(id nodeID) (Overlay, bool) {
 	}
 	if n, err := h.DB.NodeAt(id.l, id.i); err == nil && n.Text != "" {
 		o.Body = n.Text
-		o.Foot = fmt.Sprintf("%s · %s", fmtBytes(int64(n.Size)), pluralCount(int(id.span()), "message", "messages"))
+		o.Foot = fmt.Sprintf("%s  %s", fmtBytes(int64(n.Size)), pluralCount(int(id.span()), "message", "messages"))
 	} else {
 		o.Foot = pluralCount(int(id.span()), "message", "messages")
 	}

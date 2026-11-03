@@ -412,8 +412,10 @@ func TestMessagesOpenOnRun(t *testing.T) {
 	chat := app.scrolls[regionChat]
 	digest := -1
 	for i, row := range chat.lines {
-		if strings.HasPrefix(hostapi.SegsText(row), "· ") {
-			digest = i
+		for _, s := range row {
+			if strings.HasPrefix(s.Click, "turn:") {
+				digest = i
+			}
 		}
 	}
 	if digest < 0 || chat.rows <= chat.viewH {
@@ -1040,7 +1042,7 @@ func TestMessagesRail(t *testing.T) {
 	if strings.Contains(frame(), "│ ✓") {
 		t.Fatalf("the run stayed open:\n%s", frame())
 	}
-	if got := bandedChatRows(app); len(got) != 1 || !strings.HasPrefix(got[0], "· ") {
+	if got := bandedChatRows(app); len(got) != 1 || !strings.HasPrefix(got[0], "1 file:") {
 		t.Fatalf("banded %q, want the run's row", got)
 	}
 	// the rail is a level of the list, so esc on it closes the menu whole
@@ -1137,7 +1139,7 @@ func TestRailBandCoversTheRun(t *testing.T) {
 	walkToList(t, app, "step")
 	app.Frame()
 	banded := bandedChatText(t, app)
-	if len(banded) != 1 || !strings.Contains(banded[0], "· 2 files") {
+	if len(banded) != 1 || !strings.Contains(banded[0], "  2 files") {
 		t.Fatalf("folded band:\n%s", strings.Join(banded, "\n"))
 	}
 	// the reader opens the run in the chat and picks the run row again: the
@@ -1146,7 +1148,7 @@ func TestRailBandCoversTheRun(t *testing.T) {
 	for app.Pump() {
 	}
 	app.renderSync(t)
-	x, y := findCell(t, app, "· ")
+	x, y := findCell(t, app, "files")
 	clickAt(app, x, y)
 	app.renderSync(t)
 	app.Frame()
@@ -1348,7 +1350,7 @@ func TestRailBandCoversOneCall(t *testing.T) {
 			t.Fatalf("pick %q bands:\n%s", want, strings.Join(banded, "\n"))
 		}
 		for _, row := range banded {
-			if strings.HasPrefix(row, "· ") {
+			if strings.HasPrefix(row, "  ") {
 				t.Fatalf("the digest row banded for %q:\n%s", want, strings.Join(banded, "\n"))
 			}
 		}
@@ -1400,7 +1402,7 @@ func TestMessagesOpenSelectsTheClosestCall(t *testing.T) {
 	app.Frame()
 	// the run drew folded; the digest clicked open, then the view parked with
 	// the middle of it on the run's sixth row
-	x, y := findCell(t, app, "· ")
+	x, y := findCell(t, app, "files")
 	clickAt(app, x, y)
 	app.renderSync(t)
 	app.Frame()

@@ -150,7 +150,7 @@ func TestMCPBridge(t *testing.T) {
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	row := func() OverlayItem { return ui.overlays()[0].Items[0] }
-	if err := h.openMCP(""); err != nil || row().Desc != "ready · 2 of 3 tools" || row().Mark != tools.MarkOK || ui.overlays()[0].Reload == nil {
+	if err := h.openMCP(""); err != nil || row().Desc != "ready  2 of 3 tools" || row().Mark != tools.MarkOK || ui.overlays()[0].Reload == nil {
 		t.Errorf("/mcp row = %v, %v", ui.overlays(), err)
 	}
 	// under the ask-everything policy the user's no refuses the call; with
@@ -495,7 +495,7 @@ func TestMCPOverlayRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	row := func(o Overlay) string { return o.Items[0].Desc }
-	if got := ui.overlays(); len(got) == 0 || got[len(got)-1].ID != "mcp" || row(got[len(got)-1]) != "ready · 3 tools" {
+	if got := ui.overlays(); len(got) == 0 || got[len(got)-1].ID != "mcp" || row(got[len(got)-1]) != "ready  3 tools" {
 		t.Fatalf("open /mcp = %+v", ui.overlays())
 	}
 	snap := func() ([]string, []Overlay) {
@@ -522,7 +522,7 @@ func TestMCPOverlayRefresh(t *testing.T) {
 	shrink.Store(true)
 	h.refreshMCPTools(s)
 	ids, rebuilt := snap()
-	if len(ids) != n+2 || row(rebuilt[len(rebuilt)-1]) != "ready · 1 tool" {
+	if len(ids) != n+2 || row(rebuilt[len(rebuilt)-1]) != "ready  1 tool" {
 		t.Fatalf("a tool-list refresh left the open /mcp stale: %v, %q", ids, row(rebuilt[len(rebuilt)-1]))
 	}
 }

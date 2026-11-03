@@ -87,11 +87,11 @@ func TestReplyStatsShed(t *testing.T) {
 	host.AppendMessage("user", "go")
 	appendReply(host, "done", hostapi.TurnStat{Out: 100, ElapsedMS: 1500, Model: "anthropic/claude-sonnet-4-5"})
 	wide := strings.Join(chatRows(t, app, 80), "\n")
-	if !strings.Contains(wide, "anthropic/claude-sonnet-4-5 · 1.5s · 100 out") {
+	if !strings.Contains(wide, "anthropic/claude-sonnet-4-5  1.5s  100 out") {
 		t.Fatalf("the wide readout does not lead with the model:\n%s", wide)
 	}
 	narrow := strings.Join(chatRows(t, app, 40), "\n")
-	if strings.Contains(narrow, "anthropic") || !strings.Contains(narrow, "1.5s · 100 out") {
+	if strings.Contains(narrow, "anthropic") || !strings.Contains(narrow, "1.5s  100 out") {
 		t.Fatalf("the narrow readout kept the model or lost the turn:\n%s", narrow)
 	}
 }
@@ -109,13 +109,13 @@ func TestThoughtDigestHoldsWhileReplying(t *testing.T) {
 		return chatRows(t, app, 78)
 	}
 	digest := func(rows []string) bool {
-		return slices.ContainsFunc(rows, func(r string) bool { return strings.HasPrefix(r, "· thought") })
+		return slices.ContainsFunc(rows, func(r string) bool { return strings.HasPrefix(r, "thought") })
 	}
 	// a thought of nothing says nothing
 	if blank := draw(hostapi.StreamSnapshot{Active: true, Text: "The reply", Reasoning: "   ", Thought: 3 * time.Second}); digest(blank) {
 		t.Fatalf("a blank thought drew a digest row:\n%s", strings.Join(blank, "\n"))
 	}
-	const want = "· thought 3.0s"
+	const want = "thought 3.0s"
 	live := draw(hostapi.StreamSnapshot{Active: true, Text: "The reply", Reasoning: "pondering the ask.", Thought: 3 * time.Second})
 	if !slices.Contains(live, want) {
 		t.Fatalf("the thought's digest row is not drawn while the reply streams:\n%s", strings.Join(live, "\n"))

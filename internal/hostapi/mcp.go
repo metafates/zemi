@@ -1111,7 +1111,7 @@ func (h *Host) mcpItems() []OverlayItem {
 		}
 		desc := fmt.Sprintf("%d of %d on", on, len(members))
 		if waiting > 0 {
-			desc += fmt.Sprintf(" · %d %s sign-in", waiting, Plural(waiting, "needs", "need"))
+			desc += fmt.Sprintf("  %d %s sign-in", waiting, Plural(waiting, "needs", "need"))
 		}
 		items = append(items, OverlayItem{
 			ID:   "mcp group " + g,
@@ -1193,9 +1193,9 @@ func (h *Host) mcpItem(s *mcpServer) OverlayItem {
 	s.mu.Unlock()
 	desc := string(status)
 	if status == StatusReady {
-		desc = fmt.Sprintf("ready · %d %s", len(tools), Plural(len(tools), "tool", "tools"))
+		desc = fmt.Sprintf("ready  %d %s", len(tools), Plural(len(tools), "tool", "tools"))
 		if len(tools) < all {
-			desc = fmt.Sprintf("ready · %d of %d tools", len(tools), all)
+			desc = fmt.Sprintf("ready  %d of %d tools", len(tools), all)
 		}
 	} else if signIn != "" {
 		desc = "waiting in the browser"

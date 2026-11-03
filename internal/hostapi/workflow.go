@@ -1020,13 +1020,13 @@ func (f *flowRun) summary() string {
 		if v.lastLog != "" {
 			parts = append(parts, clipRunes(v.lastLog, 60))
 		}
-		return strings.Join(parts, " · ")
+		return strings.Join(parts, "  ")
 	}
 	parts = append(parts, fmt.Sprintf("%d %s", len(v.agents), Plural(len(v.agents), "agent", "agents")))
 	if v.cost > 0 {
 		parts = append(parts, fmtCost(v.cost))
 	}
-	return strings.Join(append(parts, fmtDuration(v.took)), " · ")
+	return strings.Join(append(parts, fmtDuration(v.took)), "  ")
 }
 
 // phases groups rows by phase in the order reached; a row with none goes
@@ -1047,7 +1047,7 @@ func (f *flowRun) phases(rows []agentRow) (names []string, by map[string][]agent
 func (f *flowRun) statusText() string {
 	v := f.view()
 	var b strings.Builder
-	fmt.Fprintf(&b, "workflow %s %s: %s · %d/%d agents · %d running · %d at once", f.id, f.description, flowWord(v), v.done, len(v.agents), v.running, v.limit)
+	fmt.Fprintf(&b, "workflow %s %s: %s  %d/%d agents  %d running  %d at once", f.id, f.description, flowWord(v), v.done, len(v.agents), v.running, v.limit)
 	names, by := f.phases(v.agents)
 	for _, p := range names {
 		fmt.Fprintf(&b, "\n%s %d/%d", p, ended(by[p]), len(by[p]))
@@ -1461,7 +1461,7 @@ func (t *workflowTool) list() string {
 		}
 		line := fmt.Sprintf("%s %s: %s", f.id, clipRunes(f.description, 60), flowWord(v))
 		if s := f.summary(); s != "" {
-			line += " · " + s
+			line += "  " + s
 		}
 		lines = append(lines, line)
 	}
@@ -1750,7 +1750,7 @@ func (f *flowRun) report() (string, bool) {
 		return msg + fails + log, false
 	}
 	if f.script != "" {
-		where += " · " + f.script
+		where += "  " + f.script
 	}
 	body := cmp.Or(strings.TrimSpace(f.result), "(the workflow returned nothing)")
 	if n := f.reused(); n > 0 {
@@ -1995,7 +1995,7 @@ func (h *Host) startUserFlow(spec flowSpec, attached string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h.notice(fmt.Sprintf("Started workflow %s (%s) · /workflows", f.id, clipLine(f.description, 60)), "")
+	h.notice(fmt.Sprintf("Started workflow %s (%s)  /workflows", f.id, clipLine(f.description, 60)), "")
 	return f.id, nil
 }
 

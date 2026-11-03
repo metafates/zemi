@@ -98,7 +98,7 @@ func TestPluginsCommand(t *testing.T) {
 			want: []string{
 				"text:Install a plugin verb:fill",
 				"text:Add a marketplace verb:fill", "desc:no marketplaces yet",
-				"desc:0.1.0 · a todo list in the statusline", "[provides command /todo · setting plugins.a.live]",
+				"desc:0.1.0  a todo list in the statusline", "[provides command /todo  setting plugins.a.live]",
 				"[version 0.1.0]", "on:true run:plugin toggle a section:Local text:a",
 				"[author me]", "[homepage https://a]", "detail:# a",
 				"desc:failed", "[status failed]", "broken", "desc:disable key:d run:plugin disable a",
@@ -134,7 +134,7 @@ func TestPluginsCommand(t *testing.T) {
 		{
 			name: "install from the marketplace", args: "install x@test",
 			want: []string{
-				"info: Plugin installed: x v1.0.0", "section:Installed text:x", "desc:v1.0.0 · from test · the x plugin",
+				"info: Plugin installed: x v1.0.0", "section:Installed text:x", "desc:v1.0.0  from test  the x plugin",
 				"[version v1.0.0]", "[status starting]", "[marketplace test]",
 				"danger:true desc:delete key:x run:plugin delete x",
 			},

@@ -380,7 +380,7 @@ func (h *Host) pluginItems() []OverlayItem {
 		keys = append(keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "plugin delete " + p.Name})
 		readme := plugin.Readme(p.Dir)
 		fields := fieldList("source", source, "status", string(status), "version", version,
-			"marketplace", p.Marketplace, "provides", strings.Join(provides[p.Name], " · "))
+			"marketplace", p.Marketplace, "provides", strings.Join(provides[p.Name], "  "))
 		// metadata the row shows only when it has it; with a README the
 		// description and grants move here from the prose it replaces
 		extra := fieldList("author", p.Author, "homepage", p.Homepage)
@@ -394,7 +394,7 @@ func (h *Host) pluginItems() []OverlayItem {
 		}
 		fields = append(fields, fieldList("path", perm.TildePath(p.Dir), "error", errText)...)
 		items = append(items, OverlayItem{
-			Text: p.Name, Desc: strings.Join(slices.DeleteFunc(desc, func(s string) bool { return s == "" }), " · "),
+			Text: p.Name, Desc: strings.Join(slices.DeleteFunc(desc, func(s string) bool { return s == "" }), "  "),
 			Section: section, On: new(p.Enabled), Run: "plugin toggle " + p.Name,
 			Detail: cmp.Or(readme, pluginDetail(p)), Keys: keys, Fields: fields,
 		})
@@ -447,7 +447,7 @@ func (h *Host) marketplaceItemsOf(name string) []OverlayItem {
 	installed := plugin.InstalledEntries(h.Dirs, name)
 	live, provs := h.pluginProvides(), plugin.EntryProvides(h.Dirs, name)
 	items := []OverlayItem{{
-		Text: perm.TildePath(m.Source), Desc: fmt.Sprintf("added %s · %s", m.Added.Format(time.DateOnly), plugin.Count(len(m.Entries))),
+		Text: perm.TildePath(m.Source), Desc: fmt.Sprintf("added %s  %s", m.Added.Format(time.DateOnly), plugin.Count(len(m.Entries))),
 		Section: "Marketplace",
 		Keys: []ItemKey{
 			{Key: "u", Desc: "update", Run: "plugin marketplace update " + name},
@@ -489,7 +489,7 @@ func (h *Host) marketplaceItemsOf(name string) []OverlayItem {
 			}
 			item := OverlayItem{
 				Text: e.Name, Section: cat,
-				Desc:   strings.Join(desc, " · "),
+				Desc:   strings.Join(desc, "  "),
 				Detail: e.Description,
 			}
 			// provides reads the live catalog for an installed entry, the
@@ -497,9 +497,9 @@ func (h *Host) marketplaceItemsOf(name string) []OverlayItem {
 			// never fetched says so rather than reading as "provides nothing"
 			prov := "not installed"
 			if inst, ok := installed[e.Name]; ok {
-				prov = strings.Join(live[inst], " · ")
+				prov = strings.Join(live[inst], "  ")
 			} else if p, ok := provs[e.Name]; ok {
-				prov = strings.Join(p, " · ")
+				prov = strings.Join(p, "  ")
 			}
 			for _, f := range fieldList("version", e.Version, "category", e.Category, "provides", prov,
 				"author", e.Author, "homepage", e.Homepage, "grants", strings.Join(e.Uses, ", ")) {

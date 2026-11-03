@@ -1290,7 +1290,7 @@ says in its reply's last line (`next: 10m`, 1m to 1h, 20m when it names none;
 `next: done` ends the loop). The first run goes at once. A run is a message
 with the prompt in a note, or a command with the note attached, sent only
 when the agent is idle (a busy one delays it 30s). The run reaches the model
-with the prompt attached and draws its work row (`loop · Run N of: <prompt>`),
+with the prompt attached and draws its work row (`loop  Run N of: <prompt>`),
 which a resume reads back from the log.
 One loop per session; it is never stored, so a restart starts
 nothing on its own, and it stops on `/loop stop`, a project switch, a
@@ -1909,7 +1909,7 @@ view; a reset's wipe drops the row with the chat.
   never moves with agent state, so no turn adds or removes a row.
   The statusline is two clusters on the bar; a cluster's widgets are ordered by
   `priority` ascending from each side's outer edge, the right one from the
-  right edge, Go joins the ones that draw with a dim " · ",
+  right edge, Go joins the ones that draw two spaces apart,
   overflow drops the highest priority first; the
   shipped left widgets also show an armed quit (`QuitArmed`), a
   pending key sequence (`KeySeq`) and the rows below a scrolled chat
@@ -1986,7 +1986,7 @@ view; a reset's wipe drops the row with the chat.
   `c` change, and `x` for what cannot be undone (delete, or `/mcp`'s sign
   out, which deletes the saved token); `/health`'s one key per check takes its
   label's initial. A row or key with `danger` (those `x` keys) draws in the danger color, and
-  its first press only arms it: the footer turns to `x again to delete · esc
+  its first press only arms it: the footer turns to `x again to delete  esc
   cancel`, the verb in that color and the keys drawn as keys, the same key,
   enter or space runs it, esc disarms and stays, and any other key, or a click
   or wheel that moves the selection, disarms and then acts; a screen's own
@@ -2048,7 +2048,7 @@ view; a reset's wipe drops the row with the chat.
   so a row going or coming adds or drops no filter row. While it types, every
   one-character key types at a cursor; left and right move it, and backspace,
   delete, ctrl+w and alt+backspace edit around it, so the footer says only
-  `enter done · esc clear`; enter keeps the query and
+  `enter done  esc clear`; enter keeps the query and
   gives the keys back to the list, where left and right alias h and l again
   (j and k move in the narrowed rows, `/`
   types on), and esc clears it, then closes. A detail view opens with its
@@ -2188,8 +2188,8 @@ view; a reset's wipe drops the row with the chat.
   drawn rows' anchors and calls by the delta, so a trim neither re-renders
   the window nor drops a fold the reader opened. A banded message is the one thing a
   picker leaves undimmed: the map sinks the chat around what it looks at.
-  A settled turn folds each run of activity into one dim digest row, `· 6
-  files, 8 commands · thought 8s` or, holding thinking alone, `· thought 3.3s`,
+  A settled turn folds each run of activity into one dim digest row, `6
+  files, 8 commands  thought 8s` or, holding thinking alone, `thought 3.3s`,
   and nothing else: the rail of steps under
   it, its thinking, and the failures, questions, plans, background jobs
   and commands with a diff it holds are a click

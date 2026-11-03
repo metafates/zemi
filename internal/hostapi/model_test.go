@@ -205,7 +205,7 @@ func TestModelTargetUI(t *testing.T) {
 	if want := []string{"default", "agents", "compact", "clf"}; !slices.Equal(got, want) {
 		t.Fatalf("/model roles lists %v, want %v", got, want)
 	}
-	if row := rows[3]; row.Desc != "a/small · the classifier" {
+	if row := rows[3]; row.Desc != "a/small  the classifier" {
 		t.Errorf("clf row %+v", row)
 	}
 	// the slot's list opens on what an empty key means
@@ -437,7 +437,7 @@ func TestModelFavorites(t *testing.T) {
 			sections = append(sections, it.Section)
 		}
 	}
-	if !slices.Equal(sections, []string{"Favorites", "a · no API key"}) {
+	if !slices.Equal(sections, []string{"Favorites", "a  no API key"}) {
 		t.Errorf("the favorite reads %v, want the head copy and the provider row", sections)
 	}
 }

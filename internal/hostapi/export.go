@@ -88,7 +88,7 @@ func copyPicker(text string, blocks []codeBlock) Overlay {
 		}
 		desc := pluralCount(lineCount(strings.TrimRight(b.text, "\n")), "line", "lines")
 		if head != "" {
-			desc += " · " + head
+			desc += "  " + head
 		}
 		o.Items = append(o.Items, OverlayItem{
 			Text: fmt.Sprintf("%d  %s", i+1, cmp.Or(b.lang, "text")),
@@ -427,7 +427,7 @@ func (h *Host) OpenUsage() error {
 		}
 		section("Context")
 		rows = append(rows, append(append([]Segment{text("", "  ")}, bar(s.LastIn, s.CtxWindow, 32, hl)...),
-			text(ChromeValue, fmtTokens(s.LastIn)), text(ChromeHint, fmt.Sprintf(" of %s · %s", fmtTokens(s.CtxWindow), pctText))))
+			text(ChromeValue, fmtTokens(s.LastIn)), text(ChromeHint, fmt.Sprintf(" of %s  %s", fmtTokens(s.CtxWindow), pctText))))
 	}
 	if parts, total := h.promptBreakdown(); total > 0 {
 		section("Prompt", text(ChromeValue, "  "+fmtTokens(total)), text(ChromeHint, " sent with every request"))
@@ -449,9 +449,9 @@ func (h *Host) OpenUsage() error {
 	// the view's own size: what the eternal chat keeps the next turn reading
 	if b, lines, levels, unbuilt := h.viewStats(); lines > 0 {
 		section("View", text(ChromeHint, " the chat the model reads"))
-		detail := fmt.Sprintf("  %s · %s · %s", fmtBytes(int64(b)), pluralCount(lines, "line", "lines"), pluralCount(levels, "level", "levels"))
+		detail := fmt.Sprintf("  %s  %s  %s", fmtBytes(int64(b)), pluralCount(lines, "line", "lines"), pluralCount(levels, "level", "levels"))
 		if unbuilt > 0 {
-			detail += " · " + pluralCount(unbuilt, "line", "lines") + " unbuilt"
+			detail += "  " + pluralCount(unbuilt, "line", "lines") + " unbuilt"
 		}
 		rows = append(rows, []Segment{text(ChromeValue, detail)})
 	}
