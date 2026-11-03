@@ -2713,3 +2713,20 @@ func TestCancelMenuClosesTheWholeMenu(t *testing.T) {
 		t.Fatalf("%d overlays survived the cancel", len(app.overlays))
 	}
 }
+
+// TestOverlayFootClipsBeforeItsKeys: a stats footer takes only the cells
+// the key hints leave, so a narrow screen keeps enter and esc whole.
+func TestOverlayFootClipsBeforeItsKeys(t *testing.T) {
+	t.Parallel()
+	a, _ := bootAgentApp(t, 60, 20)
+	a.openOverlay(hostapi.Overlay{
+		ID: "m", Title: "Memories", Origin: lua.OriginBuiltin,
+		Items: []hostapi.OverlayItem{{Text: "line one", Detail: "the line's view"}},
+		Foot:  "1.9k · 46 lines · 1 level · 3 not summarized yet · tags are line ids",
+	})
+	rows := a.overlayBox(&a.overlays[0], 60, 18, false)
+	foot := hostapi.SegsText(rows[len(rows)-2])
+	if !strings.Contains(foot, "enter open") || !strings.Contains(foot, "esc close") {
+		t.Fatalf("a narrow footer lost its keys: %q", foot)
+	}
+}

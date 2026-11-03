@@ -1568,11 +1568,7 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 		if measuring { // the box grows to what the footer keeps, so no hint drops
 			footW = inner
 		}
-		statW := 0
-		if st.o.Foot != "" {
-			statW = ansi.StringWidth(st.o.Foot) + 3
-		}
-		foot := hint(footW-statW, hints...)
+		foot := hint(footW, hints...)
 		// the filter can empty the list under an armed key: the footer then
 		// names the arm alone, no row's label or view
 		var sel *listItem
@@ -1600,7 +1596,11 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 			}
 		}
 		if s := st.o.Foot; s != "" {
-			foot = append([]hostapi.Segment{{Text: s, HL: hostapi.ChromeHint}, {Text: " · ", HL: hostapi.ChromeHint}}, foot...)
+			// the stats clip before the keys do: hint never drops enter and
+			// esc, so the foot takes only the cells the keys leave
+			if n := footW - hostapi.SegsWidth(foot) - 3; n > 0 {
+				foot = append([]hostapi.Segment{{Text: clipText(s, n), HL: hostapi.ChromeHint}, {Text: " · ", HL: hostapi.ChromeHint}}, foot...)
+			}
 		}
 		tail = len(stack(tight, pane, oneRow))
 		rows := stack(tight, body, slices.Concat(head, list, fixed), pane, [][]hostapi.Segment{foot})
