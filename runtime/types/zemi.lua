@@ -232,7 +232,7 @@ zemi.api = {}
 ---@field choices? string[] The only values a string key takes; nil takes any. `zemi.config.set` also takes "default" for a "" choice.
 
 ---@class zemi.SettingSchema: zemi.SettingSpec
----@field path string Dotted key, e.g. "ui.theme"; a plugin's are "plugins.<name>.<key>".
+---@field path string Dotted key, e.g. "models.compact"; a plugin's are "plugins.<name>.<key>".
 
 ---@class zemi.config
 zemi.config = {}
