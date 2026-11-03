@@ -248,22 +248,33 @@ func (h *Host) instructionSections(files []string, budget int) string {
 }
 
 // instructionFiles lists the instruction files for this project, general
-// first: the user's <config>/AGENTS.md, then for each directory from the
-// repository root down to the working directory its AGENTS.md, or CLAUDE.md
-// when it has none (repositories set up for Claude Code).
+// first: the user's own files (userInstructions), then for each directory
+// from the repository root down to the working directory its AGENTS.md, or
+// CLAUDE.md when it has none (repositories set up for Claude Code).
 // An untrusted project's files stay out: they steer the model's commands.
 func (h *Host) instructionFiles() []string {
-	mine := filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
-	return slices.DeleteFunc(h.instructionPaths(), func(p string) bool { return p != mine && !h.instructionFile(p) })
+	mine := h.userInstructions()
+	return slices.DeleteFunc(h.instructionPaths(), func(p string) bool { return !slices.Contains(mine, p) && !h.instructionFile(p) })
+}
+
+// userInstructions are the user's own instruction files, read whatever the
+// project's trust: the cross-tool ~/.config/AGENTS.md first, then zemi's
+// own <config>/AGENTS.md.
+func (h *Host) userInstructions() []string {
+	var out []string
+	if h.Dirs.Home != "" {
+		out = append(out, filepath.Join(h.Dirs.Home, ".config", "AGENTS.md"))
+	}
+	if h.Dirs.ConfigHome != "" {
+		out = append(out, filepath.Join(h.Dirs.ConfigHome, "AGENTS.md"))
+	}
+	return out
 }
 
 // instructionPaths is where instructionFiles looks, a file that would load
 // were it created included, so a pinned prompt can tell one appeared.
 func (h *Host) instructionPaths() []string {
-	var out []string
-	if h.Dirs.ConfigHome != "" {
-		out = append(out, filepath.Join(h.Dirs.ConfigHome, "AGENTS.md"))
-	}
+	out := h.userInstructions()
 	if !h.ProjectTrusted() {
 		return out
 	}

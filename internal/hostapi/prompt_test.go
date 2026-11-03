@@ -232,6 +232,31 @@ func TestUserInstructionsOwnBudget(t *testing.T) {
 	}
 }
 
+// TestHomeInstructions: the cross-tool ~/.config/AGENTS.md rides the prompt
+// whatever the project's trust, ahead of zemi's own <config>/AGENTS.md.
+func TestHomeInstructions(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHost(t)
+	h.Dirs.Home = t.TempDir()
+	h.Dirs.ConfigHome = t.TempDir()
+	if err := os.MkdirAll(filepath.Join(h.Dirs.Home, ".config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.Dirs.Home, ".config", "AGENTS.md"), []byte("global rules"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "AGENTS.md"), []byte("zemi rules"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := h.systemText("base", nil, "", false)
+	if !strings.Contains(got, "global rules") || !strings.Contains(got, "zemi rules") {
+		t.Fatalf("the prompt misses the user's own instructions: %.300q", got)
+	}
+	if i, j := strings.Index(got, "global rules"), strings.Index(got, "zemi rules"); i >= j {
+		t.Errorf("the cross-tool file at %d should precede zemi's own at %d", i, j)
+	}
+}
+
 // TestPromptPinned: two sends around a change carry the same system prompt
 // and tools unless the change is a drop point or moves the key, which an
 // agent.assemble counter shows. A hand edit of an instruction file rides

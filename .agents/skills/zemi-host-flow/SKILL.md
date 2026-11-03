@@ -377,7 +377,7 @@ applied one. A store made before goose only gains its version table: the baselin
   edits it through `UIHooks.ComposerEdit`, applied on the UI goroutine.
 - **System prompt** (prompt.go): `basePrompt` + `delegationPrompt`,
   then `zemiPrompt`, the user, builtin and plugin skills, the
-  user's `<config>/AGENTS.md` under `# User instructions` (its own budget) and Lua sections
+  user's `~/.config/AGENTS.md` and `<config>/AGENTS.md` under `# User instructions` (their own budget) and Lua sections
   (`agent.assemble`, then the `prompt` of each Lua tool in the tool set). Of the project it holds
   only what trust decides and what a trusted project's own Lua
   adds, so a provider that caches a shared prefix (DeepSeek, OpenAI, Gemini, Anthropic's

@@ -378,7 +378,8 @@ even if that reload stops at an earlier failing step.
 Trusted, zemi reads the project's `.agents` instruction files
 and starts language servers (builtin and
 user-added; the Lua of zemi's own trees gets its server either way).
-Untrusted, none of that: only the user's `<config>/AGENTS.md`
+Untrusted, none of that: only the user's own instruction files
+(`~/.config/AGENTS.md` and `<config>/AGENTS.md`)
 is an instruction file, no project language server starts (zemi's own Lua still gets its own), and `.agents` edits trigger no reload.
 Either way zemi's own
 git calls (`proc.Git`) switch off `core.fsmonitor`, hooks, submodule

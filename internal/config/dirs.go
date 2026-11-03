@@ -19,6 +19,7 @@ import (
 // Dirs holds the resolved XDG locations zemi uses. Every directory is
 // absolute and may be overridden for tests.
 type Dirs struct {
+	Home       string // $HOME, where the cross-tool ~/.config/AGENTS.md lives
 	ConfigHome string // ~/.config/zemi
 	DataHome   string // ~/.local/share/zemi
 	StateHome  string // ~/.local/state/zemi
@@ -66,6 +67,7 @@ func ResolveDirs() (Dirs, error) {
 		return v
 	}
 	d := Dirs{
+		Home:       home,
 		ConfigHome: root("ZEMI_CONFIG_HOME", "XDG_CONFIG_HOME", ".config/zemi"),
 		DataHome:   root("ZEMI_DATA_HOME", "XDG_DATA_HOME", ".local/share/zemi"),
 		StateHome:  root("ZEMI_STATE_HOME", "XDG_STATE_HOME", ".local/state/zemi"),
