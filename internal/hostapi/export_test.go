@@ -375,10 +375,10 @@ func TestUsageBreaksThePromptDown(t *testing.T) {
 	if err := h.OpenUsage(); err != nil {
 		t.Fatal(err)
 	}
-	// the share trails the priced column head, so the columns stay over
-	// their values whatever the note adds to the title's row
+	// the share takes its own row under the head, so whatever it says never
+	// rides the head's row off its columns on a narrow screen
 	body = ui.opened[1].Body
-	if !strings.Contains(body, "Tokens                in      out      cost  cached 99.9%\n  this session         0        0     $0.27") {
+	if !strings.Contains(body, "Tokens                in      out      cost\n  cached 99.9%\n  this session         0        0     $0.27") {
 		t.Fatalf("the cache note shifted the columns:\n%s", body)
 	}
 }

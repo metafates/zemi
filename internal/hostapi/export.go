@@ -139,6 +139,20 @@ func lastReplyText(tr []ChatMessage) string {
 // lineCount counts a text's lines, a closing newline not starting another.
 func lineCount(s string) int { return strings.Count(strings.TrimSuffix(s, "\n"), "\n") + 1 }
 
+// realLines counts the lines an output stands for: the marker a cut leaves
+// names what it folded away.
+func realLines(s string) int {
+	n := 0
+	for l := range strings.SplitSeq(strings.TrimSuffix(s, "\n"), "\n") {
+		if m := readMoreLines(l); m > 0 {
+			n += m
+			continue
+		}
+		n++
+	}
+	return n
+}
+
 type codeBlock struct{ lang, text string }
 
 // codeBlocks returns the fenced code blocks of markdown (``` or ~~~, closed
@@ -462,9 +476,9 @@ func (h *Host) OpenUsage() error {
 	spec, _ := h.modelSpec(id)
 	priced := spec.CostPer1MIn > 0 || spec.CostPer1MOut > 0 || s.SessionCost > 0 || windows[len(windows)-1].u.Cost > 0
 	// the live session's cache share, when there is one: a broken prefix has
-	// no other symptom than the bill. It rides the title's row behind the
-	// column head, so the head keeps the rows' columns, and only the live
-	// session answers it - a column of blanks would too
+	// no other symptom than the bill. It takes its own row under the column
+	// head: on the head's row it wraps off its label on a narrow screen, and
+	// only the live session answers it - a column of blanks would too
 	cached := ""
 	if s.CacheBilled > 0 {
 		cached = fmt.Sprintf("cached %.1f%%", float64(s.CacheRead)*100/float64(s.CacheBilled))
@@ -473,10 +487,9 @@ func (h *Host) OpenUsage() error {
 	if priced {
 		head += "      cost"
 	}
+	section("Tokens", text(ChromeHint, head))
 	if cached != "" {
-		section("Tokens", text(ChromeHint, head), text(ChromeHint, "  "+cached))
-	} else {
-		section("Tokens", text(ChromeHint, head))
+		rows = append(rows, []Segment{text(ChromeHint, "  "+cached)})
 	}
 	for _, w := range windows {
 		row := []Segment{text(ChromeValue, fmt.Sprintf("  %-14s%8s%9s", w.label, fmtTokens(w.u.Prompt), fmtTokens(w.u.Completion)))}
