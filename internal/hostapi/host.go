@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -428,6 +429,26 @@ func Plural(n int, one, many string) string {
 // MoreLines is the one wording of what a cut left out: "… 3 more lines".
 func MoreLines(n int) string {
 	return fmt.Sprintf("… %d more %s", n, Plural(n, "line", "lines"))
+}
+
+// readMoreLines reads that marker back: the count it names, 0 when the line
+// is not one.
+func readMoreLines(line string) int {
+	rest, ok := strings.CutPrefix(line, "… ")
+	if !ok {
+		return 0
+	}
+	rest, ok = strings.CutSuffix(rest, " more lines")
+	if !ok {
+		if rest, ok = strings.CutSuffix(rest, " more line"); !ok {
+			return 0
+		}
+	}
+	n, err := strconv.Atoi(rest)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
 }
 
 // rowOutput is a tool result as its transcript row shows it, else

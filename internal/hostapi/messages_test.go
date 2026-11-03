@@ -1007,3 +1007,21 @@ func TestMessagesPagesFromBoot(t *testing.T) {
 		t.Errorf("the first logged prompt anchors %d, want 0", o.Items[0].Anchor)
 	}
 }
+
+// TestRealLines: a run's line count reads the cut marker back, so a
+// 200-line output says 200, not the 10 its preview keeps.
+func TestRealLines(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		out  string
+		want int
+	}{
+		{"plain", "a\nb\nc", 3},
+		{"a marker names its folded lines", "a\nb\nc\n… 191 more lines\nt\nu\nv", 197},
+		{"singular marker", "a\n… 2 more line", 3},
+	} {
+		if got := realLines(c.out); got != c.want {
+			t.Errorf("%s: realLines = %d, want %d", c.name, got, c.want)
+		}
+	}
+}

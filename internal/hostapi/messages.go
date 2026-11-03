@@ -788,7 +788,7 @@ func messageCallRow(idx int, m ChatMessage) OverlayItem {
 	if item.Run != "" {
 		item.Verb = VerbGo
 	}
-	if n := lineCount(m.Output); m.Output != "" && n > 1 {
+	if n := realLines(m.Output); m.Output != "" && n > 1 {
 		item.Desc = pluralCount(n, "line", "lines")
 	}
 	// y copies the input the call acted on, not its raw text: the same
