@@ -1672,7 +1672,7 @@ func chatKind(m hostapi.ChatMessage) int {
 
 // chatCursorKey is one key on the focused chat: j, k and the arrows walk the
 // messages, y copies, e opens the editor, tab and esc hand the keys back to
-// the composer. A key the cursor does not take leaves focus and acts as usual.
+// the composer. A key the cursor does not take is ignored.
 func (a *App) chatCursorKey(key string) (tea.Cmd, bool) {
 	units := a.chatUnits()
 	at := slices.Index(units, a.chatSel-1)

@@ -426,7 +426,7 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 		// a row of headroom, so the bottom ramp lands below the live cursor
 		start = max(0, cursorRow-composerMaxRows+2)
 	}
-	focused := a.topChrome() != noModal // a modal takes every key: the composer draws no cursor
+	focused := a.topChrome() != noModal || a.chatFocus // the chat cursor takes every key: the composer draws no cursor
 	var out [][]hostapi.Segment
 	for i := start; i < len(rows) && len(out) < composerMaxRows; i++ {
 		text, col := rows[i], cursorCol

@@ -43,6 +43,12 @@ func TestChatCursor(t *testing.T) {
 		t.Fatalf("j: sel %d, want 4", app.chatSel)
 	}
 
+	// a key the cursor does not take is ignored: focus and draft untouched
+	app.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	if !app.chatFocus || app.composer.text != "" {
+		t.Fatalf("x on the focused chat: focus %v, draft %q", app.chatFocus, app.composer.text)
+	}
+
 	app.Update(tea.KeyPressMsg{Code: 'y'})
 	if body := lastToast(app); body != "8 chars" {
 		t.Fatalf("y: toast %q, want 8 chars", body)

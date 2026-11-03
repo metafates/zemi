@@ -113,9 +113,8 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if cmd, took := a.chatCursorKey(key); took {
 			return cmd
 		}
-		// any other key hands focus back to the composer and acts as usual
-		a.chatFocus = false
-		a.bump()
+		// a key the cursor does not take is ignored while the chat holds focus
+		return nil
 	}
 	if top == noModal && key != "ctrl+c" {
 		if a.palette.open || a.completion.shown() {
