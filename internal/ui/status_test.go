@@ -187,7 +187,7 @@ func TestStatusRise(t *testing.T) {
 	if got := app.caches[id].lines[0][0].Fade; got != 1 {
 		t.Fatalf("the pill's first draw drew at fade %v, want fully sunk", got)
 	}
-	if !app.statusRising() || app.tickInterval() != _riseTick {
+	if !app.fadesRising() || app.tickInterval() != _riseTick {
 		t.Fatal("the rise did not keep the tick awake")
 	}
 	app.now = func() time.Time { return time.UnixMilli(500 + _riseDuration.Milliseconds()/2) }
@@ -200,7 +200,7 @@ func TestStatusRise(t *testing.T) {
 	if got := app.caches[id].lines[0][0].Fade; got != 0 {
 		t.Fatalf("the settled pill kept a fade of %v", got)
 	}
-	if app.statusRising() || app.tickInterval() != _idleInterval {
+	if app.fadesRising() || app.tickInterval() != _idleInterval {
 		t.Fatal("the finished rise kept the tick awake")
 	}
 
@@ -216,7 +216,7 @@ func TestStatusRise(t *testing.T) {
 	if got := app.caches[id].lines[0][0].Fade; got < 0.4 || got > 0.6 {
 		t.Fatalf("mid-fall fade %v, want about half", got)
 	}
-	if !app.statusRising() {
+	if !app.fadesRising() {
 		t.Fatal("the fall did not keep the tick awake")
 	}
 	app.now = func() time.Time { return time.UnixMilli(3000) }
@@ -224,7 +224,7 @@ func TestStatusRise(t *testing.T) {
 	if len(app.caches[id].lines) != 0 {
 		t.Fatalf("the fallen pill kept %d lines", len(app.caches[id].lines))
 	}
-	if app.statusRising() || app.tickInterval() != _idleInterval {
+	if app.fadesRising() || app.tickInterval() != _idleInterval {
 		t.Fatal("the finished fall kept the tick awake")
 	}
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/ansi/kitty"
 
+	"github.com/metafates/zemi/internal/anim"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
@@ -743,14 +744,14 @@ func (a *App) frameWork(turnRunning bool) bool {
 }
 
 func (a *App) frameAwake(st hostapi.UIState) bool {
-	return a.frameWork(a.turnActive) || st.Ended != "" || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 || a.spun || a.statusRising()
+	return a.frameWork(a.turnActive) || st.Ended != "" || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 || a.spun || a.fadesRising()
 }
 
 // tickInterval is idleInterval unless something on screen moves by itself:
 // a turn's readouts, a shown run's clock, a spinner, a toast's or the done
-// frame's expiry, a statusline widget's rise. Everything else bumps.
+// frame's expiry, a pill's or scrollbar's rise. Everything else bumps.
 func (a *App) tickInterval() time.Duration {
-	if a.statusRising() {
+	if a.fadesRising() {
 		return _riseTick
 	}
 	if a.frameAwake(a.lastState) {
@@ -770,7 +771,7 @@ func (a *App) onFrame() tea.Cmd {
 	// While a turn, a shown run or a busy job runs every tick re-renders, so
 	// the eyes and the elapsed time step even when no stream event arrives.
 	active := a.host.AgentActive()
-	if a.frameWork(active) || a.statusRising() {
+	if a.frameWork(active) || a.fadesRising() {
 		a.frameGen++
 	}
 	a.turnActive = active
@@ -1013,28 +1014,11 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 	a.frameDirty = true // the new lines join the next View though the generation stood still
 }
 
-// pillFade is one statusline pill's place in its appear or disappear: shown
-// says what its last render drew, from the alpha the flip started from, and
-// lines what a disappearing pill keeps drawing while it sinks.
+// pillFade is one statusline pill's fade, its lines kept for the sink: what
+// a disappearing pill keeps drawing while it sinks back in.
 type pillFade struct {
-	shown bool
-	at    time.Time
-	from  float64
+	*anim.Fade
 	lines [][]hostapi.Segment
-}
-
-// pillAlpha is a pill's current alpha, its last flip's from easing toward
-// shown 1 or hidden 0 over _riseDuration.
-func pillAlpha(f *pillFade, now time.Time) float64 {
-	target := 0.0
-	if f.shown {
-		target = 1
-	}
-	p := float64(now.Sub(f.at)) / float64(_riseDuration)
-	if p >= 1 {
-		return target
-	}
-	return f.from + (target-f.from)*smoothstep(max(0, p))
 }
 
 // statusFaded is a statusline pill's lines settled through its appear and
@@ -1048,24 +1032,22 @@ func (a *App) statusFaded(msg widgetRender) [][]hostapi.Segment {
 	f := a.rises[msg.id]
 	shown := len(msg.lines) > 0
 	if f == nil {
-		f = &pillFade{}
+		f = &pillFade{Fade: anim.New(_riseDuration)}
 		a.rises[msg.id] = f
 	}
-	if f.shown != shown {
+	if f.Shown() != shown {
 		if shown {
 			f.lines = msg.lines
 		}
-		f.from = pillAlpha(f, a.now())
-		f.shown = shown
-		f.at = a.now()
+		f.Set(shown, a.now())
 		a.wakeTick()
 	} else if shown {
 		f.lines = msg.lines
 	}
-	switch alpha := pillAlpha(f, a.now()); {
-	case f.shown && alpha >= 1:
+	switch alpha := f.Alpha(a.now()); {
+	case f.Shown() && alpha >= 1:
 		return msg.lines
-	case f.shown:
+	case f.Shown():
 		return sunkCopy(msg.lines, 1-alpha)
 	case alpha <= 0:
 		return nil
@@ -1074,12 +1056,17 @@ func (a *App) statusFaded(msg widgetRender) [][]hostapi.Segment {
 	}
 }
 
-// statusRising reports whether a pill's appear or disappear is still on, so
-// the tick keeps redrawing until the ramp is done.
-func (a *App) statusRising() bool {
+// fadesRising reports whether a pill's or scrollbar's appear or disappear is
+// still on, so the tick keeps redrawing until the ramps are done.
+func (a *App) fadesRising() bool {
 	now := a.now()
 	for _, f := range a.rises {
-		if d := now.Sub(f.at); d >= 0 && d < _riseDuration {
+		if f.Rising(now) {
+			return true
+		}
+	}
+	for _, st := range a.scrolls {
+		if st.bar.Shown() && st.bar.Rising(now) {
 			return true
 		}
 	}
@@ -1092,7 +1079,9 @@ func (a *App) settlePills() {
 	for _, w := range a.widgets {
 		if w.region == _regionStatusLeft || w.region == _regionStatusRight {
 			if a.rises[w.id] == nil {
-				a.rises[w.id] = &pillFade{shown: true, at: a.now().Add(-_riseDuration), from: 1}
+				f := anim.New(_riseDuration)
+				f.Jump(true)
+				a.rises[w.id] = &pillFade{Fade: f}
 			}
 		}
 	}
@@ -1110,9 +1099,6 @@ func sunkCopy(rows [][]hostapi.Segment, fade float64) [][]hostapi.Segment {
 	}
 	return out
 }
-
-// smoothstep is the pill fades' easing.
-func smoothstep(p float64) float64 { return p * p * (3 - 2*p) }
 
 // widgetRegion is the region a widget draws in.
 func (a *App) widgetRegion(id string) (region, bool) {
