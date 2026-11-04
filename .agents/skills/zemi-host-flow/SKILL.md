@@ -162,7 +162,9 @@ for (`ListProjects`), switches by restarting (`UIHooks.Relaunch`, past the quit 
 main's exec: the project is bound at start and never changes in place; refused while a turn,
 an agent run or a workflow lives), forgets another project's decision, never granting one, and
 deletes another project's data (`deleteProject`; `store.ClaimForDelete` refuses while another
-zemi has the store open). `/trust` reopens the prompt off the UI goroutine, saves, and calls `Host.Retrust`, which sets
+zemi has the store open). Its rows draw from a read kept in the global store's kv
+(`projects.stats`), so no project store opens before the list does; the read that refreshes
+them lands behind it (`UIHooks.RefreshOverlay`). `/trust` reopens the prompt off the UI goroutine, saves, and calls `Host.Retrust`, which sets
 the decision and reloads when it changed (a reload that fails before the trust step must not
 leave the old decision in force) under the watcher's lock, so the watcher does not reload first
 for the tree the change moved. `Host.ProjectTrusted()` gates project

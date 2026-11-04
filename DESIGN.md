@@ -369,7 +369,10 @@ project's decision (the next start there asks again) and deletes its data; it
 never grants trust. Its ages are the last use: the root file is touched when
 zemi starts there and quits there. This project's row names the
 running decision when it differs from the saved one (`untrusted this run`),
-as the statusline does.
+as the statusline does. Its row count and latest message are read from each
+project's store and kept in the global store's kv (`projects.stats`), so the
+list draws before any store opens and the read that refreshes it lands behind
+the open list: an entry is drawn only at the root file's mtime it was read at.
 `/trust` reopens the prompt at any time, showing the current decision (Later keeps
 it), saves the answer, applies it
 before the reload it triggers when the decision changed, so a revoke holds
@@ -1816,7 +1819,8 @@ todos(id, session_id, content, status, active_form, ord, created_at)
 tool_calls(id, message_id, tool, ok, created_at)         -- per-tool counts and step stats
 skills(name, path, source, enabled, created_at)          -- source: user|builtin|plugin
 kv(key, value_json, updated_at)                          -- zemi.state, saved config picks, the
-                                                         -- builder's compaction view ("chatlog.cv")
+                                                         -- builder's compaction view ("chatlog.cv"),
+                                                         -- the projects list's reads ("projects.stats")
 ```
 
 Ids people and the model type (agent and workflow runs) are 8 lowercase

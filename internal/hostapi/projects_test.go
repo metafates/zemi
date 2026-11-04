@@ -123,6 +123,11 @@ func TestProjectsCommand(t *testing.T) {
 		h.agents.active = c.busy
 		h.agents.mu.Unlock()
 		ui.relaunched = ""
+		// the list draws from the cache this host has none of, then the stats
+		// read lands: the rows below are the ones it replaces them with
+		ui.mu.Lock()
+		lands := len(ui.rebuilt)
+		ui.mu.Unlock()
 		if err := h.RunCommand(t.Context(), "projects", c.args, false); c.err != "" {
 			if err == nil || !strings.Contains(err.Error(), c.err) || len(ui.opened) > 0 {
 				t.Fatalf("%s: err %v, %d lists opened", c.name, err, len(ui.opened))
@@ -143,6 +148,15 @@ func TestProjectsCommand(t *testing.T) {
 		case <-time.After(30 * time.Second):
 			t.Fatalf("%s: no list opened", c.name)
 		}
+		waitFor(t, func() error {
+			ui.mu.Lock()
+			defer ui.mu.Unlock()
+			if len(ui.rebuilt) <= lands {
+				return errors.New("the stats read has not landed")
+			}
+			list = ui.rebuilt[len(ui.rebuilt)-1]
+			return nil
+		})
 		got := fmt.Sprintf("%s Selected:%d Confirm:%s", dumpItems(list.Items), list.Selected, list.Confirm)
 		for len(ui.notes) > 0 {
 			got += "\n" + <-ui.notes
@@ -171,6 +185,68 @@ func TestProjectsCommand(t *testing.T) {
 	}
 }
 
+// TestProjectsDrawsTheCachedRows: /projects draws the rows the global store's
+// cache holds before it opens a project store, so the first frame carries the
+// numbers the last read found even where a store read no longer can; the read
+// that lands behind it replaces them.
+func TestProjectsDrawsTheCachedRows(t *testing.T) {
+	for _, c := range []struct {
+		name        string
+		stale, gone bool // the cache names another mtime; the store file is gone
+		first, read bool // the row says "1 message" in the frame the cache drew, and after the read
+	}{
+		{name: "a read at the root's mtime", first: true, read: true},
+		{name: "a run since the read", stale: true, read: true},
+		{name: "a store that is gone", gone: true, first: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newTestHostDB(t)
+			other := t.TempDir()
+			g, p, err := store.OpenForDirs(h.Dirs.StateHome, other)
+			if err != nil {
+				t.Fatal(err)
+			}
+			g.Close()
+			if _, err := p.AppendLog(store.KindUser, "fix the flaky test", "", "", ""); err != nil {
+				t.Fatal(err)
+			}
+			p.Close()
+			dbPath := store.ProjectDBPath(h.Dirs.StateHome, other)
+			_, used, ok := store.ProjectRoot(filepath.Dir(dbPath))
+			if !ok {
+				t.Fatal("no root file")
+			}
+			if c.gone {
+				os.Remove(dbPath)
+			}
+			if c.stale {
+				used = used.Add(-time.Second)
+			}
+			h.rememberStats(map[string]projectStats{other: {Used: used.UnixNano(), Messages: 1, Latest: "fix the flaky test"}})
+			ui := &pluginsUI{opened: make(chan Overlay, 4), notes: make(chan string, 4)}
+			h.SetUIHooks(ui)
+			h.openProjects(ui, false, "")
+			drawn := <-ui.opened
+			if got := strings.Contains(dumpItems(drawn.Items), "1 message"); got != c.first {
+				t.Errorf("the cached frame shows the messages: %v\n%s", got, dumpItems(drawn.Items))
+			}
+			var read Overlay
+			waitFor(t, func() error {
+				ui.mu.Lock()
+				defer ui.mu.Unlock()
+				if len(ui.rebuilt) == 0 {
+					return errors.New("the stats read has not landed")
+				}
+				read = ui.rebuilt[len(ui.rebuilt)-1]
+				return nil
+			})
+			if got := strings.Contains(dumpItems(read.Items), "1 message"); got != c.read {
+				t.Errorf("the frame the read replaced it with shows the messages: %v\n%s", got, dumpItems(read.Items))
+			}
+		})
+	}
+}
+
 // TestProjectsRowsKeepTheirMatchLabel: a project's marker rides its own
 // glyph, ahead of the label, so the label a filter matches stays the bare
 // path - the least a list filters is five rows, and a typed path
@@ -193,7 +269,7 @@ func TestProjectsRowsKeepTheirMatchLabel(t *testing.T) {
 	h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), dirs)
 	t.Cleanup(h.Close)
 	projs := ListProjects(h.Dirs, true)
-	items, _ := h.projectItems()
+	items, _ := h.projectItems(nil)
 	if len(items) != len(projs) || len(items) < 5 {
 		t.Fatalf("projects list: %d rows, %d roots", len(items), len(projs))
 	}

@@ -5,6 +5,7 @@ package hostapi
 
 import (
 	"cmp"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -99,6 +100,80 @@ func (p *Project) readStats(stateHome string) {
 		}
 	}
 	p.StatsErr = err
+}
+
+// _projectsStatsKey is the global store's row holding what the list last read
+// of every project, so /projects opens before any project store does.
+const _projectsStatsKey = "projects.stats"
+
+// projectStats is one project's read, keyed by its root in the cache. Used is
+// the root file's mtime it was read at - the last use zemi recorded - so a run
+// that touched the store since leaves it stale.
+type projectStats struct {
+	Used     int64  `json:"used"`     // the root file's mtime, unix ns
+	Messages int    `json:"messages"` // the log's rows
+	Latest   string `json:"latest,omitempty"`
+	At       int64  `json:"at,omitempty"` // unix ms of the newest row
+}
+
+// cachedStats is what the last open read, by root; no global store, no row or
+// a row this binary cannot read is no stats, and the list draws blank rows.
+func (h *Host) cachedStats() map[string]projectStats {
+	if h.GlobalDB == nil {
+		return nil
+	}
+	raw, err := h.GlobalDB.GetKV(_projectsStatsKey)
+	if err != nil {
+		return nil
+	}
+	var stats map[string]projectStats
+	if json.Unmarshal([]byte(raw), &stats) != nil {
+		return nil
+	}
+	return stats
+}
+
+// rememberStats stores what the list read for its next open: best effort, a
+// lost write costs one open its instant rows.
+func (h *Host) rememberStats(stats map[string]projectStats) {
+	if h.GlobalDB == nil {
+		return
+	}
+	if raw, err := json.Marshal(stats); err == nil {
+		_ = h.GlobalDB.SetKV(_projectsStatsKey, string(raw))
+	}
+}
+
+// forgetStats drops a deleted project's cached rows. A read landing at the
+// same time puts them back: the cache is a hint, so that costs one slow open.
+func (h *Host) forgetStats(root string) {
+	stats := h.cachedStats()
+	if _, ok := stats[root]; !ok {
+		return
+	}
+	delete(stats, root)
+	h.rememberStats(stats)
+}
+
+// readProjectsStats opens every project's store read-only - never on the key
+// loop - and remembers what it found. A store zemi cannot read stays out of
+// the cache, so its error is read again at the next open, its row and all.
+func (h *Host) readProjectsStats() map[string]projectStats {
+	list := ListProjects(h.Dirs, false)
+	stats := make(map[string]projectStats, len(list))
+	for _, p := range list {
+		p.readStats(h.Dirs.StateHome)
+		if p.StatsErr != nil {
+			continue
+		}
+		s := projectStats{Used: p.Used.UnixNano(), Messages: p.Messages}
+		if p.Latest != nil {
+			s.Latest, s.At = p.Latest.Title, p.Latest.UpdatedAt
+		}
+		stats[p.Root] = s
+	}
+	h.rememberStats(stats)
+	return stats
 }
 
 // TrustWord is the project's trust state as the lists print it: ~ and /
@@ -311,6 +386,7 @@ func (h *Host) deleteProject(p Project) error {
 	err = errors.Join(os.RemoveAll(projectState(h.Dirs.StateHome, p.Root)))
 	release()
 	h.splashStale.Store(true)
+	h.forgetStats(p.Root)
 	if err = errors.Join(err, h.forgetTrust(p.Root)); err != nil {
 		return err
 	}
@@ -318,23 +394,45 @@ func (h *Host) deleteProject(p Project) error {
 	return nil
 }
 
-// openProjects opens /projects, or with refresh replaces the open list; it
-// opens every store, so it never runs on the key loop. confirm arms the
-// Delete that runs it (Overlay.Confirm).
+// openProjects opens /projects on the rows the last open cached - no project
+// store is opened before the list is drawn - then reads every store off the
+// key loop and replaces the rows in place. confirm arms the Delete that runs
+// it (Overlay.Confirm).
 func (h *Host) openProjects(ui UIHooks, refresh bool, confirm string) {
-	items, sel := h.projectItems()
-	ui.OpenOverlay(Overlay{
-		ID: "projects", Title: "Projects", Origin: lua.OriginBuiltin, Items: items, Selected: sel,
-		Anchor: OverlayBottomLeft, Refresh: refresh, Confirm: confirm,
-		Keys: []OverlayKey{{Key: "s", Desc: "switch"}, {Key: "x", Desc: "delete"}},
+	items, sel := h.projectItems(h.cachedStats())
+	ui.OpenOverlay(projectsOverlay(items, sel, refresh, confirm))
+	h.GoSafe("project stats", func() {
+		fresh := h.readProjectsStats()
+		ui.RefreshOverlay("projects", func() Overlay {
+			items, sel := h.projectItems(fresh)
+			return projectsOverlay(items, sel, refresh, confirm)
+		})
 	})
 }
 
+// projectsOverlay is the list itself; refresh only replaces one already open,
+// so a list esc closed stays closed.
+func projectsOverlay(items []OverlayItem, sel int, refresh bool, confirm string) Overlay {
+	return Overlay{
+		ID: "projects", Title: "Projects", Origin: lua.OriginBuiltin, Items: items, Selected: sel,
+		Anchor: OverlayBottomLeft, Refresh: refresh, Confirm: confirm,
+		Keys: []OverlayKey{{Key: "s", Desc: "switch"}, {Key: "x", Desc: "delete"}},
+	}
+}
+
 // projectItems is a row per project, the selection on the first that zemi
-// does not run in and that exists.
-func (h *Host) projectItems() (items []OverlayItem, sel int) {
+// does not run in and that exists. The stats come from cached, never from a
+// store: a project read at another root mtime than the one it carries now
+// shows none until the fresh read lands.
+func (h *Host) projectItems(cached map[string]projectStats) (items []OverlayItem, sel int) {
 	sel = -1
-	for i, p := range ListProjects(h.Dirs, true) {
+	for i, p := range ListProjects(h.Dirs, false) {
+		if s, ok := cached[p.Root]; ok && s.Used == p.Used.UnixNano() {
+			p.Messages = s.Messages
+			if s.At != 0 {
+				p.Latest = &store.Session{ID: store.MainSessionID, Title: s.Latest, UpdatedAt: s.At}
+			}
+		}
 		// each column padded, blank when empty, so the age lines up; a word
 		// like "untrusted this run" fills the messages column's blank, or
 		// moves only its own row's age
