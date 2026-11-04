@@ -1639,13 +1639,18 @@ func (a *App) chatFocusEnter() tea.Cmd {
 	if len(units) == 0 {
 		return nil
 	}
-	sel, restored := 0, false
+	sel := 0
 	if a.chatSelMemo > 0 {
 		if at, ok := slices.BinarySearch(units, a.chatSelMemo-1); ok {
-			sel, restored = a.chatSelMemo, true
+			sel = a.chatSelMemo
 		} else if at > 0 { // the memo's row merged into an earlier unit (a /reset)
-			sel, restored = units[at-1]+1, true
+			sel = units[at-1] + 1
 		}
+	}
+	// the memo comes back only while the reader still sees it: scrolled off,
+	// tab takes what the view ends on and the old place is forgotten
+	if sel > 0 && !inView(a.scrolls[a.scrollDef], sel) {
+		a.chatSelMemo, sel = 0, 0
 	}
 	if sel < 1 {
 		if s := a.scrolls[a.scrollDef]; s != nil && len(s.lines) > 0 {
@@ -1672,11 +1677,18 @@ func (a *App) chatFocusEnter() tea.Cmd {
 		}
 	}
 	a.chatFocus, a.chatSel = true, sel
-	if restored {
-		a.followChatSel() // the memo may sit off-screen after scrolling away
-	}
 	a.bump()
 	return nil
+}
+
+// inView says the selection's rows meet the chat's viewport: a unit taller
+// than the view still counts while any of it shows.
+func inView(st *scrollState, sel int) bool {
+	if st == nil || st.viewH < 1 {
+		return false
+	}
+	from, to := unitSpan(st.lines, sel)
+	return from >= 0 && to >= from && to >= st.top && from < st.top+st.viewH
 }
 
 // chatUnits lists the transcript rows the cursor stops on, ascending: each
@@ -1752,10 +1764,23 @@ func (a *App) chatCursorKey(key string) (tea.Cmd, bool) {
 		a.applyScroll(hostapi.ScrollLineUp, _regionNone)
 	case "shift+down":
 		a.applyScroll(hostapi.ScrollLineDown, _regionNone)
-	case "ctrl+d", "pgdown":
-		a.applyScroll(hostapi.ScrollUp, _regionNone)
-	case "ctrl+u", "pgup":
+	case "pgdown":
 		a.applyScroll(hostapi.ScrollDown, _regionNone)
+	case "pgup":
+		a.applyScroll(hostapi.ScrollUp, _regionNone)
+	case "ctrl+d", "ctrl+u":
+		// the pair walks the cursor a view down or up, the view following it,
+		// as it does on the composer where the same keys scroll
+		dir, page, lines := 1, 1, [][]hostapi.Segment(nil)
+		if key == "ctrl+u" {
+			dir = -1
+		}
+		if st := a.scrolls[a.scrollDef]; st != nil {
+			page, lines = max(st.viewH, 1), st.lines
+		}
+		if next, ok := chatPage(units, at, dir, page, lines); ok {
+			a.chatSel, moved = next, true
+		}
 	default:
 		return nil, false
 	}
@@ -1766,9 +1791,28 @@ func (a *App) chatCursorKey(key string) (tea.Cmd, bool) {
 	return nil, true
 }
 
+// chatPage is the unit a page of scrolling lands the cursor on: it walks the
+// units in dir until a viewport's worth of their rows is spent, so the cursor
+// goes with the view instead of leaving it.
+func chatPage(units []int, at, dir, page int, lines [][]hostapi.Segment) (int, bool) {
+	if at < 0 {
+		return 0, false
+	}
+	land := at
+	for n := at + dir; n >= 0 && n < len(units) && page > 0; n += dir {
+		land = n
+		if from, to := unitSpan(lines, units[n]+1); from >= 0 && to >= from {
+			page -= to - from + 1
+		} else {
+			page-- // a unit the fill has not built yet counts as one row
+		}
+	}
+	return units[land] + 1, land != at
+}
+
 // chatFoldKey works the fold the selected message carries, what its click
-// does: enter and space toggle the run's rail, l opens it, h folds it back.
-// A message that folds nothing takes none of them.
+// does: enter and space toggle it, l opens it, h folds it back. A message that
+// folds nothing takes none of them.
 func (a *App) chatFoldKey(key string) {
 	w := a.widgetByID("chat")
 	if w == nil || w.onClick == nil {
@@ -1784,11 +1828,16 @@ func (a *App) chatFoldKey(key string) {
 	}
 	for _, row := range st.lines[from : to+1] {
 		for _, seg := range row {
-			if !strings.HasPrefix(seg.Click, "turn:") {
+			// a run's digest and a long prompt carry their fold the same way
+			if !strings.HasPrefix(seg.Click, "turn:") && !strings.HasPrefix(seg.Click, "prompt:") {
 				continue
 			}
-			// the digest's glyph says the fold's state: ▸ folded, ▾ open
+			// the glyph says the fold's state: ▸ folded, ▾ open. A prompt's
+			// head rows carry the click without one
 			open := strings.HasPrefix(seg.Text, "▾")
+			if !open && !strings.HasPrefix(seg.Text, "▸") {
+				continue
+			}
 			if key == "h" && !open || key == "l" && open {
 				return
 			}
