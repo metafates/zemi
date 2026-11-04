@@ -3,12 +3,14 @@ package hostapi
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -82,6 +84,63 @@ func TestPanickedHandleWait(t *testing.T) {
 				}
 				return nil
 			})
+		})
+	}
+}
+
+// TestCloseJoinsTheGoroutinesItStarted: Close waits for a goroutine GoSafe
+// started to end, and a wedged one costs it closeWait, never the shutdown.
+func TestCloseJoinsTheGoroutinesItStarted(t *testing.T) {
+	old := closeWait
+	t.Cleanup(func() { closeWait = old })
+	for _, c := range []struct {
+		name   string
+		wedge  bool
+		joined bool
+	}{
+		{name: "a goroutine in flight ends before Close returns", joined: true},
+		{name: "a wedged goroutine costs closeWait and no more", wedge: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			log := slog.New(slog.DiscardHandler)
+			r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
+			h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir(), DataHome: t.TempDir()})
+			release, ended := make(chan struct{}), make(chan struct{})
+			h.GoSafe("test", func() {
+				defer close(ended)
+				<-release
+			})
+			closeWait = 100 * time.Millisecond
+			if c.wedge {
+				t.Cleanup(func() {
+					close(release)
+					<-ended
+				})
+			} else {
+				go func() {
+					time.Sleep(20 * time.Millisecond)
+					close(release)
+				}()
+			}
+			begin := time.Now()
+			h.Close()
+			waited := time.Since(begin)
+			joined := true
+			select {
+			case <-ended:
+			default:
+				joined = false
+			}
+			if joined != c.joined {
+				t.Fatalf("the goroutine was joined after Close = %v, want %v", joined, c.joined)
+			}
+			min := 20 * time.Millisecond
+			if c.wedge {
+				min = closeWait // gave up at the cap, not before
+			}
+			if waited < min {
+				t.Fatalf("Close returned after %s, before the goroutine settled", waited)
+			}
 		})
 	}
 }

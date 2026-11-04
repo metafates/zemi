@@ -156,7 +156,10 @@ type Generation struct {
 	seq     uint64
 	signal  chan struct{}
 	stop    chan struct{} // closed by ForceReload to end loop
-	retired bool
+	// loopDone is closed when loop returns, so retire can tell the LState is
+	// free before its registrations are purged.
+	loopDone chan struct{}
+	retired  bool
 
 	frames []frame // origin stack, see pushFrame
 
@@ -232,6 +235,7 @@ func (g *Generation) drain(err error) {
 // loop is the interpreter goroutine: it never touches the LState outside
 // popped requests and enforces per-request cancellation and budgets.
 func (g *Generation) loop() {
+	defer close(g.loopDone)
 	for {
 		r := g.pop()
 		if r == nil {

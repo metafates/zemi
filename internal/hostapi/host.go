@@ -614,6 +614,8 @@ type Host struct {
 	stops      *stopReg
 	// test is set, before boot, only in a zemi plugin test zemi
 	test *PluginTest
+	// goes counts the host goroutines in flight, which Close joins
+	goes goes
 	// cutMu orders a reset's wipe against a detached run's writes, so a run
 	// never stores what it read from rows the wipe removed.
 	cutMu    sync.Mutex
@@ -2234,7 +2236,8 @@ func (h *Host) PurgeGeneration() {
 }
 
 // Close ends the host: the runtime, what its generation started (timers,
-// jobs, requests, servers) and the stores, so it holds no file or goroutine.
+// jobs, requests, servers) and the stores, so it holds no file or goroutine:
+// it joins the goroutines GoSafe started, waiting closeWait for the last.
 func (h *Host) Close() {
 	// under the agents lock: a live turn's armQueueDrain rewrites resumeStop
 	ag := h.agents
@@ -2249,6 +2252,13 @@ func (h *Host) Close() {
 	h.lsp.stopAll()
 	if h.chat != nil {
 		h.chat.Close()
+	}
+	// joined after the chat: the builder's worker ends on the chat's close,
+	// so waiting first would wait out the whole cap on it every time
+	ctx, cancel := context.WithTimeout(context.Background(), closeWait)
+	defer cancel()
+	if err := h.goes.wait(ctx); err != nil {
+		h.Log.Warn("goroutines outlived the close", "origin", "host", "error", err)
 	}
 	for _, db := range []*store.DB{h.DB, h.GlobalDB} {
 		if db != nil {

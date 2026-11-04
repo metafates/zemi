@@ -52,7 +52,6 @@ type PluginTest struct {
 	run    int             // the case this boot runs; -1 runs none
 	fn     *glua.LFunction // its function
 
-	goes    goes
 	mu      sync.Mutex
 	stubs   []*testStub // interpreter only
 	errs    []errEntry  // what zemi recorded in /errors, in order
@@ -83,6 +82,9 @@ func NewPluginTest(log *slog.Logger, classes lua.PathClasses, dirs config.Dirs, 
 	clock := &fakeClock{now: testEpoch}
 	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: runtime.FS, Clock: clock, WholeTasks: true})
 	h := NewHost(rt, log, config.NewStore(), dirs)
+	// from here a test zemi is quiet: the builder's worker, which the host
+	// ends itself, is no work in flight
+	h.goes.quietFrom()
 	t := &PluginTest{h: h, clock: clock, file: file, run: run, plugin: h.PluginOf(file)}
 	t.ui = &testUI{h: h}
 	h.test = t
@@ -242,7 +244,7 @@ func (t *PluginTest) declare(L *glua.LState) int {
 // It stops once ctx is done.
 func (t *PluginTest) settle(ctx context.Context, until time.Time) error {
 	for {
-		if err := cmp.Or(ctx.Err(), t.goes.wait(ctx)); err != nil {
+		if err := cmp.Or(ctx.Err(), t.h.goes.wait(ctx)); err != nil {
 			return err
 		}
 		f, ok := t.clock.due(until)
@@ -264,47 +266,6 @@ func (t *PluginTest) advance(L *glua.LState) int {
 	return t.drive(L, "advance", "", func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
 		return none, t.settle(ctx, t.clock.Now().Add(time.Duration(ms*float64(time.Millisecond))))
 	})
-}
-
-// goes counts the goroutines GoSafe runs in a test zemi: every async
-// callback and handler reaches Lua through one, so it is quiet when none runs.
-type goes struct {
-	mu   sync.Mutex
-	n    int
-	none chan struct{} // closed when n drops to zero
-}
-
-func (g *goes) add() {
-	g.mu.Lock()
-	if g.n == 0 {
-		g.none = make(chan struct{})
-	}
-	g.n++
-	g.mu.Unlock()
-}
-
-func (g *goes) done() {
-	g.mu.Lock()
-	if g.n--; g.n == 0 {
-		close(g.none)
-	}
-	g.mu.Unlock()
-}
-
-// wait returns once no GoSafe goroutine runs, or with ctx's error.
-func (g *goes) wait(ctx context.Context) error {
-	g.mu.Lock()
-	n, none := g.n, g.none
-	g.mu.Unlock()
-	if n == 0 {
-		return nil
-	}
-	select {
-	case <-none:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
 }
 
 // fakeClock is a test zemi's lua.Clock: time moves only when test.advance

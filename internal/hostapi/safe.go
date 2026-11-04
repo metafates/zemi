@@ -1,14 +1,17 @@
 // safe.go keeps a panic in a host goroutine from killing zemi: the
 // goroutines the host starts recover, log the stack to the run's log file,
-// and surface the panic in /errors while the app keeps running.
+// and surface the panic in /errors while the app keeps running. It counts
+// them too, so Close waits for the ones in flight.
 
 package hostapi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	"charm.land/fantasy"
@@ -19,15 +22,15 @@ import (
 // panic, and the wait ends with this instead of an empty success or its cap.
 var errPanicked = errors.New("the call panicked")
 
+// closeWait bounds Close's wait for the goroutines GoSafe started: one let go
+// by the runtime's close unwinds in milliseconds, and a wedged one costs the
+// shutdown a pause, never a hang.
+var closeWait = 5 * time.Second
+
 func (h *Host) GoSafe(where string, fn func()) {
-	t := h.test
-	if t != nil {
-		t.goes.add()
-	}
+	h.goes.add()
 	go func() {
-		if t != nil {
-			defer t.goes.done()
-		}
+		defer h.goes.done()
 		h.safe(where, fn)
 	}()
 }
@@ -40,6 +43,59 @@ func (h *Host) safe(where string, fn func()) {
 		}
 	}()
 	fn()
+}
+
+// goes counts the goroutines GoSafe runs: every async callback and handler
+// reaches Lua through one, so this is the work a host has in flight.
+type goes struct {
+	mu   sync.Mutex
+	n    int
+	none chan struct{} // closed when n drops to zero
+}
+
+func (g *goes) add() {
+	g.mu.Lock()
+	if g.n == 0 {
+		g.none = make(chan struct{})
+	}
+	g.n++
+	g.mu.Unlock()
+}
+
+func (g *goes) done() {
+	g.mu.Lock()
+	// a goroutine quietFrom left out of the count ends with the host
+	if g.n > 0 {
+		if g.n--; g.n == 0 {
+			close(g.none)
+		}
+	}
+	g.mu.Unlock()
+}
+
+// quietFrom counts from nothing now: the goroutines running are the host's own
+// services, which end with it and are joined by Close anyway, not work in
+// flight. Only valid while every one of them is such a service.
+func (g *goes) quietFrom() {
+	g.mu.Lock()
+	g.n, g.none = 0, nil
+	g.mu.Unlock()
+}
+
+// wait returns once no GoSafe goroutine runs, or with ctx's error.
+func (g *goes) wait(ctx context.Context) error {
+	g.mu.Lock()
+	n, none := g.n, g.none
+	g.mu.Unlock()
+	if n == 0 {
+		return nil
+	}
+	select {
+	case <-none:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // endTurnAfterPanic is deferred in turn goroutines: a panic mid-turn stops

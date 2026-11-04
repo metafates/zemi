@@ -72,8 +72,9 @@ of the root, no `node_modules`, a link only when relative and inside, capped), a
 process (`hostapi.NewPluginTest`,
 `bootSteps` with no trust and the test file where init.lua runs), which `Host.Close` ends. The
 first boot collects the case names. `proc.Refuse` makes the process start nothing, git included. The test zemi runs on a fake `lua.Clock` only `test.advance` moves, with
-`WholeTasks` so a driver waits for what it started, and is quiet when no `GoSafe` goroutine runs
-(`goes`) and no timer is due. `luaGate` asks `PluginTest.reply` first about a call that does IO:
+`WholeTasks` so a driver waits for what it started, and is quiet once the work it drove ends:
+`GoSafe` tracks in-flight goroutines on the host itself (`goes`), `Close` joins them (5s cap),
+and a test's `quietFrom` counts only the work the test starts, not the services the host ends. `luaGate` asks `PluginTest.reply` first about a call that does IO:
 only a `test.stub` reply passes, standing in for the transport at the call site, and a `false`
 reply refuses the call. The assertions are the builtin module
 `zemi.test.assert`. `zemi.test` exists only there

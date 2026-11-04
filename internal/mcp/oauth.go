@@ -274,7 +274,13 @@ func (a *Auth) Authorize(ctx context.Context, open func(authURL string)) error {
 		}
 	})}
 	go srv.Serve(ln)
-	defer srv.Close()
+	// Shutdown, not Close: it joins the callback's handler goroutines, so the
+	// flow never returns while the browser's page is still being written.
+	defer func() {
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(sctx)
+	}()
 
 	open(m.authURL + sep + q.Encode())
 	select {

@@ -257,6 +257,17 @@ func (r *Runtime) retire() {
 	r.hotMu.Lock()
 	r.cur.Store(nil)
 	r.hotMu.Unlock()
+	// The purge runs next, so the retired dispatcher must be out of its
+	// LState: a registration landing after the purge would outlive its
+	// generation (DESIGN §4).
+	select {
+	case <-old.loopDone:
+	case <-time.After(HardCeiling):
+		// drain cancelled the running request, so it unwinds at Lua's next
+		// opcode; a handler that swallowed that spins until process exit (§4),
+		// and the reload goes on without it.
+		r.log.Error("retired generation is still running", "origin", "lua", "gen", old.ID)
+	}
 	r.log.Info("generation retired", "origin", "lua", "gen", old.ID)
 }
 
@@ -274,14 +285,15 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 		}
 	})
 	gen := &Generation{
-		ID:      r.seq.Add(1),
-		rt:      r,
-		SB:      sb,
-		L:       sb.L,
-		modules: map[string]glua.LValue{},
-		signal:  make(chan struct{}, 1),
-		stop:    make(chan struct{}),
-		tasks:   map[*glua.LState]*taskRun{},
+		ID:       r.seq.Add(1),
+		rt:       r,
+		SB:       sb,
+		L:        sb.L,
+		modules:  map[string]glua.LValue{},
+		signal:   make(chan struct{}, 1),
+		stop:     make(chan struct{}),
+		loopDone: make(chan struct{}),
+		tasks:    map[*glua.LState]*taskRun{},
 	}
 	gen.ctx, gen.cancel = context.WithCancelCause(context.Background())
 	ud := sb.L.NewUserData()
@@ -304,6 +316,8 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 			// no dispatcher will run this generation, so its requests,
 			// queued and future, must fail fast until a reload succeeds
 			r.goHot(gen, err)
+			// nothing dispatches it, so retire has no loop to wait for
+			close(gen.loopDone)
 			return gen, err
 		}
 	}

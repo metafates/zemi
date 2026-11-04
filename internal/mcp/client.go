@@ -165,6 +165,9 @@ type Client struct {
 	endOnce sync.Once
 	endErr  error
 
+	wg      sync.WaitGroup // goroutines spawned for the connection; Close joins them
+	closing bool           // mu-guarded: set before Close waits, so no spawn slips past the wait
+
 	onToolsChanged func()
 }
 
@@ -262,10 +265,35 @@ func (c *Client) Err() error {
 	}
 }
 
-// Close ends the connection and stops a child process.
+// Close ends the connection, stops a child process and joins the goroutines
+// still running for it: a send wedged on a full pipe, an SSE drain. A stdio
+// server that ignores stdin EOF is killed after its grace, which bounds the
+// wait.
 func (c *Client) Close() error {
 	c.end(errors.New("mcp: closed"))
-	return c.t.close()
+	c.mu.Lock()
+	c.closing = true
+	c.mu.Unlock()
+	err := c.t.close() // first: a send waiting on the transport returns
+	c.wg.Wait()
+	return err
+}
+
+// spawn runs fn off the caller's goroutine, tracked so Close joins it. Past
+// Close it refuses: the connection fn would speak on is gone.
+func (c *Client) spawn(fn func()) bool {
+	c.mu.Lock()
+	if c.closing {
+		c.mu.Unlock()
+		return false
+	}
+	c.wg.Add(1)
+	c.mu.Unlock()
+	go func() {
+		defer c.wg.Done()
+		fn()
+	}()
+	return true
 }
 
 func (c *Client) end(err error) {
@@ -328,11 +356,11 @@ func (c *Client) call(ctx context.Context, method string, params, out any) error
 // sendAsync sends v off the caller's goroutine: the reader must not wait on
 // a server that stopped reading, and neither must a cancelled call.
 func (c *Client) sendAsync(v any) {
-	go func() {
+	c.spawn(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = c.send(ctx, v)
-	}()
+	})
 }
 
 // handle routes one incoming message: a response to its caller, a server
@@ -398,7 +426,8 @@ type stdioTransport struct {
 var _ transport = (*stdioTransport)(nil)
 
 // startStdio sets c.t before the reader starts: handle answers server
-// requests through it.
+// requests through it. Close joins the reader, whose own defer reaps the
+// server, so neither the pipe nor the process outlives the client.
 func startStdio(cfg Config, c *Client) error {
 	cmd := proc.Command(cfg.Command, cfg.Args...)
 	cmd.Env, cmd.Dir, cmd.Stderr = cfg.Env, cfg.Dir, cfg.Stderr
@@ -414,7 +443,7 @@ func startStdio(cfg Config, c *Client) error {
 		return fmt.Errorf("mcp: start %s: %w", cfg.Command, err)
 	}
 	c.t = &stdioTransport{cmd: cmd, stdin: stdin}
-	go func() {
+	c.spawn(func() {
 		var err error
 		defer func() {
 			if r := recover(); r != nil {
@@ -437,7 +466,7 @@ func startStdio(cfg Config, c *Client) error {
 			c.handle(sc.Bytes())
 		}
 		err = sc.Err()
-	}()
+	})
 	return nil
 }
 
@@ -548,7 +577,7 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 			t.mu.Lock()
 			t.streams.Add(resp.Body)
 			t.mu.Unlock()
-			go func() {
+			if !t.c.spawn(func() {
 				defer func() {
 					resp.Body.Close()
 					t.mu.Lock()
@@ -561,7 +590,9 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 					}
 				}()
 				_ = readSSE(resp.Body, t.c.handle)
-			}()
+			}) {
+				resp.Body.Close() // Close is draining the streams; nothing would read this
+			}
 			return nil
 		}
 		body, err := io.ReadAll(io.LimitReader(resp.Body, maxMessage))

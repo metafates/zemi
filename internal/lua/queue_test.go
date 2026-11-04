@@ -22,7 +22,11 @@ func newTestRuntime(t *testing.T) *Runtime {
 		t.Fatalf("Boot: %v", err)
 	}
 	// a synctest bubble does not end while the dispatcher waits for requests
-	t.Cleanup(func() { close(r.current().stop) })
+	t.Cleanup(func() {
+		if g := r.current(); g != nil {
+			close(g.stop)
+		}
+	})
 	return r
 }
 
@@ -278,6 +282,29 @@ func TestRetiredWatchdogLeavesFreshRuntime(t *testing.T) {
 			t.Fatal("retired generation's watchdog put the fresh runtime hot")
 		}
 	})
+}
+
+// TestCloseWaitsForTheRetiredDispatcher: the purge that follows a retire
+// must not race a request still running on the old LState, so retire waits
+// for the dispatcher to leave it (DESIGN §4).
+func TestCloseWaitsForTheRetiredDispatcher(t *testing.T) {
+	r := newTestRuntime(t)
+	started, finished := make(chan struct{}), make(chan struct{})
+	go func() {
+		_, _ = r.Do(t.Context(), ClassIO, 0, 0, "test", func(*glua.LState) ([]any, error) {
+			close(started)
+			time.Sleep(100 * time.Millisecond)
+			close(finished)
+			return nil, nil
+		})
+	}()
+	<-started
+	r.Close()
+	select {
+	case <-finished:
+	default:
+		t.Fatal("Close returned while the retired dispatcher was still running")
+	}
 }
 
 // TestQueuePendingDroppedOnReload verifies that requests queued behind a

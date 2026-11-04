@@ -39,7 +39,10 @@ type osChain struct{}
 // on kc.Set), where one hung call wedged every Go command queued behind it
 // on the shared worker and the file fallback never ran. Past the deadline
 // the caller sees the stall as a refusal and takes the path a refusal
-// takes; the stuck call's goroutine leaks.
+// takes.
+// NOTE: the ceiling is one leaked goroutine per timed-out call, held until
+// the keychain answers; joining it would mean waiting out the stall this
+// deadline exists to escape.
 var chainDeadline = 3 * time.Second
 
 // bound runs one OS keychain call to the deadline.
