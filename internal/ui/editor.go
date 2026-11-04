@@ -47,7 +47,12 @@ type editorDoneMsg struct {
 // exits. A cancelled ctx returns and leaves the editor running, so unsaved
 // work stays the user's. Never call it on the UI goroutine.
 func (a *App) EditFile(ctx context.Context, req hostapi.EditRequest) error {
-	editor := cmp.Or(strings.TrimSpace(a.host.Settings.Str(config.KeyEditorCommand)), strings.TrimSpace(os.Getenv("VISUAL")), strings.TrimSpace(os.Getenv("EDITOR")), "vi")
+	editor := cmp.Or(
+		strings.TrimSpace(a.host.Settings.Str(config.KeyEditorCommand)),
+		strings.TrimSpace(os.Getenv("VISUAL")),
+		strings.TrimSpace(os.Getenv("EDITOR")),
+		"vi",
+	)
 	sh := proc.Shell()
 	script := editorScript(editor, req.Line)
 	// sh takes the file as argv["1"]; cmd and PowerShell take one command

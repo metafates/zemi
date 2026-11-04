@@ -105,7 +105,9 @@ func remarshal(in map[string]any, out any) error {
 // pipeline carries: the map ParseInput validated and coerced re-marshals
 // into the struct, so a sloppy provider's quoted "60000" or "true" keeps
 // working.
-func typed[T any](fn func(context.Context, *Pipeline, T) (fantasy.ToolResponse, error)) func(context.Context, *Pipeline, map[string]any) (fantasy.ToolResponse, error) {
+func typed[T any](
+	fn func(context.Context, *Pipeline, T) (fantasy.ToolResponse, error),
+) func(context.Context, *Pipeline, map[string]any) (fantasy.ToolResponse, error) {
 	return func(ctx context.Context, p *Pipeline, in map[string]any) (fantasy.ToolResponse, error) {
 		var args T
 		if err := remarshal(in, &args); err != nil {

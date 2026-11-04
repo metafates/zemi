@@ -28,27 +28,6 @@ type Dirs struct {
 	AgentsHome string // ~/.agents, whose skills/ other agents share; never from an override
 }
 
-// xdg resolves one root: zemi's own override first, then the XDG variable
-// the default mirrors, then the default under home, "" when home is unknown.
-// No root depends on the cwd: a relative XDG value is ignored, as the spec
-// says, and a relative override is an error, since ignoring it would put a
-// throwaway tree's writes in the real dirs.
-func xdg(home, env, xdgEnv, underHome string) (string, error) {
-	if v := os.Getenv(env); v != "" {
-		if !filepath.IsAbs(v) {
-			return "", fmt.Errorf("%s=%q is a relative path; set an absolute one", env, v)
-		}
-		return v, nil
-	}
-	if v := os.Getenv(xdgEnv); filepath.IsAbs(v) {
-		return filepath.Join(v, "zemi"), nil
-	}
-	if home == "" {
-		return "", nil
-	}
-	return filepath.Join(home, underHome), nil
-}
-
 // ResolveDirs computes the standard locations from the environment. With no
 // $HOME (cron, a systemd unit) home is the passwd entry's, never a shared temp
 // dir another user could plant an init.lua in; with neither it fails.
@@ -84,6 +63,27 @@ func ResolveDirs() (Dirs, error) {
 		return d, errors.New("no home directory: set HOME or the ZEMI_*_HOME variables")
 	}
 	return d, nil
+}
+
+// xdg resolves one root: zemi's own override first, then the XDG variable
+// the default mirrors, then the default under home, "" when home is unknown.
+// No root depends on the cwd: a relative XDG value is ignored, as the spec
+// says, and a relative override is an error, since ignoring it would put a
+// throwaway tree's writes in the real dirs.
+func xdg(home, env, xdgEnv, underHome string) (string, error) {
+	if v := os.Getenv(env); v != "" {
+		if !filepath.IsAbs(v) {
+			return "", fmt.Errorf("%s=%q is a relative path; set an absolute one", env, v)
+		}
+		return v, nil
+	}
+	if v := os.Getenv(xdgEnv); filepath.IsAbs(v) {
+		return filepath.Join(v, "zemi"), nil
+	}
+	if home == "" {
+		return "", nil
+	}
+	return filepath.Join(home, underHome), nil
 }
 
 // Ensure creates the directories zemi writes into, and the starter

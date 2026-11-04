@@ -139,7 +139,8 @@ type agentHost struct {
 	ctxWin      int64
 	sessCost    float64 // USD, from model spec prices
 
-	// readMu guards reads, instr and loaded, the per-session bookkeeping	// the tools carry (what the model has read, which instruction files it
+	// readMu guards reads, instr and loaded, the per-session bookkeeping
+	// the tools carry (what the model has read, which instruction files it
 	// has been given, which MCP tools tool_search loaded).
 	readMu sync.Mutex
 	reads  map[string]*sync.Map
@@ -349,7 +350,8 @@ func (h *Host) ensureRunner(toolset []fantasy.AgentTool) (*agent.Runner, error) 
 	h.agents.promptParts, h.agents.promptTokens = sizes, int64(chars/4)
 	h.agents.mu.Unlock()
 	sid := store.MainSessionID
-	r.ProviderOptions, r.Headers = h.Providers.CallOptions(agent.ModelID(id), h.Effort(id), sid), h.Providers.SessionHeaders(agent.ModelID(id), sid)
+	r.ProviderOptions = h.Providers.CallOptions(agent.ModelID(id), h.Effort(id), sid)
+	r.Headers = h.Providers.SessionHeaders(agent.ModelID(id), sid)
 	r.MaxOutputTokens = h.maxOutput(id)
 	r.Hooks = h.streamHooks()
 	r.Persist = h.persistMessage
@@ -1548,7 +1550,10 @@ func (h *Host) flushOutput(stat TurnStat) int {
 	var rows []ChatMessage
 	if strings.TrimSpace(ag.reasonBuf) != "" {
 		d := ag.thought
-		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: ag.reasonBuf, Stat: &TurnStat{ThoughtMS: d.Milliseconds()}})
+		rows = append(rows, ChatMessage{
+			Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: ag.reasonBuf,
+			Stat: &TurnStat{ThoughtMS: d.Milliseconds()},
+		})
 		// the stretch's time waits for the step's message persist, which logs
 		// the row; a retry re-streams the step and takes the queue back with it
 		ag.stretchMS = append(ag.stretchMS, d)
@@ -1558,7 +1563,11 @@ func (h *Host) flushOutput(stat TurnStat) int {
 		done = len(ag.tools)
 	}
 	for _, t := range ag.tools[:done] {
-		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, CallID: t.ID, Tool: tools.ToolName(t.Name), Text: t.Input, Label: t.Label, Status: t.Status, Detail: t.Detail, Job: t.Job, Run: t.Run, Diff: t.Diff, Output: t.Output})
+		rows = append(rows, ChatMessage{
+			Role: fantasy.MessageRoleAssistant, Kind: RowTool, CallID: t.ID, Tool: tools.ToolName(t.Name),
+			Text: t.Input, Label: t.Label, Status: t.Status, Detail: t.Detail, Job: t.Job, Run: t.Run,
+			Diff: t.Diff, Output: t.Output,
+		})
 	}
 	if strings.TrimSpace(ag.textBuf) != "" {
 		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: ag.textBuf, Stat: &stat})

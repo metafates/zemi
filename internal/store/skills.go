@@ -18,6 +18,11 @@ type Skill struct {
 	Enabled bool
 }
 
+func (s *DB) ListSkills() ([]*Skill, error) {
+	rows, err := s.db.Query(`SELECT name, path, source, enabled FROM skills ORDER BY name`)
+	return collect(rows, err, scanSkill)
+}
+
 func scanSkill(row scanner) (*Skill, error) {
 	var sk Skill
 	var enabled int
@@ -26,11 +31,6 @@ func scanSkill(row scanner) (*Skill, error) {
 	}
 	sk.Enabled = enabled != 0
 	return &sk, nil
-}
-
-func (s *DB) ListSkills() ([]*Skill, error) {
-	rows, err := s.db.Query(`SELECT name, path, source, enabled FROM skills ORDER BY name`)
-	return collect(rows, err, scanSkill)
 }
 
 func (s *DB) SetSkillEnabled(name string, enabled bool) error {

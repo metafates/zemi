@@ -142,6 +142,14 @@ func LogLevel(v string) (lvl slog.Level, ok bool) {
 	}
 }
 
+// OrList joins words as "a, b or c".
+func OrList(words []string) string {
+	if len(words) < 2 {
+		return strings.Join(words, "")
+	}
+	return strings.Join(words[:len(words)-1], ", ") + " or " + words[len(words)-1]
+}
+
 func NewStore() *Store {
 	s := &Store{
 		values: map[Key]any{},
@@ -471,12 +479,4 @@ func choiceList(choices []string) string {
 		words[i] = cmp.Or(c, "default")
 	}
 	return OrList(words)
-}
-
-// OrList joins words as "a, b or c".
-func OrList(words []string) string {
-	if len(words) < 2 {
-		return strings.Join(words, "")
-	}
-	return strings.Join(words[:len(words)-1], ", ") + " or " + words[len(words)-1]
 }

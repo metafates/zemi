@@ -70,8 +70,6 @@ type ViewMerge struct {
 	L, I int64
 }
 
-func nowStamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
-
 // AppendLog appends one chat row and its view line in one transaction and
 // returns the row's seq: max+1 inside the transaction, so a tail cut leaves
 // the index dense. When nodeText is not "", the message's own node lands
@@ -100,6 +98,8 @@ func (s *DB) AppendLog(kind LogKind, text, metaJSON, partsJSON, nodeText string)
 	})
 	return seq, err
 }
+
+func nowStamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
 const logCols = `seq, kind, text, COALESCE(meta_json, ''), COALESCE(parts_json, ''), created_at, COALESCE(origin, '')`
 

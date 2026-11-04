@@ -201,47 +201,6 @@ type MissingKey struct {
 	Spec    Spec
 }
 
-// builtinKind maps a catalog provider to the fantasy family that talks to
-// it. V3's type names the wire (completions, responses, messages), not the
-// vendor, so the provider id picks the vendor's own package where zemi has
-// one and the wire covers the rest. NOTE: azure, bedrock, google-vertex and
-// copilot are left out: they need more than one key (endpoint and API
-// version, an AWS credential chain, ADC, OAuth) and a fantasy package each.
-// openrouter and vercel get their own kinds: every kind reads cached tokens
-// from the usage, but only theirs turn the Anthropic cache breakpoints into
-// the cache_control Claude behind them needs.
-func builtinKind(id catwalk.InferenceProvider, t catwalk.Type) Kind {
-	switch id {
-	case "openai":
-		return KindOpenAI
-	case "anthropic":
-		return KindAnthropic
-	case "gemini":
-		return KindGoogle
-	case "openrouter":
-		return KindOpenRouter
-	case "vercel":
-		return KindVercel
-	case "azure":
-		// its data plane needs an api-version query its plain openai wire
-		// does not carry
-		return ""
-	}
-	switch t {
-	case catwalk.TypeMessages:
-		return KindAnthropic
-	case catwalk.TypeResponses:
-		return KindOpenAI
-	default:
-		return KindOpenAICompat
-	}
-}
-
-// anthropicBase is the base the anthropic SDK merges v1/messages onto, by
-// replacing the base path's last segment: a trailing slash would make that
-// merge append a second v1.
-func anthropicBase(base string) string { return strings.TrimRight(base, "/") }
-
 // Builtin converts a catwalk catalog, resolving its "$NAME" key and
 // endpoint references through getenv, the only place Go itself reads a key
 // env var. The catalog's order is kept (anthropic, openai, gemini first,
@@ -306,6 +265,47 @@ func Builtin(providers []catwalk.Provider, getenv func(string) string) Catalog {
 	}
 	return c
 }
+
+// builtinKind maps a catalog provider to the fantasy family that talks to
+// it. V3's type names the wire (completions, responses, messages), not the
+// vendor, so the provider id picks the vendor's own package where zemi has
+// one and the wire covers the rest. NOTE: azure, bedrock, google-vertex and
+// copilot are left out: they need more than one key (endpoint and API
+// version, an AWS credential chain, ADC, OAuth) and a fantasy package each.
+// openrouter and vercel get their own kinds: every kind reads cached tokens
+// from the usage, but only theirs turn the Anthropic cache breakpoints into
+// the cache_control Claude behind them needs.
+func builtinKind(id catwalk.InferenceProvider, t catwalk.Type) Kind {
+	switch id {
+	case "openai":
+		return KindOpenAI
+	case "anthropic":
+		return KindAnthropic
+	case "gemini":
+		return KindGoogle
+	case "openrouter":
+		return KindOpenRouter
+	case "vercel":
+		return KindVercel
+	case "azure":
+		// its data plane needs an api-version query its plain openai wire
+		// does not carry
+		return ""
+	}
+	switch t {
+	case catwalk.TypeMessages:
+		return KindAnthropic
+	case catwalk.TypeResponses:
+		return KindOpenAI
+	default:
+		return KindOpenAICompat
+	}
+}
+
+// anthropicBase is the base the anthropic SDK merges v1/messages onto, by
+// replacing the base path's last segment: a trailing slash would make that
+// merge append a second v1.
+func anthropicBase(base string) string { return strings.TrimRight(base, "/") }
 
 // effortNames labels a model's effort levels for a person, parallel to the
 // values catwalk's levels carry.
@@ -824,25 +824,6 @@ func (r *Registry) LogprobOptions(id ModelID) func(fantasy.ProviderOptions, int6
 		// build their own metadata), or run no chat call at all
 	}
 	return nil
-}
-
-// amend is o as a copy nothing shares with the call's own options; a fresh one
-// when the call carried none of that kind.
-func amend[T any](o *T) *T {
-	if o == nil {
-		return new(T)
-	}
-	clone := *o
-	return &clone
-}
-
-// mergeOptions is a and b's provider options together, b's own provider winning
-// where both carry one.
-func mergeOptions(a, b fantasy.ProviderOptions) fantasy.ProviderOptions {
-	out := fantasy.ProviderOptions{}
-	maps.Copy(out, a)
-	maps.Copy(out, b)
-	return out
 }
 
 // Key is a provider's API key, for the code that speaks a provider's own
@@ -1383,4 +1364,23 @@ func (m idleModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Strea
 			yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeError, Error: errModelIdle})
 		}
 	}, nil
+}
+
+// amend is o as a copy nothing shares with the call's own options; a fresh one
+// when the call carried none of that kind.
+func amend[T any](o *T) *T {
+	if o == nil {
+		return new(T)
+	}
+	clone := *o
+	return &clone
+}
+
+// mergeOptions is a and b's provider options together, b's own provider winning
+// where both carry one.
+func mergeOptions(a, b fantasy.ProviderOptions) fantasy.ProviderOptions {
+	out := fantasy.ProviderOptions{}
+	maps.Copy(out, a)
+	maps.Copy(out, b)
+	return out
 }

@@ -37,6 +37,353 @@ import (
 	"github.com/metafates/zemi/internal/proc"
 )
 
+// FitImage returns an image a provider takes: as it is when it fits, else
+// shrunk to imageMaxSide with a box filter and re-encoded as PNG, or as
+// JPEG when the PNG is still too big. An error says why none would fit.
+// NOTE: the stdlib decodes no webp (x/image does), so a webp is judged by
+// its bytes alone.
+func FitImage(data []byte, mt string) ([]byte, string, error) {
+	tooBig := fmt.Errorf("a %d byte image, too large to send even shrunk", len(data))
+	if mt == "image/webp" {
+		if len(data) > imageMaxBytes {
+			return nil, "", fmt.Errorf("a %d byte webp image, over the %d byte limit", len(data), imageMaxBytes)
+		}
+		return data, mt, nil
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, "", fmt.Errorf("not a readable image: %w", err)
+	}
+	// a zero side divides boxScale by zero
+	if cfg.Width <= 0 || cfg.Height <= 0 {
+		return nil, "", fmt.Errorf("a %dx%d image, no pixels to scale", cfg.Width, cfg.Height)
+	}
+	long := max(cfg.Width, cfg.Height)
+	if long <= imageMaxSide && len(data) <= imageMaxBytes {
+		return data, mt, nil
+	}
+	if cfg.Width*cfg.Height > imageMaxPixels {
+		return nil, "", fmt.Errorf("a %dx%d image, over the %d megapixels zemi decodes", cfg.Width, cfg.Height, imageMaxPixels/1_000_000)
+	}
+	src, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, "", fmt.Errorf("not a readable image: %w", err)
+	}
+	w, h := cfg.Width, cfg.Height
+	if long > imageMaxSide {
+		w, h = max(w*imageMaxSide/long, 1), max(h*imageMaxSide/long, 1)
+	}
+	small := boxScale(src, w, h)
+	var buf bytes.Buffer
+	if png.Encode(&buf, small) == nil && buf.Len() <= imageMaxBytes {
+		return buf.Bytes(), "image/png", nil
+	}
+	buf.Reset()
+	if jpeg.Encode(&buf, small, &jpeg.Options{Quality: 85}) == nil && buf.Len() <= imageMaxBytes {
+		return buf.Bytes(), "image/jpeg", nil
+	}
+	return nil, "", tooBig
+}
+
+// Cut cuts tool output to n and spills the whole text to dir, so the cut part
+// stays one read away and its line numbers are read offsets. whole keeps the
+// text as it is: a call a lua script drove keeps its output whole, since the
+// script reads it and says what of it the model gets.
+func Cut(dir, name, s string, n int, whole bool) string {
+	if whole {
+		return s
+	}
+	if out := TruncOut(s, n); out != s {
+		return out + Spill(dir, name, s)
+	}
+	return s
+}
+
+// CmdOut is a command's output as a result carries it: cmdText cut to
+// resultMaxOut, the kept text spilled to dir. lost counts what the proc.Buffer
+// already dropped from the middle, which no spill file can hold.
+func CmdOut(dir, name, raw string, lost int64, whole bool) string {
+	out := Cut(dir, name, cmdText(raw), resultMaxOut, whole)
+	if lost > 0 {
+		out += fmt.Sprintf("\n(%d more bytes in the middle were not kept)", lost)
+	}
+	return out
+}
+
+// shellArgs is the shell tool's input and its schema source.
+type shellArgs struct {
+	// "about", not "description": a schema's properties reach the model
+	// sorted by name, and this one has to stream before the command
+	About     string `json:"about,omitempty" desc:"what the command does in 5-10 words, shown to the user, e.g. Run the unit tests."`
+	Command   string `json:"command"`
+	TimeoutMS int    `json:"timeout_ms,omitempty" desc:"default 60000, max 600000; raise it for slow builds and test suites"`
+}
+
+// Spill saves output too long for a result under dir and names the file,
+// so the cut part stays one read away; "" when it cannot be written.
+func Spill(dir, name, s string) string {
+	if dir == "" || os.MkdirAll(dir, 0o700) != nil {
+		return ""
+	}
+	f, err := os.CreateTemp(dir, name+"-*.txt")
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	if _, err := f.WriteString(s); err != nil {
+		return ""
+	}
+	return "\n(output saved to " + f.Name() + ")"
+}
+
+// imageMaxSide and imageMaxBytes are what an image sent to a model may be:
+// Anthropic refuses over 8000 px a side (2000 with more than 20 images) and
+// over 5 MB of base64, about 3.75 MB of bytes.
+const (
+	imageMaxSide  = 2000
+	imageMaxBytes = 3_750_000
+	// NOTE: a decode holds 4 to 8 bytes a pixel, and a 1 MB PNG can declare
+	// 30000x30000; past this ceiling an image is refused, not tiled.
+	imageMaxPixels = 40_000_000
+)
+
+// OpenRegular opens a file for reading. fi is set once the file is open,
+// so a directory or a FIFO is reported without reading it; the caller
+// closes f.
+func OpenRegular(path perm.Path) (f *os.File, fi os.FileInfo, err error) {
+	// nonblocking: opening a FIFO must not wait for a writer
+	f, err = path.Open(os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	if fi, err = f.Stat(); err != nil || !fi.Mode().IsRegular() {
+		// a FIFO blocks and a device can be endless
+		f.Close()
+		return nil, fi, cmp.Or(err, error(&os.PathError{Op: "read", Path: path.String(), Err: errors.New("not a regular file")}))
+	}
+	return f, fi, nil
+}
+
+// WriteFile replaces a file's content, making missing parent directories.
+func WriteFile(path perm.Path, data []byte, mode os.FileMode) error {
+	f, err := path.Open(os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	return cmp.Or(err, f.Close())
+}
+
+// sniffBytes is how much of a body looksBinary reads.
+const sniffBytes = 8000
+
+// CallScope gives the calls a turn makes under ctx their own keys.
+func CallScope(ctx context.Context) context.Context {
+	return context.WithValue(ctx, callScopeKey{}, callScopes.Add(1))
+}
+
+// CallStart records a write tool's call as the model made it and reports
+// whether it did; other tools are ignored. The agent runner calls it from
+// fantasy's OnToolCall and owes a CallDone for every recorded id.
+func CallStart(ctx context.Context, id, tool, input string) bool {
+	if tool != string(ToolWrite) && tool != string(ToolEdit) {
+		return false
+	}
+	var in struct {
+		Path string `json:"path"`
+	}
+	if json.Unmarshal([]byte(input), &in) != nil || in.Path == "" {
+		return false
+	}
+	key, id := perm.CanonPath(in.Path), callKey(ctx, id)
+	callOrder.mu.Lock()
+	callOrder.path[id] = key
+	callOrder.ahead[key] = append(callOrder.ahead[key], id)
+	callOrder.mu.Unlock()
+	return true
+}
+
+// CallDone releases the calls, so nothing waits on them: a call fantasy
+// answered without running it (invalid input, a tool the run lacks)
+// and, at the end of a turn, whatever a step recorded and never dispatched.
+// Ids Run already released are no-ops.
+func CallDone(ctx context.Context, ids ...string) {
+	c := callOrder
+	c.mu.Lock()
+	for _, id := range ids {
+		id = callKey(ctx, id)
+		if key, ok := c.path[id]; ok {
+			delete(c.path, id)
+			c.ahead[key] = slices.DeleteFunc(c.ahead[key], func(x string) bool { return x == id })
+		}
+	}
+	c.mu.Unlock()
+	c.cond.Broadcast()
+}
+
+// resultMaxOut is what a tool result may carry of a command's
+// output; the rest is spilled to the scratchpad. A skill body has its own cap.
+const resultMaxOut = 10_000
+
+// EditDistance is the Levenshtein distance between two short names.
+func EditDistance(a, b string) int {
+	prev := make([]int, len(b)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		cur := []int{i}
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			cur = append(cur, min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost))
+		}
+		prev = cur
+	}
+	return prev[len(b)]
+}
+
+// ListFiles lists up to limit regular files under root, relative to it, in
+// path order: in a git work tree what git tracks or would track (the
+// .gitignore files read), else what walk finds, with note the line saying
+// why. Neither lists a symbolic link, .git or a nested repository.
+// git and not a Go matcher: only the index knows a tracked file an ignore
+// rule covers, and snapshots and lsp sync read git's rules too.
+func ListFiles(ctx context.Context, root string, limit int) (files []string, note string, err error) {
+	gitCtx, cancel := context.WithTimeout(ctx, listWait)
+	defer cancel()
+	out, err := proc.Git{Dir: root}.Run(gitCtx, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	// an index entry is the repository's word: a planted one can say "../x"
+	// or "sub/.git/config", and a tracked directory may since have become a
+	// symbolic link
+	realDir := map[string]bool{".": true}
+	var inRoot func(dir string) bool
+	inRoot = func(dir string) bool {
+		ok, seen := realDir[dir]
+		if !seen {
+			fi, err := os.Lstat(filepath.Join(root, dir))
+			ok = err == nil && fi.IsDir() && filepath.Base(dir) != ".git" && inRoot(filepath.Dir(dir))
+			realDir[dir] = ok
+		}
+		return ok
+	}
+	for rel := range strings.SplitSeq(out, "\x00") {
+		// a nested repository comes as its directory, a deleted or a
+		// submodule's entry as no regular file
+		if err != nil || strings.HasSuffix(rel, "/") || strings.HasPrefix(rel, ".agents/worktrees/") ||
+			!filepath.IsLocal(rel) || filepath.Clean(rel) != rel || !inRoot(filepath.Dir(rel)) {
+			continue
+		}
+		if fi, err := os.Lstat(filepath.Join(root, rel)); err == nil && fi.Mode().IsRegular() {
+			files = append(files, rel)
+		}
+	}
+	// nothing listed: no repository, no git, or a root git ignores whole
+	if len(files) == 0 {
+		note = walkedNote
+		if ctx.Err() == nil && errors.Is(gitCtx.Err(), context.DeadlineExceeded) {
+			note = fmt.Sprintf("(git took over %s to list the files here, so a walk did: .gitignore not read, hidden and build directories skipped)", listWait)
+		}
+		err = walk(ctx, root, func(rel string) error {
+			files = append(files, filepath.ToSlash(rel))
+			if len(files) == limit {
+				return filepath.SkipAll
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, note, err
+		}
+	}
+	slices.Sort(files)
+	// an unmerged path is listed once per stage
+	files = slices.Compact(files)
+	return files[:min(len(files), limit)], note, nil
+}
+
+// Grep returns the first limit lines matching re in files, relative to
+// root, in their order. It reads a file only when it is regular, at most
+// grepMaxSize bytes and not binary.
+func Grep(ctx context.Context, root string, files []string, re *regexp.Regexp, limit int) ([]Hit, error) {
+	whole := wholeFile(re)
+	found, done := make([][]Hit, len(files)), make([]bool, len(files))
+	// the files before prefix are all searched; the hits among them decide
+	// the answer, so it does not depend on which worker finished first.
+	// NOTE: workers run ahead of a slow file unbounded, holding up to limit
+	// hits per file they pass; a window on next-prefix would cap that.
+	var mu sync.Mutex
+	prefix, n := 0, 0
+	var next atomic.Int64
+	var stop atomic.Bool
+	var wg sync.WaitGroup
+	for range runtime.GOMAXPROCS(0) {
+		wg.Go(func() {
+			var buf []byte
+			for !stop.Load() && ctx.Err() == nil {
+				i := int(next.Add(1)) - 1
+				if i >= len(files) {
+					return
+				}
+				hits := grepFile(root, files[i], re, whole, limit, &buf)
+				mu.Lock()
+				found[i], done[i] = hits, true
+				for ; prefix < len(files) && done[prefix]; prefix++ {
+					n += len(found[prefix])
+				}
+				stop.Store(n >= limit)
+				mu.Unlock()
+			}
+		})
+	}
+	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	var hits []Hit
+	for _, f := range found[:prefix] {
+		hits = append(hits, f...)
+	}
+	return hits[:min(len(hits), limit)], nil
+}
+
+func SkipDir(name string) bool {
+	switch name {
+	case "node_modules", "vendor", "target", "dist", "build",
+		"__pycache__", "coverage", "venv":
+		return true
+	default:
+		return false
+	}
+}
+
+// SortShallow orders paths shortest first in depth: fewer separators
+// lead, ties go lexical, so a tree lists its top level before its depth.
+func SortShallow(paths []string) {
+	slices.SortFunc(paths, func(x, y string) int {
+		if c := strings.Count(x, "/") - strings.Count(y, "/"); c != 0 {
+			return c
+		}
+		return strings.Compare(x, y)
+	})
+}
+
+const (
+	readMaxLines   = 2000
+	readMaxBytes   = 50_000
+	readMaxLineLen = 2000
+	readMaxImage   = 20 << 20 // what is read at all; FitImage sizes what is sent
+	editMaxBytes   = 10 << 20
+)
+
+// readArgs is the read tool's input and its schema source.
+type readArgs struct {
+	Path   string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
+	Offset int    `json:"offset,omitempty" desc:"1-based line to start at"`
+	Limit  int    `json:"limit,omitempty" desc:"how many lines to read; omit for the whole file, still at most 2000 lines or 50000 bytes"`
+}
+
 // progress shows the command's last output line under its row while it
 // runs, polled every 300 ms and sent only when it changed (each send
 // redraws); the returned func stops the poll. The line stays until the
@@ -73,6 +420,201 @@ func (p *Pipeline) progress(ctx context.Context, buf *proc.Buffer) func() {
 	}
 }
 
+// cmdOut is CmdOut for this run.
+func (p *Pipeline) cmdOut(name, raw string, lost int64) string {
+	return CmdOut(p.Pad, name, raw, lost, p.Script != "")
+}
+
+// cmdEnv is the environment of a command the model starts: the pad and the
+// project as names a script can read, and the touch tells another process's
+// sweep the pad is used.
+func (p *Pipeline) cmdEnv() []string {
+	env := append([]string{}, os.Environ()...)
+	env = append(env, proc.NonInteractiveEnv...)
+	if p.Pad != "" {
+		env = append(env, "ZEMI_SCRATCH="+p.Pad)
+	}
+	if p.ProjectDir != "" {
+		env = append(env, "ZEMI_PROJECT_DIR="+p.ProjectDir)
+	}
+	if p.Pad != "" && os.MkdirAll(p.Pad, 0o700) == nil {
+		now := time.Now()
+		_ = os.Chtimes(p.Pad, now, now)
+	}
+	return env
+}
+
+// markRead records the modification time the model saw path at; fi is
+// taken before the read, so a change during it reads as stale.
+func (p *Pipeline) markRead(path string, fi os.FileInfo) {
+	if p.Seen != nil && fi != nil {
+		p.Seen.Store(perm.CanonPath(path), fi.ModTime())
+	}
+}
+
+// stale refuses writing a file the model has not read, or one that changed
+// since (a command it ran, the user's editor, a formatter, another agent):
+// writing over it would silently drop those changes. A shell call never updates
+// Seen, so the model re-reads what a command rewrote. Nor does an
+// edit: runEdit holds the edit of a file whose current version the model has
+// not read to one exact match, which proves it knows the text it replaces
+// and keeps every other change, and leaves the file unseen. "" when the view
+// is current.
+func (p *Pipeline) stale(path string, fi os.FileInfo, edit bool) string {
+	rel := workRel(path)
+	// before the read log: a directory listing never marks it seen, so the
+	// "read it first" advice would loop
+	if fi.IsDir() {
+		return rel + " is a directory"
+	}
+	if p.Seen == nil {
+		return ""
+	}
+	v, _ := p.Seen.Load(perm.CanonPath(path))
+	t, ok := v.(time.Time) // Seen is written from two packages; a non-time reads as unseen
+	switch {
+	case edit:
+	case !ok:
+		return "read " + rel + " with the read tool first, then repeat this call: this session has not read it, and cat, sed or grep in a shell command does not count."
+	case !t.Equal(fi.ModTime()):
+		return rel + " changed since you read it (a command you ran, the user's editor, a formatter or another agent), and writing it whole would drop that change: read it again first."
+	}
+	return ""
+}
+
+// unseen reports a file whose current version the session has not read.
+func (p *Pipeline) unseen(path string, fi os.FileInfo) bool {
+	if p.Seen == nil {
+		return false
+	}
+	v, _ := p.Seen.Load(perm.CanonPath(path))
+	t, ok := v.(time.Time)
+	return !ok || !t.Equal(fi.ModTime())
+}
+
+func (p *Pipeline) afterWrite(path string) string {
+	if p.AfterWrite == nil {
+		return ""
+	}
+	return p.AfterWrite(path)
+}
+
+// wrote runs the hook before recording the file as seen: the hook may
+// rewrite it, and the next edit must not find it stale.
+func (p *Pipeline) wrote(path string) string {
+	note := p.afterWrite(path)
+	fi, _ := os.Stat(path)
+	p.markRead(path, fi)
+	return note
+}
+
+// writeThrough is how every file tool writes. The caller records the file as
+// read after, once any afterWrite hook has rewritten it.
+func (p *Pipeline) writeThrough(path perm.Path, data []byte, mode os.FileMode) error {
+	return WriteFile(path, data, mode)
+}
+
+var fileLocks sync.Map // perm.CanonPath -> *sync.Mutex
+
+// ScriptRead reads a whole file for a model's Lua script and records it as
+// seen at the bytes it returned, as a read call does: the script may then
+// write the file on them (ScriptWrite). A user or plugin script reads raw.
+func (p *Pipeline) ScriptRead(path perm.Path) ([]byte, error) {
+	f, fi, err := OpenRegular(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+	p.markRead(path.String(), fi)
+	return b, nil
+}
+
+// callOrder keeps the write tools' calls on one file in the order the model
+// made them, though fantasy runs a step's calls in parallel: CallStart records
+// every call of a step before any runs, and Run waits until its id leads its
+// file. Shared by every runner, it clears only the ids a caller names, keyed by
+// the turn's CallScope: a provider may number calls per conversation.
+var callOrder = newCallOrder()
+
+type callOrderState struct {
+	mu    sync.Mutex
+	cond  *sync.Cond
+	path  map[string]string   // call key -> file key
+	ahead map[string][]string // file key -> call keys, in call order
+}
+
+// ScriptWrite writes a file a model's Lua script changed, on the terms a
+// write call takes: a file this session has not read, or one that changed
+// since, is refused rather than overwritten, and the afterWrite hooks run. A
+// user or plugin script writes raw, as its own code does.
+func (p *Pipeline) ScriptWrite(path perm.Path, data []byte, mode os.FileMode) error {
+	defer lockFile(path.String())()
+	if fi, err := os.Stat(path.String()); err == nil {
+		if msg := p.stale(path.String(), fi, false); msg != "" {
+			return errors.New(msg)
+		}
+	}
+	if err := p.writeThrough(path, data, mode); err != nil {
+		return err
+	}
+	p.wrote(path.String())
+	return nil
+}
+
+type callScopeKey struct{}
+
+var callScopes atomic.Uint64
+
+// notFound words a path error; for a missing file it names the three
+// siblings nearest what a typo could have meant (app.go for apps.go or
+// ap.go).
+func (p *Pipeline) notFound(path string, err error) string {
+	msg := relErr(err).Error()
+	if !errors.Is(err, os.ErrNotExist) {
+		return msg
+	}
+	entries, _ := os.ReadDir(filepath.Dir(path))
+	// a dotfile's stem is its whole name: an empty one would be two edits
+	// from any short name, and dotfiles sort first
+	stemOf := func(name string) string {
+		if ext := filepath.Ext(name); ext != name {
+			return strings.TrimSuffix(name, ext)
+		}
+		return name
+	}
+	base := strings.ToLower(filepath.Base(path))
+	stem := stemOf(base)
+	type sibling struct {
+		name       string
+		stem, full int // edit distances
+	}
+	var near []sibling
+	for _, e := range entries {
+		name := strings.ToLower(e.Name())
+		s := stemOf(name)
+		if e.IsDir() {
+			continue
+		}
+		fuzzy := len(stem) >= 3 && (strings.Contains(s, stem) || strings.Contains(stem, s))
+		if d := EditDistance(s, stem); s == stem || fuzzy || d <= 2 {
+			near = append(near, sibling{name: e.Name(), stem: d, full: EditDistance(name, base)})
+		}
+	}
+	slices.SortStableFunc(near, func(a, b sibling) int { return cmp.Or(a.stem-b.stem, a.full-b.full) })
+	if len(near) > 0 {
+		names := make([]string, 0, 3)
+		for _, s := range near[:min(3, len(near))] {
+			names = append(names, s.name)
+		}
+		msg += " (did you mean " + strings.Join(names, ", ") + "?)"
+	}
+	return msg
+}
+
 // lastLine is the last line of text with something in it, "" for none.
 func lastLine(text string) string {
 	line := ""
@@ -92,15 +634,6 @@ func tailLines(text string, n int) string {
 		return text
 	}
 	return strings.Join(lines[len(lines)-n:], "\n")
-}
-
-// shellArgs is the shell tool's input and its schema source.
-type shellArgs struct {
-	// "about", not "description": a schema's properties reach the model
-	// sorted by name, and this one has to stream before the command
-	About     string `json:"about,omitempty" desc:"what the command does in 5-10 words, shown to the user, e.g. Run the unit tests."`
-	Command   string `json:"command"`
-	TimeoutMS int    `json:"timeout_ms,omitempty" desc:"default 60000, max 600000; raise it for slow builds and test suites"`
 }
 
 // runShell executes the command in the session directory with a timeout
@@ -202,65 +735,6 @@ func runShell(ctx context.Context, p *Pipeline, in shellArgs) (fantasy.ToolRespo
 	return changed(fantasy.NewTextResponse(b.String()))
 }
 
-// imageMaxSide and imageMaxBytes are what an image sent to a model may be:
-// Anthropic refuses over 8000 px a side (2000 with more than 20 images) and
-// over 5 MB of base64, about 3.75 MB of bytes.
-const (
-	imageMaxSide  = 2000
-	imageMaxBytes = 3_750_000
-	// NOTE: a decode holds 4 to 8 bytes a pixel, and a 1 MB PNG can declare
-	// 30000x30000; past this ceiling an image is refused, not tiled.
-	imageMaxPixels = 40_000_000
-)
-
-// FitImage returns an image a provider takes: as it is when it fits, else
-// shrunk to imageMaxSide with a box filter and re-encoded as PNG, or as
-// JPEG when the PNG is still too big. An error says why none would fit.
-// NOTE: the stdlib decodes no webp (x/image does), so a webp is judged by
-// its bytes alone.
-func FitImage(data []byte, mt string) ([]byte, string, error) {
-	tooBig := fmt.Errorf("a %d byte image, too large to send even shrunk", len(data))
-	if mt == "image/webp" {
-		if len(data) > imageMaxBytes {
-			return nil, "", fmt.Errorf("a %d byte webp image, over the %d byte limit", len(data), imageMaxBytes)
-		}
-		return data, mt, nil
-	}
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil {
-		return nil, "", fmt.Errorf("not a readable image: %w", err)
-	}
-	// a zero side divides boxScale by zero
-	if cfg.Width <= 0 || cfg.Height <= 0 {
-		return nil, "", fmt.Errorf("a %dx%d image, no pixels to scale", cfg.Width, cfg.Height)
-	}
-	long := max(cfg.Width, cfg.Height)
-	if long <= imageMaxSide && len(data) <= imageMaxBytes {
-		return data, mt, nil
-	}
-	if cfg.Width*cfg.Height > imageMaxPixels {
-		return nil, "", fmt.Errorf("a %dx%d image, over the %d megapixels zemi decodes", cfg.Width, cfg.Height, imageMaxPixels/1_000_000)
-	}
-	src, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, "", fmt.Errorf("not a readable image: %w", err)
-	}
-	w, h := cfg.Width, cfg.Height
-	if long > imageMaxSide {
-		w, h = max(w*imageMaxSide/long, 1), max(h*imageMaxSide/long, 1)
-	}
-	small := boxScale(src, w, h)
-	var buf bytes.Buffer
-	if png.Encode(&buf, small) == nil && buf.Len() <= imageMaxBytes {
-		return buf.Bytes(), "image/png", nil
-	}
-	buf.Reset()
-	if jpeg.Encode(&buf, small, &jpeg.Options{Quality: 85}) == nil && buf.Len() <= imageMaxBytes {
-		return buf.Bytes(), "image/jpeg", nil
-	}
-	return nil, "", tooBig
-}
-
 // boxScale averages each cell of src into one pixel of a w x h image.
 func boxScale(src image.Image, w, h int) *image.RGBA {
 	b := src.Bounds()
@@ -289,8 +763,11 @@ func boxScale(src image.Image, w, h int) *image.RGBA {
 	return dst
 }
 
-// sniffBytes is how much of a body looksBinary reads.
-const sniffBytes = 8000
+// writeArgs is the write tool's input and its schema source.
+type writeArgs struct {
+	Path    string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
+	Content string `json:"content"`
+}
 
 // looksBinary is the sniff read and command output share: a NUL near
 // the start, as git decides.
@@ -321,91 +798,6 @@ func lastFrames(s string) string {
 		lines[i] = l[strings.LastIndexByte(l, '\r')+1:]
 	}
 	return strings.Join(lines, "\n")
-}
-
-// resultMaxOut is what a tool result may carry of a command's
-// output; the rest is spilled to the scratchpad. A skill body has its own cap.
-const resultMaxOut = 10_000
-
-// Cut cuts tool output to n and spills the whole text to dir, so the cut part
-// stays one read away and its line numbers are read offsets. whole keeps the
-// text as it is: a call a lua script drove keeps its output whole, since the
-// script reads it and says what of it the model gets.
-func Cut(dir, name, s string, n int, whole bool) string {
-	if whole {
-		return s
-	}
-	if out := TruncOut(s, n); out != s {
-		return out + Spill(dir, name, s)
-	}
-	return s
-}
-
-// CmdOut is a command's output as a result carries it: cmdText cut to
-// resultMaxOut, the kept text spilled to dir. lost counts what the proc.Buffer
-// already dropped from the middle, which no spill file can hold.
-func CmdOut(dir, name, raw string, lost int64, whole bool) string {
-	out := Cut(dir, name, cmdText(raw), resultMaxOut, whole)
-	if lost > 0 {
-		out += fmt.Sprintf("\n(%d more bytes in the middle were not kept)", lost)
-	}
-	return out
-}
-
-// cmdOut is CmdOut for this run.
-func (p *Pipeline) cmdOut(name, raw string, lost int64) string {
-	return CmdOut(p.Pad, name, raw, lost, p.Script != "")
-}
-
-// Spill saves output too long for a result under dir and names the file,
-// so the cut part stays one read away; "" when it cannot be written.
-func Spill(dir, name, s string) string {
-	if dir == "" || os.MkdirAll(dir, 0o700) != nil {
-		return ""
-	}
-	f, err := os.CreateTemp(dir, name+"-*.txt")
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-	if _, err := f.WriteString(s); err != nil {
-		return ""
-	}
-	return "\n(output saved to " + f.Name() + ")"
-}
-
-// cmdEnv is the environment of a command the model starts: the pad and the
-// project as names a script can read, and the touch tells another process's
-// sweep the pad is used.
-func (p *Pipeline) cmdEnv() []string {
-	env := append([]string{}, os.Environ()...)
-	env = append(env, proc.NonInteractiveEnv...)
-	if p.Pad != "" {
-		env = append(env, "ZEMI_SCRATCH="+p.Pad)
-	}
-	if p.ProjectDir != "" {
-		env = append(env, "ZEMI_PROJECT_DIR="+p.ProjectDir)
-	}
-	if p.Pad != "" && os.MkdirAll(p.Pad, 0o700) == nil {
-		now := time.Now()
-		_ = os.Chtimes(p.Pad, now, now)
-	}
-	return env
-}
-
-const (
-	readMaxLines   = 2000
-	readMaxBytes   = 50_000
-	readMaxLineLen = 2000
-	readMaxImage   = 20 << 20 // what is read at all; FitImage sizes what is sent
-	editMaxBytes   = 10 << 20
-)
-
-// readArgs is the read tool's input and its schema source.
-type readArgs struct {
-	Path   string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
-	Offset int    `json:"offset,omitempty" desc:"1-based line to start at"`
-	Limit  int    `json:"limit,omitempty" desc:"how many lines to read; omit for the whole file, still at most 2000 lines or 50000 bytes"`
 }
 
 // runRead reads a file with optional 1-based line offset and limit. A page
@@ -555,21 +947,11 @@ func listDir(path perm.Path) fantasy.ToolResponse {
 	return fantasy.NewTextResponse(strings.Join(shown, "\n"))
 }
 
-// OpenRegular opens a file for reading. fi is set once the file is open,
-// so a directory or a FIFO is reported without reading it; the caller
-// closes f.
-func OpenRegular(path perm.Path) (f *os.File, fi os.FileInfo, err error) {
-	// nonblocking: opening a FIFO must not wait for a writer
-	f, err = path.Open(os.O_RDONLY|syscall.O_NONBLOCK, 0)
-	if err != nil {
-		return nil, nil, err
-	}
-	if fi, err = f.Stat(); err != nil || !fi.Mode().IsRegular() {
-		// a FIFO blocks and a device can be endless
-		f.Close()
-		return nil, fi, cmp.Or(err, error(&os.PathError{Op: "read", Path: path.String(), Err: errors.New("not a regular file")}))
-	}
-	return f, fi, nil
+// editArgs is the edit tool's input and its schema source.
+type editArgs struct {
+	Path      string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
+	OldString string `json:"old_string"`
+	NewString string `json:"new_string"`
 }
 
 // readGated reads a whole file for edit. A file over editMaxBytes is refused
@@ -587,66 +969,6 @@ func readGated(path perm.Path) (data []byte, fi os.FileInfo, err error) {
 	return data, fi, err
 }
 
-// WriteFile replaces a file's content, making missing parent directories.
-func WriteFile(path perm.Path, data []byte, mode os.FileMode) error {
-	f, err := path.Open(os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(data)
-	return cmp.Or(err, f.Close())
-}
-
-// markRead records the modification time the model saw path at; fi is
-// taken before the read, so a change during it reads as stale.
-func (p *Pipeline) markRead(path string, fi os.FileInfo) {
-	if p.Seen != nil && fi != nil {
-		p.Seen.Store(perm.CanonPath(path), fi.ModTime())
-	}
-}
-
-// stale refuses writing a file the model has not read, or one that changed
-// since (a command it ran, the user's editor, a formatter, another agent):
-// writing over it would silently drop those changes. A shell call never updates
-// Seen, so the model re-reads what a command rewrote. Nor does an
-// edit: runEdit holds the edit of a file whose current version the model has
-// not read to one exact match, which proves it knows the text it replaces
-// and keeps every other change, and leaves the file unseen. "" when the view
-// is current.
-func (p *Pipeline) stale(path string, fi os.FileInfo, edit bool) string {
-	rel := workRel(path)
-	// before the read log: a directory listing never marks it seen, so the
-	// "read it first" advice would loop
-	if fi.IsDir() {
-		return rel + " is a directory"
-	}
-	if p.Seen == nil {
-		return ""
-	}
-	v, _ := p.Seen.Load(perm.CanonPath(path))
-	t, ok := v.(time.Time) // Seen is written from two packages; a non-time reads as unseen
-	switch {
-	case edit:
-	case !ok:
-		return "read " + rel + " with the read tool first, then repeat this call: this session has not read it, and cat, sed or grep in a shell command does not count."
-	case !t.Equal(fi.ModTime()):
-		return rel + " changed since you read it (a command you ran, the user's editor, a formatter or another agent), and writing it whole would drop that change: read it again first."
-	}
-	return ""
-}
-
-// unseen reports a file whose current version the session has not read.
-func (p *Pipeline) unseen(path string, fi os.FileInfo) bool {
-	if p.Seen == nil {
-		return false
-	}
-	v, _ := p.Seen.Load(perm.CanonPath(path))
-	t, ok := v.(time.Time)
-	return !ok || !t.Equal(fi.ModTime())
-}
-
-var fileLocks sync.Map // perm.CanonPath -> *sync.Mutex
-
 // lockFile serializes read-modify-write of one file across concurrent
 // agents and returns the unlock.
 func lockFile(path string) func() {
@@ -656,77 +978,15 @@ func lockFile(path string) func() {
 	return mu.Unlock
 }
 
-// callOrder keeps the write tools' calls on one file in the order the model
-// made them, though fantasy runs a step's calls in parallel: CallStart records
-// every call of a step before any runs, and Run waits until its id leads its
-// file. Shared by every runner, it clears only the ids a caller names, keyed by
-// the turn's CallScope: a provider may number calls per conversation.
-var callOrder = newCallOrder()
-
-type callOrderState struct {
-	mu    sync.Mutex
-	cond  *sync.Cond
-	path  map[string]string   // call key -> file key
-	ahead map[string][]string // file key -> call keys, in call order
-}
-
 func newCallOrder() *callOrderState {
 	c := &callOrderState{path: map[string]string{}, ahead: map[string][]string{}}
 	c.cond = sync.NewCond(&c.mu)
 	return c
 }
 
-type callScopeKey struct{}
-
-var callScopes atomic.Uint64
-
-// CallScope gives the calls a turn makes under ctx their own keys.
-func CallScope(ctx context.Context) context.Context {
-	return context.WithValue(ctx, callScopeKey{}, callScopes.Add(1))
-}
-
 func callKey(ctx context.Context, id string) string {
 	n, _ := ctx.Value(callScopeKey{}).(uint64)
 	return strconv.FormatUint(n, 10) + "\x00" + id
-}
-
-// CallStart records a write tool's call as the model made it and reports
-// whether it did; other tools are ignored. The agent runner calls it from
-// fantasy's OnToolCall and owes a CallDone for every recorded id.
-func CallStart(ctx context.Context, id, tool, input string) bool {
-	if tool != string(ToolWrite) && tool != string(ToolEdit) {
-		return false
-	}
-	var in struct {
-		Path string `json:"path"`
-	}
-	if json.Unmarshal([]byte(input), &in) != nil || in.Path == "" {
-		return false
-	}
-	key, id := perm.CanonPath(in.Path), callKey(ctx, id)
-	callOrder.mu.Lock()
-	callOrder.path[id] = key
-	callOrder.ahead[key] = append(callOrder.ahead[key], id)
-	callOrder.mu.Unlock()
-	return true
-}
-
-// CallDone releases the calls, so nothing waits on them: a call fantasy
-// answered without running it (invalid input, a tool the run lacks)
-// and, at the end of a turn, whatever a step recorded and never dispatched.
-// Ids Run already released are no-ops.
-func CallDone(ctx context.Context, ids ...string) {
-	c := callOrder
-	c.mu.Lock()
-	for _, id := range ids {
-		id = callKey(ctx, id)
-		if key, ok := c.path[id]; ok {
-			delete(c.path, id)
-			c.ahead[key] = slices.DeleteFunc(c.ahead[key], func(x string) bool { return x == id })
-		}
-	}
-	c.mu.Unlock()
-	c.cond.Broadcast()
 }
 
 // turn blocks until call id leads the calls on its file, was never
@@ -747,12 +1007,6 @@ func turn(ctx context.Context, id string) func() {
 	return func() { CallDone(ctx, id) }
 }
 
-// writeArgs is the write tool's input and its schema source.
-type writeArgs struct {
-	Path    string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
-	Content string `json:"content"`
-}
-
 // runWrite creates or overwrites a file (parents created).
 func runWrite(ctx context.Context, p *Pipeline, in writeArgs) (fantasy.ToolResponse, error) {
 	path := p.Path.String()
@@ -767,70 +1021,6 @@ func runWrite(ctx context.Context, p *Pipeline, in writeArgs) (fantasy.ToolRespo
 		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
 	return fantasy.NewTextResponse(fmt.Sprintf("wrote %s (%d bytes)", workRel(path), len(content)) + p.wrote(path)), nil
-}
-
-func (p *Pipeline) afterWrite(path string) string {
-	if p.AfterWrite == nil {
-		return ""
-	}
-	return p.AfterWrite(path)
-}
-
-// wrote runs the hook before recording the file as seen: the hook may
-// rewrite it, and the next edit must not find it stale.
-func (p *Pipeline) wrote(path string) string {
-	note := p.afterWrite(path)
-	fi, _ := os.Stat(path)
-	p.markRead(path, fi)
-	return note
-}
-
-// writeThrough is how every file tool writes. The caller records the file as
-// read after, once any afterWrite hook has rewritten it.
-func (p *Pipeline) writeThrough(path perm.Path, data []byte, mode os.FileMode) error {
-	return WriteFile(path, data, mode)
-}
-
-// ScriptRead reads a whole file for a model's Lua script and records it as
-// seen at the bytes it returned, as a read call does: the script may then
-// write the file on them (ScriptWrite). A user or plugin script reads raw.
-func (p *Pipeline) ScriptRead(path perm.Path) ([]byte, error) {
-	f, fi, err := OpenRegular(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	b, err := io.ReadAll(f)
-	if err != nil {
-		return nil, err
-	}
-	p.markRead(path.String(), fi)
-	return b, nil
-}
-
-// ScriptWrite writes a file a model's Lua script changed, on the terms a
-// write call takes: a file this session has not read, or one that changed
-// since, is refused rather than overwritten, and the afterWrite hooks run. A
-// user or plugin script writes raw, as its own code does.
-func (p *Pipeline) ScriptWrite(path perm.Path, data []byte, mode os.FileMode) error {
-	defer lockFile(path.String())()
-	if fi, err := os.Stat(path.String()); err == nil {
-		if msg := p.stale(path.String(), fi, false); msg != "" {
-			return errors.New(msg)
-		}
-	}
-	if err := p.writeThrough(path, data, mode); err != nil {
-		return err
-	}
-	p.wrote(path.String())
-	return nil
-}
-
-// editArgs is the edit tool's input and its schema source.
-type editArgs struct {
-	Path      string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
-	OldString string `json:"old_string"`
-	NewString string `json:"new_string"`
 }
 
 // runEdit applies an edit to a file under its lock. Matching runs on LF
@@ -880,72 +1070,6 @@ func numbered(lines []string, at, n int) string {
 	return b.String()
 }
 
-// notFound words a path error; for a missing file it names the three
-// siblings nearest what a typo could have meant (app.go for apps.go or
-// ap.go).
-func (p *Pipeline) notFound(path string, err error) string {
-	msg := relErr(err).Error()
-	if !errors.Is(err, os.ErrNotExist) {
-		return msg
-	}
-	entries, _ := os.ReadDir(filepath.Dir(path))
-	// a dotfile's stem is its whole name: an empty one would be two edits
-	// from any short name, and dotfiles sort first
-	stemOf := func(name string) string {
-		if ext := filepath.Ext(name); ext != name {
-			return strings.TrimSuffix(name, ext)
-		}
-		return name
-	}
-	base := strings.ToLower(filepath.Base(path))
-	stem := stemOf(base)
-	type sibling struct {
-		name       string
-		stem, full int // edit distances
-	}
-	var near []sibling
-	for _, e := range entries {
-		name := strings.ToLower(e.Name())
-		s := stemOf(name)
-		if e.IsDir() {
-			continue
-		}
-		fuzzy := len(stem) >= 3 && (strings.Contains(s, stem) || strings.Contains(stem, s))
-		if d := EditDistance(s, stem); s == stem || fuzzy || d <= 2 {
-			near = append(near, sibling{name: e.Name(), stem: d, full: EditDistance(name, base)})
-		}
-	}
-	slices.SortStableFunc(near, func(a, b sibling) int { return cmp.Or(a.stem-b.stem, a.full-b.full) })
-	if len(near) > 0 {
-		names := make([]string, 0, 3)
-		for _, s := range near[:min(3, len(near))] {
-			names = append(names, s.name)
-		}
-		msg += " (did you mean " + strings.Join(names, ", ") + "?)"
-	}
-	return msg
-}
-
-// EditDistance is the Levenshtein distance between two short names.
-func EditDistance(a, b string) int {
-	prev := make([]int, len(b)+1)
-	for j := range prev {
-		prev[j] = j
-	}
-	for i := 1; i <= len(a); i++ {
-		cur := []int{i}
-		for j := 1; j <= len(b); j++ {
-			cost := 1
-			if a[i-1] == b[j-1] {
-				cost = 0
-			}
-			cur = append(cur, min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost))
-		}
-		prev = cur
-	}
-	return prev[len(b)]
-}
-
 // relErr shortens the path in an os error the way the results do.
 func relErr(err error) error {
 	if pe, ok := errors.AsType[*os.PathError](err); ok {
@@ -954,7 +1078,41 @@ func relErr(err error) error {
 	return err
 }
 
+const (
+	globMaxFiles   = 200
+	grepMaxMatches = 100
+	// ListLimit caps a glob, grep or zemi.fs listing, so a walk of a huge
+	// tree outside any repository ends.
+	ListLimit = 200_000
+	// grepMaxSize is the largest file grep reads.
+	// NOTE: a bigger file (a bundle, a dump, a huge lock file) is not
+	// searched; a streaming line reader would lift the cap, at the price of
+	// the one pass over the whole file that rules most files out.
+	grepMaxSize = 4 << 20
+)
+
+// walkedNote tells the model that walk, not git, picked the files it sees.
+const walkedNote = "(no git file list here: .gitignore not read, hidden and build directories skipped)"
+
+// listWait bounds git's file listing. git walks every untracked file before
+// it prints one, which in a huge untracked tree (a $HOME dotfiles repo) runs
+// for seconds; the biggest repository measured, 26k files, lists in 0.3 s cold.
+var listWait = 2 * time.Second
+
+// globArgs is the glob tool's input and its schema source.
+type globArgs struct {
+	Pattern string `json:"pattern" desc:"glob such as *.go, src/**/*.ts or *.{ts,tsx}"`
+	Path    string `json:"path,omitempty" desc:"directory to search under; default the working directory"`
+}
+
 func lf(s string) string { return strings.ReplaceAll(s, "\r\n", "\n") }
+
+// grepArgs is the grep tool's input and its schema source.
+type grepArgs struct {
+	Pattern string `json:"pattern" desc:"RE2 regular expression matched against each line"`
+	Path    string `json:"path,omitempty" desc:"file or directory to search; default the working directory"`
+	Include string `json:"include,omitempty" desc:"glob limiting which files are searched, such as *.go"`
+}
 
 // editText applies an edit's old_string and new_string to LF text; msg
 // explains why it does not apply, and then out is to be ignored.
@@ -978,6 +1136,13 @@ func applyEdit(s, oldText, newText string) (string, int) {
 		return s, n
 	}
 	return strings.ReplaceAll(s, oldText, newText), n
+}
+
+// Hit is one line Grep found, Rel relative to the root it searched.
+type Hit struct {
+	Rel  string
+	Line int
+	Text string
 }
 
 // editError explains a failed match, or returns "" when the edit applied.
@@ -1027,33 +1192,6 @@ func editError(src, old string, n int, where string) string {
 		}
 	}
 	return "old_string not found in " + where + "; read the file again and copy the text exactly"
-}
-
-const (
-	globMaxFiles   = 200
-	grepMaxMatches = 100
-	// ListLimit caps a glob, grep or zemi.fs listing, so a walk of a huge
-	// tree outside any repository ends.
-	ListLimit = 200_000
-	// grepMaxSize is the largest file grep reads.
-	// NOTE: a bigger file (a bundle, a dump, a huge lock file) is not
-	// searched; a streaming line reader would lift the cap, at the price of
-	// the one pass over the whole file that rules most files out.
-	grepMaxSize = 4 << 20
-)
-
-// walkedNote tells the model that walk, not git, picked the files it sees.
-const walkedNote = "(no git file list here: .gitignore not read, hidden and build directories skipped)"
-
-// listWait bounds git's file listing. git walks every untracked file before
-// it prints one, which in a huge untracked tree (a $HOME dotfiles repo) runs
-// for seconds; the biggest repository measured, 26k files, lists in 0.3 s cold.
-var listWait = 2 * time.Second
-
-// globArgs is the glob tool's input and its schema source.
-type globArgs struct {
-	Pattern string `json:"pattern" desc:"glob such as *.go, src/**/*.ts or *.{ts,tsx}"`
-	Path    string `json:"path,omitempty" desc:"directory to search under; default the working directory"`
 }
 
 // runGlob lists files under root (default session dir) matching pattern,
@@ -1109,13 +1247,6 @@ func runGlob(ctx context.Context, p *Pipeline, in globArgs) (fantasy.ToolRespons
 		out = append(out, fmt.Sprintf("... (listing stopped at %d files; narrow the path)", ListLimit))
 	}
 	return fantasy.NewTextResponse(strings.Join(out, "\n")), nil
-}
-
-// grepArgs is the grep tool's input and its schema source.
-type grepArgs struct {
-	Pattern string `json:"pattern" desc:"RE2 regular expression matched against each line"`
-	Path    string `json:"path,omitempty" desc:"file or directory to search; default the working directory"`
-	Include string `json:"include,omitempty" desc:"glob limiting which files are searched, such as *.go"`
 }
 
 // runGrep searches file contents under root, optionally only in files
@@ -1180,116 +1311,6 @@ func runGrep(ctx context.Context, p *Pipeline, in grepArgs) (fantasy.ToolRespons
 		}
 	}
 	return fantasy.NewTextResponse(strings.Join(out, "\n")), nil
-}
-
-// ListFiles lists up to limit regular files under root, relative to it, in
-// path order: in a git work tree what git tracks or would track (the
-// .gitignore files read), else what walk finds, with note the line saying
-// why. Neither lists a symbolic link, .git or a nested repository.
-// git and not a Go matcher: only the index knows a tracked file an ignore
-// rule covers, and snapshots and lsp sync read git's rules too.
-func ListFiles(ctx context.Context, root string, limit int) (files []string, note string, err error) {
-	gitCtx, cancel := context.WithTimeout(ctx, listWait)
-	defer cancel()
-	out, err := proc.Git{Dir: root}.Run(gitCtx, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
-	// an index entry is the repository's word: a planted one can say "../x"
-	// or "sub/.git/config", and a tracked directory may since have become a
-	// symbolic link
-	realDir := map[string]bool{".": true}
-	var inRoot func(dir string) bool
-	inRoot = func(dir string) bool {
-		ok, seen := realDir[dir]
-		if !seen {
-			fi, err := os.Lstat(filepath.Join(root, dir))
-			ok = err == nil && fi.IsDir() && filepath.Base(dir) != ".git" && inRoot(filepath.Dir(dir))
-			realDir[dir] = ok
-		}
-		return ok
-	}
-	for rel := range strings.SplitSeq(out, "\x00") {
-		// a nested repository comes as its directory, a deleted or a
-		// submodule's entry as no regular file
-		if err != nil || strings.HasSuffix(rel, "/") || strings.HasPrefix(rel, ".agents/worktrees/") ||
-			!filepath.IsLocal(rel) || filepath.Clean(rel) != rel || !inRoot(filepath.Dir(rel)) {
-			continue
-		}
-		if fi, err := os.Lstat(filepath.Join(root, rel)); err == nil && fi.Mode().IsRegular() {
-			files = append(files, rel)
-		}
-	}
-	// nothing listed: no repository, no git, or a root git ignores whole
-	if len(files) == 0 {
-		note = walkedNote
-		if ctx.Err() == nil && errors.Is(gitCtx.Err(), context.DeadlineExceeded) {
-			note = fmt.Sprintf("(git took over %s to list the files here, so a walk did: .gitignore not read, hidden and build directories skipped)", listWait)
-		}
-		err = walk(ctx, root, func(rel string) error {
-			files = append(files, filepath.ToSlash(rel))
-			if len(files) == limit {
-				return filepath.SkipAll
-			}
-			return nil
-		})
-		if err != nil {
-			return nil, note, err
-		}
-	}
-	slices.Sort(files)
-	// an unmerged path is listed once per stage
-	files = slices.Compact(files)
-	return files[:min(len(files), limit)], note, nil
-}
-
-// Hit is one line Grep found, Rel relative to the root it searched.
-type Hit struct {
-	Rel  string
-	Line int
-	Text string
-}
-
-// Grep returns the first limit lines matching re in files, relative to
-// root, in their order. It reads a file only when it is regular, at most
-// grepMaxSize bytes and not binary.
-func Grep(ctx context.Context, root string, files []string, re *regexp.Regexp, limit int) ([]Hit, error) {
-	whole := wholeFile(re)
-	found, done := make([][]Hit, len(files)), make([]bool, len(files))
-	// the files before prefix are all searched; the hits among them decide
-	// the answer, so it does not depend on which worker finished first.
-	// NOTE: workers run ahead of a slow file unbounded, holding up to limit
-	// hits per file they pass; a window on next-prefix would cap that.
-	var mu sync.Mutex
-	prefix, n := 0, 0
-	var next atomic.Int64
-	var stop atomic.Bool
-	var wg sync.WaitGroup
-	for range runtime.GOMAXPROCS(0) {
-		wg.Go(func() {
-			var buf []byte
-			for !stop.Load() && ctx.Err() == nil {
-				i := int(next.Add(1)) - 1
-				if i >= len(files) {
-					return
-				}
-				hits := grepFile(root, files[i], re, whole, limit, &buf)
-				mu.Lock()
-				found[i], done[i] = hits, true
-				for ; prefix < len(files) && done[prefix]; prefix++ {
-					n += len(found[prefix])
-				}
-				stop.Store(n >= limit)
-				mu.Unlock()
-			}
-		})
-	}
-	wg.Wait()
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	var hits []Hit
-	for _, f := range found[:prefix] {
-		hits = append(hits, f...)
-	}
-	return hits[:min(len(hits), limit)], nil
 }
 
 // grepFile returns up to limit matching lines of one file, read into the
@@ -1401,27 +1422,6 @@ func truncLine(s string) string {
 		return strings.ToValidUTF8(s[:200], "") + "..."
 	}
 	return s
-}
-
-func SkipDir(name string) bool {
-	switch name {
-	case "node_modules", "vendor", "target", "dist", "build",
-		"__pycache__", "coverage", "venv":
-		return true
-	default:
-		return false
-	}
-}
-
-// SortShallow orders paths shortest first in depth: fewer separators
-// lead, ties go lexical, so a tree lists its top level before its depth.
-func SortShallow(paths []string) {
-	slices.SortFunc(paths, func(x, y string) int {
-		if c := strings.Count(x, "/") - strings.Count(y, "/"); c != 0 {
-			return c
-		}
-		return strings.Compare(x, y)
-	})
 }
 
 // workdir is the shell execution root.

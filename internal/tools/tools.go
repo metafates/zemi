@@ -947,12 +947,12 @@ func ChangeDiff(tool ToolName, in map[string]any) string {
 // diff with one unnumbered hunk per replaced or new text.
 func changePreview(in map[string]any) string {
 	lines := []string{"--- " + str(in["path"]), "+++ " + str(in["path"])}
-	hunk := func(old, new string) {
-		if old == "" && new == "" {
+	hunk := func(oldText, newText string) {
+		if oldText == "" && newText == "" {
 			return
 		}
 		lines = append(lines, "@@")
-		for _, p := range [][2]string{{"-", old}, {"+", new}} {
+		for _, p := range [][2]string{{"-", oldText}, {"+", newText}} {
 			if p[1] == "" {
 				continue
 			}

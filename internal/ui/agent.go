@@ -64,6 +64,7 @@ func (a *App) fresh(opened time.Time) bool {
 // label says how long and desc what it allows, and the answer it gives.
 type permChoice struct {
 	promptChoice
+
 	by   string
 	ok   bool
 	tell bool // deny and stop the turn so the user can say what to do instead
@@ -250,7 +251,10 @@ var oneRow = [][]hostapi.Segment{nil}
 // once the box squeezes; nil for a prompt whose keys ride the hint row), and
 // a hint row w wide naming the half-page keys while the text overflows, a
 // typed line included, since they are the line's too.
-func scrollChoiceBody(h, w int, head [][]hostapi.Segment, v *viewport, text func(int) [][]hostapi.Segment, textW int, act func(compact bool) [][]hostapi.Segment, hints ...hintPair) [][]hostapi.Segment {
+func scrollChoiceBody(h, w int, head [][]hostapi.Segment, v *viewport,
+	text func(int) [][]hostapi.Segment, textW int,
+	act func(compact bool) [][]hostapi.Segment, hints ...hintPair,
+) [][]hostapi.Segment {
 	return fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
 		tight := level > 0
 		var list [][]hostapi.Segment
@@ -326,7 +330,12 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 			{Text: "  " + open, HL: hostapi.ChromeHint}, {Text: c.key, HL: hostapi.ChromeHintKey}, {Text: shut + pad, HL: hostapi.ChromeHint},
 		}, hostapi.ChromeValue
 		if i == sel {
-			btn, textHL = []hostapi.Segment{{Text: "› ", HL: hostapi.ChromeTitle}, {Text: open, HL: hostapi.ChromeHint}, {Text: c.key, HL: hostapi.ChromeHintKey}, {Text: shut + pad, HL: hostapi.ChromeHint}}, hostapi.ChromeBold
+			btn, textHL = []hostapi.Segment{
+				{Text: "› ", HL: hostapi.ChromeTitle},
+				{Text: open, HL: hostapi.ChromeHint},
+				{Text: c.key, HL: hostapi.ChromeHintKey},
+				{Text: shut + pad, HL: hostapi.ChromeHint},
+			}, hostapi.ChromeBold
 		}
 		labelW, desc := textW, [][]hostapi.Segment(nil)
 		if c.desc != "" {
@@ -1010,7 +1019,8 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	// the title says where a yes runs, so the badge gets what it leaves, a
 	// third of the box at least
 	title, bw := permTitle(req), min(w-4, maxW)
-	who := ansi.Truncate(strings.Join(slices.DeleteFunc(badge, func(s string) bool { return s == "" }), "  "), max(bw-ansi.StringWidth(title)-7, bw/3), "…")
+	joined := strings.Join(slices.DeleteFunc(badge, func(s string) bool { return s == "" }), "  ")
+	who := ansi.Truncate(joined, max(bw-ansi.StringWidth(title)-7, bw/3), "…")
 	return promptBox(title, who, body, w, h, maxW, &pa.size)
 }
 
@@ -1156,7 +1166,10 @@ type hintPair struct {
 // enter's hint in every prompt, in the lists' words (enterVerb): one verb
 // for every button and one for typed text, as wide as "pick" and "open",
 // since a changing width shifts the row.
-var pickHint, sendHint = hintPair{key: "enter", verb: "pick"}, hintPair{key: "enter", verb: "send"}
+var (
+	pickHint = hintPair{key: "enter", verb: "pick"}
+	sendHint = hintPair{key: "enter", verb: "send"}
+)
 
 // hintSlot is where a pair sits in a footer: moving, enter, space, copy,
 // letter keys, esc, then scrolling. A screen's letter keys come and go with

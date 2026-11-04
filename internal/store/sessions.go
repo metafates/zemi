@@ -58,17 +58,6 @@ func (s *DB) CreateSession(id, parentID, title, agent string) error {
 const sessionCols = `id, COALESCE(parent_id, ''), title, agent, created_at, updated_at,
 	prompt_tokens, completion_tokens, cost, cache_read_tokens, cache_billed_tokens, last_in, run_status`
 
-func scanSession(row scanner) (*Session, error) {
-	var s Session
-	if err := row.Scan(&s.ID, &s.ParentID, &s.Title, &s.Agent,
-		&s.CreatedAt, &s.UpdatedAt,
-		&s.PromptTokens, &s.CompletionTokens, &s.Cost,
-		&s.CacheRead, &s.CacheBilled, &s.LastIn, &s.RunStatus); err != nil {
-		return nil, err
-	}
-	return &s, nil
-}
-
 // SetSessionRunStatus records how a run ended. It leaves updated_at alone: a
 // run ending is not activity in its parent's list.
 func (s *DB) SetSessionRunStatus(id, status string) error {
@@ -93,6 +82,17 @@ const topLevelSessions = `COALESCE(parent_id, '') = '' AND id <> '` + MainSessio
 func (s *DB) ChildSessions(parentID string) ([]*Session, error) {
 	rows, err := s.db.Query(`SELECT `+sessionCols+` FROM sessions WHERE parent_id = ? ORDER BY created_at DESC`, parentID)
 	return collect(rows, err, scanSession)
+}
+
+func scanSession(row scanner) (*Session, error) {
+	var s Session
+	if err := row.Scan(&s.ID, &s.ParentID, &s.Title, &s.Agent,
+		&s.CreatedAt, &s.UpdatedAt,
+		&s.PromptTokens, &s.CompletionTokens, &s.Cost,
+		&s.CacheRead, &s.CacheBilled, &s.LastIn, &s.RunStatus); err != nil {
+		return nil, err
+	}
+	return &s, nil
 }
 
 // AddUsage accumulates token counts and cost onto a session. Unknown ids are

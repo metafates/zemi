@@ -928,7 +928,10 @@ func (a *App) renderMissingWidgets() {
 		a.renderSeq++
 		st := a.host.ScreenState(w.width, w.height, a.uiState())
 		lines, more, err := a.renderWidget(w, st)
-		a.onWidgetRendered(widgetRender{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: a.frameGen, seq: a.renderSeq, err: err})
+		a.onWidgetRendered(widgetRender{
+			id: w.ID, lines: lines, more: more, width: w.width, height: w.height,
+			gen: a.frameGen, seq: a.renderSeq, err: err,
+		})
 	}
 }
 
@@ -1405,7 +1408,8 @@ func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.R
 		if a.palette.count() > 0 {
 			a.palette.size = boxSize{} // the list refits every frame: erasing a letter narrows the popup back
 		}
-		render, size, hints, title = a.paletteRows, &a.palette.size, []hintPair{{key: "enter", verb: "run"}, {key: "tab", verb: "complete"}, {key: "esc", verb: "close"}}, "Commands"
+		render, size, title = a.paletteRows, &a.palette.size, "Commands"
+		hints = []hintPair{{key: "enter", verb: "run"}, {key: "tab", verb: "complete"}, {key: "esc", verb: "close"}}
 		if a.palette.count() == 0 { // enter still runs the typed line
 			hints = slices.Delete(hints, 1, 2)
 		}
@@ -1413,7 +1417,8 @@ func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.R
 		if a.completion.count() > 0 {
 			a.completion.size = boxSize{} // the list refits every frame: erasing a token narrows the popup back
 		}
-		render, size, hints, title = a.completionRows, &a.completion.size, []hintPair{{key: "enter", verb: "pick"}, {key: "esc", verb: "close"}}, a.completion.title()
+		render, size, title = a.completionRows, &a.completion.size, a.completion.title()
+		hints = []hintPair{{key: "enter", verb: "pick"}, {key: "esc", verb: "close"}}
 		if a.completion.count() == 0 {
 			hints = hints[1:]
 		}
@@ -1732,10 +1737,12 @@ func (a *App) chatCursorKey(key string) (tea.Cmd, bool) {
 		if len(units) > 0 {
 			a.chatSel, moved = units[len(units)-1]+1, true
 		}
-	case "y":
-		return a.copied(chatCopyText(a.host.ScreenState(a.width, a.height, a.uiState()).Transcript[a.chatSel-1])), true
-	case "e":
-		return a.editInEditor(chatCopyText(a.host.ScreenState(a.width, a.height, a.uiState()).Transcript[a.chatSel-1]), "the message", false), true
+	case "y", "e":
+		row := chatCopyText(a.host.ScreenState(a.width, a.height, a.uiState()).Transcript[a.chatSel-1])
+		if key == "y" {
+			return a.copied(row), true
+		}
+		return a.editInEditor(row, "the message", false), true
 	case "enter", "space", "l", "h":
 		a.chatFoldKey(key)
 	case "tab", "esc":
