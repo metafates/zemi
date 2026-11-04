@@ -289,15 +289,21 @@ func TestMCPSignInAll(t *testing.T) {
 	}
 	h.SetUIHooks(&fakeUI{})
 	// the test is the browser: the queue's open follows the authorization
-	// redirect back to zemi's callback
+	// redirect back to zemi's callback; the fetches are reaped or their idle
+	// keep-alive conns outlive the test into goleak's snapshot
+	browsed := sync.WaitGroup{}
 	h.browser = func(u string) {
-		go func() {
+		browsed.Go(func() {
 			resp, err := http.Get(u)
 			if err == nil {
 				resp.Body.Close()
 			}
-		}()
+		})
 	}
+	t.Cleanup(func() {
+		browsed.Wait()
+		http.DefaultClient.CloseIdleConnections()
+	})
 	runUser(t, r, fmt.Sprintf(`zemi.mcp.add("good", { url = %q })`, goodSrv.URL+"/mcp"))
 	runUser(t, r, fmt.Sprintf(`zemi.mcp.add("bad", { url = %q })`, badSrv.URL+"/mcp"))
 	waitFor(t, func() error {
