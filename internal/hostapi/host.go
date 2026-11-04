@@ -662,6 +662,13 @@ type Host struct {
 
 	hostActions map[string]func(h *Host, args string) error
 
+	// luaCeiling bounds each slice of a Lua tool run on the interpreter and
+	// toolPostCeiling one tool.post handler's slice: both measure wall time,
+	// so a loaded machine can trip them and a test moves them to reach the
+	// bound without waiting.
+	luaCeiling      time.Duration
+	toolPostCeiling time.Duration
+
 	// Version is the zemi build version for the splash screen.
 	Version string
 	// ResumeDir is the -C dir of this run, which ctx.resume names; "" for none.
@@ -942,6 +949,9 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		mcp:       &mcpReg{},
 		tasks:     newTaskReg(settings),
 		lsp:       &lspReg{},
+
+		luaCeiling:      10 * time.Second,
+		toolPostCeiling: lua.VetoDeadline,
 	}
 	if dirs.StateHome != "" {
 		// the rate limiters share their buckets with every other zemi

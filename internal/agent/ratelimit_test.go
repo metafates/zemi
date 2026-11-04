@@ -164,13 +164,13 @@ func TestLimiterRidesTheSpec(t *testing.T) {
 	if err := r.Register(spec(RateLimit{Requests: 6}), "k", false); err != nil {
 		t.Fatal(err)
 	}
-	if got := paced(); got != (RateLimit{Requests: 6, Window: 60}) {
+	if got := paced(); got != (RateLimit{Requests: 6, Window: time.Minute}) {
 		t.Fatalf("pace = %+v, want 6 requests a minute", got)
 	}
 	if err := r.Register(spec(RateLimit{Requests: 60, CompletionTokens: 52000}), "k", false); err != nil {
 		t.Fatal(err)
 	}
-	if got := paced(); got != (RateLimit{Requests: 60, CompletionTokens: 52000, Window: 60}) {
+	if got := paced(); got != (RateLimit{Requests: 60, CompletionTokens: 52000, Window: time.Minute}) {
 		t.Fatalf("pace after the re-register = %+v, want both quotas", got)
 	}
 	if err := r.Register(spec(RateLimit{}), "k", false); err != nil {

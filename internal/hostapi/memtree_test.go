@@ -862,9 +862,7 @@ func TestResetAbortsTheInFlightBuild(t *testing.T) {
 		return nil
 	})
 	// a reset that waited for the held build would refuse at this bound
-	old := quiesceWait
-	quiesceWait = 2 * time.Second
-	defer func() { quiesceWait = old }()
+	cl.tree.quiesceWait = 2 * time.Second
 	// nothing of the reset itself may reach a provider
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return nil, errors.New("the reset resolved a model")
@@ -988,9 +986,7 @@ func TestResetRefusesAWedgedBuilder(t *testing.T) {
 		}
 		return nil
 	})
-	old := quiesceWait
-	quiesceWait = 2 * time.Second
-	defer func() { quiesceWait = old }()
+	cl.tree.quiesceWait = 2 * time.Second
 	// the armed key's press, through the command the overlay carries: it
 	// returns without waiting, so the fence is up and the log still whole -
 	// a press that waited for the wipe would return behind a refusal that
@@ -1061,9 +1057,7 @@ func TestResetCarriesALateAbort(t *testing.T) {
 		}
 		return nil
 	})
-	old := quiesceWait
-	quiesceWait = 250 * time.Millisecond
-	defer func() { quiesceWait = old }()
+	cl.tree.quiesceWait = 250 * time.Millisecond
 	if err := h.ResetChat(true); err == nil || !strings.Contains(err.Error(), "did not settle") {
 		t.Fatalf("reset under a wedged build = %v, want the bound's refusal", err)
 	}
@@ -1322,10 +1316,8 @@ func TestBuilderRetryPerMessage(t *testing.T) {
 // round; a success clears it, and the rounds leave no error entry - the
 // cooldown is a wait, not a failure to act on.
 func TestBuilderCoolDownOnRateLimit(t *testing.T) {
-	oldBase, oldTries := buildCoolBase, buildMaxRetries
-	buildCoolBase, buildMaxRetries = 200*time.Millisecond, 0 // calls are rounds
-	defer func() { buildCoolBase, buildMaxRetries = oldBase, oldTries }()
 	h, cl, m := newTree(t, strings.Repeat("s", 400))
+	cl.tree.coolBase, cl.tree.maxRetries = 200*time.Millisecond, 0 // calls are rounds
 	m.rate.Store(true)
 	if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
 		t.Fatal(err)
@@ -1348,7 +1340,7 @@ func TestBuilderCoolDownOnRateLimit(t *testing.T) {
 	times := slices.Clone(m.times)
 	m.mu.Unlock()
 	for i := 1; i < len(times); i++ {
-		if gap := times[i].Sub(times[i-1]); gap < buildCoolBase<<(i-1) {
+		if gap := times[i].Sub(times[i-1]); gap < cl.tree.coolBase<<(i-1) {
 			t.Fatalf("call %d followed the last by %v, want the doubled cooldown", i+1, gap)
 		}
 	}
@@ -1376,10 +1368,8 @@ func TestBuilderCoolDownOnRateLimit(t *testing.T) {
 // TestResetDropsAStaleCooldown: the wipe's fresh log owes the wiped
 // cooldown's patience nothing - its timer must not hold the new builds.
 func TestResetDropsAStaleCooldown(t *testing.T) {
-	oldBase, oldTries := buildCoolBase, buildMaxRetries
-	buildCoolBase, buildMaxRetries = 30*time.Second, 0 // calls are rounds
-	defer func() { buildCoolBase, buildMaxRetries = oldBase, oldTries }()
 	h, cl, m := newTree(t, strings.Repeat("s", 400))
+	cl.tree.coolBase, cl.tree.maxRetries = 30*time.Second, 0 // calls are rounds
 	m.rate.Store(true)
 	if _, err := cl.User(strings.Repeat("z", 600), ""); err != nil {
 		t.Fatal(err)

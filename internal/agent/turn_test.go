@@ -902,9 +902,8 @@ func TestCacheBreakpoints(t *testing.T) {
 		fmt.Fprint(w, `{"error":{"message":"no model here"}}`)
 	}))
 	defer srv.Close()
-	orig := ModelHTTP
-	t.Cleanup(func() { ModelHTTP = orig })
-	ModelHTTP = func() *http.Client {
+	reg := &Registry{}
+	reg.newClient = func() *http.Client {
 		return &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
 			mu.Lock()
 			sent, affinity = r.URL.String(), r.Header.Get("x-session-affinity")
@@ -914,7 +913,6 @@ func TestCacheBreakpoints(t *testing.T) {
 			return http.DefaultTransport.RoundTrip(r)
 		})}
 	}
-	reg := &Registry{}
 	for _, s := range []Spec{{ID: "a", Kind: KindAnthropic}, {ID: "or", Kind: KindOpenRouter}} {
 		if err := reg.Register(s, "k", false); err != nil {
 			t.Fatal(err)

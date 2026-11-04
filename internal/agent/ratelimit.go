@@ -22,19 +22,19 @@ import (
 	"charm.land/fantasy"
 )
 
-// RateLimit is a provider's quota per window of Window seconds: Requests
-// calls and, when CompletionTokens is set, that many reply tokens. The zero
-// value paces nothing.
+// RateLimit is a provider's quota per Window: Requests calls and, when
+// CompletionTokens is set, that many reply tokens. The zero value paces
+// nothing.
 type RateLimit struct {
 	Requests         int
 	CompletionTokens int
-	Window           int // seconds; 0 means 60
+	Window           time.Duration // 0 means a minute
 }
 
 // normalize fills the defaults, so a limiter and its spec always agree.
 func (r RateLimit) normalize() RateLimit {
 	if r.Window <= 0 {
-		r.Window = 60
+		r.Window = time.Minute
 	}
 	return r
 }
@@ -85,9 +85,9 @@ func (l *rateLimiter) freshState() *paceState {
 	return st
 }
 
-// newBucket makes a bucket of allow per windowSecs, full to start.
-func newBucket(allow, windowSecs int) bucket {
-	return bucket{perSec: float64(allow) / float64(windowSecs), cap: float64(allow), tokens: float64(allow), last: time.Now()}
+// newBucket makes a bucket of allow per window, full to start.
+func newBucket(allow int, window time.Duration) bucket {
+	return bucket{perSec: float64(allow) / window.Seconds(), cap: float64(allow), tokens: float64(allow), last: time.Now()}
 }
 
 func (b *bucket) refill(now time.Time) {
@@ -106,7 +106,7 @@ func (st *paceState) take(spec RateLimit) time.Duration {
 		// a metronome, not a burst: the window's requests spread evenly, so
 		// the quota's own pace never empties a rolling window and then
 		// refills into refusals the way a full-to-start bucket would
-		if d := st.last.Add(time.Duration(float64(spec.Window) / float64(spec.Requests) * float64(time.Second))).Sub(now); d > 0 {
+		if d := st.last.Add(spec.Window / time.Duration(spec.Requests)).Sub(now); d > 0 {
 			return d
 		}
 		st.last = now
@@ -189,7 +189,7 @@ func (l *rateLimiter) refused(err error) {
 // Retry-After when it names one, the spec's window when it does not. A
 // nonsense or over-long header falls back to the window too.
 func (l *rateLimiter) hold429(retryAfterMs, retryAfter, retryAfterMsUp, retryAfterUp string) {
-	d := time.Duration(l.spec.Window) * time.Second
+	d := l.spec.Window
 	if v := cmp.Or(retryAfterMs, retryAfterMsUp); v != "" {
 		if ms, err := strconv.ParseFloat(v, 64); err == nil && ms > 0 {
 			d = time.Duration(ms * float64(time.Millisecond))
@@ -202,7 +202,7 @@ func (l *rateLimiter) hold429(retryAfterMs, retryAfter, retryAfterMsUp, retryAft
 		}
 	}
 	if d <= 0 {
-		d = time.Duration(l.spec.Window) * time.Second
+		d = l.spec.Window
 	} else if d > 10*time.Minute {
 		d = 10 * time.Minute
 	}

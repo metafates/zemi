@@ -949,14 +949,14 @@ func parseRateLimit(fields map[string]any, at string) (agent.RateLimit, error) {
 		if v < 1 {
 			return agent.RateLimit{}, fmt.Errorf("%s must be at least 1 request per minute", at)
 		}
-		return agent.RateLimit{Requests: int(v), Window: 60}, nil
+		return agent.RateLimit{Requests: int(v), Window: time.Minute}, nil
 	case map[string]any:
 		rl, err := rateLimitFromLua(v, at)
 		if err != nil {
 			return agent.RateLimit{}, err
 		}
 		if rl.Window == 0 {
-			rl.Window = 60
+			rl.Window = time.Minute
 		}
 		return rl, nil
 	default:
@@ -984,7 +984,7 @@ func rateLimitFromLua(fields map[string]any, at string) (agent.RateLimit, error)
 			case "completion_tokens":
 				rl.CompletionTokens = int(v)
 			case "window":
-				rl.Window = int(v)
+				rl.Window = time.Duration(v) * time.Second
 			}
 		default:
 			return agent.RateLimit{}, fmt.Errorf("%s.%s must be a number, not a %T", at, k, v)

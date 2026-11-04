@@ -266,7 +266,7 @@ func (h *Host) ScreenState(width, height int, state UIState) *ScreenState {
 		}
 		out := make([]ProjectRef, 0, len(ps))
 		for _, p := range ps {
-			out = append(out, ProjectRef{Path: sanitize.String(perm.TildePath(p.Root)), Root: p.Root, Ago: ago(p.Used.UnixMilli())})
+			out = append(out, ProjectRef{Path: sanitize.String(perm.TildePath(p.Root)), Root: p.Root, Ago: ago(p.Used)})
 		}
 		return out
 	}

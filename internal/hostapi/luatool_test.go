@@ -162,8 +162,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 func TestLuaToolCeiling(t *testing.T) {
 	h, _ := newTestHost(t)
 	h.SetProjectTrusted(true)
-	old := luaToolCeiling
-	t.Cleanup(func() { luaToolCeiling = old })
+	dflt := h.luaCeiling
 	tool := h.luaEvalTool(h.PipelineFor())
 	for _, c := range []struct {
 		script, want string
@@ -171,10 +170,10 @@ func TestLuaToolCeiling(t *testing.T) {
 		named        bool // the error names the chunk the run got
 	}{
 		{"while true do end", "error: stopped after its 50ms ceiling", 50 * time.Millisecond, false},
-		{"error({ code = 1 })", `: {"code":1}`, old, true},
-		{"local s = zemi.fs.read('.'); print(s:upper())", "check the value before indexing", old, true},
+		{"error({ code = 1 })", `: {"code":1}`, dflt, true},
+		{"local s = zemi.fs.read('.'); print(s:upper())", "check the value before indexing", dflt, true},
 	} {
-		luaToolCeiling = c.ceiling
+		h.luaCeiling = c.ceiling
 		input, _ := json.Marshal(map[string]string{"about": "x", "script": c.script}, json.Deterministic(true))
 		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
 		if err != nil || !resp.IsError || !strings.Contains(resp.Content, c.want) ||

@@ -54,21 +54,10 @@ const (
 	// syncBatch bounds one read of the appends a wake stands for.
 	syncBatch = 1000
 	// buildCoolCap is the longest provider cooldown: consecutive
-	// rate-limited or empty-parked rounds double buildCoolBase up to it.
+	// rate-limited or empty-parked rounds double the builder's coolBase up
+	// to it.
 	buildCoolCap = 5 * time.Minute
 )
-
-// buildCoolBase is the first cooldown a rate-limited or empty-parked build
-// arms. Unlike an ordinary failure, which rides no timer, both are about the
-// clock: the cooldown retries the failed builds without fresh rows, a quiet
-// session's placeholders wait out the provider's mood instead of parking
-// until its next message.
-var buildCoolBase = 20 * time.Second
-
-// buildMaxRetries is the provider retries one builder call gets, below the
-// turn's five: a rate-limited round should fail fast into the cooldown
-// instead of eight slots each burning fantasy's whole retry pass.
-var buildMaxRetries = 2
 
 // placeholder is the line a message shows until its node is built.
 const placeholder = "(not summarized yet: zoom it)"
@@ -264,6 +253,18 @@ type memTree struct {
 	// health is what /health reads of the queues; the worker rewrites it
 	// each round, so a reader never takes the worker's state.
 	health builderHealth
+
+	// coolBase is the first cooldown a rate-limited or empty-parked build
+	// arms, doubled per consecutive round up to buildCoolCap; both retry on
+	// the clock, not on fresh rows, since a quiet session's placeholders
+	// wait out the provider's mood. maxRetries is the provider retries one
+	// call gets, below the turn's five: a rate-limited round fails fast into
+	// the cooldown. quiesceWait bounds a reset's wait for the aborted builds to
+	// unwind, so a provider wedged past its cancellation refuses the reset
+	// instead of wedging it.
+	coolBase    time.Duration
+	maxRetries  int
+	quiesceWait time.Duration
 }
 
 // builderHealth is the builder's queue depth, unbuilt lines and failed
@@ -272,11 +273,6 @@ type memTree struct {
 type builderHealth struct {
 	unbuilt, failed, queued, coolingUntil atomic.Int64
 }
-
-// quiesceWait bounds a reset's wait for the aborted builds to unwind: a
-// provider wedged past its own cancellation must refuse the reset, never
-// wedge it forever.
-var quiesceWait = 15 * time.Second
 
 // newMemTree starts the builder worker on ctx; the caller's Close ends it.
 func newMemTree(ctx context.Context, h *Host) *memTree {
@@ -292,6 +288,10 @@ func newMemTree(ctx context.Context, h *Host) *memTree {
 		results:  make(chan buildResult),
 		built:    map[nodeID]int{},
 		released: make(chan struct{}),
+
+		coolBase:    20 * time.Second,
+		maxRetries:  2,
+		quiesceWait: 15 * time.Second,
 	}
 	b.callCtx, b.callCancel = context.WithCancel(ctx)
 	h.GoSafe("memtree", b.run)
@@ -375,7 +375,7 @@ func (b *memTree) quiesce() error {
 		b.calls.Wait()
 		close(done)
 	})
-	timer := time.NewTimer(quiesceWait)
+	timer := time.NewTimer(b.quiesceWait)
 	defer timer.Stop()
 	select {
 	case <-done:
@@ -387,7 +387,7 @@ func (b *memTree) quiesce() error {
 		b.callMu.Lock()
 		b.held = false
 		b.callMu.Unlock()
-		return fmt.Errorf("the builder's in-flight calls did not settle within %s", quiesceWait)
+		return fmt.Errorf("the builder's in-flight calls did not settle within %s", b.quiesceWait)
 	case <-b.ctx.Done():
 		return errors.New("zemi is closing") // the process is going down with the builds
 	}
@@ -900,7 +900,7 @@ func (b *memTree) coolDown(err error) {
 		return
 	}
 	b.streak++
-	d := min(buildCoolBase<<uint(min(b.streak-1, 8)), buildCoolCap)
+	d := min(b.coolBase<<uint(min(b.streak-1, 8)), buildCoolCap)
 	b.health.coolingUntil.Store(time.Now().Add(d).UnixNano())
 	b.cool = time.NewTimer(d).C
 }
@@ -1251,7 +1251,7 @@ func (b *memTree) build(ctx context.Context, id nodeID, prompt string, first boo
 		res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(chatSystem)).Stream(ctx, fantasy.AgentStreamCall{
 			Messages:        convo,
 			MaxOutputTokens: replyCap,
-			MaxRetries:      &buildMaxRetries,
+			MaxRetries:      &b.maxRetries,
 			StopWhen:        []fantasy.StopCondition{fantasy.StepCountIs(1)},
 			ProviderOptions: opts,
 			Headers:         b.h.Providers.SessionHeaders(agent.ModelID(ref), store.MainSessionID),

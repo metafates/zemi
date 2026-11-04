@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"charm.land/fantasy"
 
@@ -82,7 +83,7 @@ func TestUsageCountsCache(t *testing.T) {
 	}
 	// the dated buckets read the anchor's accounting: the /usage windows
 	// cannot read zero against the session the screen shows
-	u2, err := h.DB.UsageSince(0)
+	u2, err := h.DB.UsageSince(time.Time{})
 	if err != nil || u2.Prompt != 222 || u2.Completion != 10 {
 		t.Errorf("all-time buckets = %+v, %v; want the anchor's 222 in, 10 out", u2, err)
 	}

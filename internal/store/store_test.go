@@ -496,15 +496,15 @@ func TestUsageSince(t *testing.T) {
 	if err := db.AddUsageDay(200, 20, 0.5); err != nil {
 		t.Fatal(err)
 	}
-	if u, err := db.UsageSince(0); err != nil || u.Prompt != 200 || u.Completion != 20 || u.Cost != 0.5 {
+	if u, err := db.UsageSince(time.Time{}); err != nil || u.Prompt != 200 || u.Completion != 20 || u.Cost != 0.5 {
 		t.Fatalf("all time = %+v, %v", u, err)
 	}
 	y, m, d := time.Now().UTC().Date()
 	midnight := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
-	if u, _ := db.UsageSince(midnight.UnixMilli()); u.Prompt != 200 {
+	if u, _ := db.UsageSince(midnight); u.Prompt != 200 {
 		t.Fatalf("today = %+v, want the whole day's bills", u)
 	}
-	if u, _ := db.UsageSince(midnight.AddDate(0, 0, 1).UnixMilli()); u.Prompt != 0 {
+	if u, _ := db.UsageSince(midnight.AddDate(0, 0, 1)); u.Prompt != 0 {
 		t.Fatalf("tomorrow = %+v, want zero", u)
 	}
 }

@@ -605,8 +605,8 @@ func planArg(input string) string {
 	return in.Plan
 }
 
-func ago(ms int64) string {
-	d := time.Since(time.UnixMilli(ms))
+func ago(t time.Time) string {
+	d := time.Since(t)
 	switch {
 	case d < time.Minute:
 		return "now"

@@ -501,6 +501,10 @@ type Registry struct {
 	// PaceDir is where limiter states are shared with the other zemi
 	// processes of the user (<state>/pace); empty paces per process only.
 	PaceDir string
+	// newClient builds the HTTP client a resolved model rides: ModelHTTP
+	// unless a test swaps in its own. Set before the first Resolve, like
+	// PaceDir.
+	newClient func() *http.Client
 }
 
 // Reset replaces every spec and key with the catalog, so a provider config
@@ -1163,7 +1167,7 @@ func (r *Registry) resolve(id ModelID) (fantasy.LanguageModel, error) {
 	switch spec.Kind {
 	case KindAnthropic:
 		spec.BaseURL = anthropicBase(spec.BaseURL)
-		return languageModel(spec, key, model, anthropic.New, anthropic.WithBaseURL, anthropic.WithAPIKey, anthropic.WithHeaders,
+		return r.languageModel(spec, key, model, anthropic.New, anthropic.WithBaseURL, anthropic.WithAPIKey, anthropic.WithHeaders,
 			func(c *http.Client) anthropic.Option { return anthropic.WithHTTPClient(c) }, nil)
 	case KindOpenAI:
 		// the catalog's wire format decides responses against completions
@@ -1191,20 +1195,20 @@ func (r *Registry) resolve(id ModelID) (fantasy.LanguageModel, error) {
 		} else {
 			newProvider = responses
 		}
-		return languageModel(spec, key, model, newProvider, openai.WithBaseURL, openai.WithAPIKey, openai.WithHeaders,
+		return r.languageModel(spec, key, model, newProvider, openai.WithBaseURL, openai.WithAPIKey, openai.WithHeaders,
 			func(c *http.Client) openai.Option { return openai.WithHTTPClient(c) }, openai.WithObjectMode)
 	case KindOpenAICompat:
-		return languageModel(spec, key, model, openaicompat.New, openaicompat.WithBaseURL, openaicompat.WithAPIKey, openaicompat.WithHeaders,
+		return r.languageModel(spec, key, model, openaicompat.New, openaicompat.WithBaseURL, openaicompat.WithAPIKey, openaicompat.WithHeaders,
 			func(c *http.Client) openaicompat.Option { return openaicompat.WithHTTPClient(c) }, openaicompat.WithObjectMode)
 	case KindGoogle:
-		return languageModel(spec, key, model, google.New, google.WithBaseURL, google.WithGeminiAPIKey, google.WithHeaders,
+		return r.languageModel(spec, key, model, google.New, google.WithBaseURL, google.WithGeminiAPIKey, google.WithHeaders,
 			func(c *http.Client) google.Option { return google.WithHTTPClient(c) }, google.WithObjectMode)
 	case KindOpenRouter:
 		// its URL is fixed; Register refuses a base_url, and a builtin's is the same URL
-		return languageModel(spec, key, model, openrouter.New, nil, openrouter.WithAPIKey, openrouter.WithHeaders,
+		return r.languageModel(spec, key, model, openrouter.New, nil, openrouter.WithAPIKey, openrouter.WithHeaders,
 			func(c *http.Client) openrouter.Option { return openrouter.WithHTTPClient(c) }, openrouter.WithObjectMode)
 	case KindVercel:
-		return languageModel(spec, key, model, vercel.New, vercel.WithBaseURL, vercel.WithAPIKey, vercel.WithHeaders,
+		return r.languageModel(spec, key, model, vercel.New, vercel.WithBaseURL, vercel.WithAPIKey, vercel.WithHeaders,
 			func(c *http.Client) vercel.Option { return vercel.WithHTTPClient(c) }, vercel.WithObjectMode)
 	case KindSystemOne:
 		return nil, fmt.Errorf("%s is a decisions model: the %s protocol answers classification, and no chat turn runs on it", id, KindSystemOne)
@@ -1223,11 +1227,19 @@ var ModelHTTP = sync.OnceValue(func() *http.Client {
 	return &http.Client{Transport: t}
 })
 
-func languageModel[O any](spec Spec, key, model string, newProvider func(...O) (fantasy.Provider, error),
+// httpClient is the client a resolved model rides.
+func (r *Registry) httpClient() *http.Client {
+	if r.newClient != nil {
+		return r.newClient()
+	}
+	return ModelHTTP()
+}
+
+func (r *Registry) languageModel[O any](spec Spec, key, model string, newProvider func(...O) (fantasy.Provider, error),
 	withBaseURL, withAPIKey func(string) O, withHeaders func(map[string]string) O, withClient func(*http.Client) O,
 	withObjectMode func(fantasy.ObjectMode) O,
 ) (fantasy.LanguageModel, error) {
-	opts := []O{withClient(ModelHTTP())}
+	opts := []O{withClient(r.httpClient())}
 	if spec.BaseURL != "" && withBaseURL != nil {
 		opts = append(opts, withBaseURL(spec.BaseURL))
 	}

@@ -34,10 +34,6 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// luaToolCeiling bounds each slice of a Lua tool run on the interpreter; a
-// var so a test can hit it without waiting.
-var luaToolCeiling = 10 * time.Second
-
 // luaToolChunk names the tool's chunks; every run appends "#<n>".
 const luaToolChunk = "lua-tool"
 
@@ -233,7 +229,7 @@ func luaNilHint(msg string) string {
 // guardLua) and returns what it printed, then its return values as JSON.
 func (h *Host) runModelLua(ctx context.Context, src, rel string) (string, error) {
 	var b strings.Builder
-	vals, err := h.RT.Eval(ctx, src, rel, lua.OriginUser, luaToolCeiling, func(line string) {
+	vals, err := h.RT.Eval(ctx, src, rel, lua.OriginUser, h.luaCeiling, func(line string) {
 		b.WriteString(line + "\n")
 	})
 	if len(vals) > 0 {

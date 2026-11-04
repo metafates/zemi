@@ -644,7 +644,7 @@ func TestResumedWindowKeepsTheTurn(t *testing.T) {
 	hk := h.streamHooks()
 	hk.ReasoningDelta("thinking it over.")
 	clock.set(testEpoch.Add(3 * time.Second))
-	if err := h.chat.Thought("thinking it over.", 3000); err != nil {
+	if err := h.chat.Thought("thinking it over.", 3*time.Second); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.chat.Tool("read", `{"path":"a.go"}`, ""); err != nil {

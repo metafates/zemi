@@ -328,14 +328,14 @@ func (s *DB) AddUsageDay(prompt, completion int64, cost float64) error {
 	return nil
 }
 
-// UsageSince sums the dated usage rows at or after the unix-ms time: the
-// anchor row's accounting by day, subagent runs included through it (a run's
-// bill rides the anchor with its parent's).
-func (s *DB) UsageSince(ms int64) (Usage, error) {
+// UsageSince sums the dated usage rows at or after t's UTC day: the anchor
+// row's accounting by day, subagent runs included through it (a run's bill
+// rides the anchor with its parent's). The zero time sums every day.
+func (s *DB) UsageSince(t time.Time) (Usage, error) {
 	var u Usage
 	day := ""
-	if ms > 0 {
-		day = time.UnixMilli(ms).UTC().Format(time.DateOnly)
+	if !t.IsZero() {
+		day = t.UTC().Format(time.DateOnly)
 	}
 	err := s.db.QueryRow(`SELECT COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0), COALESCE(SUM(cost), 0)
 		FROM usage_days WHERE ? = '' OR day >= ?`, day, day).Scan(&u.Prompt, &u.Completion, &u.Cost)

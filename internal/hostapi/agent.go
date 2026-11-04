@@ -100,7 +100,7 @@ type agentHost struct {
 	// stretchMS holds the wall time of each reasoning stretch the turn has
 	// flushed since the step began, oldest first: the step's message persists
 	// its reasoning parts in the same order, and each takes the next time.
-	stretchMS []int64
+	stretchMS []time.Duration
 	// the stream state and transcript length when the current step began: a
 	// provider retry streams the step again from there
 	stepText, stepReason string
@@ -1547,11 +1547,11 @@ func (h *Host) flushOutput(stat TurnStat) int {
 	ag.endThinking()
 	var rows []ChatMessage
 	if strings.TrimSpace(ag.reasonBuf) != "" {
-		ms := ag.thought.Milliseconds()
-		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: ag.reasonBuf, Stat: &TurnStat{ThoughtMS: ms}})
+		d := ag.thought
+		rows = append(rows, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: ag.reasonBuf, Stat: &TurnStat{ThoughtMS: d.Milliseconds()}})
 		// the stretch's time waits for the step's message persist, which logs
 		// the row; a retry re-streams the step and takes the queue back with it
-		ag.stretchMS = append(ag.stretchMS, ms)
+		ag.stretchMS = append(ag.stretchMS, d)
 	}
 	done := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.Status == CallRun || t.Status == CallWait })
 	if done < 0 {
@@ -1910,17 +1910,17 @@ func (h *Host) logAssistant(msg fantasy.Message) error {
 // measured, oldest first; a stretch no call followed never flushed, and
 // reads the thought still open, closed here for the log.
 func (h *Host) logThought(text string) error {
-	var ms int64
+	var d time.Duration
 	ag := h.agents
 	ag.mu.Lock()
 	if n := len(ag.stretchMS); n > 0 {
-		ms, ag.stretchMS = ag.stretchMS[0], ag.stretchMS[1:]
+		d, ag.stretchMS = ag.stretchMS[0], ag.stretchMS[1:]
 	} else if ag.thinking || ag.thought > 0 {
 		ag.endThinking()
-		ms = ag.thought.Milliseconds()
+		d = ag.thought
 	}
 	ag.mu.Unlock()
-	return h.chat.Thought(text, ms)
+	return h.chat.Thought(text, d)
 }
 
 // logResults logs a step's tool results as echo rows, each named by the call

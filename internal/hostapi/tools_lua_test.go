@@ -198,11 +198,6 @@ func TestLuaToolWaitFreesInterpreter(t *testing.T) {
 // each see the output the one before left; a project handler's return and a
 // failing handler change nothing.
 func TestToolPostRewrite(t *testing.T) {
-	// product keeps the 50ms veto slice; a host under -race can starve a
-	// trivial handler past it, and the test's rewrites must land
-	old := toolPostSlice
-	toolPostSlice = 5 * time.Second
-	t.Cleanup(func() { toolPostSlice = old })
 	for _, c := range []struct{ name, user, project, want string }{
 		{"handlers then the override", `
 			zemi.tool.override("echo", { post = function(ev) return { output = ev.output .. " b" } end })
@@ -217,6 +212,9 @@ func TestToolPostRewrite(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			h, r := newTestHost(t)
+			// the product's 50ms veto slice can starve a trivial handler
+			// under -race; the test's rewrites must land
+			h.toolPostCeiling = 5 * time.Second
 			runUser(t, r, `zemi.tool.add({ name = "echo", description = "echo", execute = function() return "x" end })`+c.user)
 			if c.project != "" {
 				if err := r.ExecuteChunk(t.Context(), c.project, "project-chunk", lua.OriginProject); err != nil {

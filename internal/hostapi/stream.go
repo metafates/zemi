@@ -312,7 +312,7 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 				}
 				switch m.Kind {
 				case RowReasoning:
-					if e := h.chat.Thought(m.Text, m.Stat.ThoughtMS); e != nil {
+					if e := h.chat.Thought(m.Text, time.Duration(m.Stat.ThoughtMS)*time.Millisecond); e != nil {
 						h.Log.Warn("thought not logged", "origin", "agent", "error", e)
 					}
 				case "":
@@ -323,8 +323,8 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 			}
 			h.tMu.Unlock()
 			ag.endThinking()
-			if ms := ag.thought.Milliseconds(); strings.TrimSpace(ag.reasonBuf) != "" {
-				if e := h.chat.Thought(ag.reasonBuf, ms); e != nil {
+			if strings.TrimSpace(ag.reasonBuf) != "" {
+				if e := h.chat.Thought(ag.reasonBuf, ag.thought); e != nil {
 					h.Log.Warn("thought not logged", "origin", "agent", "error", e)
 				}
 			}

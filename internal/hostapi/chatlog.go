@@ -122,10 +122,10 @@ func (c *chatLog) Notice(text, detail string) (int64, error) {
 
 // Thought logs one settled reasoning stretch: its text and the wall time its
 // flush measured, which the rebuilt row and the run digest read back.
-func (c *chatLog) Thought(text string, ms int64) error {
+func (c *chatLog) Thought(text string, d time.Duration) error {
 	meta, err := json.Marshal(struct {
 		MS int64 `json:"ms"`
-	}{ms}, json.Deterministic(true))
+	}{d.Milliseconds()}, json.Deterministic(true))
 	if err != nil {
 		return err
 	}

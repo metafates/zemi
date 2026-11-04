@@ -466,11 +466,7 @@ func (h *Host) OpenUsage() error {
 		label string
 		since time.Time
 	}{{"today", midnight}, {"7 days", midnight.AddDate(0, 0, -6)}, {"all time", time.Time{}}} {
-		ms := int64(0)
-		if !w.since.IsZero() {
-			ms = w.since.UnixMilli()
-		}
-		u, err := h.DB.UsageSince(ms)
+		u, err := h.DB.UsageSince(w.since)
 		if err != nil {
 			return err
 		}

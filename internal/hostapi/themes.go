@@ -10,7 +10,7 @@ import (
 // draw in. Nothing registers them: a group names a palette role (or a hex or
 // an ANSI color) and the palette is one line of colors, so the screen's whole
 // styling is these two tables (DESIGN §6.6).
-var shippedGroups = map[string]HLSpec{
+var shippedGroups = withKnots(map[string]HLSpec{
 	// the canvas is the palette's bg, which every group without a bg of its
 	// own sits on; a bg here colors Normal text alone
 	"Normal": {Fg: "fg", Bg: "bg"},
@@ -75,15 +75,16 @@ var shippedGroups = map[string]HLSpec{
 	// underlines, so it never takes the selection's or a match's accent.
 	"Hover":     {Link: "Accent"},
 	"HoverItem": {Underline: UnderlineSingle},
-}
+})
 
-func init() {
-	// the knot's ramp: a shade draws the whorl knot's curve through the
-	// rule, accent and literal
+// withKnots adds the knot's ramp: a shade draws the whorl knot's curve through
+// the rule, accent and literal.
+func withKnots(groups map[string]HLSpec) map[string]HLSpec {
 	for i := range knotStops {
 		shade := float64(i) / float64(knotStops-1)
-		shippedGroups[fmt.Sprintf("Knot%d", i)] = HLSpec{Shade: &shade}
+		groups[fmt.Sprintf("Knot%d", i)] = HLSpec{Shade: &shade}
 	}
+	return groups
 }
 
 // knotStops is the number of stops in the knot's shade ramp.

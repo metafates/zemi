@@ -143,17 +143,17 @@ func TestProviderRateLimit(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "https://gw/v1", api_key = "k", rate_limit = 10, models = { { id = "m" } } })`)
 	spec, ok := h.Providers.Lookup("gw")
-	if !ok || spec.RateLimit != (agent.RateLimit{Requests: 10, Window: 60}) {
+	if !ok || spec.RateLimit != (agent.RateLimit{Requests: 10, Window: time.Minute}) {
 		t.Fatalf("rate_limit = %+v (ok %v), want 10 requests a minute", spec.RateLimit, ok)
 	}
 	runUser(t, r, `zemi.provider.add({ id = "q", kind = "openai_compat", base_url = "https://q/v1", api_key = "k", rate_limit = { requests = 40, completion_tokens = 52000, window = 60 }, models = { { id = "m" } } })`)
 	spec, ok = h.Providers.Lookup("q")
-	if !ok || spec.RateLimit != (agent.RateLimit{Requests: 40, CompletionTokens: 52000, Window: 60}) {
+	if !ok || spec.RateLimit != (agent.RateLimit{Requests: 40, CompletionTokens: 52000, Window: time.Minute}) {
 		t.Fatalf("rate_limit = %+v (ok %v), want both quotas", spec.RateLimit, ok)
 	}
 	runUser(t, r, `zemi.provider.add({ id = "t", kind = "openai_compat", base_url = "https://t/v1", api_key = "k", rate_limit = { completion_tokens = 30000 }, models = { { id = "m" } } })`)
 	spec, ok = h.Providers.Lookup("t")
-	if !ok || spec.RateLimit != (agent.RateLimit{CompletionTokens: 30000, Window: 60}) {
+	if !ok || spec.RateLimit != (agent.RateLimit{CompletionTokens: 30000, Window: time.Minute}) {
 		t.Fatalf("rate_limit = %+v (ok %v), want the token quota alone", spec.RateLimit, ok)
 	}
 	runUser(t, r, `zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "https://p/v1", api_key = "k", models = {
@@ -167,7 +167,7 @@ func TestProviderRateLimit(t *testing.T) {
 	if spec.Models[0].RateLimit.Paced() {
 		t.Fatalf("model a = %+v, want the provider's unpaced default", spec.Models[0].RateLimit)
 	}
-	if spec.Models[1].RateLimit != (agent.RateLimit{Requests: 34, CompletionTokens: 30000, Window: 60}) {
+	if spec.Models[1].RateLimit != (agent.RateLimit{Requests: 34, CompletionTokens: 30000, Window: time.Minute}) {
 		t.Fatalf("model b = %+v, want its own quota", spec.Models[1].RateLimit)
 	}
 	runExpectErr(t, r, `zemi.provider.add({ id = "x", kind = "openai", api_key = "k", rate_limit = 0, models = { { id = "m" } } })`, "rate_limit")
