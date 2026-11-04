@@ -618,7 +618,7 @@ func (a *App) replayKeys(held []string) tea.Cmd {
 	}
 	var cmds []tea.Cmd
 	for _, k := range held {
-		msg := tea.KeyPressMsg{}
+		var msg tea.KeyPressMsg
 		if len([]rune(k)) == 1 {
 			msg.Text = k
 		}

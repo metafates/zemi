@@ -78,10 +78,9 @@ func statusCwd(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	if !st.Trusted {
 		// an empty project leaves the pill alone, with no path to point at
 		if p == "" {
-			line = nil
-		} else {
-			line = append(line[:1], hostapi.Segment{Text: "  ", HL: "Dim"})
+			return [][]hostapi.Segment{pointAt("untrusted", "/trust", "")}, false
 		}
+		line = append(line[:1], hostapi.Segment{Text: "  ", HL: "Dim"})
 		line = append(line, pointAt("untrusted", "/trust", "")...)
 	}
 	return [][]hostapi.Segment{line}, false

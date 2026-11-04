@@ -25,7 +25,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
-	zemiruntime "github.com/metafates/zemi/runtime"
+	"github.com/metafates/zemi/runtime"
 )
 
 func appendReply(h *hostapi.Host, text string, stat hostapi.TurnStat) {
@@ -109,7 +109,7 @@ func bootAgentAppIn(t testing.TB, w, h int, clock lua.Clock, cfg, project string
 		{Prefix: cfg, Origin: lua.OriginUser},
 		{Prefix: filepath.Join(data, "plugins"), Origin: lua.OriginPlugin},
 	}
-	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: zemiruntime.FS, Clock: clock})
+	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: runtime.FS, Clock: clock})
 	host := hostapi.NewHost(rt, log, settings, config.Dirs{ConfigHome: cfg, DataHome: data, StateHome: state, ProjectDir: project})
 	app := NewApp(host, log)
 	host.SetUIHooks(app)
@@ -1275,7 +1275,7 @@ func TestAgentViewEscRestoresItsMenus(t *testing.T) {
 	if host.ViewedAgent() != "" {
 		t.Fatal("esc left the run on screen")
 	}
-	ids := []string{}
+	var ids []string
 	for _, st := range app.overlays {
 		ids = append(ids, st.o.ID)
 	}
@@ -1376,7 +1376,7 @@ func lastToast(app *App) string {
 func TestBandToTheEdge(t *testing.T) {
 	choices := make([]promptChoice, 10)
 	for i := range choices {
-		choices[i] = promptChoice{label: fmt.Sprint("opt", i)}
+		choices[i] = promptChoice{label: "opt" + strconv.Itoa(i)}
 	}
 	for _, viewH := range []int{20, 4} {
 		box := hostBox("", "", "", choiceView(choices, 1, &viewport{viewH: viewH}, 30, true), 40, 40, 30)
@@ -1451,9 +1451,9 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 		GoComplete: func(*hostapi.Host, string, string) []string { return []string{"loud"} },
 		Origin:     lua.OriginBuiltin, Gen: hostapi.Gen(1),
 	})
-	many := []string{}
+	many := make([]string, 0, 60)
 	for i := range 60 {
-		many = append(many, fmt.Sprint("x", i))
+		many = append(many, "x"+strconv.Itoa(i))
 	}
 	host.Commands.Add(&hostapi.Command{
 		Name: "many", NArgs: "*", GoFn: func(*hostapi.Host, string, bool) error { return nil },
@@ -1475,7 +1475,7 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 				app.Update(tea.KeyPressMsg{Code: k, Text: string(k)})
 			}
 		}
-		args := []string{}
+		var args []string
 		for _, a := range app.palette.args {
 			args = append(args, a.label)
 		}

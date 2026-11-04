@@ -16,7 +16,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
-	zemiruntime "github.com/metafates/zemi/runtime"
+	"github.com/metafates/zemi/runtime"
 )
 
 // tempHome lays a fresh, resolved home with an empty .config/zemi. Tests
@@ -59,7 +59,7 @@ end, { desc = "notify on rebound ctrl+t" })
 		{Prefix: cfg, Origin: lua.OriginUser},
 		{Prefix: filepath.Join(data, "plugins"), Origin: lua.OriginPlugin},
 	}
-	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: zemiruntime.FS})
+	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: runtime.FS})
 	host := hostapi.NewHost(rt, log, settings, dirs)
 	app := NewApp(host, log)
 	host.SetUIHooks(app)

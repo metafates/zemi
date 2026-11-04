@@ -65,7 +65,7 @@ func (a *App) finishPlan(v tools.PlanVerdict, ok bool) {
 	p := a.planAsk
 	a.planAsk = nil
 	if p != nil && p.answer != nil {
-		p.answer <- planAnswer{v, ok}
+		p.answer <- planAnswer{v: v, ok: ok}
 	}
 	a.bump()
 }

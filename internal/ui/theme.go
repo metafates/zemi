@@ -153,7 +153,7 @@ func drawOver(st uv.Style, spec hostapi.HLSpec, pal *hostapi.Palette) uv.Style {
 	for _, a := range []struct {
 		on   *bool
 		attr uint8
-	}{{spec.Bold, uv.AttrBold}, {spec.Italic, uv.AttrItalic}, {spec.Reverse, uv.AttrReverse}} {
+	}{{on: spec.Bold, attr: uv.AttrBold}, {on: spec.Italic, attr: uv.AttrItalic}, {on: spec.Reverse, attr: uv.AttrReverse}} {
 		switch {
 		case a.on == nil:
 		case *a.on:
@@ -335,7 +335,7 @@ func ansi16(c color.Color) color.Color {
 	for _, r := range [...]struct {
 		upTo float64
 		c    ansi.BasicColor
-	}{{40, ansi.Red}, {115, ansi.Yellow}, {175, ansi.Green}, {235, ansi.Cyan}, {300, ansi.Blue}, {345, ansi.Magenta}, {361, ansi.Red}} {
+	}{{upTo: 40, c: ansi.Red}, {upTo: 115, c: ansi.Yellow}, {upTo: 175, c: ansi.Green}, {upTo: 235, c: ansi.Cyan}, {upTo: 300, c: ansi.Blue}, {upTo: 345, c: ansi.Magenta}, {upTo: 361, c: ansi.Red}} {
 		if h < r.upTo {
 			if l > 0.65 {
 				return r.c + 8

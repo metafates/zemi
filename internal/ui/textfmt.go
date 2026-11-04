@@ -178,11 +178,11 @@ func tokens(n int64) string {
 	var s string
 	switch {
 	case n >= 1_000_000_000:
-		s = fmt.Sprintf("%.1fB", float64(n)/1_000_000_000)
+		s = strconv.FormatFloat(float64(n)/1_000_000_000, 'f', 1, 64) + "B"
 	case n >= 1_000_000:
-		s = fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+		s = strconv.FormatFloat(float64(n)/1_000_000, 'f', 1, 64) + "M"
 	case n >= 1000:
-		s = fmt.Sprintf("%.1fk", float64(n)/1000)
+		s = strconv.FormatFloat(float64(n)/1000, 'f', 1, 64) + "k"
 	default:
 		s = strconv.FormatInt(n, 10)
 	}
@@ -198,14 +198,14 @@ func costText(usd float64) string {
 	if usd < 0.005 {
 		return "<$0.01"
 	}
-	return fmt.Sprintf("$%.2f", usd)
+	return "$" + strconv.FormatFloat(usd, 'f', 2, 64)
 }
 
 // duration is a duration as "4.2s" under ten seconds, then "42s", "3m 05s",
 // "1h 02m". A clock that ticks passes whole: its seconds only grow in width.
 func duration(s float64, whole bool) string {
 	if s < 9.95 && !whole {
-		return fmt.Sprintf("%.1fs", max(s, 0))
+		return strconv.FormatFloat(max(s, 0), 'f', 1, 64) + "s"
 	}
 	n := int(math.Floor(max(s, 0) + 0.5))
 	if whole {

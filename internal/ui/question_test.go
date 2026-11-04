@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -92,7 +93,7 @@ func TestGoldenQuestionOverlay(t *testing.T) {
 		app.renderSync(t)
 		f := ansi.Strip(app.Frame())
 		top := strings.Index(f, "┌ Questions")
-		return fmt.Sprint(strings.Count(f[:top], "\n"), strings.Count(f[top:top+strings.Index(f[top:], "┘")], "\n"), ansi.StringWidth(strings.Split(f[top:], "\n")[0]))
+		return strconv.Itoa(strings.Count(f[:top], "\n")) + strconv.Itoa(strings.Count(f[top:top+strings.Index(f[top:], "┘")], "\n")) + strconv.Itoa(ansi.StringWidth(strings.Split(f[top:], "\n")[0]))
 	}
 	want := box()
 	// focusing the field and scrolling the summary keep the footer's keys in place

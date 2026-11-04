@@ -29,23 +29,23 @@ var reads = map[string]bool{"read": true, "grep": true, "glob": true, "skill": t
 // NOTE: the count is the last chat render's on the package, not the frame's:
 // a test reading it must not run parallel to a chat render.
 var ruleState = struct {
-	sync.Mutex
+	mu    sync.Mutex
 	after int
 }{}
 
 // setRowsAfterPending is the chat's report of the rows it drew below its
 // pending row: the rule carries that row only once it left the view.
 func setRowsAfterPending(n int) {
-	ruleState.Lock()
+	ruleState.mu.Lock()
 	ruleState.after = n
-	ruleState.Unlock()
+	ruleState.mu.Unlock()
 }
 
 // eyes is the snail's cycle against the state it is in: an eye cycle starts
 // with its state, whatever the clock read. Renders may overlap, so it takes a
 // lock.
 type eyes struct {
-	sync.Mutex
+	mu    sync.Mutex
 	shown string
 	since int
 }
@@ -89,9 +89,9 @@ func clock(d time.Duration) string {
 // centres, a cell of rule on either side of it.
 func workingRule(e *eyes, st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	ag := st.Agent
-	ruleState.Lock()
+	ruleState.mu.Lock()
 	rowsAfter := ruleState.after
-	ruleState.Unlock()
+	ruleState.mu.Unlock()
 	var parts []workingPart
 	state := "idle"
 	key, verb := "esc", "interrupt"
@@ -240,12 +240,12 @@ func workingRule(e *eyes, st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	if len(after) > 0 {
 		block = segsCells(after) + 2
 	}
-	e.Lock()
+	e.mu.Lock()
 	if state != e.shown {
 		e.shown, e.since = state, st.Frame
 	}
 	frame := max(st.Frame-e.since, 0) // a clock gone back starts the cycle over
-	e.Unlock()
+	e.mu.Unlock()
 
 	// the centred part at the row's middle, in the rule fit left for it
 	w := 0

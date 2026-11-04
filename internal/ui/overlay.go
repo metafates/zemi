@@ -1650,7 +1650,7 @@ func (st *overlayState) hintKeys() []hintPair {
 	}
 	// the keys of the row: the selected one in a list, the row the view
 	// opened from in a detail
-	row := hostapi.OverlayItem{}
+	var row hostapi.OverlayItem
 	if st.back {
 		row = st.item
 	} else if len(st.visible) > 0 {
