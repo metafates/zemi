@@ -127,9 +127,10 @@ func workingRule(e *eyes, st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 		// parallel batch starts together
 		running := false
 		for _, t := range ag.Tools {
-			if t.Status == hostapi.CallRun {
+			call := t.Stream
+			if call.Status == hostapi.CallRun {
 				running = true
-				if reads[t.Name] {
+				if reads[call.Name] {
 					state = "reading"
 				}
 				break

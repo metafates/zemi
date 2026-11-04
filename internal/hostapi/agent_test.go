@@ -215,8 +215,12 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		return []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}
 	}
 	start := func() {
+		if h != nil {
+			h.Close() // a restart ends the zemi it replaces
+		}
 		r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
 		h = NewHost(r, log, config.NewStore(), dirs)
+		t.Cleanup(h.Close)
 		h.SetUIHooks(&fakeUI{}) // /config reset needs a screen
 		if err := r.Boot(t.Context(), steps()); err != nil {
 			t.Fatal(err)
@@ -827,6 +831,8 @@ type fakeUI struct {
 	edit                func(path string) // what the user does in the editor
 	relaunched, resumed string
 }
+
+var _ UIHooks = (*fakeUI)(nil)
 
 func (f *fakeUI) Notify(slog.Level, string, string) {}
 func (f *fakeUI) Alert(slog.Level, string, string)  {}
@@ -1520,6 +1526,7 @@ func TestTurnClockIsTheHostClock(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(1_000_000_000, 0)}
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, Clock: clock})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{StateHome: t.TempDir(), ProjectDir: t.TempDir()})
+	t.Cleanup(h.Close)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
@@ -1967,6 +1974,7 @@ func TestBuiltinProvidersSeed(t *testing.T) {
 	dir, log := t.TempDir(), slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+	t.Cleanup(h.Close)
 	h.Builtin.Store(&agent.Catalog{Specs: []agent.Spec{
 		{ID: "a", Kind: agent.KindAnthropic, Builtin: true, DefaultModel: "big", Models: []agent.Model{{ID: "big"}, {ID: "tiny"}}},
 		{ID: "o", Kind: agent.KindOpenAI, Builtin: true, DefaultModel: "g", Models: []agent.Model{{ID: "g"}}},

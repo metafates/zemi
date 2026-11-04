@@ -43,7 +43,7 @@ import (
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
-	zemiruntime "github.com/metafates/zemi/runtime"
+	"github.com/metafates/zemi/runtime"
 )
 
 const (
@@ -72,10 +72,10 @@ type Workflow struct {
 // plugin ones. A project's .agents/workflows is dead: project Lua never runs.
 func (h *Host) workflows() []Workflow {
 	var out []Workflow
-	builtin, _ := fs.ReadDir(zemiruntime.Workflows, "workflows")
+	builtin, _ := fs.ReadDir(runtime.Workflows, "workflows")
 	for _, e := range builtin {
 		if name, ok := strings.CutSuffix(e.Name(), ".lua"); ok {
-			src, _ := fs.ReadFile(zemiruntime.Workflows, "workflows/"+e.Name())
+			src, _ := fs.ReadFile(runtime.Workflows, "workflows/"+e.Name())
 			out = append(out, Workflow{Name: name, Description: leadingComment(string(src)), Path: "builtin:" + e.Name(), Source: lua.OriginBuiltin})
 		}
 	}
@@ -121,7 +121,7 @@ func (h *Host) workflowSource(name string) (string, error) {
 	var names []string
 	for _, w := range h.workflows() {
 		if w.Name == name && w.Source == lua.OriginBuiltin {
-			b, err := fs.ReadFile(zemiruntime.Workflows, "workflows/"+name+".lua")
+			b, err := fs.ReadFile(runtime.Workflows, "workflows/"+name+".lua")
 			return string(b), err
 		}
 		if w.Name == name {
@@ -229,7 +229,7 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 	}
 	if pad != "" {
 		var err error
-		head := journalLine{Workflow: f.id, Name: f.name, Description: f.description, About: f.about, Args: spec.args, Concurrency: limit, Started: f.started.UnixMilli()}
+		head := journalLine{Workflow: f.id, Name: f.name, Description: f.description, About: f.about, Args: spec.args, Concurrency: limit, Started: journalStamp{f.started}}
 		if f.journal, err = openJournal(pad, f.id, spec.src, head); err != nil {
 			cancel()
 			return nil, err
@@ -1147,7 +1147,7 @@ type journalLine struct {
 	About       string         `json:"about,omitempty"`
 	Args        any            `json:"args,omitempty"`
 	Concurrency int            `json:"concurrency,omitzero"`
-	Started     int64          `json:"started,omitzero"`
+	Started     journalStamp   `json:"started,omitzero"`
 	Agent       string         `json:"agent,omitempty"`
 	Key         string         `json:"key,omitempty"`
 	Def         string         `json:"def,omitempty"`
@@ -1161,6 +1161,25 @@ type journalLine struct {
 	MS          int64          `json:"ms,omitzero"`
 	Result      jsontext.Value `json:"result,omitempty"`
 	Err         string         `json:"err,omitempty"`
+}
+
+// journalStamp is an instant in a journal: RFC 3339, or unix milliseconds
+// from a journal an older zemi wrote.
+type journalStamp struct{ time.Time }
+
+func (s journalStamp) MarshalJSON() ([]byte, error) { return json.Marshal(s.Time) }
+
+func (s *journalStamp) UnmarshalJSON(b []byte) error {
+	var t time.Time
+	if json.Unmarshal(b, &t) != nil {
+		var ms int64
+		if err := json.Unmarshal(b, &ms); err != nil {
+			return err
+		}
+		t = time.UnixMilli(ms)
+	}
+	s.Time = t
+	return nil
 }
 
 func jsonString(s string) jsontext.Value {
@@ -1307,7 +1326,7 @@ func (h *Host) loadFlow(sid, id string) (*flowRun, error) {
 	}
 	hd := j.head
 	f := &flowRun{
-		id: id, name: hd.Name, description: cmp.Or(hd.Description, "workflow"), about: hd.About, parent: sid, started: time.UnixMilli(hd.Started),
+		id: id, name: hd.Name, description: cmp.Or(hd.Description, "workflow"), about: hd.About, parent: sid, started: hd.Started.Time,
 		cancel: func() {}, script: j.script, status: cmp.Or(j.end.Status, RunCancelled), limit: hd.Concurrency,
 	}
 	f.finished = f.started.Add(time.Duration(j.end.MS) * time.Millisecond)

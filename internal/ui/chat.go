@@ -100,9 +100,10 @@ func entryOf(m hostapi.ChatMessage) entry {
 
 // entryOfCall is a live call as the chat draws it.
 func entryOfCall(t hostapi.AgentTool) entry {
+	s := t.Stream
 	return entry{
-		kind: hostapi.RowTool, tool: t.Name, input: t.Input, label: t.Label, status: t.Status,
-		detail: t.Detail, run: t.Run, job: t.Job, diff: t.Diff, output: t.Output,
+		kind: hostapi.RowTool, tool: s.Name, input: s.Input, label: s.Label, status: s.Status,
+		detail: s.Detail, run: s.Run, job: s.Job, diff: s.Diff, output: s.Output,
 		live: true, elapsed: t.Elapsed,
 	}
 }
@@ -1170,7 +1171,8 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 				continue
 			}
 			n := 1
-			if num, ok := strings.CutPrefix(l, "… "); ok && strings.HasSuffix(num, " more line") || ok && strings.HasSuffix(num, " more lines") {
+			num, marked := strings.CutPrefix(l, "… ")
+			if marked && (strings.HasSuffix(num, " more line") || strings.HasSuffix(num, " more lines")) {
 				if v, err := strconv.Atoi(strings.TrimSuffix(strings.TrimSuffix(num, "s"), " more line")); err == nil {
 					n = v
 				}

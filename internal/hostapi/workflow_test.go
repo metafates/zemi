@@ -89,10 +89,15 @@ func TestWorkflowCancelBoundedDrain(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	running := make(chan struct{}, 1)
+	// the agent never returns on its own, so the run ending is the drain
+	// giving up; wedged lets it end with the test
+	wedged := make(chan struct{})
+	t.Cleanup(func() { close(wedged) })
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		return &scriptModel{script: func(string, string, bool) []fantasy.StreamPart {
 			running <- struct{}{}
-			select {} // never returns, so the run ending is the drain giving up
+			<-wedged
+			return nil
 		}}, nil
 	}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -857,6 +862,27 @@ func TestWorkflowRunEmptyResult(t *testing.T) {
 	})
 }
 
+// TestJournalStartedReadsBothForms: a journal written now names its start in
+// RFC 3339, one an older zemi wrote in unix milliseconds; both read back.
+func TestJournalStartedReadsBothForms(t *testing.T) {
+	t.Parallel()
+	want := time.Date(2026, 11, 4, 10, 30, 0, 0, time.UTC)
+	for _, c := range []struct{ name, line string }{
+		{"a journal written now names the instant", `{"started":"` + want.Format(time.RFC3339) + `"}`},
+		{"an older one names unix milliseconds", `{"started":` + strconv.FormatInt(want.UnixMilli(), 10) + `}`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var l journalLine
+			if err := json.Unmarshal([]byte(c.line), &l); err != nil {
+				t.Fatal(err)
+			}
+			if !l.Started.Equal(want) {
+				t.Fatalf("started = %v, want %v", l.Started.Time, want)
+			}
+		})
+	}
+}
+
 // TestStaleWorkflowWait: a wait on a run this process no longer holds reads
 // the journal's end line - one without it died with the previous process,
 // whose report was never delivered, and claiming it is in the conversation
@@ -875,7 +901,7 @@ func TestStaleWorkflowWait(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			id := store.ShortID()
-			j, err := openJournal(pad, id, "return 1", journalLine{Workflow: id, Started: time.Now().UnixMilli()})
+			j, err := openJournal(pad, id, "return 1", journalLine{Workflow: id, Started: journalStamp{time.Now()}})
 			if err != nil {
 				t.Fatal(err)
 			}

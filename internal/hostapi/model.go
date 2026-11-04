@@ -155,7 +155,7 @@ func (h *Host) generate(ctx context.Context, sid, system, prompt string, maxOut 
 		Headers:         h.Providers.SessionHeaders(agent.ModelID(id), sid),
 	}
 	if retry != nil {
-		last := &agent.LastErr{LanguageModel: model}
+		last := agent.NewLastErr(model)
 		model = last
 		call.OnRetry = func(_ *fantasy.ProviderError, delay time.Duration) { retry(last.Err, delay) }
 		defer func() {

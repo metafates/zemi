@@ -36,6 +36,8 @@ type chain interface {
 
 type osChain struct{}
 
+var _ chain = osChain{}
+
 // chainDeadline is how long one OS keychain call may take. The call can
 // block forever in some session contexts (the first-run audit's probe hung
 // on kc.Set), where one hung call wedged every Go command queued behind it

@@ -907,6 +907,8 @@ type testUI struct {
 	overlays []Overlay
 }
 
+var _ UIHooks = (*testUI)(nil)
+
 func (u *testUI) top() (Overlay, bool) {
 	u.mu.Lock()
 	defer u.mu.Unlock()

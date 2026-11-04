@@ -123,6 +123,7 @@ func mustSkill(t *testing.T, h *Host, name string) skill.Skill {
 // toastUI records what the user is told
 type toastUI struct {
 	fakeUI
+
 	notes []string
 }
 

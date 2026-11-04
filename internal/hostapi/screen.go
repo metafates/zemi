@@ -104,7 +104,7 @@ type Retry struct {
 
 // AgentTool is one live call: the stream's row plus how long it has run.
 type AgentTool struct {
-	StreamTool
+	Stream StreamTool
 
 	Elapsed time.Duration
 }
@@ -308,7 +308,7 @@ func (h *Host) agentState(stream StreamSnapshot, now time.Time) AgentState {
 	}
 	a.Tools = make([]AgentTool, len(stream.Tools))
 	for i, t := range stream.Tools {
-		row := AgentTool{StreamTool: t}
+		row := AgentTool{Stream: t}
 		if !t.Started.IsZero() {
 			row.Elapsed = now.Sub(t.Started)
 		}

@@ -22,6 +22,7 @@ import (
 // first call arrives, gone when one ends by its cancel.
 type askModel struct {
 	*replyStubModel
+
 	asked, release, gone chan struct{}
 	once                 sync.Once
 }
@@ -109,6 +110,7 @@ func TestModelAsk(t *testing.T) {
 // objModel answers an object call with reply, recording every call it saw.
 type objModel struct {
 	*replyStubModel
+
 	mu    sync.Mutex
 	calls []fantasy.ObjectCall
 	reply func(fantasy.ObjectCall) (*fantasy.ObjectResponse, error)

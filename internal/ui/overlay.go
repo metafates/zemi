@@ -22,9 +22,10 @@ import (
 // overlayState is one entry of the overlay stack (DESIGN §8): a Lua (or
 // Go-built hostapi.Overlay) plus local list selection.
 type overlayState struct {
-	o     hostapi.Overlay
-	items []listItem // render_item's row when given, else the item's text
 	listFilter
+
+	o     hostapi.Overlay
+	items []listItem    // render_item's row when given, else the item's text
 	input composerState // text of an input overlay
 	// inputErr is why an input overlay's last submit was refused, shown
 	// above the line until the next key clears it

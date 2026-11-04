@@ -225,7 +225,7 @@ var ErrReplyCut = errors.New("the reply hit the output token limit (the model's 
 
 // NewRunner builds a runner over a resolved model.
 func NewRunner(model fantasy.LanguageModel, tools []fantasy.AgentTool, system string) *Runner {
-	r := &Runner{last: &LastErr{LanguageModel: model}, system: system}
+	r := &Runner{last: NewLastErr(model), system: system}
 	var opts []fantasy.AgentOption
 	if system != "" {
 		opts = append(opts, fantasy.WithSystemPrompt(system))
@@ -257,19 +257,24 @@ func (t runningTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 // LastErr remembers a model call's failure: fantasy's retry callback gets
 // only a *ProviderError, nil when a network failure caused the retry.
 type LastErr struct {
-	fantasy.LanguageModel
+	model fantasy.LanguageModel
 
 	Err error
 }
 
+var _ fantasy.LanguageModel = (*LastErr)(nil)
+
+// NewLastErr wraps model so Err reports its last call's failure.
+func NewLastErr(model fantasy.LanguageModel) *LastErr { return &LastErr{model: model} }
+
 func (m *LastErr) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Response, error) {
-	res, err := m.LanguageModel.Generate(ctx, call)
+	res, err := m.model.Generate(ctx, call)
 	m.Err = err
 	return res, err
 }
 
 func (m *LastErr) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
-	seq, err := m.LanguageModel.Stream(ctx, call)
+	seq, err := m.model.Stream(ctx, call)
 	m.Err = err
 	if err != nil {
 		return nil, err
@@ -285,6 +290,18 @@ func (m *LastErr) Stream(ctx context.Context, call fantasy.Call) (fantasy.Stream
 		}
 	}, nil
 }
+
+func (m *LastErr) GenerateObject(ctx context.Context, call fantasy.ObjectCall) (*fantasy.ObjectResponse, error) {
+	return m.model.GenerateObject(ctx, call)
+}
+
+func (m *LastErr) StreamObject(ctx context.Context, call fantasy.ObjectCall) (fantasy.ObjectStreamResponse, error) {
+	return m.model.StreamObject(ctx, call)
+}
+
+func (m *LastErr) Provider() string { return m.model.Provider() }
+
+func (m *LastErr) Model() string { return m.model.Model() }
 
 // Cancel aborts the active turn, if any.
 func (r *Runner) Cancel() {
@@ -563,7 +580,7 @@ func (r *Runner) Fork(tools []fantasy.AgentTool) (*Runner, error) {
 	if r.live == nil {
 		return nil, errors.New("agent: nothing sent yet")
 	}
-	f := NewRunner(r.last.LanguageModel, tools, r.system)
+	f := NewRunner(r.last.model, tools, r.system)
 	f.Context, f.Temperature, f.TextOnly = r.Context, r.Temperature, r.TextOnly
 	f.ProviderOptions, f.Headers = r.ProviderOptions, r.Headers
 	// sent is the history itself: keepSigned compares the two, and a fork sends
@@ -592,7 +609,7 @@ func (r *Runner) Aside(ctx context.Context, history []fantasy.Message, text stri
 	call := r.baseCall(msgs)
 	call.StopWhen = []fantasy.StopCondition{fantasy.StepCountIs(1)}
 	// past lastErr, which the turn this may run beside writes
-	call.ModelProvider = func() fantasy.LanguageModel { return r.last.LanguageModel }
+	call.ModelProvider = func() fantasy.LanguageModel { return r.last.model }
 	call.PrepareStep = func(ctx context.Context, o fantasy.PrepareStepFunctionOptions) (context.Context, fantasy.PrepareStepResult, error) {
 		res := fantasy.PrepareStepResult{Tools: inert}
 		if r.ActiveTools != nil {

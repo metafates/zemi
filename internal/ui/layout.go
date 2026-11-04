@@ -580,6 +580,7 @@ func scrollKey(v *viewport, key string, textOnly bool) bool {
 // content in view instead of the same row number.
 type scrollState struct {
 	viewport
+
 	anchor    []string
 	anchorOff int
 	filling   bool         // the rows drawn are a fill's latest, older ones still to land above

@@ -24,6 +24,7 @@ import (
 // test, from whichever goroutine sends them.
 type pluginsUI struct {
 	fakeUI
+
 	opened chan Overlay
 	notes  chan string
 }
@@ -78,6 +79,7 @@ func TestPluginsCommand(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin}}})
 	h := NewHost(r, log, config.NewStore(), dirs)
+	t.Cleanup(h.Close)
 	ui := &pluginsUI{opened: make(chan Overlay, 4), notes: make(chan string, 4)}
 	h.SetUIHooks(ui)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(), h.PluginsStep()}); err == nil {
@@ -233,6 +235,7 @@ func TestPluginsOpen(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), dirs)
+	t.Cleanup(h.Close)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep()}); err != nil {
 		t.Fatal(err)
 	}
@@ -280,6 +283,7 @@ func TestPluginsSend(t *testing.T) {
 			log := slog.New(slog.DiscardHandler)
 			r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 			h := NewHost(r, log, config.NewStore(), config.Dirs{ConfigHome: t.TempDir(), StateHome: t.TempDir(), ProjectDir: t.TempDir(), DataHome: data})
+			t.Cleanup(h.Close)
 			if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 				t.Fatal(err)
 			}

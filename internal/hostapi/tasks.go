@@ -106,9 +106,11 @@ func (s *runState) handedOff() bool {
 	return s.background || s.detached
 }
 
-// agentRun is one subagent run. The fields above runState never change once
-// the run is registered, but cancel, which a continuation renews.
+// agentRun is one subagent run: its own fields never change once the run is
+// registered, but cancel, which a continuation renews.
 type agentRun struct {
+	runState
+
 	id, agent, description string
 	parent                 string         // the session that started the run
 	workflow, phase        string         // the flow that started it, "" for none
@@ -121,8 +123,6 @@ type agentRun struct {
 	// forkBase is where a fork's own messages start in its history: the
 	// conversation it opened with is not its report. 0 for any other run.
 	forkBase int
-
-	runState
 
 	sessionID string        // the run's child session, "" when not recorded
 	runner    *agent.Runner // kept after the run ends: send_to continues it with its history
