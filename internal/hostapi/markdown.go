@@ -32,13 +32,13 @@ const SGRPrefix = "sgr:"
 
 // NOTE: rendered lines use a two-generation cache: entries used in the
 // last generation survive a rotation, so a transcript re-rendered every
-// frame keeps its working set. A transcript with more than mdLinesMax
+// frame keeps its working set. A transcript with more than _mdLinesMax
 // messages re-runs glamour for the overflow on every render; a per-message
 // cache keyed by block id is the upgrade.
 const (
-	mdLinesMax     = 4096
-	mdBytesMax     = 8 << 20
-	mdRenderersMax = 16
+	_mdLinesMax     = 4096
+	_mdBytesMax     = 8 << 20
+	_mdRenderersMax = 16
 )
 
 // markdownCache memoizes glamour renderers per (style, width) and rendered
@@ -70,7 +70,7 @@ type mdKey struct {
 }
 
 func (c *markdownCache) put(k mdKey, v [][]Segment) {
-	if c.lines == nil || len(c.lines) >= mdLinesMax || c.bytes >= mdBytesMax {
+	if c.lines == nil || len(c.lines) >= _mdLinesMax || c.bytes >= _mdBytesMax {
 		c.prev, c.lines, c.bytes = c.lines, map[mdKey][][]Segment{}, 0
 	}
 	c.lines[k] = v
@@ -148,7 +148,7 @@ func (c *markdownCache) render(cfg *gansi.StyleConfig, styleKey, text string, wi
 	}
 	// a tab occupies no cell once drawn into the buffer, so code would lose
 	// its indentation; a marker may only ever come from markDecorations
-	text = escapeHTML(sanitize.String(mdPlain.Replace(text)))
+	text = escapeHTML(sanitize.String(_mdPlain.Replace(text)))
 	var lines [][]Segment
 	for i, chunk := range splitTables(text) {
 		var rows [][]Segment
@@ -202,13 +202,13 @@ func (c *markdownCache) render(cfg *gansi.StyleConfig, styleKey, text string, wi
 func (c *markdownCache) glamour(cfg gansi.StyleConfig, key, text string, width int) [][]Segment {
 	// quick.Highlight resolves chroma's global lexer, style and formatter
 	// registries; a render must not overlap a markdownStyle register.
-	styleMu.RLock()
-	defer styleMu.RUnlock()
+	_styleMu.RLock()
+	defer _styleMu.RUnlock()
 	rk := fmt.Sprintf("%s|%d", key, width)
 	r := c.renderers[rk]
 	if r == nil {
 		// a line break the author typed is kept: a reply copies back as it was written
-		opts := []glamour.TermRendererOption{glamour.WithWordWrap(width), glamour.WithPreservedNewLines(), glamour.WithChromaFormatter(chromaMarked)}
+		opts := []glamour.TermRendererOption{glamour.WithWordWrap(width), glamour.WithPreservedNewLines(), glamour.WithChromaFormatter(_chromaMarked)}
 		if width == 0 {
 			markDecorations(&cfg)
 		}
@@ -217,7 +217,7 @@ func (c *markdownCache) glamour(cfg gansi.StyleConfig, key, text string, width i
 		if err != nil {
 			return plainLines(text)
 		}
-		if c.renderers == nil || len(c.renderers) >= mdRenderersMax {
+		if c.renderers == nil || len(c.renderers) >= _mdRenderersMax {
 			c.renderers = map[string]*glamour.TermRenderer{}
 		}
 		c.renderers[rk] = r
@@ -232,7 +232,7 @@ func (c *markdownCache) glamour(cfg gansi.StyleConfig, key, text string, width i
 // A table is the header row, its delimiter row and every row up to a blank
 // line, outside code fences.
 // NOTE: a table inside a list or quote renders as prose and wraps like it.
-var tableDelim = regexp.MustCompile(`^ {0,3}\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$`)
+var _tableDelim = regexp.MustCompile(`^ {0,3}\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$`)
 
 type mdChunk struct {
 	text  string
@@ -250,7 +250,7 @@ func splitTables(text string) []mdChunk {
 			continue
 		}
 		if i+1 >= len(lines) || !strings.Contains(lines[i], "|") ||
-			!strings.Contains(lines[i+1], "|") || !tableDelim.MatchString(strings.TrimRight(lines[i+1], "\n")) {
+			!strings.Contains(lines[i+1], "|") || !_tableDelim.MatchString(strings.TrimRight(lines[i+1], "\n")) {
 			continue
 		}
 		end := i + 2
@@ -275,22 +275,22 @@ func splitTables(text string) []mdChunk {
 // from the line start or the previous close: glamour writes a list number
 // and a code block's margin before any hook can open one.
 const (
-	markOpen     = "\ue000"
-	markClose    = "\ue001"
-	chromaMarked = "zemi-marked"
+	_markOpen     = "\ue000"
+	_markClose    = "\ue001"
+	_chromaMarked = "zemi-marked"
 )
 
-// mdPlain strips the decoration markers and expands tabs, before a render:
+// _mdPlain strips the decoration markers and expands tabs, before a render:
 // a tab occupies no cell once drawn into the buffer, so code would lose its
 // indentation, and a marker may only ever come from markDecorations.
-var mdPlain = strings.NewReplacer("\t", "    ", markOpen, "", markClose, "")
+var _mdPlain = strings.NewReplacer("\t", "    ", _markOpen, "", _markClose, "")
 
 func markDecorations(cfg *gansi.StyleConfig) {
-	nc := func(s string) string { return markOpen + s + markClose }
+	nc := func(s string) string { return _markOpen + s + _markClose }
 	cfg.BlockQuote.IndentToken = new(nc("│ "))
 	cfg.List.IndentToken = new(nc(" "))
 	cfg.Item.BlockPrefix = nc(cfg.Item.BlockPrefix)
-	cfg.Enumeration.BlockPrefix += markClose
+	cfg.Enumeration.BlockPrefix += _markClose
 	cfg.Task.Ticked, cfg.Task.Unticked = nc(cfg.Task.Ticked), nc(cfg.Task.Unticked)
 }
 
@@ -298,7 +298,7 @@ func markDecorations(cfg *gansi.StyleConfig) {
 // code line with a close marker: what stands before it on the row is margin.
 func init() {
 	tty := formatters.Get("terminal16m") // the theme's own colors: the UI downsamples
-	formatters.Register(chromaMarked, chroma.FormatterFunc(func(w io.Writer, style *chroma.Style, it chroma.Iterator) error {
+	formatters.Register(_chromaMarked, chroma.FormatterFunc(func(w io.Writer, style *chroma.Style, it chroma.Iterator) error {
 		return tty.Format(&lineMarker{w: w, start: true}, style, it)
 	}))
 }
@@ -313,7 +313,7 @@ func (m *lineMarker) Write(p []byte) (int, error) {
 	var b bytes.Buffer
 	for _, c := range p {
 		if m.start {
-			b.WriteString(markClose)
+			b.WriteString(_markClose)
 		}
 		m.start = c == '\n'
 		b.WriteByte(c)
@@ -385,20 +385,20 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 
 	// Code takes the groups through a chroma style of its own: glamour
 	// registers its Chroma config once per process.
-	var code [len(codeGroups)]gansi.StylePrimitive
-	for i, cg := range codeGroups {
+	var code [len(_codeGroups)]gansi.StylePrimitive
+	for i, cg := range _codeGroups {
 		apply(&code[i], cg.group)
 	}
 	cfg.CodeBlock.Theme = "zemi:" + key.String()
-	styleMu.RLock()
+	_styleMu.RLock()
 	_, ok := styles.Registry[cfg.CodeBlock.Theme]
-	styleMu.RUnlock()
+	_styleMu.RUnlock()
 	if !ok {
-		styleMu.Lock()
-		defer styleMu.Unlock()
+		_styleMu.Lock()
+		defer _styleMu.Unlock()
 		if _, ok := styles.Registry[cfg.CodeBlock.Theme]; !ok {
 			entries := chroma.StyleEntries{}
-			for i, cg := range codeGroups {
+			for i, cg := range _codeGroups {
 				p := code[i]
 				var e []string
 				// chroma takes hex only: a group in the terminal's own colors
@@ -428,11 +428,11 @@ func (h *Host) markdownStyle() (gansi.StyleConfig, string) {
 
 // codeGroups is how code draws: the chroma style markdownStyle registers
 // for code blocks and the groups Highlight names both come from it.
-// styleMu keeps the register off glamour's reads: styles.Registry is
+// _styleMu keeps the register off glamour's reads: styles.Registry is
 // chroma's unlocked global map, and two hosts render markdown concurrently.
-var styleMu sync.RWMutex
+var _styleMu sync.RWMutex
 
-var codeGroups = [...]struct {
+var _codeGroups = [...]struct {
 	tok   chroma.TokenType
 	group string
 }{
@@ -484,7 +484,7 @@ func highlight(text, lang string) [][]Segment {
 		group := "Normal"
 	find:
 		for _, t := range []chroma.TokenType{tok.Type, tok.Type.SubCategory(), tok.Type.Category()} {
-			for _, cg := range codeGroups {
+			for _, cg := range _codeGroups {
 				if cg.tok == t {
 					group = cg.group
 					break find
@@ -542,10 +542,10 @@ func (c *markdownCache) styledLines(s string) [][]Segment {
 		open, closed := false, 0
 		for _, cell := range l[:end] {
 			switch cell.Content {
-			case markOpen:
+			case _markOpen:
 				open = true
 				continue
-			case markClose:
+			case _markClose:
 				for i := closed; !open && i < len(c.cells); i++ {
 					c.cells[i].NoCopy, c.cells[i].HL = true, "Dim"
 				}
@@ -609,7 +609,7 @@ func linkOf(url string) string {
 
 // A hex color, #rgb or #rrggbb. The short form needs a letter, or "#123"
 // would paint every issue number.
-var hexColor = regexp.MustCompile(`#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b`)
+var _hexColor = regexp.MustCompile(`#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b`)
 
 // swatchColors draws every hex color in a row on that color, in whichever
 // of black and white reads on it.
@@ -617,7 +617,7 @@ func swatchColors(row []Segment) []Segment {
 	var out []Segment
 	for _, seg := range row {
 		at := 0
-		for _, m := range hexColor.FindAllStringIndex(seg.Text, -1) {
+		for _, m := range _hexColor.FindAllStringIndex(seg.Text, -1) {
 			hex := seg.Text[m[0]+1 : m[1]]
 			prev, _ := utf8.DecodeLastRuneInString(seg.Text[:m[0]])
 			if strings.ContainsRune("/&", prev) || // a URL fragment, an HTML entity
@@ -663,7 +663,7 @@ func WrapText(text string, w int) [][]Segment {
 	return rows
 }
 
-var hunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)`)
+var _hunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)`)
 
 // DiffRows renders a unified diff as rows at most width cells wide:
 // one number column (the old line on a removed row, the new
@@ -685,7 +685,7 @@ func DiffRows(d string, width int) [][]Segment {
 		case strings.HasPrefix(l, "@@"):
 			// a bare "@@" (a fragment's preview) numbers nothing: line 0 stays 0
 			o, n = 0, 0
-			if m := hunkHeader.FindStringSubmatch(l); m != nil {
+			if m := _hunkHeader.FindStringSubmatch(l); m != nil {
 				o, _ = strconv.Atoi(m[1])
 				n, _ = strconv.Atoi(m[2])
 			}
@@ -774,7 +774,7 @@ func escapeHTML(s string) string {
 			code = true
 		default:
 			code = false
-			if m := listItem.FindString(line); m != "" {
+			if m := _listItem.FindString(line); m != "" {
 				list = len(m)
 			} else if ind == 0 {
 				list = 0
@@ -786,8 +786,8 @@ func escapeHTML(s string) string {
 	return b.String()
 }
 
-// listItem is a list marker line up to its content column.
-var listItem = regexp.MustCompile(`^ *([-*+]|\d{1,9}[.)]) +`)
+// _listItem is a list marker line up to its content column.
+var _listItem = regexp.MustCompile(`^ *([-*+]|\d{1,9}[.)]) +`)
 
 func escapeLine(line string) string {
 	if !strings.Contains(line, "<") {
@@ -809,7 +809,7 @@ func escapeLine(line string) string {
 			continue
 		}
 		if c == '<' && tick == 0 && i+1 < len(line) && tagStart(line[i+1]) &&
-			(i == 0 || line[i-1] != '\\') && !autolink.MatchString(line[i:]) {
+			(i == 0 || line[i-1] != '\\') && !_autolink.MatchString(line[i:]) {
 			b.WriteByte('\\')
 		}
 		b.WriteByte(c)
@@ -817,7 +817,7 @@ func escapeLine(line string) string {
 	return b.String()
 }
 
-var autolink = regexp.MustCompile(`^<[a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>]*>`)
+var _autolink = regexp.MustCompile(`^<[a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>]*>`)
 
 func tagStart(c byte) bool {
 	switch c {
@@ -1060,18 +1060,18 @@ func ansiLinesIn(buf *uv.ScreenBuffer, s string, fn func(y int, line uv.Line)) {
 // ansiLines serves callers outside the markdown mutex with a pooled buffer;
 // the Markdown path draws into one held by the cache (ansiLinesCache).
 func ansiLines(s string, fn func(y int, line uv.Line)) {
-	buf, _ := lineBufs.Get().(*uv.ScreenBuffer)
+	buf, _ := _lineBufs.Get().(*uv.ScreenBuffer)
 	if buf == nil {
 		b := uv.NewScreenBuffer(1, 1)
 		buf = &b
 	}
 	ansiLinesIn(buf, s, fn)
-	lineBufs.Put(buf)
+	_lineBufs.Put(buf)
 }
 
-// lineBufs pools the draw buffers behind ansiLines; the cells handed to fn
+// _lineBufs pools the draw buffers behind ansiLines; the cells handed to fn
 // die with it, so a buffer returns only after fn has read them.
-var lineBufs sync.Pool
+var _lineBufs sync.Pool
 
 func plainLines(text string) [][]Segment {
 	var out [][]Segment

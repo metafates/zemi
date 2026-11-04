@@ -74,7 +74,7 @@ func TestLSPDiagnostics(t *testing.T) {
 			h, run := setup(t)
 			run("write", "a.txt", "ok")
 			first := h.lsp.running["fake"]
-			for i := range lspMaxStalls {
+			for i := range _lspMaxStalls {
 				run("write", fmt.Sprintf("q%d.%s", i, ext), "nothing")
 			}
 			if alive := h.lsp.running["fake"] == first; alive != (ext == "quiet") {

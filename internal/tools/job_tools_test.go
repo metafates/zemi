@@ -37,7 +37,7 @@ func TestJobKillReadOnlyDeny(t *testing.T) {
 func TestJobsEvictFinished(t *testing.T) {
 	t.Parallel()
 	m := &Jobs{}
-	n := maxKeptJobs + 5
+	n := _maxKeptJobs + 5
 	changes := make(chan struct{}, 2*n)
 	waits := make(map[string]chan error, n)
 	for i := 1; i <= n; i++ {
@@ -62,7 +62,7 @@ func TestJobsEvictFinished(t *testing.T) {
 	}
 	// the last exits sweep under m.mu after their OnChange: reading here races
 	// that sweep, so wait for the settled cap before judging who stayed
-	waitFor(t, func() bool { return len(m.List()) == maxKeptJobs+1 })
+	waitFor(t, func() bool { return len(m.List()) == _maxKeptJobs+1 })
 	if _, err := m.Get("job-1"); err != nil {
 		t.Fatalf("running job evicted: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestJobsEvictFinished(t *testing.T) {
 func TestJobsExitRefreshSeesTheJob(t *testing.T) {
 	t.Parallel()
 	m := &Jobs{}
-	n := maxKeptJobs + 1
+	n := _maxKeptJobs + 1
 	changes := make(chan struct{}, 2*n)
 	waits := make(map[string]chan error, n)
 	for i := 1; i <= n; i++ {

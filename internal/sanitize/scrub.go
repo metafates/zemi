@@ -12,7 +12,7 @@ import (
 	"unicode/utf8"
 )
 
-var keyShapes = []*regexp.Regexp{
+var _keyShapes = []*regexp.Regexp{
 	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
 	regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{16,}\b`),
 	regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{20,}\b`),
@@ -24,13 +24,13 @@ var keyShapes = []*regexp.Regexp{
 	regexp.MustCompile(`\b[A-Za-z0-9+_-]{40,}\b`),
 }
 
-// urlPassword matches the userinfo of a URL (postgres://user:pass@host);
+// _urlPassword matches the userinfo of a URL (postgres://user:pass@host);
 // group 1 is the password.
-var urlPassword = regexp.MustCompile(`\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s/:@]*:([^\s/]+)@`)
+var _urlPassword = regexp.MustCompile(`\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s/:@]*:([^\s/]+)@`)
 
-// keyAssignments matches a key name set to a value, group 2 the value; an
+// _keyAssignments matches a key name set to a value, group 2 the value; an
 // auth scheme word before the value is skipped, so the credential is group 2.
-var keyAssignments = regexp.MustCompile(
+var _keyAssignments = regexp.MustCompile(
 	`(?i)\b(api[_-]?key|apikey|access[_-]?token|auth[_-]?token|token|secret|password|passwd|pwd|bearer|authorization)\b\s*[=:]\s*(?:(?:bearer|basic|token)\s+)?(\S+)`,
 )
 
@@ -47,15 +47,15 @@ func reference(v string) bool {
 // step.
 // NOTE: a bare random token under 40 characters with no key name survives.
 func ScrubShapes(text string) string {
-	out := urlPassword.ReplaceAllStringFunc(text, func(m string) string {
-		i := urlPassword.FindStringSubmatchIndex(m)
+	out := _urlPassword.ReplaceAllStringFunc(text, func(m string) string {
+		i := _urlPassword.FindStringSubmatchIndex(m)
 		return m[:i[2]] + redacted(m[i[2]:i[3]]) + m[i[3]:]
 	})
-	for _, re := range keyShapes {
+	for _, re := range _keyShapes {
 		out = redactAll(out, re.FindAllString(out, -1))
 	}
 	var spans []string
-	for _, m := range keyAssignments.FindAllStringSubmatch(out, -1) {
+	for _, m := range _keyAssignments.FindAllStringSubmatch(out, -1) {
 		if !reference(m[2]) {
 			spans = append(spans, m[0])
 		}
@@ -63,13 +63,13 @@ func ScrubShapes(text string) string {
 	return redactAll(out, spans)
 }
 
-// oneBlob strips every redaction marker; what remains must be whitespace.
-var oneBlob = regexp.MustCompile(`\[redacted \d+ chars\]`)
+// _oneBlob strips every redaction marker; what remains must be whitespace.
+var _oneBlob = regexp.MustCompile(`\[redacted \d+ chars\]`)
 
 // IsOneBlob reports whether scrubbed text holds nothing but redaction
 // markers.
 func IsOneBlob(scrubbed string) bool {
-	return strings.TrimSpace(oneBlob.ReplaceAllString(scrubbed, "")) == ""
+	return strings.TrimSpace(_oneBlob.ReplaceAllString(scrubbed, "")) == ""
 }
 
 // redactAll replaces every occurrence of each span in one pass over s, so a

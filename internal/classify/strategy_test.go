@@ -87,8 +87,8 @@ func TestLogprobsEscalates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := m.depth; len(got) != 2 || got[0] != readoutDepth[0] || got[1] != readoutDepth[1] {
-		t.Errorf("depths asked for = %v, want %v", got, readoutDepth[:2])
+	if got := m.depth; len(got) != 2 || got[0] != _readoutDepth[0] || got[1] != _readoutDepth[1] {
+		t.Errorf("depths asked for = %v, want %v", got, _readoutDepth[:2])
 	}
 	if a := res.Answers["danger"]; !a.Value {
 		t.Errorf("danger = %+v, want true from the deeper readout", a)
@@ -101,8 +101,8 @@ func TestLogprobsEscalates(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "the provider returned no probability for Yes, No") {
 		t.Errorf("err = %v, want the missing labels named", err)
 	}
-	if len(m.depth) != len(readoutDepth) {
-		t.Errorf("depths asked for = %v, want each of %v", m.depth, readoutDepth)
+	if len(m.depth) != len(_readoutDepth) {
+		t.Errorf("depths asked for = %v, want each of %v", m.depth, _readoutDepth)
 	}
 }
 
@@ -111,7 +111,7 @@ func TestLogprobsEscalates(t *testing.T) {
 func TestSchemaAsk(t *testing.T) {
 	m := &fakeModel{object: map[string]any{"danger": true, "action": "deny", "risk": float64(2)}}
 	chat := Chat{Model: m}
-	res, err := Ask(t.Context(), Request{State: map[string]any{"cmd": "rm -rf"}, Questions: questions, Chat: &chat})
+	res, err := Ask(t.Context(), Request{State: map[string]any{"cmd": "rm -rf"}, Questions: _questions, Chat: &chat})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestSchemaAsk(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			m := &fakeModel{object: c.object}
 			chat := Chat{Model: m}
-			_, err := Ask(t.Context(), Request{State: map[string]any{}, Questions: questions, Chat: &chat})
+			_, err := Ask(t.Context(), Request{State: map[string]any{}, Questions: _questions, Chat: &chat})
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Errorf("err = %v, want %q", err, c.want)
 			}
@@ -193,10 +193,10 @@ func TestAskLadder(t *testing.T) {
 		t.Errorf("err = %v, want both strategies' errors", err)
 	}
 	if want := (fantasy.Usage{
-		InputTokens:         int64(len(readoutDepth)) * 10,
-		OutputTokens:        int64(len(readoutDepth)),
-		CacheReadTokens:     int64(len(readoutDepth)) * 4,
-		CacheCreationTokens: int64(len(readoutDepth)) * 2,
+		InputTokens:         int64(len(_readoutDepth)) * 10,
+		OutputTokens:        int64(len(_readoutDepth)),
+		CacheReadTokens:     int64(len(_readoutDepth)) * 4,
+		CacheCreationTokens: int64(len(_readoutDepth)) * 2,
 	}); res.Usage != want {
 		t.Errorf("usage = %+v, want %+v from the abandoned readouts", res.Usage, want)
 	}

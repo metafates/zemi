@@ -265,7 +265,7 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 			}
 			tmp := t.TempDir()
 			t.Setenv("TMPDIR", tmp)
-			timeout := caseTimeout
+			timeout := _caseTimeout
 			if c.hangs {
 				timeout = 2 * time.Second
 			}

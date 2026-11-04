@@ -263,8 +263,8 @@ func (r *completeReg) purge() {
 	r.mu.Unlock()
 }
 
-// maxCompletions caps what the sources for one popup offer together.
-const maxCompletions = 50
+// _maxCompletions caps what the sources for one popup offer together.
+const _maxCompletions = 50
 
 // HasCompletions reports whether a Lua source completes after trigger, or
 // the arguments of command, so the UI calls Lua only when one does.
@@ -293,7 +293,7 @@ func (h *Host) Complete(ctx context.Context, trigger, command, lead, line string
 	var out []CompletionItem
 	_, _ = h.RT.Do(ctx, lua.ClassUI, 0, 0, "completion", func(L *glua.LState) ([]any, error) {
 		for _, s := range srcs {
-			if s.gen != h.currentGen() || len(out) >= maxCompletions {
+			if s.gen != h.currentGen() || len(out) >= _maxCompletions {
 				continue
 			}
 			items, err := h.callCompleter(L, s.fn, luaCaller{gen: s.gen, origin: s.origin, path: s.path}, lead, line)
@@ -306,7 +306,7 @@ func (h *Host) Complete(ctx context.Context, trigger, command, lead, line string
 		}
 		return nil, nil
 	})
-	return out[:min(len(out), maxCompletions)]
+	return out[:min(len(out), _maxCompletions)]
 }
 
 // callCompleter runs a Lua completer fn(lead, line) under its origin.

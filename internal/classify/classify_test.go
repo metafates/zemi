@@ -33,8 +33,8 @@ func server(t *testing.T, reply string) (*Protocol, func() string) {
 		if got := r.Header.Get("authorization"); got != "Bearer k" {
 			t.Errorf("authorization = %q, want the bearer key", got)
 		}
-		if !strings.HasSuffix(r.URL.Path, protocolPath) {
-			t.Errorf("posted to %s, want %s", r.URL.Path, protocolPath)
+		if !strings.HasSuffix(r.URL.Path, _protocolPath) {
+			t.Errorf("posted to %s, want %s", r.URL.Path, _protocolPath)
 		}
 		w.Header().Set("content-type", "application/json")
 		_, _ = w.Write([]byte(reply))
@@ -47,8 +47,8 @@ func server(t *testing.T, reply string) (*Protocol, func() string) {
 	}
 }
 
-// questions is the three question types, one of each.
-var questions = map[string]Question{
+// _questions is the three question types, one of each.
+var _questions = map[string]Question{
 	"danger": {Type: TypeBool, Instructions: "is it dangerous", Criteria: map[string]string{"true": "it deletes work", "false": "it is a build"}},
 	"action": {Type: TypeChoice, Instructions: "what does it do", Criteria: map[string]string{"deny": "refuses", "allow": "permits", "ask": "asks"}},
 	"risk":   {Type: TypeScore, Instructions: "how risky", Levels: []string{"none", "some", "lots"}},
@@ -62,7 +62,7 @@ func TestProtocolAsk(t *testing.T) {
 		"action": {"type": "choice", "choice": "deny", "probabilities": {"allow": 0.05, "deny": 0.9, "ask": 0.05}, "confidence": 0.85},
 		"risk": {"type": "score", "score": 2, "confidence": 0.7}
 	}, "usage": {"input_tokens": 120, "output_tokens": 8}}`)
-	res, err := Ask(t.Context(), Request{State: map[string]any{"cmd": "rm -rf build"}, Questions: questions, Protocol: p})
+	res, err := Ask(t.Context(), Request{State: map[string]any{"cmd": "rm -rf build"}, Questions: _questions, Protocol: p})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestProtocolAsk(t *testing.T) {
 
 // one is a single question of the set above, so a reply that leaves another
 // out does not answer for it.
-func one(name string) map[string]Question { return map[string]Question{name: questions[name]} }
+func one(name string) map[string]Question { return map[string]Question{name: _questions[name]} }
 
 // TestProtocolAnswersRejected: every answer that does not fit its question is
 // an error, never a nearest match.

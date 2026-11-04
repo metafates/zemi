@@ -26,22 +26,22 @@ import (
 // timeout; the host stamps such a row "bg" by this phrase.
 const JobHandoff = "moved to the background as "
 
-// maxKeptJobs is how many finished jobs a host keeps before the oldest go;
+// _maxKeptJobs is how many finished jobs a host keeps before the oldest go;
 // a running job's id must stay resolvable for job_read, so only finished
 // ones are evicted.
-const maxKeptJobs = 50
+const _maxKeptJobs = 50
 
-// jobSettle is how long new job output must stay quiet before a job_read
+// _jobSettle is how long new job output must stay quiet before a job_read
 // wait returns.
 // NOTE: a build that pauses longer returns early and costs another read.
-const jobSettle = 2 * time.Second
+const _jobSettle = 2 * time.Second
 
 // A waitless read of a quiet running job holds for these instead of making
 // the model poll one roundtrip per quiet stretch: a build that bursts output
 // rides to its exit, a silent server answers after the hold.
 const (
-	jobQuietHold = 10 * time.Second
-	jobQuietCap  = 20 * time.Second
+	_jobQuietHold = 10 * time.Second
+	_jobQuietCap  = 20 * time.Second
 )
 
 // waitJob holds until the job exits, its output has been quiet for quiet,
@@ -307,7 +307,7 @@ func (m *Jobs) evictLocked() {
 			finished++
 		}
 	}
-	for id := 1; finished > maxKeptJobs && id <= m.seq; id++ {
+	for id := 1; finished > _maxKeptJobs && id <= m.seq; id++ {
 		key := "job-" + strconv.Itoa(id)
 		j, ok := m.jobs[key]
 		if !ok || !j.announced {
@@ -442,9 +442,9 @@ func runJobRead(ctx context.Context, p *Pipeline, in jobReadArgs) (fantasy.ToolR
 	// chatty build costs one model step, not one per burst; the turn's
 	// cancel still wins
 	if in.WaitMS > 0 {
-		waitJob(ctx, j, jobSettle, time.Duration(min(in.WaitMS, 600_000))*time.Millisecond)
+		waitJob(ctx, j, _jobSettle, time.Duration(min(in.WaitMS, 600_000))*time.Millisecond)
 	} else if j.Running() {
-		waitJob(ctx, j, jobQuietHold, jobQuietCap)
+		waitJob(ctx, j, _jobQuietHold, _jobQuietCap)
 	}
 	out, errOut, running, errText := j.since()
 	var b strings.Builder
@@ -515,7 +515,7 @@ type jobKillArgs struct {
 func runJobKill(ctx context.Context, p *Pipeline, in jobKillArgs) (fantasy.ToolResponse, error) {
 	if p.ReadOnly != nil && p.ReadOnly() {
 		// job_kill makes no gate request, so the gate's read-only deny cannot reach it
-		return fantasy.NewTextErrorResponse(DeniedText(readOnlyVerdict, string(ToolJobKill)+" "+in.ID)), nil
+		return fantasy.NewTextErrorResponse(DeniedText(_readOnlyVerdict, string(ToolJobKill)+" "+in.ID)), nil
 	}
 	if p.Jobs == nil {
 		return fantasy.NewTextErrorResponse("jobs unavailable"), nil

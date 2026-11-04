@@ -232,18 +232,18 @@ func rawStringMap(L *glua.LState, tb *glua.LTable, key string) map[string]string
 // saves the whole text to pad, the scratchpad of the pipeline that made the
 // call, so the rest is one read away instead of gone.
 func (h *Host) truncOutput(pad, name, s string) string {
-	return tools.Cut(pad, name, s, hostResultMax, false)
+	return tools.Cut(pad, name, s, _hostResultMax, false)
 }
 
 // truncScriptOutput is truncOutput for a call a lua script drove: the script
 // reads the whole output and says what of it the model gets, which is how a
 // script's own shell and read calls are already treated.
 func (h *Host) truncScriptOutput(p *tools.Pipeline, name, s string) string {
-	return tools.Cut(p.Pad, name, s, hostResultMax, p.Script != "")
+	return tools.Cut(p.Pad, name, s, _hostResultMax, p.Script != "")
 }
 
-// hostResultMax is what a host tool's result carries of its output.
-const hostResultMax = 30000
+// _hostResultMax is what a host tool's result carries of its output.
+const _hostResultMax = 30000
 
 // upperFirst capitalizes a sentence's first rune, leaving the rest as it is:
 // a transcript headline and an overlay's empty-state prose read as sentences.
@@ -257,7 +257,7 @@ func upperFirst(s string) string {
 
 // readRegularFile reads a config file under skill.ReadRegular's guard.
 func readRegularFile(path string) (string, error) {
-	data, err := skill.ReadRegular(path, maxAgentFileBytes)
+	data, err := skill.ReadRegular(path, _maxAgentFileBytes)
 	return string(data), err
 }
 
@@ -332,6 +332,6 @@ func luaLiteral(v any) string {
 	return b.String()
 }
 
-// openInEditorLabel is the row action every list zemi keeps of files you can
+// _openInEditorLabel is the row action every list zemi keeps of files you can
 // edit offers: the verb's own open command puts it in the editor.
-const openInEditorLabel = "open in the editor"
+const _openInEditorLabel = "open in the editor"

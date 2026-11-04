@@ -19,9 +19,9 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
-// classifyTimeout is how long a classify call may take: a small job, so it
+// _classifyTimeout is how long a classify call may take: a small job, so it
 // waits a minute rather than the ten minutes a model ask may.
-const classifyTimeout = time.Minute
+const _classifyTimeout = time.Minute
 
 // classifyAsk is zemi.classify.ask({ model, state, questions, timeout_ms }):
 // every question judged in one call, by whichever strategy the model's provider
@@ -31,12 +31,12 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 	spec := L.CheckTable(1)
 	state := classifyState(L, spec)
 	questions := classifyQuestions(L, spec)
-	ref := cmp.Or(rawString(L, spec, "model"), defaultRole)
+	ref := cmp.Or(rawString(L, spec, "model"), _defaultRole)
 	id := h.modelRef(ref)
-	stub := h.gateAsk(L, luaClassifyAsk, id, func() map[string]any {
+	stub := h.gateAsk(L, _luaClassifyAsk, id, func() map[string]any {
 		return map[string]any{"model": ref, "questions": slices.Sorted(maps.Keys(questions))}
 	})
-	timeout := classifyTimeout
+	timeout := _classifyTimeout
 	if n, ok := opt[glua.LNumber](L, spec, "timeout_ms"); ok && n > 0 {
 		timeout = time.Duration(n) * time.Millisecond
 	}

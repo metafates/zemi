@@ -318,7 +318,7 @@ func (h *Host) addClaudeMCP(name, root, data string, servers []plugin.ClaudeMCPS
 			continue
 		}
 		server := prefix + plugin.SanitizeName(s.Name)
-		if !mcpServerName.MatchString(server) {
+		if !_mcpServerName.MatchString(server) {
 			h.Log.Warn("mcp server name does not fit zemi's rule, skipped", "origin", "mcp", "plugin", name, "server", s.Name)
 			continue
 		}
@@ -390,7 +390,7 @@ func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 		if _, ok := ids[name]; ok && !fresh.Has(name) {
 			continue
 		}
-		if path, ok := strings.CutPrefix(k, kvConfigPrefix); ok {
+		if path, ok := strings.CutPrefix(k, _kvConfigPrefix); ok {
 			h.forgetPick(config.Key(path))
 		} else {
 			_, _ = h.GlobalDB.DelKV(k)

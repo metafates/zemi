@@ -61,36 +61,36 @@ type toolRef struct {
 	deny bool
 }
 
-// subagentExcluded never reaches a subagent: nesting, the parent session's
+// _subagentExcluded never reaches a subagent: nesting, the parent session's
 // todo list, the user's attention (questions, plan approval) and the main
 // agent's lua tool. zoom and date stay: the run opens on the view, and they
 // are how it reads the chat behind it. Listing one in an agent file drops it.
-var subagentExcluded = set.Of(tools.ToolAgent, tools.ToolWorkflow, tools.ToolTodos, tools.ToolQuestion, tools.ToolPlan, tools.ToolLua)
+var _subagentExcluded = set.Of(tools.ToolAgent, tools.ToolWorkflow, tools.ToolTodos, tools.ToolQuestion, tools.ToolPlan, tools.ToolLua)
 
-// forkAgent is the run that continues the caller's conversation instead of
+// _forkAgent is the run that continues the caller's conversation instead of
 // starting fresh: not a definition but the same agent carried on, so only its
 // name and description below are read.
-const forkAgent = "fork"
+const _forkAgent = "fork"
 
-// readOnlyTools is the set every read-only builtin agent gets: it reads,
+// _readOnlyTools is the set every read-only builtin agent gets: it reads,
 // searches and loads skills, and changes nothing.
-var readOnlyTools = []toolRef{
+var _readOnlyTools = []toolRef{
 	{name: string(tools.ToolRead)},
 	{name: string(tools.ToolGlob)},
 	{name: string(tools.ToolGrep)},
 	{name: string(tools.ToolSkill)},
 }
 
-var builtinAgents = []AgentDef{
+var _builtinAgents = []AgentDef{
 	{
-		Name:        forkAgent,
+		Name:        _forkAgent,
 		Description: "Continues this conversation instead of starting fresh, so it needs no briefing.",
 		Source:      lua.OriginBuiltin,
 	},
 	{
 		Name:        "explore",
 		Description: "Read-only: finds files, symbols and how something works. Cannot edit or run commands.",
-		Tools:       readOnlyTools,
+		Tools:       _readOnlyTools,
 		ReadOnly:    true,
 		System:      "Search broadly, read what matters, never guess. Lead with the answer, quote code only when the exact text matters, and when you did not find it, say where you looked.",
 		Source:      lua.OriginBuiltin,
@@ -108,22 +108,22 @@ var builtinAgents = []AgentDef{
 		// the caller presents with its plan tool.
 		Name:        "plan",
 		Description: "Read-only: explores the code and drafts an implementation plan with a Critical Files section, for a large or unclear change.",
-		Tools:       readOnlyTools,
+		Tools:       _readOnlyTools,
 		ReadOnly:    true,
 		System:      "Read the code the change touches and the patterns it should reuse; never guess what a read would answer. Then report a plan someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most, then the open questions only the user can answer.",
 		Source:      lua.OriginBuiltin,
 	},
 }
 
-const maxAgentFileBytes = 1 << 20
+const _maxAgentFileBytes = 1 << 20
 
 // agentDefs lists the available definitions. On a name clash the higher
 // trust source wins: user over builtin over plugin over project. Project
 // agents load only once the project tree is trusted.
 func (h *Host) agentDefs() []AgentDef {
-	defs := slices.Clone(builtinAgents)
+	defs := slices.Clone(_builtinAgents)
 	h.layerFiles("agents", ".md", func(f layerFile) bool {
-		if f.name == forkAgent {
+		if f.name == _forkAgent {
 			h.RecordErrorOnce("agents", "", f.path+" is ignored: fork continues the caller's conversation, so there is no definition to write")
 			return false
 		}
@@ -165,10 +165,10 @@ func (h *Host) agentDef(name string) (AgentDef, error) {
 	return AgentDef{}, fmt.Errorf("unknown agent %q (have %s)", name, strings.Join(names, ", "))
 }
 
-// zemiToolNames is every tool name an agent definition may keep: the
+// _zemiToolNames is every tool name an agent definition may keep: the
 // builtins. A Claude agent naming anything else loses the entry, since it
 // would fail the invocation filter.
-var zemiToolNames = set.Of(
+var _zemiToolNames = set.Of(
 	tools.ToolShell, tools.ToolRead, tools.ToolWrite,
 	tools.ToolEdit, tools.ToolGlob, tools.ToolGrep,
 	tools.ToolTodos,
@@ -178,8 +178,8 @@ var zemiToolNames = set.Of(
 	tools.ToolLua, tools.ToolUpdate, tools.ToolSearch,
 )
 
-// agentIgnoredKeys are the Claude agent frontmatter keys zemi has no use for.
-var agentIgnoredKeys = []string{"skills", "color", "background", "memory", "isolation", "effort", "maxTurns", "permissionMode", "hooks", "mcpServers"}
+// _agentIgnoredKeys are the Claude agent frontmatter keys zemi has no use for.
+var _agentIgnoredKeys = []string{"skills", "color", "background", "memory", "isolation", "effort", "maxTurns", "permissionMode", "hooks", "mcpServers"}
 
 // parseAgentFile parses one agent definition. For a Claude-layout plugin's
 // (claude), the tools are Claude names through the alias map and anything
@@ -258,7 +258,7 @@ func (h *Host) parseAgentFile(name, path string, source lua.Origin, claude bool)
 		deny := strings.HasPrefix(n, "-")
 		tool := strings.TrimPrefix(n, "-")
 		if claude {
-			if mapped := claudeTool(tool); zemiToolNames.Has(mapped) {
+			if mapped := claudeTool(tool); _zemiToolNames.Has(mapped) {
 				tool = string(mapped)
 			} else {
 				if !deny { // a negation of what zemi does not have is safe to drop
@@ -276,7 +276,7 @@ func (h *Host) parseAgentFile(name, path string, source lua.Origin, claude bool)
 		var raw map[string]any
 		if yaml.Unmarshal([]byte(block), &raw) == nil {
 			var ignored []string
-			for _, k := range agentIgnoredKeys {
+			for _, k := range _agentIgnoredKeys {
 				if _, ok := raw[k]; ok {
 					ignored = append(ignored, k)
 				}
@@ -393,7 +393,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	}
 	prompt = setup.prompt
 	if run.forkBase == len(runner.History) && pipe.Pad != "" && setup.writes {
-		prompt += "\n\n" + fmt.Sprintf(scratchOwn, filepath.Join(pipe.Pad, def.Name+"-"+run.id))
+		prompt += "\n\n" + fmt.Sprintf(_scratchOwn, filepath.Join(pipe.Pad, def.Name+"-"+run.id))
 	}
 	h.consultHooks(EventAgentSubagentStart, map[string]any{"agent": def.Name, "description": run.description})
 	h.EmitAsync(EventAgentSubagentStart, map[string]any{"agent": def.Name, "description": run.description, "session": sid})
@@ -443,7 +443,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 // forkNested is why a run cannot start a fork: the conversation it would
 // continue is the one it already runs.
 func forkNested(run *agentRun) string {
-	if run.agent == forkAgent {
+	if run.agent == _forkAgent {
 		return "this run is already a fork of the conversation: a fork cannot fork again, so do the work here and put what you cannot do in your report"
 	}
 	return "a fork continues the live conversation, and this call is a run of it: do the work here, or report what you cannot"
@@ -502,7 +502,7 @@ type runSetup struct {
 // runSetup builds the runner a run sends on: a fresh subagent, or a fork that
 // continues the caller's conversation.
 func (h *Host) runSetup(ctx context.Context, run *agentRun, prev *agent.Runner, def AgentDef, prompt string) (*runSetup, error) {
-	if def.Name == forkAgent {
+	if def.Name == _forkAgent {
 		return h.forkSetup(ctx, run, prev, prompt)
 	}
 	return h.subagentSetup(run, def, prompt)
@@ -576,7 +576,7 @@ func (h *Host) forkSetup(ctx context.Context, run *agentRun, prev *agent.Runner,
 		modelID = cmp.Or(run.model, modelID)
 	}
 	infos := from.Tools()
-	pipe := h.runPipeline(run, forkAgent, modelID)
+	pipe := h.runPipeline(run, _forkAgent, modelID)
 	prompted := h.pinFiles()
 	var sent sync.Map
 	pipe.Instructions = func(path string) string {
@@ -607,7 +607,7 @@ func (h *Host) forkSetup(ctx context.Context, run *agentRun, prev *agent.Runner,
 	return &runSetup{
 		runner: runner, pipe: pipe, modelID: modelID, loaded: loaded, cache: run.parent,
 		writes: writesFiles(kept),
-		prompt: forkTask + "\n\n" + prompt,
+		prompt: _forkTask + "\n\n" + prompt,
 	}, nil
 }
 
@@ -686,11 +686,11 @@ func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, t
 		text = "" // history holds the prompt from here on
 		switch {
 		case runner.MaxOutputTokens > 0 && maxTokensRefused(err):
-			capRejected.Store(modelID, true)
+			_capRejected.Store(modelID, true)
 			runner.MaxOutputTokens = 0
 		case runner.MaxOutputTokens > 0 && contextTooLarge(err) && (dropped > 0 || len(runner.History) < 3):
 			// nothing left to drop, so the cap zemi set is what does not fit
-			capRejected.Store(modelID, true)
+			_capRejected.Store(modelID, true)
 			runner.MaxOutputTokens = 0
 		case contextTooLarge(err) || err == nil && runner.CutShort():
 			if dropped > 0 || len(runner.History) < 3 {
@@ -722,7 +722,7 @@ func (h *Host) sendPruning(ctx context.Context, runner *agent.Runner, modelID, t
 func (h *Host) subagentSystem(def AgentDef, toolset []fantasy.AgentTool, readOnly bool) string {
 	read, readOnlyLine, update := "", "", ""
 	if hasTool(toolset, tools.ToolRead) {
-		read = readPrompt
+		read = _readPrompt
 	}
 	if readOnly {
 		readOnlyLine = "\n\nYou are read-only: you change no project file, only files in the scratchpad, and every command is denied. Report a change instead of making it."
@@ -734,7 +734,7 @@ func (h *Host) subagentSystem(def AgentDef, toolset []fantasy.AgentTool, readOnl
 		" end with a complete, concise report of what it needs, citing path:line where it matters," +
 		" and say plainly what you did not find or could not verify.\n\n" + def.System + readOnlyLine + update +
 		"\n\nParallel siblings of the same caller work in the same project tree: touch only the files your task names." +
-		"\n\n# Using tools\n" + batchPrompt + read + "\n" + toolRules
+		"\n\n# Using tools\n" + _batchPrompt + read + "\n" + _toolRules
 }
 
 // schemaReport cuts the outermost {...} out of a reply, which models wrap
@@ -1031,7 +1031,7 @@ func filterNamed(all []fantasy.AgentTool, keep, drop set.Set[string], skip set.S
 // Naming update there, or denying it, is accepted and ignored: every run holds it.
 func childTools(h *Host, pipe *tools.Pipeline, want []toolRef) (kept []fantasy.AgentTool, unknown []string) {
 	want = slices.DeleteFunc(want, func(r toolRef) bool { return r.name == string(tools.ToolUpdate) })
-	kept, unknown = filterRefs(h.allTools(pipe), want, subagentExcluded)
+	kept, unknown = filterRefs(h.allTools(pipe), want, _subagentExcluded)
 	return append(kept, &updateTool{h: h, pipe: pipe}), unknown
 }
 
@@ -1125,7 +1125,7 @@ func (h *Host) setTool(callID string, set func(*StreamTool)) {
 // target name or a provider/model id, which a workflow may set per run), then
 // the agents role.
 func (h *Host) subagentModelID(def AgentDef) string {
-	return cmp.Or(h.modelRef(def.Model), h.roleModel(agentsRole))
+	return cmp.Or(h.modelRef(def.Model), h.roleModel(_agentsRole))
 }
 
 // ModelIDs lists every provider/model the config registered.
@@ -1226,9 +1226,9 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	}
 }
 
-// bgAgentStarted opens the result of an agent call that went on in the
+// _bgAgentStarted opens the result of an agent call that went on in the
 // background, whose row reads as still running (toolStatus).
-const bgAgentStarted = "Started background agent "
+const _bgAgentStarted = "Started background agent "
 
 // sessionRun looks a run of this session up by id, for send_to and wait: from
 // the registry, else the store for one this process forgot. Another session's
@@ -1323,7 +1323,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		// the agent with the most tools
 		return fantasy.NewTextErrorResponse("agent is required: " + strings.Join(t.names(), ", ")), nil
 	}
-	if in.Agent == forkAgent {
+	if in.Agent == _forkAgent {
 		// a run of the conversation has nothing of its own to fork, and a
 		// detached one would start after the turn it should continue
 		if run := runOf(ctx); run != nil {
@@ -1695,7 +1695,7 @@ func (t *agentTool) awaitRuns(ctx context.Context, callID string, change <-chan 
 // bgAgentText is what a call whose run reports as a message answers: a
 // background start, or a foreground call the user's message handed off.
 func bgAgentText(id string) string {
-	return bgAgentStarted + id + ". Wait for it with wait=" + id + ", or read its report when it arrives as a message."
+	return _bgAgentStarted + id + ". Wait for it with wait=" + id + ", or read its report when it arrives as a message."
 }
 
 // handoffText answers a wait the user's own message took: the run was already
@@ -1898,9 +1898,9 @@ func fmtDuration(d time.Duration) string {
 
 // /agents and zemi.agent.run
 
-// newAgentPrompt rides behind /agents new and takes zemiSkillDir, where the
+// _newAgentPrompt rides behind /agents new and takes zemiSkillDir, where the
 // procedure lives.
-const newAgentPrompt = "I want a new zemi subagent that does what the command above says; ask me when it says nothing. Read SKILL.md in %s, the zemi skill's directory, then follow the New agent steps in agents.md there."
+const _newAgentPrompt = "I want a new zemi subagent that does what the command above says; ask me when it says nothing. Read SKILL.md in %s, the zemi skill's directory, then follow the New agent steps in agents.md there."
 
 // agentsCommands is /agents.
 func (h *Host) agentsCommands() []*Command {
@@ -1914,7 +1914,7 @@ func (h *Host) agentsCommands() []*Command {
 				return h.openAgents()
 			case "new":
 				// the line as typed, newlines included, with the prompt behind it
-				return h.sendCommandPrompt("agents", strings.TrimSpace(typed), agent.Attached("command", fmt.Sprintf(newAgentPrompt, h.zemiSkillDir())), attached)
+				return h.sendCommandPrompt("agents", strings.TrimSpace(typed), agent.Attached("command", fmt.Sprintf(_newAgentPrompt, h.zemiSkillDir())), attached)
 			case "open":
 				return h.openAgentFile(id)
 			case "show":
@@ -1969,7 +1969,7 @@ func (h *Host) openAgentFile(name string) error {
 	switch {
 	case err != nil:
 		return Usagef("%v", err)
-	case d.Name == forkAgent:
+	case d.Name == _forkAgent:
 		return Usagef("fork is not a file: it continues the conversation it is asked from, so there is nothing to edit")
 	case d.Path == "":
 		return Usagef("%s is builtin: agents/%s.md in %s replaces it", name, name, perm.TildePath(h.Dirs.ConfigHome))
@@ -2032,7 +2032,7 @@ func (h *Host) agentsOverlay() Overlay {
 	defs := h.agentDefs()
 	runs := h.agentRunItems()
 	sel := 0
-	if len(runs) > 0 && runs[0].Section == sectionRunning { // runs list running first
+	if len(runs) > 0 && runs[0].Section == _sectionRunning { // runs list running first
 		sel = 1
 	}
 	items := append([]OverlayItem{{Text: "New agent", Verb: VerbFill, Fill: "/agents new "}}, runs...)
@@ -2053,7 +2053,7 @@ func (h *Host) agentsOverlay() Overlay {
 			access = "read only"
 		}
 		fields := []string{"source", h.sourceOf(d.Source, d.Path), "model", model, "tools", tools, "access", access}
-		if d.Name == forkAgent {
+		if d.Name == _forkAgent {
 			// nothing of its own to describe: it sends the caller's own
 			fields = []string{"source", h.sourceOf(d.Source, d.Path), "prompt, tools, model", "the caller's"}
 		}
@@ -2065,7 +2065,7 @@ func (h *Host) agentsOverlay() Overlay {
 		}
 		if d.Path != "" {
 			fields = append(fields, "path", perm.TildePath(d.Path))
-			item.Keys = []ItemKey{{Key: "o", Desc: openInEditorLabel, Run: "agents open " + d.Name}}
+			item.Keys = []ItemKey{{Key: "o", Desc: _openInEditorLabel, Run: "agents open " + d.Name}}
 		}
 		item.Fields = fieldList(fields...)
 		items = append(items, item)
@@ -2121,7 +2121,7 @@ func (h *Host) agentRunFns(L *glua.LState, tb *glua.LTable) {
 		if strings.TrimSpace(prompt) == "" {
 			L.RaiseError("zemi.agent.run: prompt is required")
 		}
-		h.luaGate(L, luaAgentRun, clipRunes(prompt, 40), func() map[string]any {
+		h.luaGate(L, _luaAgentRun, clipRunes(prompt, 40), func() map[string]any {
 			return map[string]any{"prompt": prompt, "agent": rawString(L, spec, "agent")}
 		})
 		def, err := h.agentDef(rawString(L, spec, "agent"))

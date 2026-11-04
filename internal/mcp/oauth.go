@@ -71,16 +71,16 @@ type Auth struct {
 	loaded bool
 }
 
-var oauthHTTP = &http.Client{Timeout: 30 * time.Second}
+var _oauthHTTP = &http.Client{Timeout: 30 * time.Second}
 
-// tokenLockWait bounds one process's wait for the grant's refresh lock: the
+// _tokenLockWait bounds one process's wait for the grant's refresh lock: the
 // holder is a refresh call, bounded by tokenHTTP's own timeout, so a wait
 // past it means a wedged holder and the caller refreshes unlocked.
-const tokenLockWait = 35 * time.Second
+const _tokenLockWait = 35 * time.Second
 
-// tokenHTTP never follows a redirect: a token endpoint answers, and a 307
+// _tokenHTTP never follows a redirect: a token endpoint answers, and a 307
 // would re-send the grant and the client secret wherever it points.
-var tokenHTTP = &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
+var _tokenHTTP = &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
 	return http.ErrUseLastResponse
 }}
 
@@ -144,7 +144,7 @@ func (a *Auth) bearer(ctx context.Context) (string, error) {
 	// A lock that cannot be taken leaves the old race, and the refusal names
 	// itself.
 	if a.Path != "" {
-		if unlock, err := filelock.Lock(a.Path+".lock", tokenLockWait); err == nil {
+		if unlock, err := filelock.Lock(a.Path+".lock", _tokenLockWait); err == nil {
 			defer unlock()
 		}
 	}
@@ -295,7 +295,7 @@ type authMeta struct {
 	authURL, tokenURL, registerURL, resource, scope string
 }
 
-var challengeParam = regexp.MustCompile(`([a-zA-Z_]+)="([^"]*)"`)
+var _challengeParam = regexp.MustCompile(`([a-zA-Z_]+)="([^"]*)"`)
 
 // discover finds where to sign in: the 401 challenge or the well-known
 // resource metadata names the authorization server, whose metadata names
@@ -316,10 +316,10 @@ func discover(ctx context.Context, serverURL string) (*authMeta, error) {
 	if req, err := http.NewRequestWithContext(ctx, http.MethodPost, serverURL, strings.NewReader(init)); err == nil {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json, text/event-stream")
-		if resp, err := oauthHTTP.Do(req); err == nil {
+		if resp, err := _oauthHTTP.Do(req); err == nil {
 			resp.Body.Close()
 			for _, h := range resp.Header.Values("WWW-Authenticate") {
-				for _, p := range challengeParam.FindAllStringSubmatch(h, -1) {
+				for _, p := range _challengeParam.FindAllStringSubmatch(h, -1) {
 					switch p[1] {
 					case "resource_metadata":
 						// servers do send a path here, though RFC 9728 wants a URI
@@ -425,7 +425,7 @@ func getJSON(ctx context.Context, u string, out any) error {
 		return redactURL(err)
 	}
 	req.Header.Set("Accept", "application/json")
-	resp, err := oauthHTTP.Do(req)
+	resp, err := _oauthHTTP.Do(req)
 	if err != nil {
 		return redactURL(err)
 	}
@@ -453,7 +453,7 @@ func register(ctx context.Context, endpoint, redirect string) (id, secret string
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	resp, err := oauthHTTP.Do(req)
+	resp, err := _oauthHTTP.Do(req)
 	if err != nil {
 		return "", "", redactURL(err)
 	}
@@ -488,7 +488,7 @@ func tokenRequest(ctx context.Context, t *Token, form url.Values) (*Token, error
 	if t.ClientSecret != "" {
 		req.SetBasicAuth(url.QueryEscape(t.ClientID), url.QueryEscape(t.ClientSecret))
 	}
-	resp, err := tokenHTTP.Do(req)
+	resp, err := _tokenHTTP.Do(req)
 	if err != nil {
 		return nil, redactURL(err)
 	}
@@ -516,12 +516,12 @@ func tokenRequest(ctx context.Context, t *Token, form url.Values) (*Token, error
 	return &nt, nil
 }
 
-// callbackPorts are tried in order so the registered redirect URI stays
+// _callbackPorts are tried in order so the registered redirect URI stays
 // stable between sign-ins; any free port is the last resort.
-var callbackPorts = []int{40704, 40705, 40706, 40707, 40708, 40709, 40710, 40711, 40712, 40713, 0}
+var _callbackPorts = []int{40704, 40705, 40706, 40707, 40708, 40709, 40710, 40711, 40712, 40713, 0}
 
 func listenCallback(fixed int) (net.Listener, error) {
-	ports := callbackPorts
+	ports := _callbackPorts
 	if fixed > 0 {
 		ports = []int{fixed}
 	}
@@ -552,10 +552,10 @@ func writeCallbackPage(w http.ResponseWriter, server string, err error) {
 		data.Reason = err.Error()
 		w.WriteHeader(http.StatusBadRequest)
 	}
-	_ = callbackPage.Execute(w, data)
+	_ = _callbackPage.Execute(w, data)
 }
 
 //go:embed callback.html
-var callbackHTML string
+var _callbackHTML string
 
-var callbackPage = template.Must(template.New("callback").Parse(callbackHTML))
+var _callbackPage = template.Must(template.New("callback").Parse(_callbackHTML))

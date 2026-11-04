@@ -91,8 +91,8 @@ func TestPanickedHandleWait(t *testing.T) {
 // TestCloseJoinsTheGoroutinesItStarted: Close waits for a goroutine GoSafe
 // started to end, and a wedged one costs it closeWait, never the shutdown.
 func TestCloseJoinsTheGoroutinesItStarted(t *testing.T) {
-	old := closeWait
-	t.Cleanup(func() { closeWait = old })
+	old := _closeWait
+	t.Cleanup(func() { _closeWait = old })
 	for _, c := range []struct {
 		name   string
 		wedge  bool
@@ -110,7 +110,7 @@ func TestCloseJoinsTheGoroutinesItStarted(t *testing.T) {
 				defer close(ended)
 				<-release
 			})
-			closeWait = 100 * time.Millisecond
+			_closeWait = 100 * time.Millisecond
 			if c.wedge {
 				t.Cleanup(func() {
 					close(release)
@@ -136,7 +136,7 @@ func TestCloseJoinsTheGoroutinesItStarted(t *testing.T) {
 			}
 			min := 20 * time.Millisecond
 			if c.wedge {
-				min = closeWait // gave up at the cap, not before
+				min = _closeWait // gave up at the cap, not before
 			}
 			if waited < min {
 				t.Fatalf("Close returned after %s, before the goroutine settled", waited)

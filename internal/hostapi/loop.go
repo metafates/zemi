@@ -15,26 +15,26 @@ import (
 
 // a broken duration reads as one, "5x": refusing it beats a silent loop
 // over a typo (NOTE: a prompt that begins this way must be reworded)
-var loopDuration = regexp.MustCompile(`^\d+(\.\d+)?[a-z]+$`)
+var _loopDuration = regexp.MustCompile(`^\d+(\.\d+)?[a-z]+$`)
 
 const (
-	loopMin      = time.Minute    // the shortest interval, and the shortest delay the model may pick
-	loopMaxEvery = 24 * time.Hour // a longer interval belongs to cron
+	_loopMin      = time.Minute    // the shortest interval, and the shortest delay the model may pick
+	_loopMaxEvery = 24 * time.Hour // a longer interval belongs to cron
 
-	loopPaceMax  = time.Hour        // the longest delay the model may pick
-	loopFallback = 20 * time.Minute // after a self-paced run that named no delay
-	// NOTE: a busy agent delays a run by up to loopRetry; an idle hook is the
+	_loopPaceMax  = time.Hour        // the longest delay the model may pick
+	_loopFallback = 20 * time.Minute // after a self-paced run that named no delay
+	// NOTE: a busy agent delays a run by up to _loopRetry; an idle hook is the
 	// upgrade if that matters.
-	loopRetry = 30 * time.Second
+	_loopRetry = 30 * time.Second
 	// NOTE: 72h; a forgotten 1m loop is ~4k turns before it stops.
-	loopExpiry = 72 * time.Hour
+	_loopExpiry = 72 * time.Hour
 )
 
-// loopTag opens a loop run's note; a turn whose text holds it is a loop run.
-const loopTag = agent.AttachMarker + "\n<loop>\n"
+// _loopTag opens a loop run's note; a turn whose text holds it is a loop run.
+const _loopTag = agent.AttachMarker + "\n<loop>\n"
 
-// loopRunPrefix leads a loop run's body with its run number.
-const loopRunPrefix = "Run %d: "
+// _loopRunPrefix leads a loop run's body with its run number.
+const _loopRunPrefix = "Run %d: "
 
 // Loop is the live session's loop (/loop): a prompt sent again on a timer,
 // or when the model says, while this process keeps the session open. It is
@@ -93,14 +93,14 @@ func (h *Host) SetLoop(args string) error {
 	}
 	var every time.Duration
 	if d, err := time.ParseDuration(first); err == nil {
-		if d > loopMaxEvery {
+		if d > _loopMaxEvery {
 			return Usagef("%s is over the 24h ceiling; a longer wait belongs to cron", first)
 		}
-		if d < loopMin {
+		if d < _loopMin {
 			return Usagef("%s is under the 1m floor; a loop runs every 1m to 24h", first)
 		}
 		every, prompt = d, strings.TrimSpace(rest)
-	} else if loopDuration.MatchString(first) {
+	} else if _loopDuration.MatchString(first) {
 		// NOTE: a prompt that begins like a broken duration ("5x go") must be
 		// reworded; a silent loop over it runs the typo forever
 		return Usagef("%s is not a duration; /loop 5m <prompt> runs it every 5m, /loop <prompt> lets the model pace it", first)
@@ -164,17 +164,17 @@ func (h *Host) fireLoop(l *Loop) {
 	case ag.loop != l: // stopped or replaced
 		ag.mu.Unlock()
 		return
-	case h.RT.Clock().Now().Sub(l.Started) >= loopExpiry:
+	case h.RT.Clock().Now().Sub(l.Started) >= _loopExpiry:
 		ag.mu.Unlock()
-		_ = h.stopLoop(l, fmt.Sprintf("Loop stopped after %s (%d %s)", fmtEvery(loopExpiry), l.Runs, Plural(l.Runs, "run", "runs")))
+		_ = h.stopLoop(l, fmt.Sprintf("Loop stopped after %s (%d %s)", fmtEvery(_loopExpiry), l.Runs, Plural(l.Runs, "run", "runs")))
 		return
 	case ag.active:
-		h.armLoop(l, loopRetry, true)
+		h.armLoop(l, _loopRetry, true)
 		ag.mu.Unlock()
 		return
 	}
 	l.Runs++
-	h.armLoop(l, cmp.Or(l.Every, loopFallback), false)
+	h.armLoop(l, cmp.Or(l.Every, _loopFallback), false)
 	note := loopNote(l)
 	ag.loopRun = l
 	cmd := strings.HasPrefix(l.Prompt, "/")
@@ -186,7 +186,7 @@ func (h *Host) fireLoop(l *Loop) {
 	// the run's line is a work row: the prompt reaches the model attached,
 	// and the row is the one a rebuilt window reads from the log. Off the
 	// lock: the append refreshes, and the lock never waits on the UI.
-	h.work("", "loop", "", "", fmt.Sprintf(loopRunPrefix, l.Runs)+l.Prompt)
+	h.work("", "loop", "", "", fmt.Sprintf(_loopRunPrefix, l.Runs)+l.Prompt)
 	h.refresh()
 	var err error
 	if cmd {
@@ -208,7 +208,7 @@ func loopNote(l *Loop) string {
 	if l.Every == 0 {
 		next = "This runs again on its own. End your reply with a last line `next: <delay>` from 1m to 1h: short while something is about to change, long while nothing moves. End with `next: done` once the task is complete."
 	}
-	return agent.Attached("loop", fmt.Sprintf(loopRunPrefix+"%s\n%s", l.Runs, l.Prompt, next))
+	return agent.Attached("loop", fmt.Sprintf(_loopRunPrefix+"%s\n%s", l.Runs, l.Prompt, next))
 }
 
 // loopTurnEnded runs after each turn: an interrupted turn nobody typed stops
@@ -216,7 +216,7 @@ func loopNote(l *Loop) string {
 // and a self-paced one's last line schedules the next run or ends the loop.
 // Otherwise a run of a loop since replaced moves nothing.
 func (h *Host) loopTurnEnded(runner *agent.Runner, text string, err error, cancelled bool) {
-	own := strings.Contains(text, loopTag)
+	own := strings.Contains(text, _loopTag)
 	ag := h.agents
 	ag.mu.Lock()
 	l, run := ag.loop, ag.loopRun
@@ -303,7 +303,7 @@ func (h *Host) openLoop() error {
 	if l.Every == 0 {
 		pace = "when the model says"
 	}
-	stops := l.Started.Add(loopExpiry)
+	stops := l.Started.Add(_loopExpiry)
 	ui.OpenOverlay(Overlay{
 		ID: "loop", Title: "Loop", Origin: lua.OriginBuiltin, Fields: []Field{
 			{"prompt", l.Prompt},
@@ -344,5 +344,5 @@ func parseNext(reply string) (d time.Duration, done, ok bool) {
 	if err != nil {
 		return 0, false, false
 	}
-	return min(max(d, loopMin), loopPaceMax), false, true
+	return min(max(d, _loopMin), _loopPaceMax), false, true
 }

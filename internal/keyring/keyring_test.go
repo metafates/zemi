@@ -47,9 +47,9 @@ func (h hungChain) Delete(string, string) error        { <-h.release; return Err
 // (the "(no keychain)" toast's trigger), a read falls to the file, a
 // delete names the stall instead of hanging.
 func TestRefStalled(t *testing.T) {
-	oldDeadline, oldChain := chainDeadline, Chain
-	t.Cleanup(func() { chainDeadline, Chain = oldDeadline, oldChain })
-	chainDeadline = 25 * time.Millisecond
+	oldDeadline, oldChain := _chainDeadline, Chain
+	t.Cleanup(func() { _chainDeadline, Chain = oldDeadline, oldChain })
+	_chainDeadline = 25 * time.Millisecond
 	release := make(chan struct{})
 	t.Cleanup(func() { close(release) }) // the wedged calls end with the test
 	Chain = hungChain{release}

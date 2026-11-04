@@ -259,7 +259,7 @@ func (h *Host) modelAsk(L *glua.LState) int {
 	if prompt == "" {
 		L.RaiseError("zemi.model.ask: prompt is required")
 	}
-	ref := cmp.Or(rawString(L, spec, "model"), defaultRole)
+	ref := cmp.Or(rawString(L, spec, "model"), _defaultRole)
 	id := h.modelRef(ref)
 	system := rawString(L, spec, "system")
 	var schema *fantasy.Schema
@@ -267,7 +267,7 @@ func (h *Host) modelAsk(L *glua.LState) int {
 		s := checkSchema(L, tb)
 		schema = &s
 	}
-	stub := h.gateAsk(L, luaModelAsk, id, func() map[string]any {
+	stub := h.gateAsk(L, _luaModelAsk, id, func() map[string]any {
 		return map[string]any{"model": ref, "prompt": prompt, "system": system}
 	})
 	maxOut := int64(1024)
@@ -392,32 +392,32 @@ func (h *Host) bill(sid, modelID string, u fantasy.Usage) {
 	}
 }
 
-// roles are the kinds of model work config names a model for, as
-// models.<name>, in the order /model roles lists them. default is the root:
+// _roles are the kinds of model work config names a model for, as
+// models.<name>, in the order /model _roles lists them. default is the root:
 // the conversation and every role left unset run on it.
-var roles = []modelRole{
-	{defaultRole, "the conversation, and every role left unset"},
-	{agentsRole, "subagents"},
-	{compactRole, "summaries"},
+var _roles = []modelRole{
+	{_defaultRole, "the conversation, and every role left unset"},
+	{_agentsRole, "subagents"},
+	{_compactRole, "summaries"},
 }
 
 const (
-	// defaultRole is the conversation's own slot, the root every role left
+	// _defaultRole is the conversation's own slot, the root every role left
 	// unset follows.
-	defaultRole = "default"
-	agentsRole  = "agents"  // subagents with no model of their own
-	compactRole = "compact" // the summary builder
+	_defaultRole = "default"
+	_agentsRole  = "agents"  // subagents with no model of their own
+	_compactRole = "compact" // the summary builder
 )
 
 type modelRole struct{ Name, Desc string }
 
 func isRole(name string) bool {
-	return slices.ContainsFunc(roles, func(r modelRole) bool { return r.Name == name })
+	return slices.ContainsFunc(_roles, func(r modelRole) bool { return r.Name == name })
 }
 
 func roleNames() []string {
-	names := make([]string, len(roles))
-	for i, r := range roles {
+	names := make([]string, len(_roles))
+	for i, r := range _roles {
 		names[i] = r.Name
 	}
 	return names
@@ -470,7 +470,7 @@ func (h *Host) registeredTargets() []*modelTarget {
 	names := slices.Sorted(maps.Keys(h.agents.targets))
 	out := make([]*modelTarget, 0, len(names))
 	for _, n := range names {
-		if n == defaultRole {
+		if n == _defaultRole {
 			continue
 		}
 		out = append(out, h.agents.targets[n])
@@ -508,7 +508,7 @@ func (h *Host) isTarget(name string) bool {
 // default is the root: its key, then the provider default. "" when nothing
 // can run.
 func (h *Host) roleModel(name string) string {
-	if name == defaultRole {
+	if name == _defaultRole {
 		return cmp.Or(h.Settings.Str(config.KeyModelsDefault), h.Providers.Default())
 	}
 	if v := h.Settings.Str(config.ModelKey(name)); v != "" {
@@ -569,15 +569,15 @@ func (h *Host) delTarget(L *glua.LState, name string) (bool, error) {
 	return true, nil
 }
 
-// targetName is a slot's name: its key is models.<name>, so it is a lowercase
+// _targetName is a slot's name: its key is models.<name>, so it is a lowercase
 // word, dashes for readability like an agent file's name.
-var targetName = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
+var _targetName = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 
 // checkTargetName refuses a slot name: a builtin role is reserved, and so is
 // a name another origin holds.
 func (h *Host) checkTargetName(name string, by lua.Origin, byPath string) error {
 	switch {
-	case !targetName.MatchString(name):
+	case !_targetName.MatchString(name):
 		return fmt.Errorf("name %q must be a lowercase letter, then up to 31 lowercase letters, digits, _ and -", name)
 	case isRole(name):
 		return fmt.Errorf("%q is a builtin role", name)
@@ -603,7 +603,7 @@ func checkTargetModel(def string) error {
 // models are assumed to, until the model entry says vision = false or the
 // provider refused a request over them (imagesRejected).
 func (h *Host) takesImages(id string) bool {
-	if _, refused := imagesRejected.Load(id); refused {
+	if _, refused := _imagesRejected.Load(id); refused {
 		return false
 	}
 	m, ok := h.modelSpec(id)
@@ -617,10 +617,10 @@ func (h *Host) takesAudio(id string) bool {
 	return ok && m.Audio
 }
 
-// imagesRejected remembers models whose provider refused a request over
+// _imagesRejected remembers models whose provider refused a request over
 // its image parts, so the turn resends without them and later ones never
 // carry any (like capRejected, per process).
-var imagesRejected sync.Map
+var _imagesRejected sync.Map
 
 // imagesRefused reports a provider 400 about image input; the wording is
 // the provider's, so this is a text match like maxTokensRefused.
@@ -682,10 +682,10 @@ func (h *Host) contextWindow(modelID string) int64 {
 	return m.ContextWindow
 }
 
-// capRejected remembers models whose provider refused zemi's default output
+// _capRejected remembers models whose provider refused zemi's default output
 // cap: an older Anthropic model with a lower ceiling would otherwise fail
 // every turn until the user set max_output by hand.
-var capRejected sync.Map
+var _capRejected sync.Map
 
 // maxTokensRefused reports a provider error about the output cap zemi set.
 // Anthropic's context overflow names max_tokens too; compaction fixes that one.
@@ -705,7 +705,7 @@ func (h *Host) maxOutput(modelID string) int64 {
 	if m, _ := h.modelSpec(modelID); m.MaxOutput > 0 {
 		return m.MaxOutput
 	}
-	if _, refused := capRejected.Load(modelID); refused {
+	if _, refused := _capRejected.Load(modelID); refused {
 		return 0
 	}
 	prov := agent.ModelID(modelID).Provider()
@@ -756,15 +756,15 @@ func (h *Host) providerNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-// modelNumericKeys are a model entry's flat numeric fields: a quoted one,
+// _modelNumericKeys are a model entry's flat numeric fields: a quoted one,
 // which Lua makes easy, is refused rather than read as 0.
-var modelNumericKeys = []string{"context_window", "max_output", "max_attachments"}
+var _modelNumericKeys = []string{"context_window", "max_output", "max_attachments"}
 
-// pricingKeys are a model entry's pricing table, USD per million tokens.
-var pricingKeys = []string{"input", "output", "cache_write", "cache_read"}
+// _pricingKeys are a model entry's pricing table, USD per million tokens.
+var _pricingKeys = []string{"input", "output", "cache_write", "cache_read"}
 
-// modelAPIs are the wire formats a model entry may name, catwalk's three.
-var modelAPIs = []string{"completions", "responses", "messages"}
+// _modelAPIs are the wire formats a model entry may name, catwalk's three.
+var _modelAPIs = []string{"completions", "responses", "messages"}
 
 // modelCapabilities reads a model entry's capabilities table: the booleans
 // catwalk's schema carries, vision and audio today. Vision is assumed on and
@@ -850,7 +850,7 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		if !ok {
 			return agent.Spec{}, fmt.Errorf("%s must be a table", at)
 		}
-		if err := onlyKeys(e, at, append([]string{"id", "display", "capabilities", "decisions", "rate_limit", "api", "pricing"}, modelNumericKeys...)...); err != nil {
+		if err := onlyKeys(e, at, append([]string{"id", "display", "capabilities", "decisions", "rate_limit", "api", "pricing"}, _modelNumericKeys...)...); err != nil {
 			return agent.Spec{}, err
 		}
 		// the model's capabilities, catwalk's shape: a table of booleans,
@@ -864,7 +864,7 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 			return agent.Spec{}, err
 		}
 		nums := map[string]float64{}
-		for _, k := range modelNumericKeys {
+		for _, k := range _modelNumericKeys {
 			switch v := e[k].(type) {
 			case nil:
 			case float64:
@@ -881,10 +881,10 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 			if !ok {
 				return agent.Spec{}, fmt.Errorf("%s.pricing must be a table of numbers", at)
 			}
-			if err := onlyKeys(pt, at+".pricing", pricingKeys...); err != nil {
+			if err := onlyKeys(pt, at+".pricing", _pricingKeys...); err != nil {
 				return agent.Spec{}, err
 			}
-			for _, k := range pricingKeys {
+			for _, k := range _pricingKeys {
 				switch v := pt[k].(type) {
 				case nil:
 				case float64:
@@ -898,8 +898,8 @@ func providerSpecFromLua(L *glua.LState, idx int) (agent.Spec, error) {
 		if e["api"] != nil && !ok {
 			return agent.Spec{}, fmt.Errorf("%s.api must be a string, not a %T", at, e["api"])
 		}
-		if api != "" && !slices.Contains(modelAPIs, api) {
-			return agent.Spec{}, fmt.Errorf("%s.api %q: use %s", at, api, strings.Join(modelAPIs, ", "))
+		if api != "" && !slices.Contains(_modelAPIs, api) {
+			return agent.Spec{}, fmt.Errorf("%s.api %q: use %s", at, api, strings.Join(_modelAPIs, ", "))
 		}
 		id, ok := e["id"].(string)
 		if !ok || id == "" {
@@ -1044,7 +1044,7 @@ func (h *Host) modelNamespace(L *glua.LState) *glua.LTable {
 	}))
 	tb.RawSetString("set", L.NewFunction(func(L *glua.LState) int {
 		id := L.CheckString(1)
-		if err := h.modelSetErr(defaultRole, id); err != nil {
+		if err := h.modelSetErr(_defaultRole, id); err != nil {
 			L.RaiseError("zemi.model.set: %v", err)
 		}
 		// the default slot: what the conversation and every unset role run on

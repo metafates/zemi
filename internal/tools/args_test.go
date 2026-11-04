@@ -33,7 +33,7 @@ func TestArgsOf(t *testing.T) {
 		{"description", props["name"].(map[string]any)["description"], "the name"},
 		{"type", props["name"].(map[string]any)["type"], "string"},
 		{"required", required, []string{"name"}},
-		{"enum", props["kind"].(map[string]any)["enum"], questionTypes},
+		{"enum", props["kind"].(map[string]any)["enum"], _questionTypes},
 		{"slice", props["tags"].(map[string]any)["items"].(map[string]any)["type"], "string"},
 		{"nested city", props["nested"].(map[string]any)["properties"].(map[string]any)["city"].(map[string]any)["description"], "where"},
 		{"nested required", props["nested"].(map[string]any)["required"], []string{"city"}},

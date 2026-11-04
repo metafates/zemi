@@ -31,12 +31,12 @@ type Protocol struct {
 	HTTP *http.Client
 }
 
-// protocolPath is what the base URL is a base of.
-const protocolPath = "/systemone"
+// _protocolPath is what the base URL is a base of.
+const _protocolPath = "/systemone"
 
-// noul is the protocol's own name for a bool question, which is answered with
+// _noul is the protocol's own name for a bool question, which is answered with
 // the probability of `true` alone.
-const noul = "noul"
+const _noul = "noul"
 
 // protocolRequest is one call's body.
 type protocolRequest struct {
@@ -82,7 +82,7 @@ func protocolAsk(ctx context.Context, p Protocol, req Request) (Result, error) {
 		wire := protocolQuestion{Type: string(q.Type), Instructions: q.Instructions}
 		switch q.Type {
 		case TypeBool:
-			wire.Type, wire.Criteria = noul, q.Criteria
+			wire.Type, wire.Criteria = _noul, q.Criteria
 		case TypeChoice:
 			wire.Criteria = q.Criteria
 		case TypeScore:
@@ -94,7 +94,7 @@ func protocolAsk(ctx context.Context, p Protocol, req Request) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	url := strings.TrimSuffix(p.BaseURL, "/") + protocolPath
+	url := strings.TrimSuffix(p.BaseURL, "/") + _protocolPath
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
 	if err != nil {
 		return Result{}, err
@@ -162,11 +162,11 @@ func protocolAnswers(questions map[string]Question, got map[string]protocolAnswe
 func (a protocolAnswer) answer(q Question) (Answer, error) {
 	switch q.Type {
 	case TypeBool:
-		if a.Type != noul {
-			return Answer{}, fmt.Errorf("want a %s answer, got type %q", noul, a.Type)
+		if a.Type != _noul {
+			return Answer{}, fmt.Errorf("want a %s answer, got type %q", _noul, a.Type)
 		}
 		if a.Noul == nil {
-			return Answer{}, fmt.Errorf("the %s answer carries no probability", noul)
+			return Answer{}, fmt.Errorf("the %s answer carries no probability", _noul)
 		}
 		p := *a.Noul
 		if err := probability(p); err != nil {

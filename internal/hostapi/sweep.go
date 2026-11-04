@@ -42,7 +42,7 @@ func (h *Host) SweepBoot() {
 // snap store a live process writes stays fresh; one idle
 // this long is re-warmed by its next snapshot.
 func (h *Host) sweepTmp(dir string) {
-	cutoff := time.Now().Add(-scratchTTL)
+	cutoff := time.Now().Add(-_scratchTTL)
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
 		p := filepath.Join(dir, e.Name())

@@ -13,7 +13,7 @@ import (
 // turn.
 type knotRow struct{ glyphs, shades string }
 
-var knotArt = []knotRow{
+var _knotArt = []knotRow{
 	{"    #%@@%#+            ", "0000mrtuqoh000000000000"},
 	{"  #%##%#@@@%#+ @%#     ", "00nqopqovvuqofvvqo00000"},
 	{" #*=::   =*###* #%#%#  ", "0nlc42000bjpomiupqoto00"},
@@ -28,10 +28,10 @@ var knotArt = []knotRow{
 	{"      --==-            ", "0000008acc9000000000000"},
 }
 
-// knotWidth is the art's widest row, in cells.
-var knotWidth = func() int {
+// _knotWidth is the art's widest row, in cells.
+var _knotWidth = func() int {
 	w := 0
-	for _, r := range knotArt {
+	for _, r := range _knotArt {
 		w = max(w, len([]rune(r.glyphs)))
 	}
 	return w
@@ -73,11 +73,11 @@ func knotShade(r rune) string {
 
 // knotLogo is the knot, or one "zemi" row where it does not fit.
 func knotLogo(room int) [][]hostapi.Segment {
-	if room < knotWidth {
+	if room < _knotWidth {
 		return [][]hostapi.Segment{{{Text: "zemi", HL: "Title"}}}
 	}
-	out := make([][]hostapi.Segment, 0, len(knotArt))
-	for _, r := range knotArt {
+	out := make([][]hostapi.Segment, 0, len(_knotArt))
+	for _, r := range _knotArt {
 		out = append(out, knotRowSegs(r))
 	}
 	return out

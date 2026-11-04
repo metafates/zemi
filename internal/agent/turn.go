@@ -350,7 +350,7 @@ func (r *Runner) Send(ctx context.Context, userText string) error {
 	r.mu.Lock()
 	r.History = append(closeToolCalls(r.History), userMsg...)
 	if r.TextOnly {
-		r.History = stripImages(r.History, noImages)
+		r.History = stripImages(r.History, _noImages)
 	}
 	history := slices.Clone(r.History)
 	r.mu.Unlock()
@@ -600,7 +600,7 @@ func (r *Runner) Fork(tools []fantasy.AgentTool) (*Runner, error) {
 func (r *Runner) Aside(ctx context.Context, history []fantasy.Message, text string) (*fantasy.AgentResult, error) {
 	msgs := append(closeToolCalls(history), UserMessage(text))
 	if r.TextOnly {
-		msgs = stripImages(msgs, noImages)
+		msgs = stripImages(msgs, _noImages)
 	}
 	inert := make([]fantasy.AgentTool, len(r.tools))
 	for i, t := range r.tools {
@@ -627,7 +627,7 @@ func (r *Runner) baseCall(msgs []fantasy.Message) fantasy.AgentStreamCall {
 		msgs = append([]fantasy.Message{UserMessage(r.Context)}, msgs...)
 	}
 	call := fantasy.AgentStreamCall{
-		Messages: msgs, Temperature: r.Temperature, MaxRetries: &maxRetries,
+		Messages: msgs, Temperature: r.Temperature, MaxRetries: &_maxRetries,
 		ProviderOptions: r.ProviderOptions, Headers: r.Headers,
 	}
 	if n := r.MaxOutputTokens; n > 0 {
@@ -644,18 +644,18 @@ func (inertTool) Run(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, e
 }
 
 const (
-	// A loop is the same block of steps repeated: loopPeriod bounds how
+	// A loop is the same block of steps repeated: _loopPeriod bounds how
 	// long that block may be, and a run counts once it covers loopMinSteps
 	// steps or loopMinCycles repeats, whichever is more.
-	loopPeriod    = 3
-	loopMinSteps  = 6
-	loopMinCycles = 3
+	_loopPeriod    = 3
+	_loopMinSteps  = 6
+	_loopMinCycles = 3
 )
 
-// pollingTools are meant to be called again with the same input: waiting on
+// _pollingTools are meant to be called again with the same input: waiting on
 // a job is not a loop, it is how the model watches one. Such a step is left
 // out of the comparison entirely, so one poll cannot break a real loop's run.
-var pollingTools = set.Of(tools.ToolJobRead, tools.ToolJobList)
+var _pollingTools = set.Of(tools.ToolJobRead, tools.ToolJobList)
 
 // IsWaitCall is a call that waits on a run the model started detached: the
 // workflow tool's wait action, the agent tool's wait flag. Waiting is how the
@@ -674,9 +674,9 @@ func IsWaitCall(name, input string) bool {
 	return in.Wait || in.Action == "wait"
 }
 
-// maxRetries is the provider retries a step gets; a shared gateway's storm
+// _maxRetries is the provider retries a step gets; a shared gateway's storm
 // outlasts 5 spaced retries, and a run's only patience is this count.
-var maxRetries = 8
+var _maxRetries = 8
 
 // ErrToolLoop ends a turn the model has wedged: see repeatsToolCalls.
 var ErrToolLoop = errors.New("stopped: the agent kept repeating the same tool calls with the same results")
@@ -692,8 +692,8 @@ func repeatsToolCalls(steps []fantasy.StepResult) bool {
 	// the window is the longest block any period names, not the largest
 	// period's: floor(S/p) can make a shorter one need more
 	window := 0
-	for period := 1; period <= loopPeriod; period++ {
-		window = max(window, period*max(loopMinSteps/period, loopMinCycles))
+	for period := 1; period <= _loopPeriod; period++ {
+		window = max(window, period*max(_loopMinSteps/period, _loopMinCycles))
 	}
 	var sigs []string
 	for _, s := range slices.Backward(steps) {
@@ -703,7 +703,7 @@ func repeatsToolCalls(steps []fantasy.StepResult) bool {
 		}
 		sig, polling := "", false
 		for _, c := range calls {
-			if pollingTools.Has(tools.ToolName(c.ToolName)) || IsWaitCall(c.ToolName, c.Input) {
+			if _pollingTools.Has(tools.ToolName(c.ToolName)) || IsWaitCall(c.ToolName, c.Input) {
 				polling = true
 				break
 			}
@@ -720,7 +720,7 @@ func repeatsToolCalls(steps []fantasy.StepResult) bool {
 			break
 		}
 	}
-	for period := 1; period <= loopPeriod; period++ {
+	for period := 1; period <= _loopPeriod; period++ {
 		if repeatsCycle(sigs, period) {
 			return true
 		}
@@ -732,7 +732,7 @@ func repeatsToolCalls(steps []fantasy.StepResult) bool {
 // repeated: a model stuck on one call, or cycling a short pattern such as
 // the same edit and the same failing test.
 func repeatsCycle(sigs []string, period int) bool {
-	n := period * max(loopMinSteps/period, loopMinCycles)
+	n := period * max(_loopMinSteps/period, _loopMinCycles)
 	if len(sigs) < n {
 		return false
 	}
@@ -973,8 +973,8 @@ func closeToolCalls(history []fantasy.Message) []fantasy.Message {
 
 var errNotRun = errors.New("not run: the reply was cut off")
 
-// noImages is why TextOnly strips an image.
-const noImages = "the current model does not take images"
+// _noImages is why TextOnly strips an image.
+const _noImages = "the current model does not take images"
 
 // DropImages replaces every image in the history with a note naming why,
 // for a request the provider refused over one image's size.

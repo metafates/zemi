@@ -101,7 +101,7 @@ func (s *DB) AppendLog(kind LogKind, text, metaJSON, partsJSON, nodeText string)
 
 func nowStamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
-const logCols = `seq, kind, text, COALESCE(meta_json, ''), COALESCE(parts_json, ''), created_at, COALESCE(origin, '')`
+const _logCols = `seq, kind, text, COALESCE(meta_json, ''), COALESCE(parts_json, ''), created_at, COALESCE(origin, '')`
 
 func scanLog(r scanner) (e LogEntry, err error) {
 	err = r.Scan(&e.Seq, &e.Kind, &e.Text, &e.MetaJSON, &e.PartsJSON, &e.CreatedAt, &e.Origin)
@@ -110,13 +110,13 @@ func scanLog(r scanner) (e LogEntry, err error) {
 
 // LogFrom reads the log from seq on, oldest first, at most limit rows.
 func (s *DB) LogFrom(seq int64, limit int) ([]LogEntry, error) {
-	rows, err := s.db.Query(`SELECT `+logCols+` FROM log WHERE seq >= ? ORDER BY seq LIMIT ?`, seq, limit)
+	rows, err := s.db.Query(`SELECT `+_logCols+` FROM log WHERE seq >= ? ORDER BY seq LIMIT ?`, seq, limit)
 	return collect(rows, err, scanLog)
 }
 
 // LogTail reads the last n rows, oldest first.
 func (s *DB) LogTail(n int) ([]LogEntry, error) {
-	rows, err := s.db.Query(`SELECT `+logCols+` FROM (SELECT seq, kind, text, meta_json, parts_json, created_at, COALESCE(origin, '') AS origin
+	rows, err := s.db.Query(`SELECT `+_logCols+` FROM (SELECT seq, kind, text, meta_json, parts_json, created_at, COALESCE(origin, '') AS origin
 		FROM log ORDER BY seq DESC LIMIT ?) ORDER BY seq`, n)
 	return collect(rows, err, scanLog)
 }
@@ -124,14 +124,14 @@ func (s *DB) LogTail(n int) ([]LogEntry, error) {
 // LogKindBack reads the last n rows of one kind, oldest first: the composer
 // history's user rows.
 func (s *DB) LogKindBack(kind LogKind, limit int) ([]LogEntry, error) {
-	rows, err := s.db.Query(`SELECT `+logCols+` FROM (SELECT seq, kind, text, meta_json, parts_json, created_at, COALESCE(origin, '') AS origin
+	rows, err := s.db.Query(`SELECT `+_logCols+` FROM (SELECT seq, kind, text, meta_json, parts_json, created_at, COALESCE(origin, '') AS origin
 		FROM log WHERE kind = ? ORDER BY seq DESC LIMIT ?) ORDER BY seq`, kind, limit)
 	return collect(rows, err, scanLog)
 }
 
 // LogAt reads one row; ErrNotFound when absent.
 func (s *DB) LogAt(seq int64) (LogEntry, error) {
-	return one(s.db.QueryRow(`SELECT `+logCols+` FROM log WHERE seq = ?`, seq), scanLog)
+	return one(s.db.QueryRow(`SELECT `+_logCols+` FROM log WHERE seq = ?`, seq), scanLog)
 }
 
 // LogCount is how many rows the log holds.

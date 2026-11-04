@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const scratchTTL = 7 * 24 * time.Hour
+const _scratchTTL = 7 * 24 * time.Hour
 
 // removeTree removes dir; when that fails it makes the tree writable and
 // retries once, since a module cache copies its directories 0555 and one
@@ -55,7 +55,7 @@ func (h *Host) ensureScratch() {
 	}
 	now := time.Now()
 	_ = os.Chtimes(dir, now, now)
-	h.GoSafe("scratch sweep", func() { h.sweepScratch(now.Add(-scratchTTL)) })
+	h.GoSafe("scratch sweep", func() { h.sweepScratch(now.Add(-_scratchTTL)) })
 }
 
 // sweepScratch removes the pads of other projects, and those of the

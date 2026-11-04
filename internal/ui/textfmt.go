@@ -14,12 +14,12 @@ import (
 )
 
 var (
-	mdCode    = regexp.MustCompile("`([^`\n]+)`")
-	mdLink    = regexp.MustCompile(`!?\[([^\]]*)\]\([^)]*\)`)
-	mdStrong  = regexp.MustCompile(`\*\*(\S(?:[^*\n]*\S)?)\*\*`)
-	mdEm      = regexp.MustCompile(`\*(\S(?:[^*\n]*\S)?)\*`)
-	mdHeading = regexp.MustCompile(`^#{1,6}\s+`)
-	mdBullet  = regexp.MustCompile(`^\s*[*+-]\s+`)
+	_mdCode    = regexp.MustCompile("`([^`\n]+)`")
+	_mdLink    = regexp.MustCompile(`!?\[([^\]]*)\]\([^)]*\)`)
+	_mdStrong  = regexp.MustCompile(`\*\*(\S(?:[^*\n]*\S)?)\*\*`)
+	_mdEm      = regexp.MustCompile(`\*(\S(?:[^*\n]*\S)?)\*`)
+	_mdHeading = regexp.MustCompile(`^#{1,6}\s+`)
+	_mdBullet  = regexp.MustCompile(`^\s*[*+-]\s+`)
 )
 
 // stripMarkdown turns a reply's markdown into the plain text a notification
@@ -33,14 +33,14 @@ func stripMarkdown(s string) string {
 		if strings.HasPrefix(t, "```") || strings.HasPrefix(t, "~~~") {
 			continue
 		}
-		t = mdHeading.ReplaceAllString(t, "")
-		t = mdBullet.ReplaceAllString(t, "")
+		t = _mdHeading.ReplaceAllString(t, "")
+		t = _mdBullet.ReplaceAllString(t, "")
 		lines = append(lines, t)
 	}
-	s = mdCode.ReplaceAllString(strings.Join(lines, "\n"), "$1")
-	s = mdLink.ReplaceAllString(s, "$1")
-	s = mdStrong.ReplaceAllString(s, "$1")
-	return mdEm.ReplaceAllString(s, "$1")
+	s = _mdCode.ReplaceAllString(strings.Join(lines, "\n"), "$1")
+	s = _mdLink.ReplaceAllString(s, "$1")
+	s = _mdStrong.ReplaceAllString(s, "$1")
+	return _mdEm.ReplaceAllString(s, "$1")
 }
 
 // count is "3 workflows": the number and its noun, singular or plural.

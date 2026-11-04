@@ -34,23 +34,23 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// luaToolChunk names the tool's chunks; every run appends "#<n>".
-const luaToolChunk = "lua-tool"
+// _luaToolChunk names the tool's chunks; every run appends "#<n>".
+const _luaToolChunk = "lua-tool"
 
-// luaToolCallsMax is how many of one script's calls run at once, the rest
+// _luaToolCallsMax is how many of one script's calls run at once, the rest
 // waiting for a slot; a script that maps a listing to a command per file would
 // otherwise start them all together.
-const luaToolCallsMax = 8
+const _luaToolCallsMax = 8
 
-// luaToolCallWait bounds one call's wait; the tool's own timeout, a canceled
+// _luaToolCallWait bounds one call's wait; the tool's own timeout, a canceled
 // turn or a reload usually ends it first.
-const luaToolCallWait = time.Hour
+const _luaToolCallWait = time.Hour
 
-// luaReadOnly is what the model's Lua tool may call without the user's
+// _luaReadOnly is what the model's Lua tool may call without the user's
 // approval: members that only read zemi's state, and pure helpers. Every
 // other Go function exposed to Lua, handle methods included ("job:kill"),
 // raises in an unapproved run, so a new member asks until it is added here.
-var luaReadOnly = set.Of(
+var _luaReadOnly = set.Of(
 	"agent.current", "agent.list", "agent.prompt", "agent.usage",
 	"command.list", "composer.get",
 	"config.get", "config.schema",
@@ -69,10 +69,10 @@ var luaReadOnly = set.Of(
 	"workflow.list", "job:wait", "http:wait", "tool:wait",
 )
 
-// luaDelegated is what a script may call without the user's approval of the
+// _luaDelegated is what a script may call without the user's approval of the
 // script itself: zemi.tool.call decides for itself, one gate per call, and
 // reaches nothing else of zemi.
-var luaDelegated = set.Of("tool.call")
+var _luaDelegated = set.Of("tool.call")
 
 // luaEvalTool is the model's lua tool. build is toolsFor's builder, which a
 // script's callable set is built with under its own pipeline copy.
@@ -142,8 +142,8 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 		f, fi, err := tools.OpenRegular(path)
 		var b []byte
 		if err == nil {
-			if fi.Size() > maxAgentFileBytes {
-				err = fmt.Errorf("%s: exceeds %d bytes", in.Path, maxAgentFileBytes)
+			if fi.Size() > _maxAgentFileBytes {
+				err = fmt.Errorf("%s: exceeds %d bytes", in.Path, _maxAgentFileBytes)
 			} else {
 				b, err = io.ReadAll(f)
 			}
@@ -161,7 +161,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	}
 	// every run gets its own chunk name: guardLua tags an approved one, and a
 	// script's calls are keyed by it (h.scripts)
-	rel := fmt.Sprintf("%s#%d", luaToolChunk, h.luaRuns.Add(1))
+	rel := fmt.Sprintf("%s#%d", _luaToolChunk, h.luaRuns.Add(1))
 	// the script runs as user origin, so it asks like one: the whole script
 	// is the ask's preview, and once it is approved its own calls ride that
 	arg := "script"
@@ -185,7 +185,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 		set, _ := t.build(&pipe)
 		sctx, cancel := context.WithCancel(ctx)
 		defer cancel()
-		script := &luaScript{ctx: sctx, id: call.ID, tools: map[string]fantasy.AgentTool{}, calls: newLuaCalls(luaToolCallsMax)}
+		script := &luaScript{ctx: sctx, id: call.ID, tools: map[string]fantasy.AgentTool{}, calls: newLuaCalls(_luaToolCallsMax)}
 		for _, tool := range set {
 			// a script cannot start another script
 			if name := tool.Info().Name; name != string(tools.ToolLua) {
@@ -250,7 +250,7 @@ func (h *Host) runModelLua(ctx context.Context, src, rel string) (string, error)
 // from an unapproved Lua tool run may call only luaReadOnly and
 // luaDelegated.
 func (h *Host) guardLua(L *glua.LState, member string) {
-	if luaReadOnly.Has(member) || luaDelegated.Has(member) {
+	if _luaReadOnly.Has(member) || _luaDelegated.Has(member) {
 		return
 	}
 	if tool, approved := h.modelLuaRun(L); tool && !approved {
@@ -276,7 +276,7 @@ func (h *Host) modelLuaRun(L *glua.LState) (tool, approved bool) {
 // judged as that earlier run. "" when the caller is not a script's.
 func (h *Host) modelLuaScript(L *glua.LState) string {
 	path := h.RT.CurrentPath(L)
-	if strings.HasPrefix(path, luaToolChunk) {
+	if strings.HasPrefix(path, _luaToolChunk) {
 		if _, approved := h.luaApproved.Load(path); !approved {
 			return path
 		}
@@ -293,11 +293,11 @@ func (h *Host) modelLuaScript(L *glua.LState) string {
 		}
 		// load and loadstring tag chunks with the running origin, so only
 		// user code can name one like the tool's
-		if name, ok := strings.CutPrefix(f.Proto.SourceName, lua.OriginUser.ChunkName("")); ok && strings.HasPrefix(name, luaToolChunk) {
+		if name, ok := strings.CutPrefix(f.Proto.SourceName, lua.OriginUser.ChunkName("")); ok && strings.HasPrefix(name, _luaToolChunk) {
 			return name
 		}
 	}
-	if strings.HasPrefix(path, luaToolChunk) {
+	if strings.HasPrefix(path, _luaToolChunk) {
 		return path
 	}
 	return ""
@@ -377,7 +377,7 @@ func (h *Host) luaToolCall(L *glua.LState) int {
 	callCtx, cancel := context.WithCancel(s.ctx)
 	h.asyncTask(L, asyncTaskSpec{
 		subject: "zemi.tool.call", waitAPI: "zemi.tool.call", guard: "tool:",
-		ctx: callCtx, cancel: cancel, timeout: luaToolCallWait,
+		ctx: callCtx, cancel: cancel, timeout: _luaToolCallWait,
 		stop: cancel, res: &hnd.err,
 		body: func(callCtx context.Context) {
 			leave, ok := s.calls.enter(callCtx)

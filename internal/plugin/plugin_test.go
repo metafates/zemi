@@ -149,7 +149,7 @@ func TestScanSkipped(t *testing.T) {
 	if len(ps) != 1 || ps[0].Name != "good" {
 		t.Fatalf("plugins %v, want only good", ps)
 	}
-	want := []Skipped{{Name: "Bad Name", Why: nameWhy, Local: true}}
+	want := []Skipped{{Name: "Bad Name", Why: _nameWhy, Local: true}}
 	if err := os.Mkdir(filepath.Join(local, "Bad Name"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestScanSkipped(t *testing.T) {
 	if err != nil || !slices.Equal(skipped, want) {
 		t.Fatalf("skipped %v (%v), want %v", skipped, err, want)
 	}
-	if got := skipped[0].String(); got != "ignored: Bad Name ("+nameWhy+")" {
+	if got := skipped[0].String(); got != "ignored: Bad Name ("+_nameWhy+")" {
 		t.Errorf("String() = %q", got)
 	}
 }
@@ -325,7 +325,7 @@ func TestPlugins(t *testing.T) {
 		run(t, nil, "", false)
 		for _, name := range []string{"x", "why"} {
 			dir := filepath.Join(installed, name)
-			if target, err := os.Readlink(dir); err != nil || target != filepath.Join("..", "marketplaces", cacheDirName, "demo-market", name) {
+			if target, err := os.Readlink(dir); err != nil || target != filepath.Join("..", "marketplaces", _cacheDirName, "demo-market", name) {
 				t.Fatalf("%s: the install is not the cache link: %q, %v", name, target, err)
 			}
 			if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
@@ -370,7 +370,7 @@ func TestPlugins(t *testing.T) {
 	})
 	t.Run("the delete removed the cache clone too", func(t *testing.T) {
 		run(t, nil, "", false)
-		if _, err := os.Lstat(filepath.Join(d.PluginsRoot(), "marketplaces", cacheDirName, "demo-market", "link")); err == nil {
+		if _, err := os.Lstat(filepath.Join(d.PluginsRoot(), "marketplaces", _cacheDirName, "demo-market", "link")); err == nil {
 			t.Error("the deleted install's cache clone is still there")
 		}
 	})
@@ -734,7 +734,7 @@ func TestMarketplace(t *testing.T) {
 		}
 		prov, ok := MarketplaceOf(d, "rel-one")
 		if !ok || prov.Marketplace != "demo-market" || prov.Entry != "Rel One" || prov.Version != "1.0.0" ||
-			prov.Kind != kindLink || prov.ID == "" || len(prov.Manifest) == 0 {
+			prov.Kind != _kindLink || prov.ID == "" || len(prov.Manifest) == 0 {
 			t.Errorf("provenance: %+v, %v", prov, ok)
 		}
 		if got := provides(t, "rel-one"); !slices.Equal(got, []string{"2 skills"}) {
@@ -776,14 +776,14 @@ func TestMarketplace(t *testing.T) {
 	t.Run("a git entry clones into the cache and records the entry", func(t *testing.T) {
 		run(t, []string{"install", "git-one@demo-market"}, "\ngit-one v0.1.0\n", false)
 		dir := filepath.Join(d.PluginsRoot(), "installed", "git-one")
-		if target, err := os.Readlink(dir); err != nil || !strings.Contains(target, cacheDirName) {
+		if target, err := os.Readlink(dir); err != nil || !strings.Contains(target, _cacheDirName) {
 			t.Fatalf("the git entry is not a cache link: %q, %v", target, err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 			t.Fatal(err)
 		}
 		prov, ok := MarketplaceOf(d, "git-one")
-		if !ok || prov.Kind != kindCache || prov.ID == "" {
+		if !ok || prov.Kind != _kindCache || prov.ID == "" {
 			t.Errorf("provenance: %+v, %v", prov, ok)
 		}
 	})
@@ -793,7 +793,7 @@ func TestMarketplace(t *testing.T) {
 		if _, err := os.Lstat(filepath.Join(dir, "commands", "one.md")); err != nil {
 			t.Fatal(err)
 		}
-		if prov, ok := MarketplaceOf(d, "sub-one"); !ok || prov.Entry != "sub-one" || prov.Kind != kindCache {
+		if prov, ok := MarketplaceOf(d, "sub-one"); !ok || prov.Entry != "sub-one" || prov.Kind != _kindCache {
 			t.Errorf("provenance: %+v, %v", prov, ok)
 		}
 	})
@@ -1039,7 +1039,7 @@ func TestMarketplace(t *testing.T) {
 			t.Fatal(err)
 		}
 		prov, ok := MarketplaceOf(d, "root-one")
-		if !ok || prov.Kind != kindLink || prov.Version != "1.0.0" {
+		if !ok || prov.Kind != _kindLink || prov.Version != "1.0.0" {
 			t.Errorf("provenance: %+v, %v", prov, ok)
 		}
 	})
@@ -1065,7 +1065,7 @@ func TestMarketplace(t *testing.T) {
 			t.Fatalf("the legacy copy did not re-link: %q, %v", target, err)
 		}
 		prov, _ := MarketplaceOf(d, "legacy-rel")
-		if prov.Kind != kindLink || prov.ID != "legacy" {
+		if prov.Kind != _kindLink || prov.ID != "legacy" {
 			t.Errorf("provenance: %+v", prov)
 		}
 	})
@@ -1085,13 +1085,13 @@ func TestMarketplace(t *testing.T) {
 		run(t, []string{"marketplace", "list"}, "", false)
 		dir := filepath.Join(d.PluginsRoot(), "installed", "legacy-git")
 		target, err := os.Readlink(dir)
-		if err != nil || !strings.Contains(target, cacheDirName) {
+		if err != nil || !strings.Contains(target, _cacheDirName) {
 			t.Fatalf("the legacy clone did not move into the cache: %q, %v", target, err)
 		}
-		if _, err := os.Lstat(filepath.Join(d.PluginsRoot(), "marketplaces", cacheDirName, "demo-market", "legacy-git", ".git")); err != nil {
+		if _, err := os.Lstat(filepath.Join(d.PluginsRoot(), "marketplaces", _cacheDirName, "demo-market", "legacy-git", ".git")); err != nil {
 			t.Error("the clone did not survive the move:", err)
 		}
-		if prov, _ := MarketplaceOf(d, "legacy-git"); prov.Kind != kindCache || prov.ID != "legacygit" {
+		if prov, _ := MarketplaceOf(d, "legacy-git"); prov.Kind != _kindCache || prov.ID != "legacygit" {
 			t.Errorf("provenance: %+v", prov)
 		}
 	})
@@ -1104,20 +1104,20 @@ func TestMarketplace(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		f.Installs["legacy-sub"] = installReg{Marketplace: "demo-market", Entry: "sub-one", Version: "0.2.0", Kind: kindCopy, ID: "legacysub"}
+		f.Installs["legacy-sub"] = installReg{Marketplace: "demo-market", Entry: "sub-one", Version: "0.2.0", Kind: _kindCopy, ID: "legacysub"}
 		if err := f.save(d); err != nil {
 			t.Fatal(err)
 		}
 		run(t, []string{"marketplace", "update", "demo-market"}, "", false)
 		dir := filepath.Join(d.PluginsRoot(), "installed", "legacy-sub")
 		target, err := os.Readlink(dir)
-		if err != nil || !strings.Contains(target, cacheDirName) {
+		if err != nil || !strings.Contains(target, _cacheDirName) {
 			t.Fatalf("the legacy copy did not re-link: %q, %v", target, err)
 		}
 		if _, err := os.Lstat(filepath.Join(dir, "commands", "one.md")); err != nil {
 			t.Error("the cache clone's subdir is not behind the link:", err)
 		}
-		if prov, _ := MarketplaceOf(d, "legacy-sub"); prov.Kind != kindCache || prov.ID != "legacysub" {
+		if prov, _ := MarketplaceOf(d, "legacy-sub"); prov.Kind != _kindCache || prov.ID != "legacysub" {
 			t.Errorf("provenance: %+v", prov)
 		}
 	})

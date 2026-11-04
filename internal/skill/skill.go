@@ -67,18 +67,18 @@ type Skill struct {
 	Root, Data string
 }
 
-// maxNameLen caps a name: a skill's directory, a workflow file, a
+// _maxNameLen caps a name: a skill's directory, a workflow file, a
 // plugin-provided layer file.
-const maxNameLen = 64
+const _maxNameLen = 64
 
 // NameRule is what ValidName accepts, in the words every failure naming the
 // rule uses, the cap included: a name a save takes is one a loader keeps.
-var NameRule = fmt.Sprintf("a lowercase letter or digit, then up to %d lowercase letters, digits or dashes", maxNameLen-1)
+var NameRule = fmt.Sprintf("a lowercase letter or digit, then up to %d lowercase letters, digits or dashes", _maxNameLen-1)
 
-var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+var _nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 // ValidName reports whether name is usable as a skill directory name.
-func ValidName(name string) bool { return len(name) <= maxNameLen && nameRe.MatchString(name) }
+func ValidName(name string) bool { return len(name) <= _maxNameLen && _nameRe.MatchString(name) }
 
 // Parse validates one skill directory: SKILL.md must exist (not a
 // symlink), carry `---`-fenced yaml frontmatter whose name, when present,

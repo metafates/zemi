@@ -33,7 +33,7 @@ const (
 
 // IsClaude reports whether dir holds a Claude manifest.
 func IsClaude(dir string) bool {
-	return readHead(filepath.Join(dir, ClaudeManifestFile), headMax) != nil
+	return readHead(filepath.Join(dir, ClaudeManifestFile), _headMax) != nil
 }
 
 // ClaudeAuthor is a manifest's author.
@@ -383,9 +383,9 @@ type claudeMatcherJSON struct {
 	} `json:"hooks"`
 }
 
-// claudeVarRe matches ${NAME}, ${NAME:-default} and ${NAME:-}; the second
+// _claudeVarRe matches ${NAME}, ${NAME:-default} and ${NAME:-}; the second
 // group participates only when a default was written.
-var claudeVarRe = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}`)
+var _claudeVarRe = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}`)
 
 // ExpandClaude substitutes the Claude plugin variables in s: the plugin root
 // and its data dir first, so the environment cannot override them, then
@@ -396,8 +396,8 @@ func ExpandClaude(s, root, data string) string {
 		return s
 	}
 	s = ExpandRootData(s, root, data)
-	return claudeVarRe.ReplaceAllStringFunc(s, func(match string) string {
-		parts := claudeVarRe.FindStringSubmatch(match)
+	return _claudeVarRe.ReplaceAllStringFunc(s, func(match string) string {
+		parts := _claudeVarRe.FindStringSubmatch(match)
 		if v, ok := os.LookupEnv(parts[1]); ok {
 			return v
 		}
@@ -599,7 +599,7 @@ func readMarketplace(raw jsontext.Value, kind MarketplaceKind) (Marketplace, err
 		return Marketplace{}, err
 	}
 	m := Marketplace{Name: j.Name, Kind: kind, Renames: j.Renames}
-	if kind == KindZemi && !nameRe.MatchString(m.Name) {
+	if kind == KindZemi && !_nameRe.MatchString(m.Name) {
 		return Marketplace{}, fmt.Errorf("%q is not a marketplace name: lowercase letters, digits, '_' and '-'", m.Name)
 	}
 	installs := map[string]string{} // install name -> the first entry named it
@@ -614,8 +614,8 @@ func readMarketplace(raw jsontext.Value, kind MarketplaceKind) (Marketplace, err
 			installs[in] = e.Name
 		}
 		if kind == KindZemi {
-			if !nameRe.MatchString(e.Name) {
-				return Marketplace{}, fmt.Errorf("%q is not a plugin name: %s", e.Name, nameWhy)
+			if !_nameRe.MatchString(e.Name) {
+				return Marketplace{}, fmt.Errorf("%q is not a plugin name: %s", e.Name, _nameWhy)
 			}
 			if err := CheckUses(e.Uses); err != nil {
 				return Marketplace{}, err

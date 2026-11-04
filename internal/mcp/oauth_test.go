@@ -291,7 +291,7 @@ func TestCallbackPageMatchesLanding(t *testing.T) {
 		if !strings.HasPrefix(pair, "--") || !strings.Contains(pair, ": #") {
 			continue // not a color token (color-scheme, the fonts)
 		}
-		if !strings.Contains(callbackHTML, strings.TrimSuffix(pair, ";")) {
+		if !strings.Contains(_callbackHTML, strings.TrimSuffix(pair, ";")) {
 			t.Errorf("palette: %q is not on the callback page", pair)
 		}
 	}

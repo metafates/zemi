@@ -22,17 +22,17 @@ import (
 	"github.com/metafates/zemi/internal/proc"
 )
 
-// caseTimeout bounds one case in real time; the clock it reads is fake.
-const caseTimeout = 5 * time.Second
+// _caseTimeout bounds one case in real time; the clock it reads is fake.
+const _caseTimeout = 5 * time.Second
 
 // A plugin is code: a tree past these is a mistake, like a home dir.
 const (
-	copyFiles = 2000
-	copyBytes = 32 << 20
+	_copyFiles = 2000
+	_copyBytes = 32 << 20
 )
 
-// startsAtLine is a message that already names file:line.
-var startsAtLine = regexp.MustCompile(`^[^\s:]+:\d+:`)
+// _startsAtLine is a message that already names file:line.
+var _startsAtLine = regexp.MustCompile(`^[^\s:]+:\d+:`)
 
 // testPlugins is zemi plugin test <name|dir> [pattern] (DESIGN §5): every
 // case of the plugin's tests/*.lua whose "file: name" holds pattern
@@ -42,7 +42,7 @@ var startsAtLine = regexp.MustCompile(`^[^\s:]+:\d+:`)
 // NOTE: the plugin's skills, agents and workflows load, but only a model
 // drives them, so no case can.
 func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	return testPluginsWithin(ctx, caseTimeout, args, stdout, stderr)
+	return testPluginsWithin(ctx, _caseTimeout, args, stdout, stderr)
 }
 
 // testPluginsWithin is testPlugins with the per-case deadline its caller picks.
@@ -198,7 +198,7 @@ func bootError(pt *hostapi.PluginTest, err error) string {
 // stands alone.
 func printFail(w io.Writer, where, what string, lines []string) {
 	what, more, _ := strings.Cut(what, "\n")
-	if !startsAtLine.MatchString(what) {
+	if !_startsAtLine.MatchString(what) {
 		what = where + ": " + what
 	}
 	fmt.Fprintln(w, "FAIL "+what)
@@ -289,8 +289,8 @@ func copyPlugin(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		if files, size = files+1, size+info.Size(); files > copyFiles || size > copyBytes {
-			return fmt.Errorf("%s holds over %d files or %d MiB, which no plugin does", src, copyFiles, copyBytes>>20)
+		if files, size = files+1, size+info.Size(); files > _copyFiles || size > _copyBytes {
+			return fmt.Errorf("%s holds over %d files or %d MiB, which no plugin does", src, _copyFiles, _copyBytes>>20)
 		}
 		data, err := os.ReadFile(p)
 		if err != nil {

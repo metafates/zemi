@@ -22,10 +22,10 @@ import (
 // panic, and the wait ends with this instead of an empty success or its cap.
 var errPanicked = errors.New("the call panicked")
 
-// closeWait bounds Close's wait for the goroutines GoSafe started: one let go
+// _closeWait bounds Close's wait for the goroutines GoSafe started: one let go
 // by the runtime's close unwinds in milliseconds, and a wedged one costs the
 // shutdown a pause, never a hang.
-var closeWait = 5 * time.Second
+var _closeWait = 5 * time.Second
 
 func (h *Host) GoSafe(where string, fn func()) {
 	h.goes.add()

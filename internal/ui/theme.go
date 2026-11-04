@@ -22,13 +22,13 @@ type themeResolver struct {
 	sgr map[string]uv.Style // decoded "sgr:" hls; compose runs on the UI goroutine only
 }
 
-// chrome is the whorl chrome, built once: the palette never changes.
-var chrome = sync.OnceValue(func() map[string]uv.Style {
+// _chrome is the whorl _chrome, built once: the palette never changes.
+var _chrome = sync.OnceValue(func() map[string]uv.Style {
 	return chromeStyles(hostapi.Whorl)
 })
 
-// knot is the whorl knot's ramp, built once with the chrome.
-var knot = sync.OnceValue(func() [32]color.Color {
+// _knot is the whorl _knot's ramp, built once with the chrome.
+var _knot = sync.OnceValue(func() [32]color.Color {
 	return hostapi.KnotRamp(hostapi.Whorl)
 })
 
@@ -65,7 +65,7 @@ func (t themeResolver) group(hl string) (hostapi.HLSpec, bool) {
 // chromeStyle is a Host: style in the whorl palette, on the canvas where it
 // sets no fill; false for any other name.
 func (t *themeResolver) chromeStyle(hl string) (uv.Style, bool) {
-	st, ok := chrome()[hl]
+	st, ok := _chrome()[hl]
 	if ok && st.Bg == nil {
 		st.Bg = hostapi.Whorl.Bg
 	}
@@ -162,17 +162,17 @@ func drawOver(st uv.Style, spec hostapi.HLSpec, pal *hostapi.Palette) uv.Style {
 			st.Attrs &^= a.attr
 		}
 	}
-	if u, ok := underlines[spec.Underline]; ok {
+	if u, ok := _underlines[spec.Underline]; ok {
 		st.Underline = u
 	}
 	if spec.Shade != nil {
-		st.Fg = knot()[min(31, max(0, int(math.Round(*spec.Shade*31))))]
+		st.Fg = _knot()[min(31, max(0, int(math.Round(*spec.Shade*31))))]
 	}
 	return st
 }
 
 //exhaustive:enforce
-var underlines = map[hostapi.Underline]uv.Underline{
+var _underlines = map[hostapi.Underline]uv.Underline{
 	hostapi.UnderlineNone: uv.UnderlineNone, hostapi.UnderlineSingle: uv.UnderlineSingle, hostapi.UnderlineDouble: uv.UnderlineDouble,
 	hostapi.UnderlineCurl: uv.UnderlineCurly, hostapi.UnderlineDotted: uv.UnderlineDotted, hostapi.UnderlineDashed: uv.UnderlineDashed,
 }
@@ -208,8 +208,8 @@ func (t themeResolver) sgrStyle(params string) uv.Style {
 	return st
 }
 
-// xterm is the OkLab color of each of the 240 fixed 256-color entries.
-var xterm = func() (t [256][3]float64) {
+// _xterm is the OkLab color of each of the 240 fixed 256-color entries.
+var _xterm = func() (t [256][3]float64) {
 	for i := 16; i < 256; i++ {
 		c, _ := colorful.MakeColor(ansi.IndexedColor(i))
 		t[i][0], t[i][1], t[i][2] = c.OkLab()
@@ -233,7 +233,7 @@ func ansi256(c color.Color) color.Color {
 	grey := math.Hypot(a, b) < 0.03
 	best, dist := 16, math.Inf(1)
 	for i := 16; i < 256; i++ {
-		e := xterm[i]
+		e := _xterm[i]
 		d := (l - e[0]) * (l - e[0])
 		switch {
 		case !grey:
@@ -248,8 +248,8 @@ func ansi256(c color.Color) color.Color {
 	return ansi.IndexedColor(best)
 }
 
-// greys16 are the 16-color greys, dark to light.
-var greys16 = [...]ansi.BasicColor{ansi.Black, ansi.BrightBlack, ansi.White, ansi.BrightWhite}
+// _greys16 are the 16-color greys, dark to light.
+var _greys16 = [...]ansi.BasicColor{ansi.Black, ansi.BrightBlack, ansi.White, ansi.BrightWhite}
 
 // grey16 is the 16-color grey for an OKLCH lightness.
 func grey16(l float64) ansi.BasicColor {
@@ -306,14 +306,14 @@ func toProfile(st uv.Style, p colorprofile.Profile) uv.Style {
 // foreground that would vanish on it; a hue bg stands in for the grey
 // it is near.
 func apart(fg, bg color.Color, bg16 ansi.BasicColor) ansi.BasicColor {
-	i := slices.Index(greys16[:], bg16)
+	i := slices.Index(_greys16[:], bg16)
 	if i < 0 {
 		i = 1 + int(bg16/8)
 	}
-	if luma(fg) > luma(bg) && i < len(greys16)-1 || i == 0 {
-		return greys16[i+1]
+	if luma(fg) > luma(bg) && i < len(_greys16)-1 || i == 0 {
+		return _greys16[i+1]
 	}
-	return greys16[i-1]
+	return _greys16[i-1]
 }
 
 // ansi16 is what a 16-color terminal shows for a foreground: a grey by its

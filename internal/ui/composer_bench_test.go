@@ -13,8 +13,8 @@ func BenchmarkWrapComposer(b *testing.B) {
 		name string
 		text string
 	}{
-		{"ascii", strings.Repeat("quick brown fox jumps over the lazy dog ", 512)[:maxDraftChars]},
-		{"cjk", strings.Repeat("语言涉及很多细节", maxDraftChars/len([]rune("语言涉及很多细节"))+1)},
+		{"ascii", strings.Repeat("quick brown fox jumps over the lazy dog ", 512)[:_maxDraftChars]},
+		{"cjk", strings.Repeat("语言涉及很多细节", _maxDraftChars/len([]rune("语言涉及很多细节"))+1)},
 	} {
 		b.Run(bc.name, func(b *testing.B) {
 			app, _ := bootAgentApp(b, 120, 40)

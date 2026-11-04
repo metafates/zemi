@@ -20,7 +20,7 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-const shellTimeout = 2 * time.Minute
+const _shellTimeout = 2 * time.Minute
 
 // RunShell runs cmd (no permission gate: it is zemi's own shell path, not a
 // model tool's) without blocking the caller. The model reads its output, so
@@ -31,7 +31,7 @@ func (h *Host) RunShell(cmd string) {
 		return
 	}
 	h.GoSafe("shell", func() {
-		ctx, cancel := context.WithTimeout(context.Background(), shellTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), _shellTimeout)
 		defer cancel()
 		// the working rule names the command and a double esc stops it, as
 		// every other wait the user watches does
@@ -49,7 +49,7 @@ func (h *Host) RunShell(cmd string) {
 		status := CallOK
 		switch {
 		case errors.Is(ctx.Err(), context.DeadlineExceeded):
-			status, text = CallErr, strings.TrimSpace(text+"\ntimed out after "+shellTimeout.String())
+			status, text = CallErr, strings.TrimSpace(text+"\ntimed out after "+_shellTimeout.String())
 		case err != nil:
 			status, text = CallErr, strings.TrimSpace(text+"\n"+err.Error())
 		}

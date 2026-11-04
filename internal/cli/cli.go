@@ -36,8 +36,8 @@ import (
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
-// envHelp ends the root's help only.
-const envHelp = `{{if not .HasParent}}
+// _envHelp ends the root's help only.
+const _envHelp = `{{if not .HasParent}}
 Environment:
   ZEMI_CONFIG_HOME  config: init.lua, skills (~/.config/zemi)
   ZEMI_DATA_HOME    data: plugins, model catalog (~/.local/share/zemi)
@@ -52,9 +52,9 @@ Environment:
 Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
 {{end}}`
 
-// version is set at release time with -ldflags "-X main.version=v1.2.3";
+// _version is set at release time with -ldflags "-X main._version=v1.2.3";
 // otherwise the module version from the build info is used.
-var version string
+var _version string
 
 type options struct {
 	model  string
@@ -196,7 +196,7 @@ or run when it names a command (zemi "/review HEAD~1").`,
 		RunE:          func(*cobra.Command, []string) error { return status(launch(*o)) },
 	}
 	root.SuggestionsMinimumDistance = 2
-	root.SetHelpTemplate(root.HelpTemplate() + envHelp)
+	root.SetHelpTemplate(root.HelpTemplate() + _envHelp)
 	root.SetVersionTemplate("zemi {{.Version}}\n")
 	root.PersistentFlags().StringVarP(&o.dir, "cd", "C", "", "run in `dir`, as if zemi started there")
 	root.PersistentFlags().Bool("trust", false, "trust the project for this run; --trust=false does not")
@@ -701,9 +701,9 @@ func sanitizeWire(v reflect.Value) reflect.Value {
 	}
 }
 
-// roleStyles are the CLI's colors: basic ANSI ones, so the terminal's own
+// _roleStyles are the CLI's colors: basic ANSI ones, so the terminal's own
 // palette reads on a light or a dark ground. Any other role is plain.
-var roleStyles = map[string]uv.Style{
+var _roleStyles = map[string]uv.Style{
 	"ok":     {Fg: ansi.Green},
 	"warn":   {Fg: ansi.Yellow},
 	"danger": {Fg: ansi.Red},
@@ -711,8 +711,8 @@ var roleStyles = map[string]uv.Style{
 	"title":  {Fg: ansi.Blue, Attrs: uv.AttrBold},
 }
 
-// statusRole is the role of each status word the CLI prints.
-var statusRole = map[string]string{
+// _statusRole is the role of each status word the CLI prints.
+var _statusRole = map[string]string{
 	"ok": "ok", "on": "ok", "trusted": "ok",
 	"warn": "warn", "undecided": "warn",
 	"error": "danger", "missing": "danger",
@@ -722,7 +722,7 @@ var statusRole = map[string]string{
 // paint styles text in role for the output p describes: unchanged off a
 // terminal, bold alone under NO_COLOR.
 func paint(p colorprofile.Profile, role, text string) string {
-	st := uv.ConvertStyle(roleStyles[role], p)
+	st := uv.ConvertStyle(_roleStyles[role], p)
 	return st.Styled(text)
 }
 
@@ -778,7 +778,7 @@ func (t table) print(w io.Writer) {
 		for i, c := range t.cols {
 			roles[i] = c.role
 			if c.role == "status" {
-				roles[i] = statusRole[r[i]]
+				roles[i] = _statusRole[r[i]]
 			}
 		}
 		t.write(w, r, roles, width)
@@ -911,8 +911,8 @@ func confirm(c *cobra.Command, question string) bool {
 }
 
 func versionString() string {
-	if version != "" {
-		return normalizeVersion(version)
+	if _version != "" {
+		return normalizeVersion(_version)
 	}
 	if bi, ok := debug.ReadBuildInfo(); ok {
 		return normalizeVersion(bi.Main.Version)

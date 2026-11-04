@@ -45,7 +45,7 @@ func TestScratchSweep(t *testing.T) {
 		}
 		for p := c.file; ; p = filepath.Dir(p) {
 			if !c.fresh || p != c.file {
-				os.Chtimes(p, time.Now().Add(-2*scratchTTL), time.Now().Add(-2*scratchTTL))
+				os.Chtimes(p, time.Now().Add(-2*_scratchTTL), time.Now().Add(-2*_scratchTTL))
 			}
 			if p == c.pad {
 				break
@@ -57,7 +57,7 @@ func TestScratchSweep(t *testing.T) {
 			}
 		}
 	}
-	h.sweepScratch(time.Now().Add(-scratchTTL))
+	h.sweepScratch(time.Now().Add(-_scratchTTL))
 	for _, c := range cases {
 		if _, err := os.Stat(c.file); (err == nil) != c.kept {
 			t.Errorf("%s: kept %v, want %v", c.name, err == nil, c.kept)
@@ -72,7 +72,7 @@ func TestBootSweep(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	h.Dirs.CacheHome = t.TempDir()
-	old := time.Now().Add(-2 * scratchTTL)
+	old := time.Now().Add(-2 * _scratchTTL)
 	cases := []struct {
 		path string
 		mod  time.Time

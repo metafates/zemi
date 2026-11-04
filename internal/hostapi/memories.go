@@ -243,7 +243,7 @@ func (h *Host) memoriesZoomOverlay(id nodeID) (Overlay, bool) {
 // longer holds says so; enter reads the messages either way.
 func (h *Host) memoriesRow(id nodeID, text string, winLo int64) OverlayItem {
 	if text == "" {
-		text = placeholder
+		text = _placeholder
 	}
 	item := OverlayItem{
 		ID:   id.key(),
@@ -283,9 +283,9 @@ func (h *Host) chatWindowLo() int64 {
 	return -1
 }
 
-// rangePreviewRows bounds one preview body: a top-level line covers the
+// _rangePreviewRows bounds one preview body: a top-level line covers the
 // whole log, and a body view that read it would too.
-const rangePreviewRows = 500
+const _rangePreviewRows = 500
 
 // openMemoriesRange reads the messages one view line covers: the log's raw
 // rows, oldest first, in a read-only body.
@@ -307,7 +307,7 @@ func (h *Host) openMemoriesRange(l, i int64) error {
 	}
 	// NOTE: a top-level line covers the whole log; the preview reads its head
 	// and says so, the way a body view stays scrollable but bounded
-	rows, err := h.DB.LogFrom(id.first(), int(min(id.span(), count-id.first(), rangePreviewRows)))
+	rows, err := h.DB.LogFrom(id.first(), int(min(id.span(), count-id.first(), _rangePreviewRows)))
 	if err != nil {
 		return err
 	}
@@ -323,7 +323,7 @@ func (h *Host) openMemoriesRange(l, i int64) error {
 		// the date a non-coder cannot reach anywhere else: zoom names ids,
 		// the log row's stamp is the only when
 		if ms := stampMS(row.CreatedAt); ms > 0 {
-			head += " " + time.UnixMilli(ms).Format(previewStamp)
+			head += " " + time.UnixMilli(ms).Format(_previewStamp)
 		}
 		b.WriteString(head + ": " + row.Text)
 	}
@@ -342,8 +342,8 @@ func (h *Host) openMemoriesRange(l, i int64) error {
 	return nil
 }
 
-// previewStamp is a preview row's head date, local wall clock.
-const previewStamp = "2006-01-02 15:04"
+// _previewStamp is a preview row's head date, local wall clock.
+const _previewStamp = "2006-01-02 15:04"
 
 // viewStats sizes the live view from the store: the same snapshot feeds the
 // /usage row.
@@ -366,7 +366,7 @@ func viewStatsOf(ls []store.ViewLineText) (bytes, lines, levels, unbuilt int) {
 		lines++
 		if ln.Text == "" {
 			unbuilt++
-			bytes += len(placeholder)
+			bytes += len(_placeholder)
 		} else {
 			bytes += ln.Size
 		}

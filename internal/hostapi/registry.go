@@ -29,9 +29,9 @@ type RHS struct {
 	Move    string          // a list alias: the move it stands for ("down"), one of listMoves
 }
 
-// listMoves are the keys a list alias may stand for: moves only, so no
+// _listMoves are the keys a list alias may stand for: moves only, so no
 // alias answers, confirms or copies on a prompt.
-var listMoves = []string{"up", "down", "pgup", "pgdown", "home", "end", "ctrl+d", "ctrl+u"}
+var _listMoves = []string{"up", "down", "pgup", "pgdown", "home", "end", "ctrl+d", "ctrl+u"}
 
 // KeyBinding maps one key to a right-hand side.
 type KeyBinding struct {

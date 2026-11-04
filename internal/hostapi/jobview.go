@@ -15,9 +15,9 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// jobViewLines is how much of a job's output its view holds: the buffer
+// _jobViewLines is how much of a job's output its view holds: the buffer
 // keeps a megabyte, and the view wraps it again every second.
-const jobViewLines = 200
+const _jobViewLines = 200
 
 func (h *Host) jobsCommands() []*Command {
 	return []*Command{{
@@ -104,7 +104,7 @@ func (h *Host) jobsOverlay() Overlay {
 	for _, j := range all {
 		section := "Ended"
 		if j.Running() {
-			section = sectionRunning
+			section = _sectionRunning
 		}
 		item := OverlayItem{
 			ID:      j.ID,
@@ -157,10 +157,10 @@ func (h *Host) jobOverlay(j *tools.Job) Overlay {
 // left above them.
 func jobTail(out string) string {
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	if len(lines) <= jobViewLines {
+	if len(lines) <= _jobViewLines {
 		return strings.TrimRight(out, "\n")
 	}
-	return strings.Join(append([]string{MoreLines(len(lines) - jobViewLines)}, lines[len(lines)-jobViewLines:]...), "\n")
+	return strings.Join(append([]string{MoreLines(len(lines) - _jobViewLines)}, lines[len(lines)-_jobViewLines:]...), "\n")
 }
 
 // overlayTicker refreshes a screen once a second while something it shows is

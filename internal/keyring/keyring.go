@@ -38,7 +38,7 @@ type osChain struct{}
 
 var _ chain = osChain{}
 
-// chainDeadline is how long one OS keychain call may take. The call can
+// _chainDeadline is how long one OS keychain call may take. The call can
 // block forever in some session contexts (the first-run audit's probe hung
 // on kc.Set), where one hung call wedged every Go command queued behind it
 // on the shared worker and the file fallback never ran. Past the deadline
@@ -47,7 +47,7 @@ var _ chain = osChain{}
 // NOTE: the ceiling is one leaked goroutine per timed-out call, held until
 // the keychain answers; joining it would mean waiting out the stall this
 // deadline exists to escape.
-var chainDeadline = 3 * time.Second
+var _chainDeadline = 3 * time.Second
 
 // bound runs one OS keychain call to the deadline.
 func bound(fn func() error) error {
@@ -56,8 +56,8 @@ func bound(fn func() error) error {
 	select {
 	case err := <-errc:
 		return err
-	case <-time.After(chainDeadline):
-		return fmt.Errorf("the OS keychain did not answer within %s", chainDeadline)
+	case <-time.After(_chainDeadline):
+		return fmt.Errorf("the OS keychain did not answer within %s", _chainDeadline)
 	}
 }
 

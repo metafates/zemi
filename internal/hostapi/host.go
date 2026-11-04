@@ -209,8 +209,8 @@ const (
 	StatusOff      ServiceStatus = "off" // a plugin the user turned off
 )
 
-// serviceStatuses pins runtime/types/zemi.lua's zemi.ServiceStatus.
-var serviceStatuses = []ServiceStatus{StatusIdle, StatusStarting, StatusReady, StatusFailed, StatusSignIn, StatusStopped, StatusOff}
+// _serviceStatuses pins runtime/types/zemi.lua's zemi.ServiceStatus.
+var _serviceStatuses = []ServiceStatus{StatusIdle, StatusStarting, StatusReady, StatusFailed, StatusSignIn, StatusStopped, StatusOff}
 
 // OverlayAnchor puts an overlay in line with the composer frame, by the
 // pill that opened it; "" centers it.
@@ -221,7 +221,7 @@ const (
 	OverlayBottomRight OverlayAnchor = "bottom-right"
 )
 
-var overlayAnchors = []OverlayAnchor{OverlayBottomLeft, OverlayBottomRight}
+var _overlayAnchors = []OverlayAnchor{OverlayBottomLeft, OverlayBottomRight}
 
 // ComposerOp is a zemi.composer edit.
 type ComposerOp string
@@ -252,7 +252,7 @@ const (
 	ScrollStickyDown ScrollAction = "sticky_down"
 )
 
-var scrollActions = []ScrollAction{ScrollUp, ScrollDown, ScrollTop, ScrollBottom, ScrollLineUp, ScrollLineDown, ScrollStickyUp, ScrollStickyDown}
+var _scrollActions = []ScrollAction{ScrollUp, ScrollDown, ScrollTop, ScrollBottom, ScrollLineUp, ScrollLineDown, ScrollStickyUp, ScrollStickyDown}
 
 // RowKind is a transcript row's shape. RowReasoning is a finished thinking
 // block the chat widget collapses to a one-line summary.
@@ -301,14 +301,14 @@ var Marks = map[MarkKind]Mark{
 // Spinner is the running mark's frames, one per frame tick.
 var Spinner = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-// projectEmoji pools the emoji a project's marker is picked from: one
+// _projectEmoji pools the emoji a project's marker is picked from: one
 // codepoint, emoji presentation (colored without VS16), East Asian Width W
 // by UAX #11 (so zemi.ui.width and the terminal agree on 2 cells), Emoji 11.0
 // or older so every font that ships emoji has them, and distinct and
 // neutral: no faces, hands, people, flags or symbols the UI draws. The pool
 // test pins the rest; the entries were curated against Unicode's
 // emoji-variants data.
-var projectEmoji = []string{
+var _projectEmoji = []string{
 	"🌊", "💧", "☔", "⛅", "🌈", "🌙", "⭐", "🌍", "🌵", "🌱",
 	"🍀", "🍄", "🌻", "🦋", "🐢", "🐙", "🐳", "🐧", "🐚", "📎",
 	"📌", "🔖", "📚", "📦", "🔑", "🔨", "🧰", "🧩", "🧭", "💡",
@@ -339,7 +339,7 @@ func ProjectMark(root string) string {
 	for i := range len(root) {
 		h = (h ^ uint32(root[i])) * 16777619
 	}
-	return projectEmoji[h%uint32(len(projectEmoji))]
+	return _projectEmoji[h%uint32(len(_projectEmoji))]
 }
 
 // markedTitle is the marker-prefixed title the project surfaces draw: the
@@ -461,7 +461,7 @@ func rowOutput(tool, out string) string {
 		// compact local one. Already-compacted text fails the parse and
 		// passes through, so the rebuild is idempotent.
 		if at, err := time.Parse(time.RFC3339Nano, out); err == nil {
-			out = at.Local().Format(previewStamp)
+			out = at.Local().Format(_previewStamp)
 		}
 	}
 	return shortOutput(out)
@@ -836,7 +836,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		// the window opens on the log's tail: the chat that never ends has
 		// no resume, only more of itself. The tail is read with slack so
 		// its head can sit on a turn start, not an answer's shed remains.
-		if rows, err := h.DB.LogTail(chatWindowRows * 3); err == nil {
+		if rows, err := h.DB.LogTail(_chatWindowRows * 3); err == nil {
 			h.session.Transcript = alignTrim(logRows(rows))
 			h.stampReset(h.session.Transcript)
 			h.markDeadTail()
@@ -856,10 +856,10 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	}
 	h.hostActions = map[string]func(h *Host, args string) error{
 		"zemi.ui.help":    func(h *Host, _ string) error { return h.OpenHelp() },
-		"zemi.model.pick": func(h *Host, _ string) error { return h.OpenModelPicker(defaultRole) },
+		"zemi.model.pick": func(h *Host, _ string) error { return h.OpenModelPicker(_defaultRole) },
 		"zemi.reload":     nil, // Go-reserved; never dispatched here
 	}
-	for _, a := range scrollActions {
+	for _, a := range _scrollActions {
 		h.hostActions["zemi.ui.scroll."+string(a)] = func(h *Host, _ string) error { h.scroll(a); return nil }
 	}
 	// insert takes the text after the action's name
@@ -924,13 +924,13 @@ type Session struct {
 	Transcript []ChatMessage
 }
 
-// chatWindowRows is how many settled rows the live transcript holds: the
+// _chatWindowRows is how many settled rows the live transcript holds: the
 // log is eternal, the chat's working set is not. Older rows stay reachable
 // through zoom and the paged store reads.
-const chatWindowRows = 1000
+const _chatWindowRows = 1000
 
-// stampBatch bounds one read of the log rows the seq stamping pairs.
-const stampBatch = 256
+// _stampBatch bounds one read of the log rows the seq stamping pairs.
+const _stampBatch = 256
 
 // appendTranscript appends rows to the window and trims its head once it
 // passes chatWindowRows. Replaced whole, like setTranscript: readers share
@@ -975,15 +975,15 @@ func (h *Host) trimTranscript(tr []ChatMessage) []ChatMessage {
 // never empties the window, and a turn longer than the clip's slack does
 // the same by starting at its own first row.
 func alignTrim(tr []ChatMessage) []ChatMessage {
-	if len(tr) <= chatWindowRows {
+	if len(tr) <= _chatWindowRows {
 		return tr
 	}
-	cut := len(tr) - chatWindowRows
+	cut := len(tr) - _chatWindowRows
 	for cut < len(tr) && !turnStart(tr[cut]) {
 		cut++
 	}
 	if cut >= len(tr) { // no turn start in the kept span: the plain clip wins
-		cut = len(tr) - chatWindowRows
+		cut = len(tr) - _chatWindowRows
 	}
 	return tr[cut:]
 }
@@ -1778,7 +1778,7 @@ const (
 	TurnCancelled TurnEnd = "cancelled"
 )
 
-var turnEnds = []TurnEnd{TurnOK, TurnError, TurnCancelled}
+var _turnEnds = []TurnEnd{TurnOK, TurnError, TurnCancelled}
 
 // Waiting is the prompt holding a turn: a permission ask, a plan to
 // approve or a question to answer.
@@ -1790,7 +1790,7 @@ const (
 	WaitAnswer   Waiting = "answer"
 )
 
-var waitings = []Waiting{WaitApproval, WaitPlan, WaitAnswer}
+var _waitings = []Waiting{WaitApproval, WaitPlan, WaitAnswer}
 
 // ClockLayout formats UIState.Time, the wall clock the screen shows.
 const ClockLayout = "15:04"
@@ -2271,7 +2271,7 @@ func (h *Host) Close() {
 	}
 	// joined after the chat: the builder's worker ends on the chat's close,
 	// so waiting first would wait out the whole cap on it every time
-	ctx, cancel := context.WithTimeout(context.Background(), closeWait)
+	ctx, cancel := context.WithTimeout(context.Background(), _closeWait)
 	defer cancel()
 	if err := h.goes.wait(ctx); err != nil {
 		h.Log.Warn("goroutines outlived the close", "origin", "host", "error", err)

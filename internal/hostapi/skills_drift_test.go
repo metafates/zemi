@@ -14,8 +14,8 @@ import (
 	"github.com/metafates/zemi/runtime"
 )
 
-// undocumented lists names the builtin skills leave out on purpose.
-var undocumented = map[string]string{}
+// _undocumented lists names the builtin skills leave out on purpose.
+var _undocumented = map[string]string{}
 
 // TestSkillsCoverSurface fails when a setting, model tool, event, host
 // action or slash command is missing from every builtin skill, so zemi's
@@ -36,7 +36,7 @@ func TestSkillsCoverSurface(t *testing.T) {
 	for _, tool := range tools.All(&tools.Pipeline{}) {
 		names = append(names, tool.Info().Name)
 	}
-	for ev := range eventCatalogue {
+	for ev := range _eventCatalogue {
 		names = append(names, ev)
 	}
 	for action := range h.hostActions {
@@ -48,7 +48,7 @@ func TestSkillsCoverSurface(t *testing.T) {
 		names = append(names, "/"+c.Name)
 	}
 	for _, name := range names {
-		if _, skip := undocumented[name]; !skip && !strings.Contains(text, name) {
+		if _, skip := _undocumented[name]; !skip && !strings.Contains(text, name) {
 			t.Errorf("no builtin skill mentions %q", name)
 		}
 	}
@@ -96,12 +96,12 @@ func TestBuiltinSkillReferences(t *testing.T) {
 	// a ready prompt sends the model to the zemi skill's directory
 	const zemi = "skills/zemi"
 	rows := []struct{ name, text, dir string }{
-		{"newPluginPrompt", newPluginPrompt, zemi},
-		{"modifyPluginPrompt", modifyPluginPrompt, zemi},
-		{"newAgentPrompt", newAgentPrompt, zemi},
-		{"newWorkflowPrompt", newWorkflowPrompt, zemi},
-		{"errorAskPrompt", errorAskPrompt, zemi},
-		{"workflowToolDesc", workflowToolDesc, zemi},
+		{"newPluginPrompt", _newPluginPrompt, zemi},
+		{"modifyPluginPrompt", _modifyPluginPrompt, zemi},
+		{"newAgentPrompt", _newAgentPrompt, zemi},
+		{"newWorkflowPrompt", _newWorkflowPrompt, zemi},
+		{"errorAskPrompt", _errorAskPrompt, zemi},
+		{"workflowToolDesc", _workflowToolDesc, zemi},
 		{"the lua tool", lua, zemi},
 	}
 	for path, body := range bodies {

@@ -144,7 +144,7 @@ func ClaimForDelete(path string) (sessions []string, release func(), err error) 
 func ShortID() string {
 	var b [5]byte
 	rand.Read(b[:])
-	return shortEnc.EncodeToString(b[:])
+	return _shortEnc.EncodeToString(b[:])
 }
 
 // ErrUnmigrated is a store the embedded migrations have not run on, which a
@@ -231,10 +231,10 @@ func (s *DB) unmigrated() error {
 func (s *DB) Close() error { return s.db.Close() }
 
 //go:embed migrations/*.sql
-var migrations embed.FS
+var _migrations embed.FS
 
-// migrateLockWait is how long an open waits for another zemi's migration.
-const migrateLockWait = 5 * time.Second
+// _migrateLockWait is how long an open waits for another zemi's migration.
+const _migrateLockWait = 5 * time.Second
 
 // Query runs one statement and returns its rows; a read-only open refuses
 // anything that writes.
@@ -242,9 +242,9 @@ func (s *DB) Query(query string, args ...any) (*sql.Rows, error) {
 	return s.db.Query(query, args...)
 }
 
-// shortEnc is lowercase Crockford base32: no i, l, o or u, the same name on a
+// _shortEnc is lowercase Crockford base32: no i, l, o or u, the same name on a
 // case-folding disk, and never a leading '-'.
-var shortEnc = base32.NewEncoding("0123456789abcdefghjkmnpqrstvwxyz").WithPadding(base32.NoPadding)
+var _shortEnc = base32.NewEncoding("0123456789abcdefghjkmnpqrstvwxyz").WithPadding(base32.NoPadding)
 
 // IDShape is what ShortID makes, the one check for a file name read back as an id.
 var IDShape = regexp.MustCompile(`^[0-9a-hjkmnp-tv-z]{8}$`)
@@ -254,7 +254,7 @@ var IDShape = regexp.MustCompile(`^[0-9a-hjkmnp-tv-z]{8}$`)
 // made before goose has no version table: the baseline migration is all
 // CREATE ... IF NOT EXISTS, so it only stamps the schema already there.
 func (s *DB) migrate() error {
-	files, err := fs.Sub(migrations, "migrations")
+	files, err := fs.Sub(_migrations, "migrations")
 	if err != nil {
 		return fmt.Errorf("store: migrations: %w", err)
 	}
@@ -262,7 +262,7 @@ func (s *DB) migrate() error {
 	if err != nil {
 		return fmt.Errorf("store: %s: %w", s.path, err)
 	}
-	unlock, err := filelock.Lock(s.path+".lock", migrateLockWait)
+	unlock, err := filelock.Lock(s.path+".lock", _migrateLockWait)
 	if err != nil {
 		return fmt.Errorf("store: migrate %s: %w", s.path, err)
 	}
@@ -340,7 +340,7 @@ func isNotADB(err error) bool {
 // migrationCount is the newest version the embedded migrations reach; the
 // files are numbered 0001.. in step with goose's versions.
 func migrationCount() int {
-	files, _ := fs.Glob(migrations, "migrations/*.sql")
+	files, _ := fs.Glob(_migrations, "migrations/*.sql")
 	return len(files)
 }
 

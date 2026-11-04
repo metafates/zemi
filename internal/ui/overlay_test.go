@@ -73,7 +73,7 @@ func TestToggleOverlayStaysOpen(t *testing.T) {
 	if st := a.overlays[0]; !st.active || st.query != "b " || len(st.visible) != 1 || on != wasOn {
 		t.Fatalf("space in a filter: on %v -> %v, %+v", wasOn, on, st.listFilter)
 	}
-	a.openOverlay(hostapi.Overlay{ID: "t", Origin: lua.OriginBuiltin, Items: items()[:filterMin-1]})
+	a.openOverlay(hostapi.Overlay{ID: "t", Origin: lua.OriginBuiltin, Items: items()[:_filterMin-1]})
 	if !a.overlays[0].filterable {
 		t.Fatal("a rebuild to fewer than filterMin rows dropped the filter row")
 	}
@@ -439,7 +439,7 @@ func TestModalDimsBackground(t *testing.T) {
 		t.Fatalf("%q not on screen", text)
 		return hostapi.Segment{}
 	}
-	if s := seg("hello"); s.Fade != modalFade || s.HL == hostapi.ChromeDim {
+	if s := seg("hello"); s.Fade != _modalFade || s.HL == hostapi.ChromeDim {
 		t.Fatalf("under an overlay: %+v", s)
 	}
 	// a box covers its own cells and nothing else: every glyph the backdrop drew
@@ -457,7 +457,7 @@ func TestModalDimsBackground(t *testing.T) {
 			}
 		}
 	}
-	if s := dropCells(app.lastRows[r.Min.Y+1], r.Min.X-1)[0]; s.HL == "" || s.Fade != modalFade {
+	if s := dropCells(app.lastRows[r.Min.Y+1], r.Min.X-1)[0]; s.HL == "" || s.Fade != _modalFade {
 		t.Fatalf("the chat beside the box: %+v", s)
 	}
 	if s := seg("Copied"); s.Fade != 0 {
@@ -473,7 +473,7 @@ func TestModalDimsBackground(t *testing.T) {
 	app.renderSync(t)
 	app.Frame()
 	app.openOverlay(hostapi.Overlay{ID: "t2", Title: "T", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "a"}}})
-	if s := seg("under 00"); s.OnPanel || s.Fade != modalFade {
+	if s := seg("under 00"); s.OnPanel || s.Fade != _modalFade {
 		t.Fatalf("a box behind the modal: %+v", s)
 	}
 	app.overlays = nil
@@ -577,7 +577,7 @@ func TestOverlayWidthIsFixed(t *testing.T) {
 	if got := width(); got != opened {
 		t.Fatalf("the box went %d cells wide on the narrower row, it opened at %d", got, opened)
 	}
-	if opened < listBoxW+4 || opened > 120-4 {
+	if opened < _listBoxW+4 || opened > 120-4 {
 		t.Fatalf("the box opened at %d cells, outside a menu's width", opened)
 	}
 }
@@ -2577,7 +2577,7 @@ func TestBodyPartsWell(t *testing.T) {
 // of their own, h climbs back to the view whole, esc closes the whole menu.
 func TestMemoriesDrillBack(t *testing.T) {
 	_, cfg := tempHome(t)
-	app, host := bootAgentAppOn(t, 140, 40, tipClock, cfg)
+	app, host := bootAgentAppOn(t, 140, 40, _tipClock, cfg)
 	if _, err := host.Commands.Add(&hostapi.Command{
 		Name: "memories", NArgs: hostapi.NArgsAny,
 		GoFn: func(h *hostapi.Host, args string, confirm bool) error { return h.MemoriesCommand(args) },

@@ -270,11 +270,11 @@ func TestToastCap(t *testing.T) {
 	for _, r := range toastTray(app.toasts, 80, 24) {
 		rows = append(rows, strings.TrimSpace(hostapi.SegsText(r)))
 	}
-	if len(rows) != 2+toastRows || !strings.HasPrefix(rows[0], "┌ Could not run ctrl+t ─") || !strings.HasPrefix(rows[1], "│ ~/.config/zemi/init.lua:10: something") || !strings.HasPrefix(rows[toastRows], "│ … 5 more lines /errors ") || strings.Contains(strings.Join(rows, "\n"), "traceback") {
+	if len(rows) != 2+_toastRows || !strings.HasPrefix(rows[0], "┌ Could not run ctrl+t ─") || !strings.HasPrefix(rows[1], "│ ~/.config/zemi/init.lua:10: something") || !strings.HasPrefix(rows[_toastRows], "│ … 5 more lines /errors ") || strings.Contains(strings.Join(rows, "\n"), "traceback") {
 		t.Fatalf("toast rows: %q", rows)
 	}
 	app.pushToast(slog.LevelWarn, "", "line one\nline two\nline three\nline four\nline five")
-	if r := hostapi.SegsText(toastTray(app.toasts[1:], 80, 24)[toastRows]); !strings.HasPrefix(strings.TrimSpace(r), "│ … 3 more lines ") || strings.Contains(r, "/errors") {
+	if r := hostapi.SegsText(toastTray(app.toasts[1:], 80, 24)[_toastRows]); !strings.HasPrefix(strings.TrimSpace(r), "│ … 3 more lines ") || strings.Contains(r, "/errors") {
 		t.Fatalf("multi-line cut: %q", r)
 	}
 	// an untitled failure still says it is one

@@ -15,13 +15,13 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// schemaEnums is the enum a named arg type shows in the schema. TodoStatuses
+// _schemaEnums is the enum a named arg type shows in the schema. TodoStatuses
 // and questionTypes are the vars the run code validates against, so the
 // words are written once; the scope words' order here is the schema's,
 // not store.Scopes'.
-var schemaEnums = map[reflect.Type]any{
+var _schemaEnums = map[reflect.Type]any{
 	reflect.TypeFor[store.TodoStatus](): store.TodoStatuses,
-	reflect.TypeFor[QuestionType]():     questionTypes,
+	reflect.TypeFor[QuestionType]():     _questionTypes,
 }
 
 // ArgsOf returns an args struct's properties and required list, the shape
@@ -48,7 +48,7 @@ func argsOf(t reflect.Type) (props map[string]any, required []string) {
 		if d := f.Tag.Get("desc"); d != "" {
 			prop["description"] = d
 		}
-		if e, ok := schemaEnums[f.Type]; ok {
+		if e, ok := _schemaEnums[f.Type]; ok {
 			prop["enum"] = e
 		}
 		props[name] = prop

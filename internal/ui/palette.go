@@ -154,7 +154,7 @@ func (a *App) acceptPalette() tea.Cmd {
 func (a *App) paletteRows(maxW, room, minW int) [][]hostapi.Segment {
 	p := &a.palette
 	if p.count() == 0 {
-		return emptyRows(noMatches, maxW)
+		return emptyRows(_noMatches, maxW)
 	}
 	items := make([]listItem, 0, p.count())
 	for i, c := range p.matches {
@@ -193,7 +193,7 @@ func (a *App) submitComposer() {
 	if text == "" {
 		return
 	}
-	if utf8.RuneCountInString(text) > maxDraftChars {
+	if utf8.RuneCountInString(text) > _maxDraftChars {
 		a.draftCapToastNow()
 		return
 	}
@@ -257,7 +257,7 @@ func (a *App) sendMessage(text string) {
 			return
 		}
 		_ = a.host.ViewAgent("") // the run is over: messages go to the session, so show it
-		a.applyScroll(hostapi.ScrollBottom, regionNone)
+		a.applyScroll(hostapi.ScrollBottom, _regionNone)
 	}
 	if err := a.host.AgentSendUser(text); err != nil {
 		a.pushToast(slog.LevelError, "Could not send", err.Error())

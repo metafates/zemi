@@ -19,7 +19,7 @@ func TestHeadCut(t *testing.T) {
 		st := h.ScreenState(60, 1, UIState{})
 		return fmt.Sprintf("%d|%d", st.TranscriptCut, st.TranscriptEpoch)
 	}
-	for i := range chatWindowRows + 5 {
+	for i := range _chatWindowRows + 5 {
 		h.AppendMessage("user", fmt.Sprintf("row %d", i))
 	}
 	// the window holds its last chatWindowRows rows: 5 shed, no replacement
@@ -46,13 +46,13 @@ func TestAlignTrimStartsOnATurn(t *testing.T) {
 	assistant := ChatMessage{Role: fantasy.MessageRoleAssistant}
 	tool := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool}
 	t.Run("within the bound the slice passes through", func(t *testing.T) {
-		tr := make([]ChatMessage, chatWindowRows)
+		tr := make([]ChatMessage, _chatWindowRows)
 		if got := alignTrim(tr); &got[0] != &tr[0] {
 			t.Fatal("a window inside the bound was rebuilt")
 		}
 	})
 	t.Run("a bound landing mid-turn sheds to the turn start", func(t *testing.T) {
-		tr := make([]ChatMessage, chatWindowRows+5)
+		tr := make([]ChatMessage, _chatWindowRows+5)
 		for i := range tr {
 			tr[i] = ChatMessage{Role: fantasy.MessageRoleUser}
 		}
@@ -60,20 +60,20 @@ func TestAlignTrimStartsOnATurn(t *testing.T) {
 		tr[6] = assistant // shed
 		tr[7] = user      // the turn the head must land on
 		got := alignTrim(tr)
-		if len(got) != chatWindowRows-2 {
-			t.Fatalf("kept %d rows, want %d", len(got), chatWindowRows-2)
+		if len(got) != _chatWindowRows-2 {
+			t.Fatalf("kept %d rows, want %d", len(got), _chatWindowRows-2)
 		}
 		if !turnStart(got[0]) {
 			t.Fatalf("the head reads %v/%q, want a turn start", got[0].Kind, got[0].Role)
 		}
 	})
 	t.Run("a span with no turn start keeps the plain clip", func(t *testing.T) {
-		tr := make([]ChatMessage, chatWindowRows+3)
+		tr := make([]ChatMessage, _chatWindowRows+3)
 		for i := range tr {
 			tr[i] = assistant
 		}
-		if got := alignTrim(tr); len(got) != chatWindowRows {
-			t.Fatalf("kept %d rows, want the plain clip %d", len(got), chatWindowRows)
+		if got := alignTrim(tr); len(got) != _chatWindowRows {
+			t.Fatalf("kept %d rows, want the plain clip %d", len(got), _chatWindowRows)
 		}
 	})
 }
@@ -84,12 +84,12 @@ func TestDropHeldRowAfterTheTrimShedsIt(t *testing.T) {
 	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: prompt})
 	held := &heldPrompt{base: 0, text: prompt}
 	// the window churns past its bound: the held row sheds
-	for i := range chatWindowRows + 5 {
+	for i := range _chatWindowRows + 5 {
 		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: fmt.Sprintf("filler %d", i)})
 	}
 	// the user re-sends the same prompt, then churns it to the slot base names
 	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: prompt})
-	for i := range chatWindowRows - 1 {
+	for i := range _chatWindowRows - 1 {
 		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: fmt.Sprintf("late %d", i)})
 	}
 	h.dropHeldRow(held)
@@ -107,7 +107,7 @@ func TestDropHeldRowAfterTheTrimShedsIt(t *testing.T) {
 func TestLiveAppendTrims(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHost(t)
-	for i := range chatWindowRows - 1 {
+	for i := range _chatWindowRows - 1 {
 		h.AppendMessage("user", fmt.Sprintf("row %d", i))
 	}
 	// the live stretch still open when the plan ask lands: the flush
@@ -119,8 +119,8 @@ func TestLiveAppendTrims(t *testing.T) {
 	h.appendAfterLive(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: "the plan"})
 
 	tr := h.Session().Transcript
-	if len(tr) != chatWindowRows {
-		t.Fatalf("after the live append the window holds %d rows, want %d", len(tr), chatWindowRows)
+	if len(tr) != _chatWindowRows {
+		t.Fatalf("after the live append the window holds %d rows, want %d", len(tr), _chatWindowRows)
 	}
 	if cut := h.trCut.Load(); cut != 1 {
 		t.Fatalf("after the live append the head cut reads %d, want 1", cut)
@@ -138,8 +138,8 @@ func TestLiveAppendTrims(t *testing.T) {
 	// a live append on a window already at the bound trims one per row
 	h.appendAfterLive(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: "the plan again"})
 	tr = h.Session().Transcript
-	if len(tr) != chatWindowRows {
-		t.Fatalf("the second live append left %d rows, want %d", len(tr), chatWindowRows)
+	if len(tr) != _chatWindowRows {
+		t.Fatalf("the second live append left %d rows, want %d", len(tr), _chatWindowRows)
 	}
 	if cut := h.trCut.Load(); cut != 2 {
 		t.Fatalf("the second live append left the cut at %d, want 2", cut)

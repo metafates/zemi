@@ -26,13 +26,13 @@ func normalizeKey(key string) string {
 	return key
 }
 
-// keyMods are the modifier prefixes ultraviolet writes before a key name.
-var keyMods = set.Of("ctrl", "alt", "shift", "super", "hyper", "meta")
+// _keyMods are the modifier prefixes ultraviolet writes before a key name.
+var _keyMods = set.Of("ctrl", "alt", "shift", "super", "hyper", "meta")
 
-// keyNames are the named keys the terminal can report, taken from
+// _keyNames are the named keys the terminal can report, taken from
 // ultraviolet's own table so the list cannot drift from what a keypress
 // matches against.
-var keyNames = sync.OnceValue(func() set.Set[string] {
+var _keyNames = sync.OnceValue(func() set.Set[string] {
 	names := set.Set[string]{}
 	add := func(c rune) {
 		if n := (uv.Key{Code: c}).Keystroke(); len(n) > 1 && strings.IndexFunc(n,
@@ -60,12 +60,12 @@ func checkKey(key string) error {
 		if !ok || rest == "" {
 			break
 		}
-		if !keyMods.Has(mod) {
+		if !_keyMods.Has(mod) {
 			return fmt.Errorf("unknown modifier %q in key %q: use ctrl, alt, shift, super, hyper or meta", mod, key)
 		}
 		base = rest
 	}
-	if len([]rune(base)) == 1 || keyNames().Has(base) {
+	if len([]rune(base)) == 1 || _keyNames().Has(base) {
 		return nil
 	}
 	return fmt.Errorf("unknown key %q in key %q", base, key)
@@ -127,9 +127,9 @@ func (h *Host) resolveRHS(s string) (RHS, error) {
 	return RHS{API: s}, nil
 }
 
-// defaultKeymap is the shipped bindings (DESIGN §8); they register before
+// _defaultKeymap is the shipped bindings (DESIGN §8); they register before
 // config runs, so a user's keymap.set rebinds one and keymap.del unbinds it.
-var defaultKeymap = []struct {
+var _defaultKeymap = []struct {
 	key  string
 	rhs  RHS
 	desc string
@@ -151,7 +151,7 @@ var defaultKeymap = []struct {
 // generation: a reload purges them with everything else and this binds them
 // again.
 func (h *Host) installDefaultKeymap() error {
-	for _, d := range defaultKeymap {
+	for _, d := range _defaultKeymap {
 		key, err := h.keySeq(d.key)
 		if err != nil {
 			return fmt.Errorf("default keymap %q: %w", d.key, err)
@@ -199,8 +199,8 @@ func (h *Host) keymapNamespace(L *glua.LState) *glua.LTable {
 		key, list, opts := binding(L, "set")
 		b := &KeyBinding{Key: key, List: list, Origin: h.RT.CurrentOrigin(L), Path: h.RT.CurrentPath(L), Gen: h.currentGen()}
 		v := L.Get(2)
-		if s, ok := v.(glua.LString); list && (!ok || !slices.Contains(listMoves, string(s))) {
-			L.RaiseError("zemi.keymap.set: with opts.list the action is a move: %s", strings.Join(listMoves, ", "))
+		if s, ok := v.(glua.LString); list && (!ok || !slices.Contains(_listMoves, string(s))) {
+			L.RaiseError("zemi.keymap.set: with opts.list the action is a move: %s", strings.Join(_listMoves, ", "))
 		}
 		switch v := v.(type) {
 		case *glua.LFunction:

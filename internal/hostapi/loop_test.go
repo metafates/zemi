@@ -165,7 +165,7 @@ func TestLoopPaced(t *testing.T) {
 func TestLoopPacedFallback(t *testing.T) {
 	t.Parallel()
 	lt := newLoopTest(t, "check it", "hm")
-	lt.advance(step{runs: 1, next: loopFallback})
+	lt.advance(step{runs: 1, next: _loopFallback})
 }
 
 // TestLoopPacedDelayCap: a paced delay past an hour is an hour.
@@ -270,7 +270,7 @@ func TestLoopBusyAgent(t *testing.T) {
 	lt.advance(step{after: 5 * time.Minute, runs: 1, next: 5 * time.Minute, held: true})
 	lt.h.AgentCancel()
 	waitIdle(t, lt.h)
-	lt.advance(step{after: loopRetry, runs: 2, next: 5*time.Minute + loopRetry + 5*time.Minute})
+	lt.advance(step{after: _loopRetry, runs: 2, next: 5*time.Minute + _loopRetry + 5*time.Minute})
 }
 
 // TestLoopExpires: a day's loop stops after 72 hours.
@@ -301,7 +301,7 @@ func (c *fakeClock) armed() int {
 func newLoopHost(t *testing.T) (*Host, *fakeClock) {
 	t.Helper()
 	log := slog.New(slog.DiscardHandler)
-	clock := &fakeClock{now: testEpoch}
+	clock := &fakeClock{now: _testEpoch}
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, Clock: clock})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{StateHome: t.TempDir(), ProjectDir: t.TempDir()})
 	t.Cleanup(h.Close)
@@ -401,7 +401,7 @@ func TestParseNext(t *testing.T) {
 		done, ok bool
 	}{
 		{"still going\nnext: 5m", 5 * time.Minute, false, true},
-		{"`next: 30s`", loopMin, false, true},
+		{"`next: 30s`", _loopMin, false, true},
 		{"NEXT: done", 0, true, true},
 		{"next: soon", 0, false, false},
 		{"no line", 0, false, false},

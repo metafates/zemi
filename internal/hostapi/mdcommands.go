@@ -19,14 +19,14 @@ import (
 	"github.com/metafates/zemi/internal/plugin"
 )
 
-var positionalArg = regexp.MustCompile(`\$([1-9])`)
+var _positionalArg = regexp.MustCompile(`\$([1-9])`)
 
 // expandPromptArgs fills $ARGUMENTS with the raw argument string and $1..$9
 // with whitespace-separated fields (missing ones become empty).
 func expandPromptArgs(body, args string) string {
 	fields := strings.Fields(args)
 	body = strings.ReplaceAll(body, "$ARGUMENTS", strings.TrimSpace(args))
-	return positionalArg.ReplaceAllStringFunc(body, func(m string) string {
+	return _positionalArg.ReplaceAllStringFunc(body, func(m string) string {
 		if i := int(m[1] - '1'); i < len(fields) {
 			return fields[i]
 		}

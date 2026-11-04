@@ -10,7 +10,7 @@ import (
 // draw in. Nothing registers them: a group names a palette role (or a hex or
 // an ANSI color) and the palette is one line of colors, so the screen's whole
 // styling is these two tables (DESIGN §6.6).
-var shippedGroups = withKnots(map[string]HLSpec{
+var _shippedGroups = withKnots(map[string]HLSpec{
 	// the canvas is the palette's bg, which every group without a bg of its
 	// own sits on; a bg here colors Normal text alone
 	"Normal": {Fg: "fg", Bg: "bg"},
@@ -80,21 +80,21 @@ var shippedGroups = withKnots(map[string]HLSpec{
 // withKnots adds the knot's ramp: a shade draws the whorl knot's curve through
 // the rule, accent and literal.
 func withKnots(groups map[string]HLSpec) map[string]HLSpec {
-	for i := range knotStops {
-		shade := float64(i) / float64(knotStops-1)
+	for i := range _knotStops {
+		shade := float64(i) / float64(_knotStops-1)
 		groups[fmt.Sprintf("Knot%d", i)] = HLSpec{Shade: &shade}
 	}
 	return groups
 }
 
-// knotStops is the number of stops in the knot's shade ramp.
-const knotStops = 32
+// _knotStops is the number of stops in the knot's shade ramp.
+const _knotStops = 32
 
-// whorlSpec is zemi's one palette: slate greys, a periwinkle accent and an
+// _whorlSpec is zemi's one palette: slate greys, a periwinkle accent and an
 // apricot literal, with red, amber and mint for state. warn sits lighter than
 // the others: deutan folds amber and apricot into one yellow at the same
 // lightness, so the two split by lightness instead.
-var whorlSpec = map[string]any{
+var _whorlSpec = map[string]any{
 	"bg": "#17181e", "fg": "#e7e7ec", "dim": "#898b98", "rule": "#4b4c58",
 	"panel": "#202128", "accent": "#a2adfd", "literal": "#fcb67c",
 	"ok": "#68d7a1", "warn": "#fde59c", "danger": "#f17070",
@@ -104,22 +104,22 @@ var whorlSpec = map[string]any{
 // literal is a bug in this file, so it panics instead of booting a broken
 // screen.
 var Whorl = sync.OnceValue(func() *Palette {
-	p, err := parsePalette(whorlSpec)
+	p, err := parsePalette(_whorlSpec)
 	if err != nil {
 		panic(fmt.Sprintf("the whorl palette: %v", err))
 	}
 	return &p
 })()
 
-// maxHLLinks bounds a chain of linked groups, so a cycle resolves to nothing.
-const maxHLLinks = 8
+// _maxHLLinks bounds a chain of linked groups, so a cycle resolves to nothing.
+const _maxHLLinks = 8
 
 // Group resolves a highlight group, following links. The first link's bold,
 // italic and underline apply over the group it draws as.
 func Group(group string) (HLSpec, bool) {
 	var over HLSpec
-	for i := range maxHLLinks {
-		s, ok := shippedGroups[group]
+	for i := range _maxHLLinks {
+		s, ok := _shippedGroups[group]
 		if !ok || s.Link == "" {
 			s.Bold, s.Italic = cmp.Or(over.Bold, s.Bold), cmp.Or(over.Italic, s.Italic)
 			s.Underline = cmp.Or(over.Underline, s.Underline)

@@ -19,12 +19,12 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// dbRowCap is how many rows the text table prints; a clipped one says so.
-const dbRowCap = 500
+// _dbRowCap is how many rows the text table prints; a clipped one says so.
+const _dbRowCap = 500
 
-// dbCellCap is a text cell's width, past which it cuts and names the cut;
+// _dbCellCap is a text cell's width, past which it cuts and names the cut;
 // --json carries every value whole.
-const dbCellCap = 60
+const _dbCellCap = 60
 
 func dbCommand(o *options) *cobra.Command {
 	var asJSON, global *bool
@@ -101,8 +101,8 @@ func runDBQuery(out, errw io.Writer, db *store.DB, query string, params []string
 	}
 	t := table{p: colorprofile.Detect(out, os.Environ()), head: true, cols: tcols}
 	for rows.Next() {
-		if len(t.rows) >= dbRowCap {
-			fmt.Fprintf(errw, "zemi: showing the first %d rows; add LIMIT or narrow the query\n", dbRowCap)
+		if len(t.rows) >= _dbRowCap {
+			fmt.Fprintf(errw, "zemi: showing the first %d rows; add LIMIT or narrow the query\n", _dbRowCap)
 			break
 		}
 		if err := rows.Scan(into...); err != nil {
@@ -133,14 +133,14 @@ func dbCell(v any) string {
 		x = sanitize.String(x)
 		x = strings.ReplaceAll(x, "\n", "\\n")
 		x = strings.ReplaceAll(x, "\t", "\\t")
-		if ansi.StringWidth(x) <= dbCellCap {
+		if ansi.StringWidth(x) <= _dbCellCap {
 			return x
 		}
 		// the tail's own width comes out of the cap, so the count it names
 		// and the tail's length settle over a pass or two
 		tail := "..."
 		for range 3 {
-			kept := strings.TrimSuffix(ansi.Truncate(x, dbCellCap, tail), tail)
+			kept := strings.TrimSuffix(ansi.Truncate(x, _dbCellCap, tail), tail)
 			next := fmt.Sprintf("... (+%d chars; --json for the whole)",
 				utf8.RuneCountInString(x)-utf8.RuneCountInString(kept))
 			if next == tail {
@@ -148,7 +148,7 @@ func dbCell(v any) string {
 			}
 			tail = next
 		}
-		return ansi.Truncate(x, dbCellCap, tail)
+		return ansi.Truncate(x, _dbCellCap, tail)
 	case []byte:
 		return dbCell(string(x))
 	case int64:

@@ -27,7 +27,7 @@ func TestProgressReport(t *testing.T) {
 	if first == nil || *app.View().ProgressBar != *first {
 		t.Fatalf("a running turn should report, unchanged before the interval: %+v", first)
 	}
-	app.now = func() time.Time { return time.Now().Add(progressInterval + time.Second) }
+	app.now = func() time.Time { return time.Now().Add(_progressInterval + time.Second) }
 	if app.progressTick(true); *app.View().ProgressBar == *first {
 		t.Fatal("a running turn should change the report after the interval")
 	}
@@ -85,7 +85,7 @@ func TestIdleDrawsNothing(t *testing.T) {
 	if app.frameGen != gen {
 		t.Fatalf("idle: %d redraws over 10s of ticks", app.frameGen-gen)
 	}
-	if app.tickInterval() != idleInterval {
+	if app.tickInterval() != _idleInterval {
 		t.Fatal("idle should tick slowly")
 	}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
@@ -93,7 +93,7 @@ func TestIdleDrawsNothing(t *testing.T) {
 	if app.frameGen == gen {
 		t.Fatal("a running turn does not tick the working row")
 	}
-	if app.tickInterval() != frameInterval {
+	if app.tickInterval() != _frameInterval {
 		t.Fatal("a running turn should tick at frame rate")
 	}
 
@@ -101,7 +101,7 @@ func TestIdleDrawsNothing(t *testing.T) {
 	app.Update(turnDoneMsg{})
 	app.Update(frameTickMsg{}) // the turn ends: the mascot bows
 	gen = app.frameGen
-	app.now = func() time.Time { return app.turnEnd.Add(doneLinger + time.Second) }
+	app.now = func() time.Time { return app.turnEnd.Add(_doneLinger + time.Second) }
 	app.Update(frameTickMsg{}) // it stops bowing
 	app.Update(frameTickMsg{})
 	if app.frameGen != gen+1 {
@@ -131,7 +131,7 @@ func TestIdleDrawsNothing(t *testing.T) {
 	if app.frameGen != gen {
 		t.Fatal("a stored 'running' row viewed ticks the frame")
 	}
-	if app.tickInterval() != idleInterval {
+	if app.tickInterval() != _idleInterval {
 		t.Fatal("a stored 'running' row viewed should tick idly")
 	}
 }
@@ -167,17 +167,17 @@ func TestBumpWakesIdleTick(t *testing.T) {
 func TestFrameClock(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		a := &App{wake: make(chan struct{}, 1)}
-		time.Sleep(frameInterval / 3) // off a boundary
-		last := time.Now().UnixMilli() / frameMS
+		time.Sleep(_frameInterval / 3) // off a boundary
+		last := time.Now().UnixMilli() / _frameMS
 		for i := range 6 {
-			d := frameInterval
+			d := _frameInterval
 			if i%2 == 1 {
-				d = idleInterval
+				d = _idleInterval
 				a.wakeTick()
 			}
 			a.frameTickCmd(d)()
-			f := time.Now().UnixMilli() / frameMS
-			if f != last+1 || time.Now().UnixMilli()%frameMS != 0 {
+			f := time.Now().UnixMilli() / _frameMS
+			if f != last+1 || time.Now().UnixMilli()%_frameMS != 0 {
 				t.Fatalf("tick %d ran at %v, after one in frame %d", i, time.Now(), last)
 			}
 			last = f

@@ -216,9 +216,9 @@ func (h *Host) UseLogFile(level *slog.LevelVar, path string) {
 	h.applyLogLevel()
 }
 
-// kvConfigPrefix is the kv namespace a kept setting pick lives under, read
+// _kvConfigPrefix is the kv namespace a kept setting pick lives under, read
 // back at the next boot by loadPicks.
-const kvConfigPrefix = "config:"
+const _kvConfigPrefix = "config:"
 
 // keepPick keeps path's live value in the global store for the next start,
 // or forgets it when it is the key's cfgBase. A write during boot is
@@ -237,7 +237,7 @@ func (h *Host) keepPick(path config.Key) {
 	}
 	b, err := json.Marshal(live, json.Deterministic(true))
 	if err == nil {
-		err = h.GlobalDB.SetKV(kvConfigPrefix+string(path), string(b))
+		err = h.GlobalDB.SetKV(_kvConfigPrefix+string(path), string(b))
 	}
 	if err != nil {
 		h.Log.Warn("pick not kept", "origin", "config", "path", path, "error", err)
@@ -253,7 +253,7 @@ func (h *Host) forgetPick(path config.Key) {
 	if h.GlobalDB == nil {
 		return
 	}
-	if _, err := h.GlobalDB.DelKV(kvConfigPrefix + string(path)); err != nil {
+	if _, err := h.GlobalDB.DelKV(_kvConfigPrefix + string(path)); err != nil {
 		h.Log.Warn("could not forget a kept pick", "origin", "config", "path", path, "error", err)
 	}
 }
@@ -264,12 +264,12 @@ func (h *Host) forgetPick(path config.Key) {
 // so the row goes instead of warning at every boot; a bad value on a known
 // key stays, a transient one fixes itself.
 func (h *Host) loadPicks() {
-	keys, err := h.GlobalDB.KeysKV(kvConfigPrefix)
+	keys, err := h.GlobalDB.KeysKV(_kvConfigPrefix)
 	if err != nil {
 		h.Log.Warn("could not read the kept picks", "origin", "config", "error", err)
 	}
 	for _, k := range keys {
-		path := config.Key(strings.TrimPrefix(k, kvConfigPrefix))
+		path := config.Key(strings.TrimPrefix(k, _kvConfigPrefix))
 		raw, err := h.GlobalDB.GetKV(k)
 		var v any
 		if err == nil {
@@ -306,7 +306,7 @@ func (h *Host) loadPicks() {
 	}
 }
 
-var settingKey = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
+var _settingKey = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
 
 // settingPath is the key path names: plugin code names its own settings by
 // the bare key. Every builtin key has a section, so a bare name is no builtin
@@ -345,7 +345,7 @@ func (h *Host) addSetting(L *glua.LState, key string, spec *glua.LTable) {
 		Desc: listDesc(rawString(L, spec, "desc")), Choices: rawStrings(L, spec, "choices"),
 	}
 	switch {
-	case !settingKey.MatchString(key):
+	case !_settingKey.MatchString(key):
 		L.RaiseError("zemi.config.add: key %q must be a lowercase letter, then up to 31 lowercase letters, digits and _", key)
 	case !slices.Contains(config.Kinds, def.Kind):
 		L.RaiseError("zemi.config.add: kind must be one of %s", config.OrList(kindNames()))

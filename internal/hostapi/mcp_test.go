@@ -171,7 +171,7 @@ func TestMCPBridge(t *testing.T) {
 	}
 
 	first, _ := h.mcpServerNamed("fake")
-	runUser(t, r, askEverythingOff) // the restart section's calls run ungated
+	runUser(t, r, _askEverythingOff) // the restart section's calls run ungated
 	readd := lua.BootStep{Name: "mcp", Run: func(context.Context, *lua.Runtime, *lua.Generation) error { return h.addMCP("fake", first.spec) }}
 	if err := h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), readd}); err != nil {
 		t.Fatal(err)
@@ -610,7 +610,7 @@ func (m *toolsModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.Str
 	}
 	var names []string
 	for _, tl := range call.Tools {
-		if n := tl.GetName(); strings.HasPrefix(n, mcpToolPrefix) || n == string(tools.ToolSearch) {
+		if n := tl.GetName(); strings.HasPrefix(n, _mcpToolPrefix) || n == string(tools.ToolSearch) {
 			names = append(names, n)
 		}
 	}

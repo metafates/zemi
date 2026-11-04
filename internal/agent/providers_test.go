@@ -287,7 +287,7 @@ func TestAnthropicBase(t *testing.T) {
 	}
 }
 
-var soloCatalog = []catwalk.Provider{{ID: "solo", Type: catwalk.TypeMessages, APIKey: "$ANTHROPIC_API_KEY", Models: []catwalk.Model{{ID: "m"}}}}
+var _soloCatalog = []catwalk.Provider{{ID: "solo", Type: catwalk.TypeMessages, APIKey: "$ANTHROPIC_API_KEY", Models: []catwalk.Model{{ID: "m"}}}}
 
 func soloEnv(string) string { return "k" }
 
@@ -302,10 +302,10 @@ func TestLoadCatalog(t *testing.T) {
 		err   bool
 	}{
 		{name: "no file"},
-		{name: "version mismatch", file: savedCatalog{"v0.0.1", fetched, soloCatalog}},
+		{name: "version mismatch", file: savedCatalog{"v0.0.1", fetched, _soloCatalog}},
 		{name: "garbage", file: "{", err: true},
 		{name: "no supported provider", file: savedCatalog{bundledVersion(), fetched, nil}, err: true},
-		{name: "valid", file: savedCatalog{bundledVersion(), fetched, soloCatalog}, saved: true},
+		{name: "valid", file: savedCatalog{bundledVersion(), fetched, _soloCatalog}, saved: true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -314,7 +314,7 @@ func TestLoadCatalog(t *testing.T) {
 				if s, ok := c.file.(string); ok {
 					data = []byte(s)
 				}
-				if err := os.WriteFile(filepath.Join(dir, catalogFile), data, 0o600); err != nil {
+				if err := os.WriteFile(filepath.Join(dir, _catalogFile), data, 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -347,8 +347,8 @@ func TestUpdateCatalog(t *testing.T) {
 		changed bool
 		err     bool
 	}{
-		{name: "fetched", feed: soloCatalog, changed: true},
-		{name: "not modified", feed: soloCatalog},
+		{name: "fetched", feed: _soloCatalog, changed: true},
+		{name: "not modified", feed: _soloCatalog},
 		{name: "no supported provider", feed: []catwalk.Provider{}, err: true},
 	} {
 		body, _ = json.Marshal(c.feed, jsontext.WithIndent("  "), json.Deterministic(true))
@@ -356,7 +356,7 @@ func TestUpdateCatalog(t *testing.T) {
 		if (err != nil) != c.err || changed != c.changed || !c.err && (cat.Info.Providers != 1 || cat.Info.Fetched.IsZero()) {
 			t.Fatalf("%s: changed %v, %+v, %v", c.name, changed, cat.Info, err)
 		}
-		fi, err := os.Stat(filepath.Join(dir, catalogFile))
+		fi, err := os.Stat(filepath.Join(dir, _catalogFile))
 		if err != nil || fi.Mode().Perm() != 0o600 {
 			t.Fatalf("%s: saved file: %v, %v", c.name, fi, err)
 		}

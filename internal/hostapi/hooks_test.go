@@ -75,7 +75,7 @@ func claudeFixHostFiles(t *testing.T, hooksJSON, mcpJSON string, extra map[strin
 	return h, root
 }
 
-const fixMCP = `{"mcpServers":{
+const _fixMCP = `{"mcpServers":{
 	"echo":{"type":"http","url":"http://127.0.0.1:1/mcp"},
 	"skip_sse":{"type":"sse","url":"http://127.0.0.1:1/sse"},
 	"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-long":{"type":"http","url":"http://127.0.0.1:1/mcp"}
@@ -128,7 +128,7 @@ func TestClaudeHooksLoad(t *testing.T) {
 		"Notification":[{"hooks":[{"type":"prompt","prompt":"say"}],"hooks2":null},{"hooks":[{"type":"command","command":"x","if":"Bash(*)"}]}],
 		"SessionStart":[{"hooks":[{"type":"command","command":"echo start"}]}]
 	}}`
-	h, root := claudeFixHost(t, hooks, fixMCP)
+	h, root := claudeFixHost(t, hooks, _fixMCP)
 	toolPost := h.hookReg.handlers("tool.post")
 	if len(toolPost) != 1 || toolPost[0].event != "PostToolUse" || toolPost[0].root != root {
 		t.Fatalf("tool.post entries: %+v", toolPost)
@@ -191,10 +191,10 @@ func TestHookMatcher(t *testing.T) {
 // loader runs are the same set, so provides never advertises what load
 // refuses nor hides what it runs.
 func TestHookEventsAgree(t *testing.T) {
-	if len(hookEventMap) != len(plugin.ClaudeHookEvents) {
-		t.Fatalf("hookEventMap runs %d events, the provides summary names %d", len(hookEventMap), len(plugin.ClaudeHookEvents))
+	if len(_hookEventMap) != len(plugin.ClaudeHookEvents) {
+		t.Fatalf("hookEventMap runs %d events, the provides summary names %d", len(_hookEventMap), len(plugin.ClaudeHookEvents))
 	}
-	for e := range hookEventMap {
+	for e := range _hookEventMap {
 		if !slices.Contains(plugin.ClaudeHookEvents, e) {
 			t.Errorf("hookEventMap runs %s, which the provides summary hides", e)
 		}
@@ -413,7 +413,7 @@ func TestCaptureContextCapped(t *testing.T) {
 	})
 	h.agents.mu.Lock()
 	defer h.agents.mu.Unlock()
-	if len(h.agents.hookCtx) > hookContextMax+200 || !strings.Contains(h.agents.hookCtx, "left out") {
+	if len(h.agents.hookCtx) > _hookContextMax+200 || !strings.Contains(h.agents.hookCtx, "left out") {
 		t.Fatalf("context of %d bytes, uncapped: %q", len(h.agents.hookCtx), clipRunes(h.agents.hookCtx, 120))
 	}
 }

@@ -124,8 +124,8 @@ func TestWorkflowCancelBoundedDrain(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		start := time.Now()
 		(&wfRun{running: 1}).drainAgents()
-		if d := time.Since(start); d != workflowDrainGrace {
-			t.Fatalf("drained for %v, want %v", d, workflowDrainGrace)
+		if d := time.Since(start); d != _workflowDrainGrace {
+			t.Fatalf("drained for %v, want %v", d, _workflowDrainGrace)
 		}
 	})
 }
@@ -242,8 +242,8 @@ func TestWorkflowRun(t *testing.T) {
 // guard's names demand; a bare one is what a model copies verbatim.
 func TestWorkflowDescNamesNoBareCall(t *testing.T) {
 	t.Parallel()
-	for name := range misnamed {
-		if bare := regexp.MustCompile(`(^|[^.\w])` + name + `\(`); bare.MatchString(workflowToolDesc) {
+	for name := range _misnamed {
+		if bare := regexp.MustCompile(`(^|[^.\w])` + name + `\(`); bare.MatchString(_workflowToolDesc) {
 			t.Errorf("workflowToolDesc calls %s() bare, not wf.%s()", name, name)
 		}
 	}
@@ -376,7 +376,7 @@ func TestWorkflowControl(t *testing.T) {
 			script: `return wf.agent("a") .. wf.agent("b")`,
 			drive: func(c ctl) {
 				running(1)(c)
-				act(c, actPause, 0, "")
+				act(c, _actPause, 0, "")
 				c.m.release <- struct{}{}
 				v := tick(c, func(v flowView) bool { return len(v.agents) == 2 })
 				if v.agents[1].status != "queued" || v.running != 0 {
@@ -385,7 +385,7 @@ func TestWorkflowControl(t *testing.T) {
 				if c.h.tasks.stillRunning(func(string) bool { return true }) == nil {
 					c.t.Fatal("a paused workflow does not block a reset")
 				}
-				act(c, actResume, 0, "")
+				act(c, _actResume, 0, "")
 				running(1)(c)
 				if p := c.h.tasks.find(c.f.view().agents[1].id).parent; p != store.MainSessionID {
 					c.t.Fatalf("the agent started after /new has parent %q", p)
@@ -400,7 +400,7 @@ func TestWorkflowControl(t *testing.T) {
 			limit:  1,
 			drive: func(c ctl) {
 				running(1)(c)
-				act(c, actConcurrency, 3, "")
+				act(c, _actConcurrency, 3, "")
 				running(3)(c)
 				for range 3 {
 					c.m.release <- struct{}{}
@@ -435,7 +435,7 @@ func TestWorkflowControl(t *testing.T) {
 			script: `local r = wf.agent("a") return r`,
 			drive: func(c ctl) {
 				running(1)(c)
-				if got := act(c, actStop, 0, ""); got != "Stopped "+c.f.description+" ("+c.f.id+")" {
+				if got := act(c, _actStop, 0, ""); got != "Stopped "+c.f.description+" ("+c.f.id+")" {
 					c.t.Fatalf("stop = %q", got)
 				}
 			},
@@ -450,7 +450,7 @@ func TestWorkflowControl(t *testing.T) {
 				first.mu.Lock()
 				first.tokens = 110
 				first.mu.Unlock()
-				act(c, actRestart, 0, first.id)
+				act(c, _actRestart, 0, first.id)
 				waitFor(c.t, func() error {
 					if n := c.m.count("a"); n != 2 {
 						return fmt.Errorf("calls %d", n)
@@ -470,10 +470,10 @@ func TestWorkflowControl(t *testing.T) {
 			script: `return wf.agent("a")`,
 			drive: func(c ctl) {
 				running(1)(c)
-				act(c, actPause, 0, "")
-				act(c, actRestart, 0, c.f.view().agents[0].id)
+				act(c, _actPause, 0, "")
+				act(c, _actRestart, 0, c.f.view().agents[0].id)
 				tick(c, func(v flowView) bool { return v.agents[0].status == "queued" })
-				act(c, actResume, 0, "")
+				act(c, _actResume, 0, "")
 				running(1)(c)
 				c.m.release <- struct{}{}
 			},
@@ -485,7 +485,7 @@ func TestWorkflowControl(t *testing.T) {
 			limit:  1,
 			drive: func(c ctl) {
 				running(1)(c)
-				act(c, actStop, 0, "")
+				act(c, _actStop, 0, "")
 				v := tick(c, func(v flowView) bool { return v.status == RunCancelled })
 				if st := v.agents[1].status; st != RunCancelled {
 					c.t.Fatalf("the agent a stopped run never started reads %q", st)
@@ -498,7 +498,7 @@ func TestWorkflowControl(t *testing.T) {
 			script: `return "x"`,
 			drive: func(c ctl) {
 				tick(c, func(v flowView) bool { return v.status == RunDone })
-				if _, err := c.h.flowControl(c.f.id, actPause, 0, ""); err == nil || !strings.Contains(err.Error(), "not running") {
+				if _, err := c.h.flowControl(c.f.id, _actPause, 0, ""); err == nil || !strings.Contains(err.Error(), "not running") {
 					c.t.Fatalf("pause on a finished run: %v", err)
 				}
 			},
@@ -1070,7 +1070,7 @@ func TestWorkflowWait(t *testing.T) {
 				started <- resp
 			}()
 			f := waitLiveFlow(t, h)
-			if resp := waitCall(t, started); !strings.HasPrefix(resp.Content, bgWorkflowStarted) {
+			if resp := waitCall(t, started); !strings.HasPrefix(resp.Content, _bgWorkflowStarted) {
 				t.Fatalf("a background start = %q", resp.Content)
 			}
 			ctx, cancel := context.WithCancel(t.Context())
@@ -1143,7 +1143,7 @@ func TestWorkflowWaitWakesOnAgent(t *testing.T) {
 		started <- resp
 	}()
 	f := waitLiveFlow(t, h)
-	if resp := waitCall(t, started); !strings.HasPrefix(resp.Content, bgWorkflowStarted) {
+	if resp := waitCall(t, started); !strings.HasPrefix(resp.Content, _bgWorkflowStarted) {
 		t.Fatalf("a background start = %q", resp.Content)
 	}
 	def, _ := h.agentDef("explore")
@@ -1221,7 +1221,7 @@ func TestWaitAllJoinsFlows(t *testing.T) {
 		started <- resp
 	}()
 	f := waitLiveFlow(t, h)
-	if resp := waitCall(t, started); !strings.HasPrefix(resp.Content, bgWorkflowStarted) {
+	if resp := waitCall(t, started); !strings.HasPrefix(resp.Content, _bgWorkflowStarted) {
 		t.Fatalf("a background start = %q", resp.Content)
 	}
 	def, _ := h.agentDef("explore")
@@ -1305,7 +1305,7 @@ func TestWaitAllHandsOffFlowToUser(t *testing.T) {
 				started <- resp
 			}()
 			f := waitLiveFlow(t, h)
-			if resp := waitCall(t, started); !strings.HasPrefix(resp.Content, bgWorkflowStarted) {
+			if resp := waitCall(t, started); !strings.HasPrefix(resp.Content, _bgWorkflowStarted) {
 				t.Fatalf("a background start = %q", resp.Content)
 			}
 			var plainRun *agentRun
@@ -1412,7 +1412,7 @@ func TestWorkflowCallHandsOff(t *testing.T) {
 			f := waitLiveFlow(t, h)
 			c.act(h, cancel)
 			resp := waitCall(t, calls)
-			want := bgWorkflowStarted
+			want := _bgWorkflowStarted
 			if c.wantInterrupt {
 				want = "The turn was interrupted while workflow "
 			}
@@ -1617,7 +1617,7 @@ func TestWorkflowBackgroundReports(t *testing.T) {
 	if err != nil || toolStatus(out(resp.Content), false, tools.Outcome{Run: "f"}) != CallBG {
 		t.Fatalf("background start = %+v, %v", resp, err)
 	}
-	id := strings.Fields(strings.TrimPrefix(resp.Content, bgWorkflowStarted))[0]
+	id := strings.Fields(strings.TrimPrefix(resp.Content, _bgWorkflowStarted))[0]
 	waitFor(t, func() error {
 		if tr := h.Session().Transcript; !slices.ContainsFunc(tr, func(m ChatMessage) bool { return m.Kind == RowNotice && m.Run == id && m.Status == CallOK }) {
 			return fmt.Errorf("no report row in %+v", tr)
@@ -1629,13 +1629,13 @@ func TestWorkflowBackgroundReports(t *testing.T) {
 	// the model's own detached start is refused with the advice it can act on:
 	// it can call the tool again without background, a user's or Lua's cannot
 	h.Settings.SetQuiet("agent.max_background", 1)
-	if err := h.tasks.addFlow(&flowRun{id: store.ShortID(), parent: h.AgentSessionID(), background: true, status: RunRunning}, waitAdvice); err != nil {
+	if err := h.tasks.addFlow(&flowRun{id: store.ShortID(), parent: h.AgentSessionID(), background: true, status: RunRunning}, _waitAdvice); err != nil {
 		t.Fatal(err)
 	}
 	resp, err = h.workflowTool(h.PipelineFor()).Run(t.Context(),
 		fantasy.ToolCall{ID: "2", Name: "workflow", Input: `{"script":"return 1","background":true}`})
-	if err != nil || !strings.Contains(resp.Content, foregroundAdvice) {
-		t.Fatalf("a refused background start = %q, %v, want %q", resp.Content, err, foregroundAdvice)
+	if err != nil || !strings.Contains(resp.Content, _foregroundAdvice) {
+		t.Fatalf("a refused background start = %q, %v, want %q", resp.Content, err, _foregroundAdvice)
 	}
 }
 
@@ -1719,7 +1719,7 @@ func TestWorkflowUserStart(t *testing.T) {
 			h.modelFn = func() (fantasy.LanguageModel, error) {
 				return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
 					note := "no note"
-					if strings.Contains(last, loopTag) {
+					if strings.Contains(last, _loopTag) {
 						note = "ok"
 					}
 					return textParts(note)

@@ -14,7 +14,7 @@ import (
 )
 
 // the first port listenCallback tries, so the URL matches a real redirect
-const port = "40704"
+const _port = "40704"
 
 func main() {
 	_, this, _, _ := runtime.Caller(0)
@@ -49,8 +49,8 @@ func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/callback", http.StatusFound)
 	})
-	ok, fail := "http://localhost:"+port+"/callback", "http://localhost:"+port+"/fail"
-	ln, err := net.Listen("tcp", "localhost:"+port)
+	ok, fail := "http://localhost:"+_port+"/callback", "http://localhost:"+_port+"/fail"
+	ln, err := net.Listen("tcp", "localhost:"+_port)
 	if err != nil {
 		println("already serving, opening the browser")
 		_ = exec.Command("open", ok, fail).Start()

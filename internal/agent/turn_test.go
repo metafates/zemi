@@ -94,7 +94,7 @@ func callStep(input string) []fantasy.StreamPart {
 	}
 }
 
-var echo = fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+var _echo = fantasy.NewAgentTool("echo", "echo", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
 	return fantasy.NewTextResponse("ok"), nil
 })
 
@@ -179,7 +179,7 @@ func waitDone(t *testing.T, h *recHooks) {
 // substitutes a no-op, so no hook call guards for nil.
 func TestBareRunnerSends(t *testing.T) {
 	m := &mockModel{steps: [][]fantasy.StreamPart{callStep("{}"), textParts("done")}}
-	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
+	r := NewRunner(m, []fantasy.AgentTool{_echo}, "")
 	if err := r.Send(t.Context(), "hi"); err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestSteerJoinsAtStepBoundary(t *testing.T) {
 		callStep("{}"),
 		textParts("done"),
 	}}
-	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
+	r := NewRunner(m, []fantasy.AgentTool{_echo}, "")
 	r.Hooks = newRecHooks()
 	var roles []string
 	r.Persist = func(msg fantasy.Message) error {
@@ -280,7 +280,7 @@ func TestToolRowOpensAtInputStart(t *testing.T) {
 		},
 		textParts("done"),
 	}}
-	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
+	r := NewRunner(m, []fantasy.AgentTool{_echo}, "")
 	hooks := newRecHooks()
 	r.Hooks = hooks
 	if err := r.Send(t.Context(), "hi"); err != nil {
@@ -303,7 +303,7 @@ func TestFailedTurnKeepsCompletedSteps(t *testing.T) {
 		},
 		{{Type: fantasy.StreamPartTypeError, Error: errors.New("boom")}},
 	}}
-	r := NewRunner(m, []fantasy.AgentTool{echo}, "")
+	r := NewRunner(m, []fantasy.AgentTool{_echo}, "")
 	hooks := newRecHooks()
 	r.Hooks = hooks
 	var roles []string
@@ -483,7 +483,7 @@ func TestToolLoopEndsTurn(t *testing.T) {
 	} {
 		// the text reply is the fallback: without it a missed loop would hang
 		m := &mockModel{parts: textParts("done")}
-		for i := range loopMinSteps {
+		for i := range _loopMinSteps {
 			m.steps = append(m.steps, callStep(c.inputs[i%len(c.inputs)]))
 		}
 		n := 0
@@ -496,8 +496,8 @@ func TestToolLoopEndsTurn(t *testing.T) {
 		if err := r.Send(t.Context(), "hi"); errors.Is(err, ErrToolLoop) != c.loop {
 			t.Errorf("%s: err = %v, want a loop %v", c.name, err, c.loop)
 		}
-		if n := len(r.History); c.loop && n != 1+2*loopMinSteps {
-			t.Errorf("%s: history has %d messages, want the user message and %d steps", c.name, n, loopMinSteps)
+		if n := len(r.History); c.loop && n != 1+2*_loopMinSteps {
+			t.Errorf("%s: history has %d messages, want the user message and %d steps", c.name, n, _loopMinSteps)
 		}
 	}
 }
@@ -513,16 +513,16 @@ func TestToolLoopWindow(t *testing.T) {
 		}}}
 	}
 	var steps []fantasy.StepResult
-	for range 3 * loopMinSteps {
+	for range 3 * _loopMinSteps {
 		steps = append(steps, call("wander", strconv.Itoa(len(steps)))) // distinct: no loop in sight
 	}
-	for range 2 * loopMinSteps {
+	for range 2 * _loopMinSteps {
 		steps = append(steps, call("echo", "{}"), call(string(tools.ToolJobRead), "{}")) // the loop, behind a poll per step
 	}
 	if !repeatsToolCalls(steps) {
 		t.Fatal("a loop past many distinct steps and polls was not seen")
 	}
-	if repeatsToolCalls(steps[:loopMinSteps-1]) {
+	if repeatsToolCalls(steps[:_loopMinSteps-1]) {
 		t.Fatal("a run shorter than any window reads as a loop")
 	}
 }
@@ -704,7 +704,7 @@ func TestStripImages(t *testing.T) {
 		{Role: fantasy.MessageRoleUser, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "hi"}, fantasy.FilePart{Filename: "shot.png", MediaType: "image/png", Data: []byte("x")}}},
 		{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{media, text}},
 	}
-	history := stripImages(slices.Clone(in), noImages)
+	history := stripImages(slices.Clone(in), _noImages)
 	if _, ok := in[0].Content[1].(fantasy.FilePart); !ok {
 		t.Fatalf("stripped the caller's shared content: %#v", in[0].Content[1])
 	}
@@ -974,7 +974,7 @@ func TestCacheMarksExactlyFour(t *testing.T) {
 	part.ProviderOptions = WithCacheControl(part.ProviderOptions)
 	view.Content[0] = part
 	m := &mockModel{steps: [][]fantasy.StreamPart{callStep("{}"), textParts("done")}}
-	r := NewRunner(m, []fantasy.AgentTool{echo}, "sys")
+	r := NewRunner(m, []fantasy.AgentTool{_echo}, "sys")
 	r.History = []fantasy.Message{view, UserMessage("go")}
 	if err := r.Send(t.Context(), ""); err != nil {
 		t.Fatal(err)

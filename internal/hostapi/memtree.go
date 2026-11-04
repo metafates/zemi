@@ -31,36 +31,36 @@ import (
 )
 
 const (
-	// nodeBytes is a node's whole budget: 512 bytes is a dense paragraph.
-	nodeBytes = 512
-	// The view grows one line per message to viewCeiling, then one batch
+	// _nodeBytes is a node's whole budget: 512 bytes is a dense paragraph.
+	_nodeBytes = 512
+	// The view grows one line per message to _viewCeiling, then one batch
 	// merges the most due pairs down to viewFloor.
-	viewCeiling = 128_000
-	viewFloor   = 64_000
+	_viewCeiling = 128_000
+	_viewFloor   = 64_000
 	// The compaction view is the second sawtooth, an octave below.
-	cvCeiling = 32_000
-	cvFloor   = 16_000
-	// buildTryMax is the same-conversation tries a line earns, the shortest
+	_cvCeiling = 32_000
+	_cvFloor   = 16_000
+	// _buildTryMax is the same-conversation tries a line earns, the shortest
 	// kept; buildSlots is the model calls one builder runs at once.
-	buildTryMax = 5
-	buildSlots  = 8
-	// buildMaxOutput is a builder call's reply budget when the model names
+	_buildTryMax = 5
+	_buildSlots  = 8
+	// _buildMaxOutput is a builder call's reply budget when the model names
 	// none: a reasoning model spends output thinking before it writes the
 	// line, so the old 2048 starved it into empty replies.
-	buildMaxOutput = 8192
-	// leafWaitLines: a leaf builds once fewer than this many lines before it
+	_buildMaxOutput = 8192
+	// _leafWaitLines: a leaf builds once fewer than this many lines before it
 	// are still unbuilt, so the placeholder tail stays about this long.
-	leafWaitLines = 8
-	// syncBatch bounds one read of the appends a wake stands for.
-	syncBatch = 1000
-	// buildCoolCap is the longest provider cooldown: consecutive
+	_leafWaitLines = 8
+	// _syncBatch bounds one read of the appends a wake stands for.
+	_syncBatch = 1000
+	// _buildCoolCap is the longest provider cooldown: consecutive
 	// rate-limited or empty-parked rounds double the builder's coolBase up
 	// to it.
-	buildCoolCap = 5 * time.Minute
+	_buildCoolCap = 5 * time.Minute
 )
 
-// placeholder is the line a message shows until its node is built.
-const placeholder = "(not summarized yet: zoom it)"
+// _placeholder is the line a message shows until its node is built.
+const _placeholder = "(not summarized yet: zoom it)"
 
 // errEmptyReply is a compaction that came back with no line: the model spent
 // its output on reasoning or the gateway ended the turn with nothing, and an
@@ -568,7 +568,7 @@ func (b *memTree) rebuild() error {
 	// the wipe's fresh log owes no provider patience: a stale cooldown and
 	// its doubling start over
 	b.cool, b.streak = nil, 0
-	b.draining = b.viewBytes > viewCeiling
+	b.draining = b.viewBytes > _viewCeiling
 	return b.loadCV()
 }
 
@@ -591,7 +591,7 @@ func (b *memTree) resyncView() error {
 	b.view = b.view[:0]
 	b.viewBytes = 0
 	for _, ln := range lines {
-		size := len(placeholder)
+		size := len(_placeholder)
 		if n, ok := b.built[nodeID{l: ln.L, i: ln.I}]; ok {
 			size = n
 		}
@@ -608,7 +608,7 @@ func (b *memTree) resyncView() error {
 func (b *memTree) syncNew() error {
 	fresh := false
 	for {
-		rows, err := b.h.DB.LogFrom(b.seen+1, syncBatch)
+		rows, err := b.h.DB.LogFrom(b.seen+1, _syncBatch)
 		if err != nil {
 			return err
 		}
@@ -621,7 +621,7 @@ func (b *memTree) syncNew() error {
 		for _, e := range rows {
 			b.seen = e.Seq
 			b.msgs = e.Seq + 1
-			line := viewLine{id: nodeID{l: 0, i: e.Seq}, size: len(placeholder)}
+			line := viewLine{id: nodeID{l: 0, i: e.Seq}, size: len(_placeholder)}
 			switch e.Kind {
 			case store.KindTool, store.KindEcho:
 				// template-built in the append transaction: take its line
@@ -640,7 +640,7 @@ func (b *memTree) syncNew() error {
 			}
 			b.addLine(line)
 		}
-		if len(rows) < syncBatch {
+		if len(rows) < _syncBatch {
 			if fresh {
 				b.scanned = false
 				b.requeue()
@@ -691,7 +691,7 @@ func (b *memTree) dispatch() {
 	if b.heldNow() || !b.ready.Load() || b.cool != nil {
 		return
 	}
-	for b.slots() < buildSlots {
+	for b.slots() < _buildSlots {
 		if b.dispatchLeaf() {
 			continue
 		}
@@ -735,7 +735,7 @@ func (b *memTree) leafSlots() int {
 func (b *memTree) dispatchLeaf() bool {
 	// the 8-line rule: the unbuilt lines before the queue's front are
 	// exactly its leaf calls in flight
-	if len(b.leaves) == 0 || b.leafSlots() >= leafWaitLines {
+	if len(b.leaves) == 0 || b.leafSlots() >= _leafWaitLines {
 		return false
 	}
 	seq := b.leaves[0]
@@ -748,7 +748,7 @@ func (b *memTree) dispatchLeaf() bool {
 		return false // a transient store error: the queue waits for the next round
 	}
 	b.leaves = b.leaves[1:]
-	if len(e.Text) <= nodeBytes {
+	if len(e.Text) <= _nodeBytes {
 		// a short message is its own node verbatim, no model call
 		b.insertBuilt(nodeID{l: 0, i: seq}, e.Text)
 		return true
@@ -797,7 +797,7 @@ func (b *memTree) dispatchMerge() bool {
 		}
 		b.merges = b.merges[1:]
 		// the children's newline join is the parent when it fits: no call
-		if join := a.Text + "\n" + c.Text; len(join) <= nodeBytes {
+		if join := a.Text + "\n" + c.Text; len(join) <= _nodeBytes {
 			b.insertBuilt(parent, join)
 			return true
 		}
@@ -900,7 +900,7 @@ func (b *memTree) coolDown(err error) {
 		return
 	}
 	b.streak++
-	d := min(b.coolBase<<uint(min(b.streak-1, 8)), buildCoolCap)
+	d := min(b.coolBase<<uint(min(b.streak-1, 8)), _buildCoolCap)
 	b.health.coolingUntil.Store(time.Now().Add(d).UnixNano())
 	b.cool = time.NewTimer(d).C
 }
@@ -969,17 +969,17 @@ func (b *memTree) setLineSize(id nodeID, size int) {
 // view re-merges when the chat's view does. force merges regardless of the
 // ceiling, what the overflow guard's retry needs.
 func (b *memTree) batch(force bool) {
-	if b.viewBytes > viewCeiling {
+	if b.viewBytes > _viewCeiling {
 		b.draining = true
 	}
-	if b.viewBytes <= viewFloor {
+	if b.viewBytes <= _viewFloor {
 		b.draining = false
 	}
 	if !b.draining && !force {
 		return
 	}
 	_, plan := mergeDown(slices.Clone(b.view), b.msgs, b.sizeOf, func(v []viewLine) bool {
-		return viewSize(v) <= viewFloor
+		return viewSize(v) <= _viewFloor
 	})
 	if len(plan) == 0 {
 		return
@@ -997,11 +997,11 @@ func (b *memTree) batch(force bool) {
 // cvBatch re-merges the compaction view down to its floor, once it passes
 // its ceiling or when the chat's view merged, and saves it.
 func (b *memTree) cvBatch(force bool) {
-	if !force && b.cvBytes <= cvCeiling {
+	if !force && b.cvBytes <= _cvCeiling {
 		return
 	}
 	cv, plan := mergeDown(slices.Clone(b.cv), b.msgs, b.sizeOf, func(v []viewLine) bool {
-		return viewSize(v) <= cvFloor
+		return viewSize(v) <= _cvFloor
 	})
 	if len(plan) > 0 {
 		b.cv, b.cvBytes = cv, viewSize(cv)
@@ -1055,7 +1055,7 @@ func (b *memTree) loadCV() error {
 			continue
 		}
 		id := nodeID{l: p[0], i: p[1]}
-		size := len(placeholder)
+		size := len(_placeholder)
 		if n, ok := b.built[id]; ok {
 			size = n
 		}
@@ -1094,7 +1094,7 @@ func (b *memTree) leafPrompt(seq int64, kind, text string) string {
 		fmt.Fprintf(&w, "<chat>\n%s\n</chat>\n\n", chat)
 	}
 	fmt.Fprintf(&w, "Compaction: compress message %d into one line of at most %d bytes\n(about 70 words), the length of this ruler:\n%s\n<input>\n%s: %s\n</input>",
-		seq, nodeBytes, ruler, kind, text)
+		seq, _nodeBytes, _ruler, kind, text)
 	return w.String()
 }
 
@@ -1106,18 +1106,18 @@ func (b *memTree) mergePrompt(a, c store.Node) string {
 		fmt.Fprintf(&w, "<chat>\n%s\n</chat>\n\n", chat)
 	}
 	fmt.Fprintf(&w, "Compaction: merge lines %s and %s, adjacent, into one line of at most\n%d bytes (about 70 words), the length of this ruler:\n%s\n<chat> may hold their messages, %d to %d, in more detail: take details\nof them from there too.\n<input>\n%s\n%s\n</input>",
-		nodeID{l: a.L, i: a.I}.id(), nodeID{l: c.L, i: c.I}.id(), nodeBytes, ruler,
+		nodeID{l: a.L, i: a.I}.id(), nodeID{l: c.L, i: c.I}.id(), _nodeBytes, _ruler,
 		nodeID{l: a.L, i: a.I}.first(), nodeID{l: c.L, i: c.I}.last(), a.Text, c.Text)
 	return w.String()
 }
 
-// ruler shows the length the model cannot count.
-var ruler = strings.Repeat("-", nodeBytes)
+// _ruler shows the length the model cannot count.
+var _ruler = strings.Repeat("-", _nodeBytes)
 
 // tooLongNote is the same-conversation correction an over-long line earns.
 func tooLongNote(reply string) string {
 	return fmt.Sprintf("Too long: your line is %d bytes, over the %d-byte limit. Write\nthe whole line again for the same <input>, cutting just enough of the\nleast valuable items to fit before this cut - the line alone, nothing else,\nno commentary about the cut:\n%s| <- LIMIT",
-		len(reply), nodeBytes, clipBytes(reply, nodeBytes))
+		len(reply), _nodeBytes, clipBytes(reply, _nodeBytes))
 }
 
 func assistantMessage(text string) fantasy.Message {
@@ -1127,10 +1127,10 @@ func assistantMessage(text string) fantasy.Message {
 	}
 }
 
-// emptyLineNote is the same-conversation correction an empty compaction
+// _emptyLineNote is the same-conversation correction an empty compaction
 // reply earns: an identical re-request answers the same way, so the retry
 // carries the miss.
-const emptyLineNote = "Your previous reply carried no line. Write the line now for the same <input>: the line alone, nothing else."
+const _emptyLineNote = "Your previous reply carried no line. Write the line now for the same <input>: the line alone, nothing else."
 
 // reasoningOf collects a reply's reasoning parts: a reasoning model that
 // stops with no line spent its reply there, and the line is usually
@@ -1189,7 +1189,7 @@ func (b *memTree) dumpEmpty(id nodeID, model string, res *fantasy.AgentResult) {
 // a quiesce cancels to abort it.
 func (b *memTree) build(ctx context.Context, id nodeID, prompt string, first bool, wait chan struct{}) (string, error) {
 	defer b.endCall(first)
-	ref := b.h.modelRef(compactRole)
+	ref := b.h.modelRef(_compactRole)
 	model, err := b.h.resolveTurnModel(ref)
 	if err != nil {
 		return "", err
@@ -1202,7 +1202,7 @@ func (b *memTree) build(ctx context.Context, id nodeID, prompt string, first boo
 	if first {
 		model = burstModel{LanguageModel: model, started: sync.OnceFunc(b.openBurst)}
 	}
-	maxOut := cmp.Or(b.h.maxOutput(ref), buildMaxOutput)
+	maxOut := cmp.Or(b.h.maxOutput(ref), _buildMaxOutput)
 	// a builder call runs at the model's own lowest effort, when it lists	// levels: its default effort is what starved the line into reasoning. A
 	// model that lists no levels gets the force-off on an openai_compat
 	// gateway: effort low plus two no-thinking body fields - reasoning models
@@ -1241,14 +1241,14 @@ func (b *memTree) build(ctx context.Context, id nodeID, prompt string, first boo
 	// an identical re-request - the reply's thinking handed back (the line is
 	// usually already in it), or the miss named on the prompt itself.
 	resampled := false
-	for range buildTryMax {
+	for range _buildTryMax {
 		// the cap rides as nil once dropped: a pointer to 0 asks the server
 		// for a 0-token reply
 		var replyCap *int64
 		if maxOut > 0 {
 			replyCap = &maxOut
 		}
-		res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(chatSystem)).Stream(ctx, fantasy.AgentStreamCall{
+		res, err := fantasy.NewAgent(model, fantasy.WithSystemPrompt(_chatSystem)).Stream(ctx, fantasy.AgentStreamCall{
 			Messages:        convo,
 			MaxOutputTokens: replyCap,
 			MaxRetries:      &b.maxRetries,
@@ -1261,7 +1261,7 @@ func (b *memTree) build(ctx context.Context, id nodeID, prompt string, first boo
 			// one when the cap does not fit the window - drops once, memoized,
 			// the way a turn's does; the build goes on uncapped
 			if replyCap != nil && (maxTokensRefused(err) || contextTooLarge(err)) {
-				capRejected.Store(ref, true)
+				_capRejected.Store(ref, true)
 				maxOut = 0
 				continue
 			}
@@ -1274,7 +1274,7 @@ func (b *memTree) build(ctx context.Context, id nodeID, prompt string, first boo
 			// a cap burn is the reasoning budget, not the line: the model
 			// spent the whole reply thinking, so a fresh sample at the same
 			// cap burns again but a doubled cap leaves room for the line
-			if res.Response.FinishReason == fantasy.FinishReasonLength && maxOut < 4*buildMaxOutput {
+			if res.Response.FinishReason == fantasy.FinishReasonLength && maxOut < 4*_buildMaxOutput {
 				maxOut *= 2
 				continue
 			}
@@ -1293,11 +1293,11 @@ func (b *memTree) build(ctx context.Context, id nodeID, prompt string, first boo
 			firstOut = res.TotalUsage.OutputTokens
 			if thought := reasoningOf(res.Response.Content); thought != "" {
 				firstThought = int64(len(thought))
-				convo = append(convo, assistantMessage(thought), agent.UserMessage(emptyLineNote))
+				convo = append(convo, assistantMessage(thought), agent.UserMessage(_emptyLineNote))
 			} else {
-				convo[0] = agent.UserMessage(prompt + "\n\n" + emptyLineNote)
+				convo[0] = agent.UserMessage(prompt + "\n\n" + _emptyLineNote)
 			}
-		case len(reply) <= nodeBytes:
+		case len(reply) <= _nodeBytes:
 			return reply, nil
 		default:
 			if best == "" || len(reply) < len(best) {

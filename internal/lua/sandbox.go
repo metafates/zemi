@@ -183,7 +183,7 @@ func NewSandbox(originOf func(*glua.LState) Origin, now func() time.Time) (*Sand
 		tb := L.CheckTable(1)
 		var actual *glua.LTable
 		if mt, ok := tb.Metatable.(*glua.LTable); ok {
-			actual, _ = mt.RawGetString(realKey).(*glua.LTable)
+			actual, _ = mt.RawGetString(_realKey).(*glua.LTable)
 		}
 		if actual == nil {
 			L.Push(next)
@@ -519,7 +519,7 @@ func (s *Sandbox) protectTable(tb *glua.LTable, what string) *glua.LTable {
 func (s *Sandbox) protectNamespace(tb *glua.LTable, what, path string) *glua.LTable {
 	mt := s.lockedMeta(what)
 	// realTableOf reads it: __index is a function here, not the table
-	mt.RawSetString(realKey, tb)
+	mt.RawSetString(_realKey, tb)
 	mt.RawSetString("__index", s.L.NewFunction(func(L *glua.LState) int {
 		key := L.Get(2)
 		if v := tb.RawGet(key); v != glua.LNil {
@@ -564,7 +564,7 @@ func realTableOf(tb *glua.LTable) *glua.LTable {
 	if !ok {
 		return tb
 	}
-	if actual, ok := mt.RawGetString(realKey).(*glua.LTable); ok {
+	if actual, ok := mt.RawGetString(_realKey).(*glua.LTable); ok {
 		return actual
 	}
 	idx, ok := mt.RawGetString("__index").(*glua.LTable)
@@ -574,9 +574,9 @@ func realTableOf(tb *glua.LTable) *glua.LTable {
 	return idx
 }
 
-// realKey holds a namespace proxy's real table on its metatable, which
+// _realKey holds a namespace proxy's real table on its metatable, which
 // Lua cannot reach: __metatable answers "zemi:protected".
-const realKey = "__zemi_real"
+const _realKey = "__zemi_real"
 
 // rawLookup reads key from tbl, falling through a protected proxy's
 // __index (LookupPath walks proxies and real tables alike).

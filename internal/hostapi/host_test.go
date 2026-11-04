@@ -155,8 +155,8 @@ func runUser(t *testing.T, r *lua.Runtime, src string) {
 
 // askEverything registers the ask-everything permission policy a plugin's
 // permission.request handler makes: every action routes to the overlay.
-// askEverythingOff turns it off again.
-const askEverythingOff = `zemi.event.off("ask-everything")`
+// _askEverythingOff turns it off again.
+const _askEverythingOff = `zemi.event.off("ask-everything")`
 
 func askEverything(t *testing.T, r *lua.Runtime) {
 	t.Helper()
@@ -829,7 +829,7 @@ func TestShortOutput(t *testing.T) {
 // already-compacted text a rebuild reads back passes through unchanged.
 func TestRowOutputDate(t *testing.T) {
 	const raw = "2026-10-29T11:03:12.487654321Z"
-	want := time.Date(2026, 10, 29, 11, 3, 12, 487654321, time.UTC).Local().Format(previewStamp)
+	want := time.Date(2026, 10, 29, 11, 3, 12, 487654321, time.UTC).Local().Format(_previewStamp)
 	if got := rowOutput("date", raw); got != want || got == raw {
 		t.Errorf("rowOutput(date) = %q, want %q", got, want)
 	}
@@ -880,7 +880,7 @@ func TestProjectEmojiPool(t *testing.T) {
 	drawn["⚑"], drawn["↻"], drawn["↓"] = true, true, true // the statusline hints
 	drawn["@"], drawn["─"], drawn["…"] = true, true, true // the snail and its rule
 	seen := map[string]bool{}
-	for _, e := range projectEmoji {
+	for _, e := range _projectEmoji {
 		if seen[e] {
 			t.Errorf("%q repeats", e)
 		}

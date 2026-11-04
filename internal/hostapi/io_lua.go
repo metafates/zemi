@@ -75,7 +75,7 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[strin
 	// NOTE: a raise at a config file's top level ends the file, so an inert
 	// boot misses what it registers after the call; a handle that failed
 	// through its callback would keep the rest.
-	if h.Inert && subject != luaFSRead {
+	if h.Inert && subject != _luaFSRead {
 		L.RaiseError("%s %s: permission denied (inert)", subject, arg)
 	}
 	// a plugin calls nothing its manifest does not declare: the manifest is
@@ -123,29 +123,29 @@ func (h *Host) gateAsk(L *glua.LState, subject, id string, payload func() map[st
 // The lua.* subjects the gate names a call by: what a plugin's uses maps
 // onto, what test.stub answers and what the ask overlay shows.
 const (
-	luaFSRead      = "lua.fs.read"
-	luaFSWrite     = "lua.fs.write"
-	luaModelAsk    = "lua.model.ask"
-	luaClassifyAsk = "lua.classify.ask"
-	luaAgentSend   = "lua.agent.send"
-	luaAgentRun    = "lua.agent.run"
-	luaWorkflowRun = "lua.workflow.run"
-	luaJobStart    = "lua.job.start"
-	luaHTTP        = "lua.http." // a prefix: one subject per method
+	_luaFSRead      = "lua.fs.read"
+	_luaFSWrite     = "lua.fs.write"
+	_luaModelAsk    = "lua.model.ask"
+	_luaClassifyAsk = "lua.classify.ask"
+	_luaAgentSend   = "lua.agent.send"
+	_luaAgentRun    = "lua.agent.run"
+	_luaWorkflowRun = "lua.workflow.run"
+	_luaJobStart    = "lua.job.start"
+	_luaHTTP        = "lua.http." // a prefix: one subject per method
 )
 
-// pluginCaps is the capability each gated subject needs declared, keyed by
+// _pluginCaps is the capability each gated subject needs declared, keyed by
 // subject prefix: every lua.http.<method>, every tool.<name> and every
 // lua.agent.* call share one row.
-var pluginCaps = []struct {
+var _pluginCaps = []struct {
 	prefix, capability string
 }{
-	{luaModelAsk, plugin.CapModel},
-	{luaClassifyAsk, plugin.CapModel},
+	{_luaModelAsk, plugin.CapModel},
+	{_luaClassifyAsk, plugin.CapModel},
 	{"lua.agent.", plugin.CapAgent},
-	{luaWorkflowRun, plugin.CapWorkflow},
-	{luaFSWrite, plugin.CapFSWrite},
-	{luaHTTP, plugin.CapHTTP},
+	{_luaWorkflowRun, plugin.CapWorkflow},
+	{_luaFSWrite, plugin.CapFSWrite},
+	{_luaHTTP, plugin.CapHTTP},
 	{"tool.", plugin.CapTool},
 }
 
@@ -153,10 +153,10 @@ var pluginCaps = []struct {
 // when no capability covers it (lua.fs.read, zemi.state.*, zemi.env.get): a
 // subject nothing declares keeps its own gate.
 func pluginCap(subject string) string {
-	if subject == luaJobStart {
+	if subject == _luaJobStart {
 		return plugin.CapJob
 	}
-	for _, c := range pluginCaps {
+	for _, c := range _pluginCaps {
 		if strings.HasPrefix(subject, c.prefix) {
 			return c.capability
 		}
@@ -411,9 +411,9 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
 	// link: the call means a symlink itself, not what it points at
 	resolve := func(L *glua.LState, api string, write, link bool) perm.Path {
-		subject := luaFSRead
+		subject := _luaFSRead
 		if write {
-			subject = luaFSWrite
+			subject = _luaFSWrite
 		}
 		path := L.CheckString(1)
 		resolved, err := h.projectResolve(path, link)
@@ -531,7 +531,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 
 	tb.RawSetString("glob", L.NewFunction(func(L *glua.LState) int {
 		pattern := L.CheckString(1)
-		h.luaGate(L, luaFSRead, h.Dirs.ProjectDir, nil)
+		h.luaGate(L, _luaFSRead, h.Dirs.ProjectDir, nil)
 		// the pattern is misuse; the walk, a runtime failure. The leading
 		// slash anchors "*.go" at the root.
 		match, err := glob.Match("/" + strings.TrimPrefix(pattern, "/"))
@@ -576,7 +576,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 			// the dir as given, which under a symlinked TMPDIR differ.
 			rel, _ = filepath.Rel(perm.RealPath(h.Dirs.ProjectDir), root)
 		}
-		h.luaGate(L, luaFSRead, root, nil)
+		h.luaGate(L, _luaFSRead, root, nil)
 		// the patterns are misuse; the walk, a runtime failure
 		re, err := regexp.Compile(pattern)
 		if err != nil {
@@ -703,7 +703,7 @@ type httpHandle struct {
 // httpStart gates the request, runs it off the interpreter and pushes the
 // handle.
 func (h *Host) httpStart(L *glua.LState, req httpReq, onDone *glua.LFunction) int {
-	subject := luaHTTP + strings.ToLower(req.method)
+	subject := _luaHTTP + strings.ToLower(req.method)
 	stub := h.luaGate(L, subject, req.url, func() map[string]any {
 		return map[string]any{"method": req.method, "url": req.url, "headers": req.headers, "body": req.body}
 	})
@@ -1000,7 +1000,7 @@ func (w *lineWriter) flush() {
 	}
 }
 
-var jobSeq atomic.Int64
+var _jobSeq atomic.Int64
 
 // argvLine is an exec'd program as the shell line the gate checks: every
 // word quoted where sh would split it, so a cmd of "ls; rm x" stays one word
@@ -1029,7 +1029,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.job.start: cmd is required")
 		}
 		args := rawStrings(L, spec, "args")
-		stub := h.luaGate(L, luaJobStart, argvLine(cmdName, args), func() map[string]any {
+		stub := h.luaGate(L, _luaJobStart, argvLine(cmdName, args), func() map[string]any {
 			cwd := rawString(L, spec, "cwd")
 			if cwd != "" {
 				// the ask names where the job really runs, the way the fs gate does
@@ -1065,7 +1065,7 @@ func (h *Host) jobNamespace(L *glua.LState) *glua.LTable {
 			}
 		}
 		cmd.Env = env
-		jh := &jobHandle{id: jobSeq.Add(1), cmd: cmd, done: make(chan struct{})}
+		jh := &jobHandle{id: _jobSeq.Add(1), cmd: cmd, done: make(chan struct{})}
 		at := h.callerOf(L)
 		sinkOf := func(key string) *lineSink {
 			if fn, _ := opt[*glua.LFunction](L, spec, key); fn != nil {

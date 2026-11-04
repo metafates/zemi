@@ -85,8 +85,8 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 			Anchor: OverlayAnchor(rawString(L, tb, "anchor")),
 			Follow: rawBool(L, tb, "follow"),
 		}
-		if o.Anchor != "" && !slices.Contains(overlayAnchors, o.Anchor) {
-			L.RaiseError("zemi.ui.overlay.open: anchor must be one of %s or nil, got %q", strings.Join(strs(overlayAnchors), ", "), o.Anchor)
+		if o.Anchor != "" && !slices.Contains(_overlayAnchors, o.Anchor) {
+			L.RaiseError("zemi.ui.overlay.open: anchor must be one of %s or nil, got %q", strings.Join(strs(_overlayAnchors), ", "), o.Anchor)
 		}
 		switch body := tb.RawGetString("body").(type) {
 		case glua.LString:
@@ -239,7 +239,7 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 		}
 		resolved := p.String()
 		// gated by the written name like zemi.fs, so a secret-named link asks
-		h.luaGate(L, luaFSRead, h.projectAbs(perm.ExpandHome(path)), nil)
+		h.luaGate(L, _luaFSRead, h.projectAbs(perm.ExpandHome(path)), nil)
 		line := 0
 		if n, ok := opt[glua.LNumber](L, opts, "line"); ok {
 			line = int(n)
@@ -306,8 +306,8 @@ func (h *Host) uiNamespace(L *glua.LState) *glua.LTable {
 	// scroll(action, id?) is the zemi.ui.scroll.* host actions for a click.
 	tb.RawSetString("scroll", L.NewFunction(func(L *glua.LState) int {
 		kind := ScrollAction(L.CheckString(1))
-		if !slices.Contains(scrollActions, kind) {
-			L.ArgError(1, strings.Join(strs(scrollActions), ", "))
+		if !slices.Contains(_scrollActions, kind) {
+			L.ArgError(1, strings.Join(strs(_scrollActions), ", "))
 		}
 		h.scroll(kind)
 		return 0
@@ -376,7 +376,7 @@ const (
 	VerbPaste  Verb = "paste"  // a secret into the masked input it opens
 )
 
-var verbs = []Verb{VerbOpen, VerbPick, VerbRun, VerbToggle, VerbFill, VerbCopy, VerbGo, VerbStop, VerbPaste}
+var _verbs = []Verb{VerbOpen, VerbPick, VerbRun, VerbToggle, VerbFill, VerbCopy, VerbGo, VerbStop, VerbPaste}
 
 // OverlayItem is an overlay row's fields, parsed from its item: a table of
 // them, else a value whose text is the row. Callbacks get the raw item.
@@ -483,11 +483,11 @@ func parseItem(item any, action bool) (OverlayItem, error) {
 	switch v := m["verb"].(type) {
 	case nil:
 	case Verb: // a Go screen's item
-		if p.Verb = v; !slices.Contains(verbs, p.Verb) {
+		if p.Verb = v; !slices.Contains(_verbs, p.Verb) {
 			bad("verb", "one of "+joinVerbs(), v)
 		}
 	case string:
-		if p.Verb = Verb(v); !slices.Contains(verbs, p.Verb) {
+		if p.Verb = Verb(v); !slices.Contains(_verbs, p.Verb) {
 			bad("verb", "one of "+joinVerbs(), v)
 		}
 	default:
@@ -612,7 +612,7 @@ func parseKey(v any) (ItemKey, error) {
 	}
 	if v, ok := m["verb"].(string); ok {
 		k.Verb = Verb(v)
-		if !slices.Contains(verbs, k.Verb) {
+		if !slices.Contains(_verbs, k.Verb) {
 			err = fmt.Errorf("verb must be one of %s, got %q", joinVerbs(), v)
 		}
 	}
@@ -627,8 +627,8 @@ func parseKey(v any) (ItemKey, error) {
 
 // joinVerbs lists the verbs for an error message.
 func joinVerbs() string {
-	names := make([]string, len(verbs))
-	for i, v := range verbs {
+	names := make([]string, len(_verbs))
+	for i, v := range _verbs {
 		names[i] = string(v)
 	}
 	return strings.Join(names, ", ")

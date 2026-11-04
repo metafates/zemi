@@ -9,7 +9,7 @@ import (
 )
 
 // The splash fills the empty chat until the first message.
-var splashTips = []struct{ key, click, text string }{
+var _splashTips = []struct{ key, click, text string }{
 	{"/btw ", "fill /btw ", " asks a side question the conversation does not keep"},
 	{"@", "fill @", " attaches project files, dirs and skills to the prompt"},
 	{"/goal ", "fill /goal ", " keeps working until a condition holds"},
@@ -20,14 +20,14 @@ var splashTips = []struct{ key, click, text string }{
 // splashTip is the discovery tip a first session ends with, one per hour of
 // the host's clock, so the row does not change between renders.
 func splashTip(now time.Time) int {
-	return int(now.Unix()/3600) % len(splashTips)
+	return int(now.Unix()/3600) % len(_splashTips)
 }
 
 // splashWidget is the empty chat's screen.
 func splashWidget() *widget {
 	return &widget{
 		id:       "splash",
-		region:   regionChat,
+		region:   _regionChat,
 		priority: 5,
 		onClick:  nil, // the app runs it, since it edits the composer and runs commands
 		render: func(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
@@ -155,7 +155,7 @@ func splashTipSegs(st *hostapi.ScreenState, listed bool) []hostapi.Segment {
 		return hostapi.Segment{Text: text, HL: "SplashKey", Click: click}
 	}
 	dim := func(text string) hostapi.Segment { return hostapi.Segment{Text: text, HL: "Dim"} }
-	tip := splashTips[splashTip(st.Now)]
+	tip := _splashTips[splashTip(st.Now)]
 	switch {
 	case st.InitError != "":
 		return []hostapi.Segment{{Text: initAt(st.InitError) + " failed: ", HL: "Danger"}, key("/errors", "errors")}
@@ -238,11 +238,11 @@ func splashFlow(segs []hostapi.Segment, room, indent int) [][]hostapi.Segment {
 	return rows
 }
 
-// splashWords is a run of "spaces, a word, spaces", the unit the splash
+// _splashWords is a run of "spaces, a word, spaces", the unit the splash
 // wraps.
-var splashWords = regexp.MustCompile(`\s*\S+\s*`)
+var _splashWords = regexp.MustCompile(`\s*\S+\s*`)
 
-func splitWords(s string) []string { return splashWords.FindAllString(s, -1) }
+func splitWords(s string) []string { return _splashWords.FindAllString(s, -1) }
 
 // ansiWidth is the cells text draws in.
 func ansiWidth(text string) int { return hostapi.SegsWidth([]hostapi.Segment{{Text: text}}) }

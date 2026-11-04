@@ -19,11 +19,11 @@ import (
 	"github.com/metafates/zemi/internal/plugin"
 )
 
-// newPluginPrompt rides behind /plugin new and modifyPluginPrompt behind
+// _newPluginPrompt rides behind /plugin new and _modifyPluginPrompt behind
 // /plugin modify; the procedure lives in the zemi skill.
 const (
-	newPluginPrompt    = "I want a new zemi plugin that does what the command above says; ask me when it says nothing. Read SKILL.md in %s, the zemi skill's directory, then follow the Plugin steps in plugins.md there: tests, not this session, are the check."
-	modifyPluginPrompt = "Change my zemi plugin %s in %s as the command above says; ask me when it says nothing. Read SKILL.md in %s, the zemi skill's directory, then follow the Plugin steps in plugins.md there: tests, not this session, are the check."
+	_newPluginPrompt    = "I want a new zemi plugin that does what the command above says; ask me when it says nothing. Read SKILL.md in %s, the zemi skill's directory, then follow the Plugin steps in plugins.md there: tests, not this session, are the check."
+	_modifyPluginPrompt = "Change my zemi plugin %s in %s as the command above says; ask me when it says nothing. Read SKILL.md in %s, the zemi skill's directory, then follow the Plugin steps in plugins.md there: tests, not this session, are the check."
 )
 
 // pluginsCommands is /plugin: the zemi plugin verbs, new and modify, which
@@ -139,7 +139,7 @@ func (h *Host) pluginsCommand(line string, confirm bool) error {
 		}
 		h.openInEditor(ui, path, "the plugin")
 	case verb == "new":
-		return send(fmt.Sprintf(newPluginPrompt, h.zemiSkillDir()))
+		return send(fmt.Sprintf(_newPluginPrompt, h.zemiSkillDir()))
 	case verb == "modify" && len(args) >= 2:
 		p, err := h.pluginNamed(args[1])
 		if err != nil {
@@ -150,7 +150,7 @@ func (h *Host) pluginsCommand(line string, confirm bool) error {
 		}
 		// the user asked for the change: in ask mode the gate still shows
 		// each edit, and that ask is the consent
-		return send(fmt.Sprintf(modifyPluginPrompt, p.Name, perm.TildePath(p.Dir), h.zemiSkillDir()))
+		return send(fmt.Sprintf(_modifyPluginPrompt, p.Name, perm.TildePath(p.Dir), h.zemiSkillDir()))
 	case ask:
 		p, err := h.pluginNamed(args[1])
 		if err != nil {
@@ -176,14 +176,14 @@ func (h *Host) pluginsCommand(line string, confirm bool) error {
 			}
 			h.GoSafe("plugin", func() { h.openPlugins(ui, true, "") })
 			return nil
-		case len(args) == 2 && !slices.Contains(marketplaceVerbs, args[1]):
+		case len(args) == 2 && !slices.Contains(_marketplaceVerbs, args[1]):
 			// the drill-down a marketplace row's enter opens; the build reads the
 			// clone's manifest, so it runs off the key loop, and a gone
 			// marketplace opens on its removed row
 			h.GoSafe("plugin", func() { h.openMarketplace(ui, args[1]) })
 		case len(args) > 1:
 			sub := args[1]
-			if !slices.Contains(marketplaceVerbs, sub) {
+			if !slices.Contains(_marketplaceVerbs, sub) {
 				return pluginsErr(usage, plugin.ErrUsage)
 			}
 			background(marketplaceLabel(args), func(ctx context.Context) error {
@@ -241,10 +241,10 @@ func (h *Host) pluginsCommand(line string, confirm bool) error {
 	return nil
 }
 
-// marketplaceVerbs are the marketplace subcommands that run in the
+// _marketplaceVerbs are the marketplace subcommands that run in the
 // background: the build reads the clone's manifest, so it runs off the key
 // loop.
-var marketplaceVerbs = []string{"add", "remove", "update"}
+var _marketplaceVerbs = []string{"add", "remove", "update"}
 
 // marketplaceLabel is the busy line a marketplace verb shows while it runs:
 // the clone decides a marketplace's name, so add names the source it was
@@ -373,7 +373,7 @@ func (h *Host) pluginItems() []OverlayItem {
 		} else {
 			keys = append(keys, ItemKey{Key: "e", Desc: "enable", Run: "plugin enable " + p.Name})
 		}
-		keys = append(keys, ItemKey{Key: "o", Desc: openInEditorLabel, Run: "plugin open " + p.Name})
+		keys = append(keys, ItemKey{Key: "o", Desc: _openInEditorLabel, Run: "plugin open " + p.Name})
 		if p.Local {
 			keys = append(keys, ItemKey{Key: "m", Desc: "modify with zemi", Fill: "/plugin modify " + p.Name + " "})
 		}
@@ -538,9 +538,9 @@ func cutLine(s string) string {
 	return s
 }
 
-// pluginGloss is what each declared name grants, for the detail pane: the same
+// _pluginGloss is what each declared name grants, for the detail pane: the same
 // words as the skill's table, short enough to sit in one line of prose.
-var pluginGloss = map[string]string{
+var _pluginGloss = map[string]string{
 	"model":        "a model or classify call",
 	"agent":        "a message to the agent",
 	"http":         "a fetch",
@@ -558,7 +558,7 @@ func pluginDetail(p plugin.Plugin) string {
 	}
 	glossed := make([]string, len(p.Uses))
 	for i, u := range p.Uses {
-		if gloss := pluginGloss[u]; gloss != "" {
+		if gloss := _pluginGloss[u]; gloss != "" {
 			u += " (" + gloss + ")"
 		}
 		glossed[i] = u

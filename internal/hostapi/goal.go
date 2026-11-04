@@ -15,26 +15,26 @@ import (
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
-// goalKV is the kv row the live goal persists in: what must hold and the log
+// _goalKV is the kv row the live goal persists in: what must hold and the log
 // seq of the message that set it, so a reset (the chat it was set in gone)
 // drops it.
-const goalKV = "goal"
+const _goalKV = "goal"
 
-// goalMaxRuns bounds the turns a goal starts on its own before anyone else
+// _goalMaxRuns bounds the turns a goal starts on its own before anyone else
 // starts one.
 // NOTE: a fixed cap; a goal.max_turns key is the upgrade if long unattended
 // goals need more.
-const goalMaxRuns = 20
+const _goalMaxRuns = 20
 
 type goalEvent string
 
 const (
-	goalSet     goalEvent = "set"
-	goalNotYet  goalEvent = "not yet"
-	goalMet     goalEvent = "met"
-	goalBlocked goalEvent = "blocked"
-	goalPaused  goalEvent = "paused"
-	goalStopped goalEvent = "stopped"
+	_goalSet     goalEvent = "set"
+	_goalNotYet  goalEvent = "not yet"
+	_goalMet     goalEvent = "met"
+	_goalBlocked goalEvent = "blocked"
+	_goalPaused  goalEvent = "paused"
+	_goalStopped goalEvent = "stopped"
 )
 
 // Goal is the chat's goal (/goal): what must hold, when it was set and the
@@ -55,9 +55,9 @@ type Goal struct {
 	PausedTold string `json:"PausedTold"`
 }
 
-const goalBrief = `Work until the conversation shows it holds: run the checks that prove it and keep their output in view. After each of your turns zemi checks the goal against the conversation and sends you back while it does not hold. If only the user can unblock it, say what you need and stop.`
+const _goalBrief = `Work until the conversation shows it holds: run the checks that prove it and keep their output in view. After each of your turns zemi checks the goal against the conversation and sends you back while it does not hold. If only the user can unblock it, say what you need and stop.`
 
-const goalCheckPrompt = `Judge whether the session's goal holds now; do not work on it. Call no tools: none will run.
+const _goalCheckPrompt = `Judge whether the session's goal holds now; do not work on it. Call no tools: none will run.
 Goal: %s
 Decide from what the conversation shows: command output, test results and file contents count; the assistant saying it is done does not.
 Answer with one line: MET, NOT YET or BLOCKED, a colon, and one sentence.
@@ -82,7 +82,7 @@ func (h *Host) loadGoal() {
 	if h.DB == nil {
 		return
 	}
-	raw, err := h.DB.GetKV(goalKV)
+	raw, err := h.DB.GetKV(_goalKV)
 	if err != nil {
 		return
 	}
@@ -105,11 +105,11 @@ func (h *Host) storeGoal(g *Goal) {
 		return
 	}
 	if g == nil {
-		_, _ = h.DB.DelKV(goalKV)
+		_, _ = h.DB.DelKV(_goalKV)
 		return
 	}
 	if raw, err := json.Marshal(*g, json.Deterministic(true)); err == nil {
-		if err := h.DB.SetKV(goalKV, string(raw)); err != nil {
+		if err := h.DB.SetKV(_goalKV, string(raw)); err != nil {
 			h.Log.Warn("goal not kept", "origin", "goal", "error", err)
 		}
 	}
@@ -123,7 +123,7 @@ func (h *Host) unstoreGoal(g *Goal) {
 	if h.DB == nil {
 		return
 	}
-	if _, err := h.DB.DelKVIf(goalKV, func(raw string) bool {
+	if _, err := h.DB.DelKVIf(_goalKV, func(raw string) bool {
 		var row Goal
 		return json.Unmarshal([]byte(raw), &row) == nil && row.SetAt == g.SetAt && row.Condition == g.Condition
 	}); err != nil {
@@ -158,7 +158,7 @@ func (h *Host) SetGoal(args string) error {
 }
 
 func goalAttached(cond string) string {
-	return agent.Attached("goal", "The session's goal: "+cond+"\n"+goalBrief)
+	return agent.Attached("goal", "The session's goal: "+cond+"\n"+_goalBrief)
 }
 
 // setGoalFrom sets the goal when msg carries the brief SetGoal last sent,
@@ -245,7 +245,7 @@ func (h *Host) spentSince(tokens int64, cost float64) string {
 // sends: "" ends the chain. An interrupt records nothing, and neither does a
 // goal stopped or replaced meanwhile.
 func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
-	reply, err := h.aside(ctx, fmt.Sprintf(goalCheckPrompt, g.Condition))
+	reply, err := h.aside(ctx, fmt.Sprintf(_goalCheckPrompt, g.Condition))
 	if ctx.Err() != nil {
 		return ""
 	}
@@ -253,11 +253,11 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 	announced := "" // the degraded check's own row, worded as what it is
 	switch {
 	case err != nil:
-		ev, reason = goalPaused, "the check failed: "+h.friendlyError(err)
+		ev, reason = _goalPaused, "the check failed: "+h.friendlyError(err)
 		announced = "Goal check failed: " + h.friendlyError(err) + "; still watching"
 	case !ok:
 		h.Log.Debug("no verdict", "origin", "goal", "reply", clipRunes(reply, 200))
-		ev, reason = goalPaused, "the check gave no verdict"
+		ev, reason = _goalPaused, "the check gave no verdict"
 		announced = "Goal check gave no verdict; still watching"
 	}
 	// every field write stays under the agents lock: Goal copies the struct
@@ -268,8 +268,8 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 		ag.mu.Unlock()
 		return ""
 	}
-	if ev == goalNotYet && ag.goalRuns >= goalMaxRuns {
-		ev, reason = goalPaused, fmt.Sprintf("after %d turns without you; send a message to go on", goalMaxRuns)
+	if ev == _goalNotYet && ag.goalRuns >= _goalMaxRuns {
+		ev, reason = _goalPaused, fmt.Sprintf("after %d turns without you; send a message to go on", _goalMaxRuns)
 	}
 	g.Turns++
 	g.Reason = goalReason(ev, reason)
@@ -282,11 +282,11 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 	}
 	// the pill stays armed and the next turn re-checks, so a pause that
 	// answers the same every turn draws its row once
-	skip := ev == goalPaused && g.PausedTold == reason
-	if ev == goalPaused {
+	skip := ev == _goalPaused && g.PausedTold == reason
+	if ev == _goalPaused {
 		g.PausedTold = reason
 	}
-	if ev == goalMet {
+	if ev == _goalMet {
 		ag.goal = nil
 		ag.mu.Unlock()
 		h.unstoreGoal(g)
@@ -301,7 +301,7 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 	} else if m, ok := goalNotice(ev, reason); ok {
 		h.notice(m.Text, m.Detail)
 	}
-	if ev != goalNotYet {
+	if ev != _goalNotYet {
 		return ""
 	}
 	why := "Not met yet."
@@ -315,13 +315,13 @@ func (h *Host) checkGoal(ctx context.Context, g *Goal) string {
 func goalNotice(ev goalEvent, reason string) (ChatMessage, bool) {
 	m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: "Goal " + string(ev)}
 	switch ev {
-	case goalSet:
+	case _goalSet:
 		return m, false
-	case goalNotYet:
+	case _goalNotYet:
 		m.Text = "Goal not met yet"
-	case goalBlocked:
+	case _goalBlocked:
 		m.Detail = "/goal stop drops it"
-	case goalMet, goalPaused, goalStopped:
+	case _goalMet, _goalPaused, _goalStopped:
 	}
 	if reason != "" {
 		m.Text += ": " + sanitize.String(reason)
@@ -353,7 +353,7 @@ func goalReason(ev goalEvent, why string) string {
 func parseVerdict(reply string) (goalEvent, string, bool) {
 	for line := range strings.Lines(reply) {
 		head, reason, _ := strings.Cut(line, ":")
-		if ev := goalEvent(strings.ToLower(strings.Trim(head, "*`#- \t\r\n"))); ev == goalMet || ev == goalNotYet || ev == goalBlocked {
+		if ev := goalEvent(strings.ToLower(strings.Trim(head, "*`#- \t\r\n"))); ev == _goalMet || ev == _goalNotYet || ev == _goalBlocked {
 			return ev, clipRunes(sanitize.String(strings.Trim(reason, "*` \t\r\n")), 200), true
 		}
 	}

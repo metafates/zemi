@@ -30,12 +30,12 @@ import (
 )
 
 const (
-	// chatSplitChars: a longer text becomes several sibling rows of about
+	// _chatSplitChars: a longer text becomes several sibling rows of about
 	// this many characters rather than being cut.
-	chatSplitChars = 8_000
-	// echoClipChars: a tool result clips to head and tail, this many
+	_chatSplitChars = 8_000
+	// _echoClipChars: a tool result clips to head and tail, this many
 	// characters in all.
-	echoClipChars = 30_000
+	_echoClipChars = 30_000
 )
 
 // chatLog writes the main log of one project store. It owns the builder.
@@ -179,7 +179,7 @@ func (c *chatLog) Work(run, who, agent, status, text string) (int64, error) {
 		return -1, err
 	}
 	label := who + "  "
-	rows := splitText(text, chatSplitChars-len([]rune(label)))
+	rows := splitText(text, _chatSplitChars-len([]rune(label)))
 	for i := 1; i < len(rows); i++ {
 		rows[i] = label + rows[i]
 	}
@@ -197,11 +197,11 @@ func (c *chatLog) Tool(name, input, id string) error {
 	if err != nil {
 		return err
 	}
-	marked := len(splitText(input, chatSplitChars)) > 1
+	marked := len(splitText(input, _chatSplitChars)) > 1
 	if marked {
 		meta = []byte(withSplit(string(meta)))
 	}
-	for _, row := range splitText(input, chatSplitChars) {
+	for _, row := range splitText(input, _chatSplitChars) {
 		leaf := toolLeaf(name, row)
 		if _, err := c.h.DB.AppendLog(store.KindTool, row, string(meta), "", leaf); err != nil {
 			return err
@@ -239,7 +239,7 @@ func (c *chatLog) Echo(name string, ok bool, output string, call StreamTool) err
 	if err != nil {
 		return err
 	}
-	clipped := clipMiddle(output, echoClipChars)
+	clipped := clipMiddle(output, _echoClipChars)
 	if _, err := c.h.DB.AppendLog(store.KindEcho, clipped, string(meta), "", echoLeaf(name, ok, clipped)); err != nil {
 		return err
 	}
@@ -292,7 +292,7 @@ func (c *chatLog) wake() {
 // append logs the rows a text splits into, each with its view line, and
 // returns the first and the last seq it wrote.
 func (c *chatLog) append(kind store.LogKind, text, meta, parts string) (int64, int64, error) {
-	return c.appendRows(kind, splitText(text, chatSplitChars), meta, parts)
+	return c.appendRows(kind, splitText(text, _chatSplitChars), meta, parts)
 }
 
 func (c *chatLog) appendRows(kind store.LogKind, rows []string, meta, parts string) (int64, int64, error) {
@@ -358,7 +358,7 @@ func toolLeaf(name, input string) string {
 	if s := inputSubject(input); s != "" {
 		line += " " + s
 	}
-	return clipBytes(line, nodeBytes)
+	return clipBytes(line, _nodeBytes)
 }
 
 // echoLeaf renders a tool result's line mechanically: the tool, its outcome
@@ -370,16 +370,16 @@ func echoLeaf(name string, ok bool, output string) string {
 		state = "failed"
 	}
 	line := "echo " + name + " " + state
-	if out := firstText(output, nodeBytes); out != "" {
+	if out := firstText(output, _nodeBytes); out != "" {
 		line += ": " + out
 	}
-	return clipBytes(line, nodeBytes)
+	return clipBytes(line, _nodeBytes)
 }
 
 // thoughtLeaf renders a reasoning stretch's line mechanically: its head.
 // NOTE: sparser than a model line; merges re-compress these later.
 func thoughtLeaf(text string) string {
-	return clipBytes("thought: "+firstText(text, nodeBytes), nodeBytes)
+	return clipBytes("thought: "+firstText(text, _nodeBytes), _nodeBytes)
 }
 
 // inputSubject picks the input field that says what the call acted on.
@@ -460,13 +460,13 @@ func clipBytes(s string, bytes int) string {
 
 // viewLines are the text parts one view message carries: one part per this
 // many view lines, so a turn's parts extend the last turn's whole.
-const viewLinesPerPart = 4
+const _viewLinesPerPart = 4
 
 // renderLine renders one view line as the model reads it: "id+n|text", the
 // placeholder's when the node is not built yet (text empty).
 func renderLine(l, i int64, text string) string {
 	if text == "" {
-		text = placeholder
+		text = _placeholder
 	}
 	return nodeID{l: l, i: i}.id() + "|" + strings.ReplaceAll(text, "\n", " ")
 }
@@ -493,7 +493,7 @@ func (c *chatLog) pendingLine(seq int64) string {
 	if name := rowTool(row); name != "" {
 		head += " " + name
 	}
-	return clipBytes(head+": "+strings.ReplaceAll(row.Text, "\n", " "), nodeBytes)
+	return clipBytes(head+": "+strings.ReplaceAll(row.Text, "\n", " "), _nodeBytes)
 }
 
 // viewMessage is the fresh turn's opening message: the persisted view, one
@@ -511,10 +511,10 @@ func (c *chatLog) viewMessage() (msg fantasy.Message, ok bool) {
 	if len(lines) == 0 {
 		return fantasy.Message{}, false
 	}
-	texts := make([]string, 0, (len(lines)+viewLinesPerPart-1)/viewLinesPerPart)
-	for start := 0; start < len(lines); start += viewLinesPerPart {
+	texts := make([]string, 0, (len(lines)+_viewLinesPerPart-1)/_viewLinesPerPart)
+	for start := 0; start < len(lines); start += _viewLinesPerPart {
 		var b strings.Builder
-		for _, ln := range lines[start:min(start+viewLinesPerPart, len(lines))] {
+		for _, ln := range lines[start:min(start+_viewLinesPerPart, len(lines))] {
 			text := ln.Text
 			if text == "" && ln.L == 0 {
 				text = c.pendingLine(ln.I)
@@ -546,8 +546,8 @@ type zoomArgs struct {
 	Page int   `json:"page,omitempty" desc:"with n = 1: the 0-based page of a message too long for one result"`
 }
 
-// zoomPageChars bounds one zoom(id, 1) page.
-const zoomPageChars = 8_000
+// _zoomPageChars bounds one zoom(id, 1) page.
+const _zoomPageChars = 8_000
 
 // zoomTool opens the view's lines: node(id, n) into its two children, and a
 // message whole.
@@ -634,7 +634,7 @@ func (h *Host) zoom(in zoomArgs) (fantasy.ToolResponse, error) {
 		}
 	}
 	text := row.Text
-	if pages := (utf8.RuneCountInString(text) + int(zoomPageChars) - 1) / int(zoomPageChars); in.Page >= pages {
+	if pages := (utf8.RuneCountInString(text) + int(_zoomPageChars) - 1) / int(_zoomPageChars); in.Page >= pages {
 		return fantasy.NewTextErrorResponse(fmt.Sprintf("message %d has %d pages", in.ID, pages)), nil
 	}
 	return fantasy.NewTextResponse(pageText(head, text, in.ID, in.Page)), nil
@@ -644,16 +644,16 @@ func (h *Host) zoom(in zoomArgs) (fantasy.ToolResponse, error) {
 // when it is long.
 func pageText(head, text string, id int64, page int) string {
 	r := []rune(text)
-	pages := (len(r) + int(zoomPageChars) - 1) / int(zoomPageChars)
+	pages := (len(r) + int(_zoomPageChars) - 1) / int(_zoomPageChars)
 	if page > 0 {
-		at := int64(page) * zoomPageChars
+		at := int64(page) * _zoomPageChars
 		if at >= int64(len(r)) {
 			return fmt.Sprintf("message %d has %d pages", id, pages)
 		}
-		return head + ": " + string(r[at:min(at+zoomPageChars, int64(len(r)))])
+		return head + ": " + string(r[at:min(at+_zoomPageChars, int64(len(r)))])
 	}
 	if pages > 1 {
-		text = string(r[:zoomPageChars]) + fmt.Sprintf("\n(page 1 of %d; zoom(%d, 1, page: 1) for the next)", pages, id)
+		text = string(r[:_zoomPageChars]) + fmt.Sprintf("\n(page 1 of %d; zoom(%d, 1, page: 1) for the next)", pages, id)
 	}
 	return head + ": " + text
 }
@@ -679,7 +679,7 @@ func workRun(row store.LogEntry) string {
 func (h *Host) zoomRun(run string, page int, own string) (fantasy.ToolResponse, error) {
 	rows, err := h.DB.Messages(run)
 	if errors.Is(err, store.ErrNotFound) {
-		return fantasy.NewTextResponse(workGone), nil
+		return fantasy.NewTextResponse(_workGone), nil
 	}
 	if err != nil {
 		return fantasy.ToolResponse{}, err
@@ -702,8 +702,8 @@ func (h *Host) zoomRun(run string, page int, own string) (fantasy.ToolResponse, 
 	return fantasy.NewTextResponse(pageText("run "+run, b.String(), -1, page)), nil
 }
 
-// workGone is what zoom says of a work row whose run's rows are gone.
-const workGone = "the run's transcript is gone from this store"
+// _workGone is what zoom says of a work row whose run's rows are gone.
+const _workGone = "the run's transcript is gone from this store"
 
 // rowTool is the tool a tool or echo row names, from its meta; "" for the
 // other kinds.

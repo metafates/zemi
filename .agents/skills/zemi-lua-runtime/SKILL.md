@@ -113,7 +113,7 @@ pinned prompt (`ag.pin`, below) lists the ones found when it was built; `skillIn
 `enabledSkills` discover the dir live, so a recipe written mid-session loads without moving the
 prompt, and `runSkill` marks the file read so an `edit` can follow. The agent writes recipes with
 the plain file tools (the environment's `Recipes:` line names the dir, the system prompt's
-`recipesUse` says how); a write there is an ordinary write.
+`_recipesUse` says how); a write there is an ordinary write.
 `recipeAfterWrite` (the `AfterWrite` hook, run before the writers' `markRead` because it may
 rewrite the file) scrubs every file written there in place (`sanitize.ScrubShapes`: no entropy
 pass, which cuts the long paths and `NAME=url` a procedure is made of), names the redacted

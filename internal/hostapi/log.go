@@ -53,7 +53,7 @@ func (h *Host) logFn(level slog.Level) glua.LGFunction {
 	}
 }
 
-const msgLogMax = 100
+const _msgLogMax = 100
 
 type msgEntry struct {
 	at     time.Time
@@ -73,7 +73,7 @@ type msgLog struct {
 func (h *Host) RecordMessage(source, text string) {
 	l := &h.msgs
 	l.mu.Lock()
-	l.entries = appendLast(l.entries, msgEntry{at: h.now(), source: source, text: sanitize.String(text)}, msgLogMax)
+	l.entries = appendLast(l.entries, msgEntry{at: h.now(), source: source, text: sanitize.String(text)}, _msgLogMax)
 	l.mu.Unlock()
 }
 

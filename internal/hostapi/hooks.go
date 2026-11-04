@@ -24,33 +24,33 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// hookTimeout is the longest a hook runs: Claude's default, and the cap on
+// _hookTimeout is the longest a hook runs: Claude's default, and the cap on
 // one that asked for more. A SessionStart capture holds its hooks to
-// hookCaptureWait, so no send path can wait on one, and keeps the text it
-// gathers to hookContextMax, the scale of a skill body worth of prompt.
+// _hookCaptureWait, so no send path can wait on one, and keeps the text it
+// gathers to _hookContextMax, the scale of a skill body worth of prompt.
 const (
-	hookTimeout     = 60 * time.Second
-	hookCaptureWait = 10 * time.Second
-	hookContextMax  = 16 << 10
+	_hookTimeout     = 60 * time.Second
+	_hookCaptureWait = 10 * time.Second
+	_hookContextMax  = 16 << 10
 )
 
-// hookSessionStart keys the registry's SessionStart capture. Nothing emits
+// _hookSessionStart keys the registry's SessionStart capture. Nothing emits
 // it: it is not an event, and captureSessionContext is its only reader.
-const hookSessionStart = "session.start"
+const _hookSessionStart = "session.start"
 
-// hookEventMap maps the Claude events zemi runs to the zemi events that
+// _hookEventMap maps the Claude events zemi runs to the zemi events that
 // consult them. Everything else is refused at load: PreToolUse and
 // PermissionRequest would need deny semantics zemi's gate does not give a
 // subprocess (a hook's output is logged, never interpreted),
 // UserPromptSubmit would tax every submit (SessionStart is the supported
 // route), and the rest have no counterpart.
-var hookEventMap = map[string]string{
+var _hookEventMap = map[string]string{
 	"PostToolUse":      EventToolPost,
 	"PermissionDenied": EventToolDenied,
 	"Stop":             EventAgentFinish,
 	"SubagentStart":    EventAgentSubagentStart,
 	"SubagentStop":     EventAgentSubagentFinish,
-	"SessionStart":     hookSessionStart,
+	"SessionStart":     _hookSessionStart,
 }
 
 // hookEntry is one hook command the registry fires.
@@ -100,7 +100,7 @@ func (h *Host) buildHooks(name, root, data string, groups []plugin.ClaudeHookGro
 		events[event] = append(events[event], e)
 	}
 	for _, g := range groups {
-		zevent, ok := hookEventMap[g.Event]
+		zevent, ok := _hookEventMap[g.Event]
 		if !ok {
 			h.Log.Warn("plugin hook event has no zemi equivalent, dropped", "origin", "hooks", "plugin", name, "event", g.Event)
 			continue
@@ -120,9 +120,9 @@ func (h *Host) buildHooks(name, root, data string, groups []plugin.ClaudeHookGro
 					if events == nil {
 						events = map[string][]hookEntry{}
 					}
-					timeout := hookTimeout
+					timeout := _hookTimeout
 					if hk.Timeout > 0 {
-						timeout = min(time.Duration(hk.Timeout)*time.Second, hookTimeout)
+						timeout = min(time.Duration(hk.Timeout)*time.Second, _hookTimeout)
 					}
 					add(zevent, hookEntry{
 						root: root, data: data, event: g.Event, command: hk.Command,
@@ -135,8 +135,8 @@ func (h *Host) buildHooks(name, root, data string, groups []plugin.ClaudeHookGro
 	return events
 }
 
-// hookMatcherList is the exact-or-pipe matcher form, whose tokens name tools.
-var hookMatcherList = regexp.MustCompile(`^[a-zA-Z0-9_|]+$`)
+// _hookMatcherList is the exact-or-pipe matcher form, whose tokens name tools.
+var _hookMatcherList = regexp.MustCompile(`^[a-zA-Z0-9_|]+$`)
 
 // hookMatcherFor builds one matcher's match: "" or "*" takes everything, an
 // exact-or-pipe list names the tokens as written (lowercased, tools through
@@ -146,7 +146,7 @@ func hookMatcherFor(m string, mapTool bool) func(string) bool {
 	if m == "" || m == "*" {
 		return nil
 	}
-	if hookMatcherList.MatchString(m) {
+	if _hookMatcherList.MatchString(m) {
 		want := set.Set[string]{}
 		for tok := range strings.SplitSeq(m, "|") {
 			tok = strings.ToLower(tok)
@@ -164,9 +164,9 @@ func hookMatcherFor(m string, mapTool bool) func(string) bool {
 	return re.MatchString
 }
 
-// claudeToolAlias maps the Claude tool names zemi knows to theirs; anything
+// _claudeToolAlias maps the Claude tool names zemi knows to theirs; anything
 // else lowercases.
-var claudeToolAlias = map[string]tools.ToolName{
+var _claudeToolAlias = map[string]tools.ToolName{
 	"bash": tools.ToolShell,
 	"task": tools.ToolAgent, "todowrite": tools.ToolTodos, "todoread": tools.ToolTodos,
 }
@@ -174,7 +174,7 @@ var claudeToolAlias = map[string]tools.ToolName{
 // claudeTool maps a Claude tool name to zemi's.
 func claudeTool(name string) tools.ToolName {
 	if n := strings.ToLower(strings.TrimSpace(name)); n != "" {
-		if m, ok := claudeToolAlias[n]; ok {
+		if m, ok := _claudeToolAlias[n]; ok {
 			return m
 		}
 		return tools.ToolName(n)
@@ -246,7 +246,7 @@ func (h *Host) runHook(e hookEntry, input []byte, timeout time.Duration) string 
 // the text, and the next send rebuilds with it. A reload never re-runs it:
 // this is session state, not registry state.
 func (h *Host) captureSessionContext() {
-	entries := h.hookReg.handlers(hookSessionStart)
+	entries := h.hookReg.handlers(_hookSessionStart)
 	if len(entries) == 0 || proc.Refused() != nil {
 		return
 	}
@@ -256,7 +256,7 @@ func (h *Host) captureSessionContext() {
 			if e.match != nil && !e.match("startup") {
 				continue
 			}
-			if out := hookContextOut(h.runHook(e, marshalHookPayload(h.hookBase(e)), min(e.timeout, hookCaptureWait))); out != "" {
+			if out := hookContextOut(h.runHook(e, marshalHookPayload(h.hookBase(e)), min(e.timeout, _hookCaptureWait))); out != "" {
 				texts = append(texts, out)
 			}
 		}
@@ -264,11 +264,11 @@ func (h *Host) captureSessionContext() {
 			return
 		}
 		text := "\n\n# Plugin context\n" + strings.Join(texts, "\n\n")
-		if len(text) > hookContextMax {
+		if len(text) > _hookContextMax {
 			// ToValidUTF8: the cut can land mid-rune, and this text joins
 			// the prompt and the store
-			text = strings.ToValidUTF8(text[:hookContextMax], "") +
-				fmt.Sprintf("\n(plugin context cut here: %d bytes left out)", len(text)-hookContextMax)
+			text = strings.ToValidUTF8(text[:_hookContextMax], "") +
+				fmt.Sprintf("\n(plugin context cut here: %d bytes left out)", len(text)-_hookContextMax)
 		}
 		ag := h.agents
 		ag.mu.Lock()

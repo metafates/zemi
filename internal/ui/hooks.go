@@ -41,7 +41,7 @@ func (a *App) AskTrust(root, cwd, state string) string {
 		what = "directory"
 	}
 	a.await(func() tea.Cmd {
-		a.trust = &trustPrompt{root: root, cwd: cwd, state: state, answer: ch, opened: a.now(), sel: len(trustAnswers) - 1}
+		a.trust = &trustPrompt{root: root, cwd: cwd, state: state, answer: ch, opened: a.now(), sel: len(_trustAnswers) - 1}
 		return a.notifyUnlessReported("zemi: trust this " + what + "?  " + ansi.Truncate(perm.TildePath(root), 200, "…"))
 	})
 	return <-ch
@@ -57,9 +57,9 @@ func (a *App) answerTrust(answer string) {
 	a.bump()
 }
 
-// trustAnswers are the trust prompt's rows, in order: a click on row i
+// _trustAnswers are the trust prompt's rows, in order: a click on row i
 // gives answer i.
-var trustAnswers = []string{"trust", "untrust", "later"}
+var _trustAnswers = []string{"trust", "untrust", "later"}
 
 // trustBox draws the Go-owned trust prompt (DESIGN §5, §8) in host
 // styles, with no Lua text inside. The cursor starts on Later, so an enter
@@ -113,7 +113,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		{key: "l", label: "Later", desc: laterDesc},
 	}
 	act := func(compact bool) [][]hostapi.Segment { return choiceRows(choices, tp.sel, width, compact) }
-	body := scrollChoiceBody(h, width, nil, &tp.view, explain, width, act, pickHint, hintPair{key: "esc", verb: "later"})
+	body := scrollChoiceBody(h, width, nil, &tp.view, explain, width, act, _pickHint, hintPair{key: "esc", verb: "later"})
 	return promptBox("Trust this "+what+"?", "", body, w, h, 100, &tp.size)
 }
 
@@ -122,7 +122,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 // is Go's, and it reads on a terminal with no theme at all. The two keys are
 // the ones that work in that state: copy the error for a report, or quit.
 func (a *App) bootBox(w, h int) [][]hostapi.Segment {
-	width := min(boxInner(w), textBoxW-4)
+	width := min(boxInner(w), _textBoxW-4)
 	text := func(width int) [][]hostapi.Segment {
 		rows := wrapText("zemi's own Lua layer did not load: no theme, widgets, config or model ran, and this is not your config's doing.", hostapi.ChromeHint, width)
 		head, rest, _ := strings.Cut(a.bootErr.Error(), "\n")
@@ -135,7 +135,7 @@ func (a *App) bootBox(w, h int) [][]hostapi.Segment {
 	}
 	var size boxSize
 	body := scrollChoiceBody(h, width, nil, &a.bootView, text, width, nil, hintPair{key: "c", verb: "copy the error"}, hintPair{key: "q", verb: "quit"})
-	return promptBox("Boot failed", "", body, w, h, textBoxW, &size)
+	return promptBox("Boot failed", "", body, w, h, _textBoxW, &size)
 }
 
 // copyBootError puts the boot failure and its log line on the clipboard, for
@@ -243,7 +243,7 @@ func (a *App) ComposerEdit(op hostapi.ComposerOp, text string, cursor int) {
 		var cmd tea.Cmd
 		switch op {
 		case hostapi.ComposerSet:
-			if utf8.RuneCountInString(text) > maxDraftChars {
+			if utf8.RuneCountInString(text) > _maxDraftChars {
 				a.draftCapToast()
 				break
 			}
@@ -290,5 +290,5 @@ func (a *App) publishComposer() {
 // Scroll implements hostapi.UIHooks (zemi.ui.scroll.* host actions);
 // posted to the UI goroutine like every other hook.
 func (a *App) Scroll(kind hostapi.ScrollAction) {
-	a.do(func() { a.applyScroll(kind, regionChat) })
+	a.do(func() { a.applyScroll(kind, _regionChat) })
 }

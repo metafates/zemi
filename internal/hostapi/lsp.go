@@ -50,12 +50,12 @@ type lspDef struct {
 	Root     string // the workspace; "" is the repository root
 }
 
-// builtinLSP start in a trusted repository with a marker. Servers run the
+// _builtinLSP start in a trusted repository with a marker. Servers run the
 // repository's code (rust-analyzer runs build scripts and proc macros, and
 // typescript would load node_modules), which is why no server starts in an
 // untrusted one and a live backend confines them (serverPolicy); typescript
 // still gets the tsserver on PATH.
-var builtinLSP = []lspDef{
+var _builtinLSP = []lspDef{
 	{Name: "gopls", Command: "gopls", Exts: []string{".go"}, Markers: []string{"go.mod", "go.work"}},
 	{Name: "pyright", Command: "pyright-langserver", Args: []string{"--stdio"}, Exts: []string{".py"}, Markers: []string{"pyproject.toml", "setup.py", "requirements.txt", "pyrightconfig.json"}},
 	{Name: "typescript", Command: "typescript-language-server", Args: []string{"--stdio"}, Exts: []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}, Markers: []string{"package.json", "tsconfig.json"}},
@@ -76,13 +76,13 @@ var builtinLSP = []lspDef{
 // that says what to install.
 func builtinCommands() string {
 	var cmds []string
-	for _, d := range builtinLSP {
+	for _, d := range _builtinLSP {
 		cmds = append(cmds, d.Command)
 	}
 	return strings.Join(cmds[:len(cmds)-1], ", ") + " or " + cmds[len(cmds)-1]
 }
 
-var languageIDs = map[string]string{
+var _languageIDs = map[string]string{
 	".go": "go", ".py": "python", ".rs": "rust", ".lua": "lua", ".ts": "typescript", ".tsx": "typescriptreact",
 	".js": "javascript", ".jsx": "javascriptreact", ".mjs": "javascript", ".cjs": "javascript",
 	".c": "c", ".h": "c", ".cc": "cpp", ".cpp": "cpp", ".hpp": "cpp", ".cxx": "cpp",
@@ -97,12 +97,12 @@ type lspProc struct {
 	stalls int // touches in a row the server answered nothing to
 }
 
-// lspMaxStarts caps the restarts of a server that keeps dying or hanging,
-// so a crash loop cannot respawn it on every edit; after lspMaxStalls
+// _lspMaxStarts caps the restarts of a server that keeps dying or hanging,
+// so a crash loop cannot respawn it on every edit; after _lspMaxStalls
 // silent touches in a row a server that answers no request counts as dead.
 const (
-	lspMaxStarts = 3
-	lspMaxStalls = 3
+	_lspMaxStarts = 3
+	_lspMaxStalls = 3
 )
 
 type lspReg struct {
@@ -223,7 +223,7 @@ func (h *Host) lualsDef() (lspDef, bool) {
 	}
 	h.lsp.mu.Unlock()
 	if i < 0 && h.Settings.Bool(config.KeyLSPAuto) {
-		def = builtinLSP[slices.IndexFunc(builtinLSP, func(d lspDef) bool { return d.Name == "luals" })]
+		def = _builtinLSP[slices.IndexFunc(_builtinLSP, func(d lspDef) bool { return d.Name == "luals" })]
 		if _, err := exec.LookPath(def.Command); err != nil {
 			return lspDef{}, false
 		}
@@ -263,7 +263,7 @@ func (h *Host) lspKnown() []lspDef {
 	disabled := h.lsp.disabled.Clone()
 	h.lsp.mu.Unlock()
 	if h.Settings.Bool(config.KeyLSPAuto) {
-		for _, d := range builtinLSP {
+		for _, d := range _builtinLSP {
 			if _, err := exec.LookPath(d.Command); err != nil {
 				continue
 			}
@@ -338,10 +338,10 @@ func globalTSServer(root string) string {
 	return js
 }
 
-// lspQuietTool lists the tools that change nothing behind a language
+// _lspQuietTool lists the tools that change nothing behind a language
 // server's back: they either only read, or write through zemi's own file
 // tools, which open the document they touched. Anything else ran a program.
-var lspQuietTool = set.Of(
+var _lspQuietTool = set.Of(
 	tools.ToolRead, tools.ToolWrite, tools.ToolEdit,
 	tools.ToolGlob, tools.ToolGrep, tools.ToolTodos, tools.ToolPlan, tools.ToolQuestion,
 	tools.ToolSkill, tools.ToolJobList,
@@ -497,9 +497,9 @@ func (h *Host) lspSync(force bool) {
 	}
 }
 
-// lspWalkMax bounds one walked tree; a config or plugin tree holds hundreds
+// _lspWalkMax bounds one walked tree; a config or plugin tree holds hundreds
 // of files, not thousands.
-const lspWalkMax = 2048
+const _lspWalkMax = 2048
 
 // lspWalk lists the files of roots: the trees a zemiLua server is rooted at
 // have no repository to ask, so an mtime walk stands in for the listing.
@@ -514,7 +514,7 @@ func lspWalk(roots []string) map[string]lspSig {
 			switch {
 			case err != nil:
 				return nil // a tree may vanish mid-walk
-			case n >= lspWalkMax:
+			case n >= _lspWalkMax:
 				return fs.SkipAll
 			case d.IsDir():
 				if d.Name() == ".git" {
@@ -541,9 +541,9 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 		if h.lsp.running == nil {
 			h.lsp.running, h.lsp.attempts = map[string]*lspProc{}, map[string]int{}
 		}
-		if h.lsp.attempts[def.Name] >= lspMaxStarts {
+		if h.lsp.attempts[def.Name] >= _lspMaxStarts {
 			h.lsp.mu.Unlock()
-			return nil, fmt.Errorf("%s failed %d times; /lsp restart %s to try again", def.Name, lspMaxStarts, def.Name)
+			return nil, fmt.Errorf("%s failed %d times; /lsp restart %s to try again", def.Name, _lspMaxStarts, def.Name)
 		}
 		h.lsp.attempts[def.Name]++
 		p = &lspProc{h: h, def: def, ready: make(chan struct{})}
@@ -598,7 +598,7 @@ func (h *Host) lspClient(ctx context.Context, def lspDef) (*lspProc, error) {
 		}
 		h.lsp.mu.Unlock()
 		err := fmt.Errorf("%s exited", def.Name)
-		h.RecordError(errLSP, def.Name, err.Error())
+		h.RecordError(_errLSP, def.Name, err.Error())
 		return nil, err
 	default:
 	}
@@ -617,7 +617,7 @@ func (h *Host) lspAnswered(ctx context.Context, p *lspProc, fresh bool) {
 		p.stalls = 0
 		delete(h.lsp.attempts, p.def.Name)
 	}
-	quiet := p.stalls >= lspMaxStalls
+	quiet := p.stalls >= _lspMaxStalls
 	if quiet {
 		p.stalls = 0
 	}
@@ -642,7 +642,7 @@ func isLuals(def lspDef) bool { return filepath.Base(def.Command) == "lua-langua
 // something rather than an empty string.
 func languageID(path string) string {
 	ext := strings.ToLower(filepath.Ext(path))
-	if id, ok := languageIDs[ext]; ok {
+	if id, ok := _languageIDs[ext]; ok {
 		return id
 	}
 	return strings.TrimPrefix(ext, ".")
@@ -794,7 +794,7 @@ func (h *Host) lspNamespace(L *glua.LState) *glua.LTable {
 		h.lsp.mu.Lock()
 		had := h.lsp.disabled.Has(name) ||
 			slices.ContainsFunc(h.lsp.user, func(d lspDef) bool { return d.Name == name }) ||
-			slices.ContainsFunc(builtinLSP, func(d lspDef) bool { return d.Name == name })
+			slices.ContainsFunc(_builtinLSP, func(d lspDef) bool { return d.Name == name })
 		if h.lsp.disabled == nil {
 			h.lsp.disabled = set.Set[string]{}
 		}

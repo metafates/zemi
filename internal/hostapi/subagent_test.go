@@ -580,10 +580,10 @@ func TestAgentDefs(t *testing.T) {
 		return out
 	}
 
-	if builtinAgents[0].Name != forkAgent {
+	if _builtinAgents[0].Name != _forkAgent {
 		t.Fatal("builtinAgents order changed; fix the general row below")
 	}
-	general := slices.IndexFunc(builtinAgents, func(d AgentDef) bool { return d.Name == "general" })
+	general := slices.IndexFunc(_builtinAgents, func(d AgentDef) bool { return d.Name == "general" })
 	if general < 0 {
 		t.Fatal("no general agent among the builtins")
 	}
@@ -602,7 +602,7 @@ func TestAgentDefs(t *testing.T) {
 	}{
 		{"reviewer", "user", "reviews diffs", "read,grep", "Be harsh.", true},
 		{"explore", "user", "my explorer", "read,-shell", "mine", false},
-		{"general", "builtin", builtinAgents[general].Description, "", builtinAgents[general].System, false},
+		{"general", "builtin", _builtinAgents[general].Description, "", _builtinAgents[general].System, false},
 		{"tester", "project", "runs tests", "", "x", false},
 	} {
 		d, ok := defs[c.name]
@@ -767,7 +767,7 @@ func TestUpdateToolReportsAFailedSend(t *testing.T) {
 // nesting, the user's attention and the lua tool.
 func TestSubagentToolSet(t *testing.T) {
 	h, _ := newTestHostDB(t)
-	kept, _ := filterTools(h.allTools(h.PipelineFor()), nil, subagentExcluded)
+	kept, _ := filterTools(h.allTools(h.PipelineFor()), nil, _subagentExcluded)
 	var names []string
 	for _, k := range kept {
 		names = append(names, k.Info().Name)
@@ -802,7 +802,7 @@ func TestFilterToolsNamesTheUnknown(t *testing.T) {
 		{name: "removal wins over the allowlist", want: []toolRef{{name: "read"}, {name: "grep"}, {name: "grep", deny: true}}, kept: []string{"read"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			kept, unknown := filterRefs(all, c.want, subagentExcluded)
+			kept, unknown := filterRefs(all, c.want, _subagentExcluded)
 			var names []string
 			for _, k := range kept {
 				names = append(names, k.Info().Name)
@@ -1050,7 +1050,7 @@ func TestForkContinuesTheCallersPrefix(t *testing.T) {
 	}}
 	m.script = func(_, last string, toolResult bool) []fantasy.StreamPart {
 		switch {
-		case strings.Contains(last, forkTask):
+		case strings.Contains(last, _forkTask):
 			return textParts("the fork's report")
 		case toolResult:
 			return textParts("parent saw: " + last)
@@ -1090,7 +1090,7 @@ func TestForkContinuesTheCallersPrefix(t *testing.T) {
 	}
 	// the # Brain section rides the caller's prefix, so the fork's first
 	task := concatText(fork.Prompt[len(fork.Prompt)-1].Content)
-	if !strings.HasPrefix(task, forkTask) || !strings.Contains(task, "review what we did") {
+	if !strings.HasPrefix(task, _forkTask) || !strings.Contains(task, "review what we did") {
 		t.Fatalf("the fork's task = %q", task)
 	}
 	for _, c := range []struct {
@@ -1124,11 +1124,11 @@ func TestForkContinuesTheCallersPrefix(t *testing.T) {
 		t.Fatalf("reply = %q", reply)
 	}
 	runs := h.tasks.runsOf(h.AgentSessionID())
-	if len(runs) != 1 || runs[0].agent != forkAgent {
+	if len(runs) != 1 || runs[0].agent != _forkAgent {
 		t.Fatalf("runs = %+v", runs)
 	}
 	sess, err := h.DB.GetSession(runs[0].sessionID)
-	if err != nil || sess.Agent != forkAgent || sess.ParentID != h.AgentSessionID() {
+	if err != nil || sess.Agent != _forkAgent || sess.ParentID != h.AgentSessionID() {
 		t.Fatalf("fork session = %+v %v", sess, err)
 	}
 }
@@ -1144,7 +1144,7 @@ func TestForkKnowsItIsAFork(t *testing.T) {
 			switch {
 			case toolResult:
 				return textParts("after the tool: " + last)
-			case strings.Contains(last, forkTask):
+			case strings.Contains(last, _forkTask):
 				return toolCallParts("c2", "agent", `{"description":"again","prompt":"more","agent":"fork"}`)
 			default:
 				return toolCallParts("c1", "agent", `{"description":"check it","prompt":"review","agent":"fork"}`)
@@ -1194,7 +1194,7 @@ func TestForkRefusals(t *testing.T) {
 			_, err := h.forkSetup(ctx, &agentRun{}, nil, "p")
 			return err
 		}
-		if err := run(forkAgent); err == nil || !strings.Contains(err.Error(), "already a fork") {
+		if err := run(_forkAgent); err == nil || !strings.Contains(err.Error(), "already a fork") {
 			t.Fatalf("a fork asking for a fork = %v", err)
 		}
 		if err := run("explore"); err == nil || !strings.Contains(err.Error(), "is a run of it") {
@@ -1214,13 +1214,13 @@ func TestForkRefusals(t *testing.T) {
 	t.Run("a detached run keeps its origin", func(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
-		def, err := h.agentDef(forkAgent)
+		def, err := h.agentDef(_forkAgent)
 		if err != nil {
 			t.Fatal(err)
 		}
 		// the run a detached fork is asked from must survive the detach, or the
 		// fork would continue the conversation from outside itself
-		ctx := context.WithValue(t.Context(), runKey{}, &agentRun{agent: forkAgent})
+		ctx := context.WithValue(t.Context(), runKey{}, &agentRun{agent: _forkAgent})
 		id, err := h.startBackgroundAgent(ctx, def, "d", "p")
 		if err != nil {
 			t.Fatal(err)
@@ -1261,7 +1261,7 @@ func TestForkRefusals(t *testing.T) {
 	t.Run("a forgotten fork cannot be continued", func(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
-		if err := h.DB.CreateSession("forgotten", "gone", "the task", forkAgent); err != nil {
+		if err := h.DB.CreateSession("forgotten", "gone", "the task", _forkAgent); err != nil {
 			t.Fatal(err)
 		}
 		run, err := h.loadRun("forgotten")
@@ -1284,13 +1284,13 @@ func TestForkRefusals(t *testing.T) {
 		if err := os.WriteFile(file, []byte("---\ndescription: mine\n---\nbody"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		def, err := h.agentDef(forkAgent)
+		def, err := h.agentDef(_forkAgent)
 		if err != nil || def.Path != "" {
 			t.Fatalf("agents/fork.md shadowed the builtin: %+v %v", def, err)
 		}
 		n := 0
 		for _, d := range h.agentDefs() {
-			if d.Name == forkAgent {
+			if d.Name == _forkAgent {
 				n++
 			}
 		}
@@ -1344,7 +1344,7 @@ func TestAgentToolHandsOff(t *testing.T) {
 	})
 	h.UserSpoke()
 	resp := waitCall(t, calls)
-	if !strings.HasPrefix(resp.Content, bgAgentStarted) || toolStatus(out(resp.Content), false, tools.Outcome{Run: run.id}) != CallBG {
+	if !strings.HasPrefix(resp.Content, _bgAgentStarted) || toolStatus(out(resp.Content), false, tools.Outcome{Run: run.id}) != CallBG {
 		t.Fatalf("handoff = %q (error %v), want the background text", resp.Content, resp.IsError)
 	}
 	if !run.isRunning() {
@@ -1798,7 +1798,7 @@ func TestWaitHoldsForAWorkflowAgent(t *testing.T) {
 		started <- resp
 	}()
 	f := waitLiveFlow(t, h)
-	if resp := waitCall(t, started); !strings.HasPrefix(resp.Content, bgWorkflowStarted) {
+	if resp := waitCall(t, started); !strings.HasPrefix(resp.Content, _bgWorkflowStarted) {
 		t.Fatalf("a background start = %q", resp.Content)
 	}
 	var inner *agentRun

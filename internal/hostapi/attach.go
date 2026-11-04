@@ -36,16 +36,16 @@ import (
 )
 
 const (
-	attachMax      = 64 << 10           // bytes per text file
-	attachImageMax = 20 << 20           // bytes per image read; tools.FitImage sizes what is sent
-	dropTTL        = 7 * 24 * time.Hour // idle copies age out, like scratchpads
-	// dropNameMax is how long a copied file's name may be
-	dropNameMax = 60
-	// dirListMax is how many files a directory's listing may name
-	dirListMax = 500
+	_attachMax      = 64 << 10           // bytes per text file
+	_attachImageMax = 20 << 20           // bytes per image read; tools.FitImage sizes what is sent
+	_dropTTL        = 7 * 24 * time.Hour // idle copies age out, like scratchpads
+	// _dropNameMax is how long a copied file's name may be
+	_dropNameMax = 60
+	// _dirListMax is how many files a directory's listing may name
+	_dirListMax = 500
 )
 
-var imageTypes = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
+var _imageTypes = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
 
 // composeUserMessage is the runner's Compose hook: the typed text with its
 // attachments, then any images as file parts. A text-only model gets a
@@ -70,11 +70,11 @@ func (h *Host) composeUserMessage(text string, images bool) fantasy.Message {
 	return fantasy.Message{Role: fantasy.MessageRoleUser, Content: parts}
 }
 
-// attachRef finds what attaches: an @ word at a word start, quoted when the
+// _attachRef finds what attaches: an @ word at a word start, quoted when the
 // path cannot ride a bare word, and carrying its kind spelled out - the
 // prefixes SplitKind lists - which forces that kind. A quoted word's closing
 // quote is optional, so a word still being typed resolves too.
-var attachRef = regexp.MustCompile(`(?:^|\s)@(?:(file|skill|workflow|agent):)?(?:"([^"\n]+)"?|'([^'\n]+)'?|(\S+))`)
+var _attachRef = regexp.MustCompile(`(?:^|\s)@(?:(file|skill|workflow|agent):)?(?:"([^"\n]+)"?|'([^'\n]+)'?|(\S+))`)
 
 // SplitKind splits an @ word's kind prefix from what follows it, the form
 // the expander forces and the popup filters by. A quote before the colon
@@ -112,7 +112,7 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 	// what follows the marker is host-composed from model output (agent
 	// reports), and an @ there must not attach anything
 	typed, _, _ := strings.Cut(text, agent.AttachMarker)
-	for _, m := range attachRef.FindAllStringSubmatch(typed, -1) {
+	for _, m := range _attachRef.FindAllStringSubmatch(typed, -1) {
 		// the word normalizes first: a quoted word unquotes (the grammar
 		// holds no quote), a bare one trims trailing sentence punctuation.
 		// Then the whole word names a skill, and a miss names a path.
@@ -157,10 +157,10 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 				name = rel
 			}
 		}
-		mt, image := imageTypes[strings.ToLower(filepath.Ext(abs))]
-		limit, tag := int64(attachMax), "file"
+		mt, image := _imageTypes[strings.ToLower(filepath.Ext(abs))]
+		limit, tag := int64(_attachMax), "file"
 		if image {
-			limit, tag = attachImageMax, "image"
+			limit, tag = _attachImageMax, "image"
 		}
 		// say why instead of dropping the reference: the model is told the
 		// file was meant to be there and can still read it itself, by the
@@ -315,7 +315,7 @@ func attachDir(b *strings.Builder, abs, name string, refused *[]string) {
 			n += "/"
 		}
 		// a line that would push the body past the budget ends the listing
-		if shown == dirListMax || body.Len()+len(n)+1 > attachMax {
+		if shown == _dirListMax || body.Len()+len(n)+1 > _attachMax {
 			break
 		}
 		body.WriteString(n + "\n")
@@ -409,8 +409,8 @@ func (h *Host) AttachWord(path string) string {
 // AttachImage stores image data (a clipboard paste) and returns its @ word:
 // a copy under the drops directory, the only attachment with no source path.
 func (h *Host) AttachImage(data []byte, ext string) (string, error) {
-	if len(data) > attachImageMax {
-		return "", fmt.Errorf("the image is %d MB; the limit is %d MB", len(data)>>20, attachImageMax>>20)
+	if len(data) > _attachImageMax {
+		return "", fmt.Errorf("the image is %d MB; the limit is %d MB", len(data)>>20, _attachImageMax>>20)
 	}
 	name, err := h.saveDrop("pasted-"+time.Now().Format("150405")+ext, data)
 	if err != nil {
@@ -419,9 +419,9 @@ func (h *Host) AttachImage(data []byte, ext string) (string, error) {
 	return h.AttachWord(filepath.Join(h.dropsDir(), name)), nil
 }
 
-// dropUnsafe is what a name cannot carry: a cell that would end the token, and
+// _dropUnsafe is what a name cannot carry: a cell that would end the token, and
 // the separators that would make it a path.
-var dropUnsafe = regexp.MustCompile("[\x00-\x1f\x7f/\\\\]+")
+var _dropUnsafe = regexp.MustCompile("[\x00-\x1f\x7f/\\\\]+")
 
 // saveDrop writes data under an unused name of its own (the same content
 // keeps its name) and returns that name. The name is the source's, cut to
@@ -435,12 +435,12 @@ func (h *Host) saveDrop(base string, data []byte) (string, error) {
 		return "", err
 	}
 	defer sweepDrops(dir) // after the write, so the name just handed out stays
-	base = strings.TrimLeft(dropUnsafe.ReplaceAllString(base, "-"), ".-")
+	base = strings.TrimLeft(_dropUnsafe.ReplaceAllString(base, "-"), ".-")
 	if base == "" {
 		base = "file"
 	}
 	ext := filepath.Ext(base)
-	stem := sanitize.Truncate(strings.TrimSuffix(base, ext), max(dropNameMax-len([]rune(ext)), 1))
+	stem := sanitize.Truncate(strings.TrimSuffix(base, ext), max(_dropNameMax-len([]rune(ext)), 1))
 	for i := 1; ; i++ {
 		name := stem + ext
 		if i > 1 {
@@ -467,7 +467,7 @@ func (h *Host) saveDrop(base string, data []byte) (string, error) {
 func sweepDrops(dir string) {
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
-		if info, err := e.Info(); err == nil && !e.IsDir() && time.Since(info.ModTime()) > dropTTL {
+		if info, err := e.Info(); err == nil && !e.IsDir() && time.Since(info.ModTime()) > _dropTTL {
 			_ = os.Remove(filepath.Join(dir, e.Name()))
 		}
 	}

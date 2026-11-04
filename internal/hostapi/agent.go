@@ -261,7 +261,7 @@ func (h *Host) liveModelID() string {
 	if ag.active && ag.turnModel != "" {
 		return ag.turnModel
 	}
-	return h.roleModel(defaultRole)
+	return h.roleModel(_defaultRole)
 }
 
 // sessionModelID is liveModelID for callers not holding ag.mu.
@@ -282,9 +282,9 @@ func (h *Host) allTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 	return append(append(h.builtinTools(pipe), h.luaFantasyTools(pipe)...), h.mcpFantasyTools(pipe)...)
 }
 
-// headlessExcluded needs a user at a terminal: with no UI hooks these tools
+// _headlessExcluded needs a user at a terminal: with no UI hooks these tools
 // can only refuse, so a no-UI boot does not pay for their schemas every step.
-var headlessExcluded = set.Of(tools.ToolQuestion, tools.ToolPlan)
+var _headlessExcluded = set.Of(tools.ToolQuestion, tools.ToolPlan)
 
 // toolBuilder builds the run's tool set for a given pipeline: builtin, Lua and
 // MCP tools. The lua tool builds its scripts' calls through it, so a script
@@ -298,8 +298,8 @@ func (h *Host) toolBuilder(skip set.Set[tools.ToolName]) func(*tools.Pipeline) (
 // mainTools selects the conversation's tool set over a pipeline of its own.
 func (h *Host) mainTools() []fantasy.AgentTool {
 	pipe := h.PipelineFor()
-	pipe.Images = func() bool { return h.takesImages(h.roleModel(defaultRole)) }
-	pipe.Audio = func() bool { return h.takesAudio(h.roleModel(defaultRole)) }
+	pipe.Images = func() bool { return h.takesImages(h.roleModel(_defaultRole)) }
+	pipe.Audio = func() bool { return h.takesAudio(h.roleModel(_defaultRole)) }
 	return h.toolsFor(pipe)
 }
 
@@ -308,7 +308,7 @@ func (h *Host) mainTools() []fantasy.AgentTool {
 func (h *Host) toolsFor(pipe *tools.Pipeline) []fantasy.AgentTool {
 	var skip set.Set[tools.ToolName]
 	if h.hooks() == nil {
-		skip = headlessExcluded
+		skip = _headlessExcluded
 	}
 	build := h.toolBuilder(skip)
 	out, _ := build(pipe)
@@ -327,7 +327,7 @@ func wireLua(out []fantasy.AgentTool, build func(*tools.Pipeline) ([]fantasy.Age
 }
 
 func (h *Host) ensureRunner(toolset []fantasy.AgentTool) (*agent.Runner, error) {
-	id := h.roleModel(defaultRole)
+	id := h.roleModel(_defaultRole)
 	model, err := h.resolveTurnModel(id)
 	if err != nil {
 		return nil, err
@@ -375,9 +375,9 @@ type promptPin struct {
 // /prompt and for the rest of a running turn, which still sends it. ag.mu held.
 func (ag *agentHost) dropPin() { ag.pin.key, ag.pinDrops = "", ag.pinDrops+1 }
 
-// contextRole marks a run's stored context message; no transcript reader
+// _contextRole marks a run's stored context message; no transcript reader
 // looks at the role.
-const contextRole = "context"
+const _contextRole = "context"
 
 // pinnedTool sends the Info the pin was built with, so a description read
 // from files (agent definitions, saved workflows) cannot move the prefix.
@@ -398,7 +398,7 @@ func (t pinnedTool) Info() fantasy.ToolInfo { return t.info }
 // nothing: the config watcher reloads on any config-tree write, the model's
 // own skill writes included.
 func (h *Host) pinPrompt(toolset []fantasy.AgentTool) (out []fantasy.AgentTool, system, ctxMsg string, parts promptParts) {
-	id := h.roleModel(defaultRole)
+	id := h.roleModel(_defaultRole)
 	trusted, images := strconv.FormatBool(h.ProjectTrusted()), strconv.FormatBool(h.takesImages(id))
 	key, core := []string{id, trusted, images}, []string{id, trusted, images}
 	infos := make([]fantasy.ToolInfo, len(toolset))
@@ -410,7 +410,7 @@ func (h *Host) pinPrompt(toolset []fantasy.AgentTool) (out []fantasy.AgentTool, 
 		key = append(key, pair...)
 		// the MCP tools move on their own (a server connecting, a tools/list
 		// refresh), which is not a switch: core is key without them
-		if !strings.HasPrefix(infos[i].Name, mcpToolPrefix) && infos[i].Name != string(tools.ToolSearch) {
+		if !strings.HasPrefix(infos[i].Name, _mcpToolPrefix) && infos[i].Name != string(tools.ToolSearch) {
 			core = append(core, pair...)
 		}
 	}
@@ -457,7 +457,7 @@ func promptSizes(p promptParts, toolset []fantasy.AgentTool) []promptPart {
 		info := t.Info()
 		schema, _ := json.Marshal(info.Parameters, json.Deterministic(true))
 		n := len(info.Name) + len(info.Description) + len(schema)
-		if strings.HasPrefix(info.Name, mcpToolPrefix) || info.Name == string(tools.ToolSearch) {
+		if strings.HasPrefix(info.Name, _mcpToolPrefix) || info.Name == string(tools.ToolSearch) {
 			mcp += n
 		} else {
 			builtin += n
@@ -527,11 +527,11 @@ func (h *Host) agentSendUser(text string) (queued bool, err error) {
 	return queued, err
 }
 
-// maxMessageChars caps one sent message's typed text: a paste beyond it
+// _maxMessageChars caps one sent message's typed text: a paste beyond it
 // would blow any model's window and wedge the turn on a refusal instead of
 // failing here, where the text is still one paste away.
 // NOTE: a fixed ceiling, not the model's own window; a file goes as @path.
-const maxMessageChars = 400_000
+const _maxMessageChars = 400_000
 
 // checkMessage refuses what no turn can take: an empty message, or a paste
 // beyond the ceiling.
@@ -541,8 +541,8 @@ func checkMessage(text string) error {
 		// be the middle of a turn
 		return errors.New("nothing to send")
 	}
-	if utf8.RuneCountInString(text) > maxMessageChars {
-		return fmt.Errorf("the message is over the %dk character limit; save it to a file and attach it with @path", maxMessageChars/1000)
+	if utf8.RuneCountInString(text) > _maxMessageChars {
+		return fmt.Errorf("the message is over the %dk character limit; save it to a file and attach it with @path", _maxMessageChars/1000)
 	}
 	return nil
 }
@@ -711,7 +711,7 @@ func (h *Host) sendClaimed(scope *turnScope, text string, held *heldPrompt) (err
 		h.refresh()
 		return err
 	}
-	id := h.roleModel(defaultRole)
+	id := h.roleModel(_defaultRole)
 	if _, err := h.resolveTurnModel(id); err != nil {
 		return fail(err)
 	}
@@ -725,7 +725,7 @@ func (h *Host) sendClaimed(scope *turnScope, text string, held *heldPrompt) (err
 	ag.runner = runner
 	ag.modelSeed = ""
 	ag.turnModel = id
-	if ag.byLoop = strings.Contains(text, loopTag); !ag.byLoop {
+	if ag.byLoop = strings.Contains(text, _loopTag); !ag.byLoop {
 		ag.goalRuns = 0 // someone started it: neither the goal nor a loop
 	}
 	if held == nil {
@@ -943,7 +943,7 @@ func (h *Host) sendTurn(ctx context.Context, runner *agent.Runner, text string) 
 		if !capDropped && runner.MaxOutputTokens > 0 && maxTokensRefused(err) {
 			capDropped = true
 			ag.mu.Lock()
-			capRejected.Store(ag.turnModel, true)
+			_capRejected.Store(ag.turnModel, true)
 			ag.beginTurn()
 			ag.mu.Unlock()
 			runner.MaxOutputTokens = 0
@@ -963,7 +963,7 @@ func (h *Host) sendTurn(ctx context.Context, runner *agent.Runner, text string) 
 				h.Notify(slog.LevelWarn, "Image left out", "too large for "+model+"; the turn goes on without it")
 			} else {
 				runner.TextOnly = true
-				imagesRejected.Store(model, true)
+				_imagesRejected.Store(model, true)
 				h.Notify(slog.LevelWarn, "Images left out", model+" takes no images; capabilities = { vision = false } on its model entry skips this")
 			}
 			continue
@@ -994,7 +994,7 @@ func (h *Host) sendTurn(ctx context.Context, runner *agent.Runner, text string) 
 		if contextTooLarge(err) && !capDropped && runner.MaxOutputTokens > 0 {
 			capDropped = true
 			ag.mu.Lock()
-			capRejected.Store(ag.turnModel, true)
+			_capRejected.Store(ag.turnModel, true)
 			ag.beginTurn()
 			ag.mu.Unlock()
 			runner.MaxOutputTokens = 0
@@ -1079,17 +1079,17 @@ func (h *Host) endTurnRunsNote() string {
 // to the composer. After a turn that ended cleanly with nothing queued, a
 // set goal is checked under the same claim (continueGoal). err is how the
 // turn ended.
-// idleResumeWait is how long an interrupt's queue waits before it works
+// _idleResumeWait is how long an interrupt's queue waits before it works
 // itself: esc stops the turn, not the reports behind it, and they run once
 // the user has been away this long.
-const idleResumeWait = 2 * time.Minute
+const _idleResumeWait = 2 * time.Minute
 
 // armQueueDrain schedules drainQueue, replacing one already waiting.
 func (h *Host) armQueueDrain() {
 	if h.resumeStop != nil {
 		h.resumeStop()
 	}
-	stop := h.RT.Clock().AfterFunc(idleResumeWait, func() { h.GoSafe("queue drain", h.drainQueue) })
+	stop := h.RT.Clock().AfterFunc(_idleResumeWait, func() { h.GoSafe("queue drain", h.drainQueue) })
 	h.resumeStop = func() { stop() }
 }
 
@@ -1304,10 +1304,10 @@ func shownText(head string) string {
 	return head
 }
 
-// ownElements open the tail's element right behind the marker: the three the
+// _ownElements open the tail's element right behind the marker: the three the
 // queue treats as the model's own words (a report, an update, a plugin's
 // send), which takeQueued keeps queued instead of handing back.
-var ownElements = []string{"\n<agent-report ", "\n<agent-update ", "\n<plugin:"}
+var _ownElements = []string{"\n<agent-report ", "\n<agent-update ", "\n<plugin:"}
 
 // userRowsFor splits a user message at agent.AttachMarker into what the user
 // typed (shownText's), whether the tail carries the model's own markup, and
@@ -1315,7 +1315,7 @@ var ownElements = []string{"\n<agent-report ", "\n<agent-update ", "\n<plugin:"}
 func userRowsFor(text string) (shown string, attached bool, tail string) {
 	var head string
 	head, tail, _ = strings.Cut(text, agent.AttachMarker)
-	for _, e := range ownElements {
+	for _, e := range _ownElements {
 		if strings.HasPrefix(tail, e) {
 			return shownText(head), true, tail
 		}
@@ -1346,12 +1346,12 @@ func queuedRows(msgs []string) []Queued {
 
 // joinQueue makes queued messages one message with every shown part ahead
 // of the first agent.AttachMarker, where each reader cuts the text.
-// queueRideBytes caps what one follow-up turn carries whole: older messages
+// _queueRideBytes caps what one follow-up turn carries whole: older messages
 // are logged, and the view the turn reads already summarizes them, so a
 // backlog left overnight cannot blow the turn's window.
 // NOTE: the cut is by bytes, not by meaning; the summaries may flatten what
 // an earlier message said.
-const queueRideBytes = 64 << 10
+const _queueRideBytes = 64 << 10
 
 // joinQueue joins the queue into one message, the oldest first. The newest
 // messages ride whole within queueRideBytes; the ones older than that count
@@ -1360,7 +1360,7 @@ func joinQueue(msgs []string) string {
 	ride := len(msgs)
 	used := 0
 	for ; ride > 0; ride-- {
-		if used > 0 && used+len(msgs[ride-1]) > queueRideBytes {
+		if used > 0 && used+len(msgs[ride-1]) > _queueRideBytes {
 			break
 		}
 		used += len(msgs[ride-1])
@@ -1516,7 +1516,7 @@ func (h *Host) turnModelIDLocked() string {
 	if m := h.agents.turnModel; m != "" {
 		return m
 	}
-	return h.roleModel(defaultRole)
+	return h.roleModel(_defaultRole)
 }
 
 // emitStep is agent.step, one per model call of a turn, a subagent's included.
@@ -1658,8 +1658,8 @@ func toolLabel(input string) string {
 	return clipLine(in.About, 80)
 }
 
-// aboutArg is a call's leading "about" argument in input that is still streaming.
-var aboutArg = regexp.MustCompile(`^\s*\{\s*"about"\s*:\s*("(?:[^"\\]|\\.)*")`)
+// _aboutArg is a call's leading "about" argument in input that is still streaming.
+var _aboutArg = regexp.MustCompile(`^\s*\{\s*"about"\s*:\s*("(?:[^"\\]|\\.)*")`)
 
 // toolSummary picks the argument a person reads first (a command, path or
 // query) out of a tool's JSON input; anything else stays raw.
@@ -1721,7 +1721,7 @@ func toolSummary(tool, input string) string {
 		if label := flowLabel(str("description"), str("name"), str("script")); label != "" || str("run") == "" {
 			return cmp.Or(label, "workflow")
 		}
-		return cmp.Or(str("action"), string(actStatus)) + " " + str("run")
+		return cmp.Or(str("action"), string(_actStatus)) + " " + str("run")
 	}
 	if tools.ToolName(tool) == tools.ToolLua { // the about is its label, and a script reads as nothing short
 		path, _ := m["path"].(string)
@@ -2013,12 +2013,12 @@ func (h *Host) recordToolCall(sid string, t StreamTool, ok bool) {
 	}
 }
 
-// todoNagAfter is how many of the main agent's steps an in_progress todo
+// _todoNagAfter is how many of the main agent's steps an in_progress todo
 // may stay static before zemi nudges the model to mark it done (a "force live
 // todos" remind). Steps, not calls: the prompt asks for independent calls
 // in one batch, so one step may be eight reads.
 // NOTE: a fixed knob, not config; every todos write resets the count.
-const todoNagAfter = 4
+const _todoNagAfter = 4
 
 // armTodoTurnNote arms a turn-start remind while the todo list has open
 // items: a long session's view carries the list only as a summary line, and
@@ -2083,7 +2083,7 @@ func (h *Host) maybeNagTodos() {
 		return // nothing open: nothing to nudge about
 	}
 	ag.todoSteps++
-	if ag.todoSteps-ag.todoNagAt < todoNagAfter {
+	if ag.todoSteps-ag.todoNagAt < _todoNagAfter {
 		ag.mu.Unlock()
 		return
 	}
@@ -2153,9 +2153,9 @@ func (h *Host) captureSessionStart() {
 	h.captureSessionContext()
 }
 
-// btwPrompt frames a side question, after maki's: nothing it says is kept,
+// _btwPrompt frames a side question, after maki's: nothing it says is kept,
 // so the answer has to come from what the conversation already holds.
-const btwPrompt = `Side question. Answer only it, in this one reply, from what the conversation already shows. Call no tools: none will run. If the conversation does not tell you, say so.
+const _btwPrompt = `Side question. Answer only it, in this one reply, from what the conversation already shows. Call no tools: none will run. If the conversation does not tell you, say so.
 
 Question: `
 
@@ -2185,7 +2185,7 @@ func (h *Host) Btw(question string) error {
 var errNothingToAsk = errors.New("no conversation to ask about yet")
 
 func (h *Host) btw(ctx context.Context, question string) (string, error) {
-	answer, err := h.aside(ctx, btwPrompt+question)
+	answer, err := h.aside(ctx, _btwPrompt+question)
 	return cmp.Or(answer, "(no answer: the model reached for a tool)"), err
 }
 
@@ -2218,11 +2218,11 @@ func (h *Host) aside(ctx context.Context, text string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h.bill(store.MainSessionID, h.roleModel(defaultRole), res.TotalUsage)
+	h.bill(store.MainSessionID, h.roleModel(_defaultRole), res.TotalUsage)
 	return strings.TrimSpace(concatText(res.Response.Content)), nil
 }
 
-const recapPrompt = `The user stepped away and is coming back. In one or two short sentences of plain text, say what this conversation is working toward, then where it stands: the next step, a question waiting on the user, or a check not yet run. Keep file, command and identifier names exact. Call no tools: none will run. No heading, no label, no apology.`
+const _recapPrompt = `The user stepped away and is coming back. In one or two short sentences of plain text, say what this conversation is working toward, then where it stands: the next step, a question waiting on the user, or a check not yet run. Keep file, command and identifier names exact. Call no tools: none will run. No heading, no label, no apology.`
 
 // Recap adds a notice row saying where the session stands, from an aside on
 // the cached conversation. The UI calls it when nobody touched the terminal
@@ -2259,7 +2259,7 @@ func (h *Host) recap(ctx context.Context) {
 	if !idle || !worked {
 		return
 	}
-	answer, err := h.aside(ctx, recapPrompt)
+	answer, err := h.aside(ctx, _recapPrompt)
 	lines := slices.DeleteFunc(strings.Split(answer, "\n"), func(l string) bool { return strings.TrimSpace(l) == "" })
 	text := clipLine(strings.Join(lines[:min(2, len(lines))], " "), 300)
 	if err != nil || text == "" {
@@ -2338,10 +2338,10 @@ func (h *Host) OpenModelPicker(name string) error {
 
 // followRow is a target's list head: what it runs on with no pick of its own.
 func (h *Host) followRow(name, run string) OverlayItem {
-	if name == defaultRole { // the root: nothing to follow but the provider
-		return OverlayItem{Text: "Follow the first usable model", Desc: h.Providers.Default(), Run: run + defaultRole}
+	if name == _defaultRole { // the root: nothing to follow but the provider
+		return OverlayItem{Text: "Follow the first usable model", Desc: h.Providers.Default(), Run: run + _defaultRole}
 	}
-	head := OverlayItem{Text: "Follow the default model", Desc: h.roleModel(defaultRole), Run: run + defaultRole}
+	head := OverlayItem{Text: "Follow the default model", Desc: h.roleModel(_defaultRole), Run: run + _defaultRole}
 	if t, _ := h.target(name); t != nil && t.def() != "" {
 		head.Text, head.Desc = "Follow the registered model", h.modelRef(t.def())
 	}
@@ -2354,7 +2354,7 @@ func (h *Host) modelPicker(name string) Overlay {
 	o := Overlay{ID: "model", Title: "Model", Origin: lua.OriginBuiltin, Anchor: OverlayBottomRight, Verb: "pick", Empty: "No model yet: " + h.addProvider() + "."}
 	// a bare pick writes the conversation's slot, so that is the row the lists
 	// without a target of their own mark: /model and /model chat
-	run, cur := "model ", h.roleModel(defaultRole)
+	run, cur := "model ", h.roleModel(_defaultRole)
 	switch name {
 	case "":
 		o.Items = []OverlayItem{
@@ -2517,7 +2517,7 @@ func (h *Host) toggleModelFavorite(id, name string) {
 func (h *Host) ownRoles() []string {
 	var own []string
 	for _, n := range h.targetNames() {
-		if n != defaultRole && h.Settings.Str(config.ModelKey(n)) != "" {
+		if n != _defaultRole && h.Settings.Str(config.ModelKey(n)) != "" {
 			own = append(own, n)
 		}
 	}
@@ -2555,10 +2555,10 @@ func (h *Host) OpenModelRoles() error {
 // the other roles, then the slots config registered.
 func (h *Host) modelRoleItems() []OverlayItem {
 	items := []OverlayItem{{
-		Text: defaultRole, Desc: h.slotLine(defaultRole, roles[0].Desc),
-		Verb: VerbOpen, Run: "model " + defaultRole,
+		Text: _defaultRole, Desc: h.slotLine(_defaultRole, _roles[0].Desc),
+		Verb: VerbOpen, Run: "model " + _defaultRole,
 	}}
-	for _, r := range roles[1:] {
+	for _, r := range _roles[1:] {
 		items = append(items, h.modelSlotRow(r.Name, r.Desc))
 	}
 	for _, t := range h.registeredTargets() {
@@ -2583,7 +2583,7 @@ func (h *Host) modelSlotRow(name, desc string) OverlayItem {
 // slotTag is what a row shows past the model id: the default a slot with no
 // pick of its own falls back to.
 func (h *Host) slotTag(name string) string {
-	if name == defaultRole { // the root: what runs when nothing is set anywhere
+	if name == _defaultRole { // the root: what runs when nothing is set anywhere
 		return h.Providers.Default()
 	}
 	if h.Settings.Str(config.ModelKey(name)) != "" {
@@ -2639,7 +2639,7 @@ func (h *Host) SetModel(args string) error {
 	case len(f) == 1 && h.isTarget(f[0]):
 		return picker(f[0])
 	case len(f) == 1: // a bare id sets the conversation's slot
-		f = []string{defaultRole, f[0]}
+		f = []string{_defaultRole, f[0]}
 	case len(f) > 2 || !h.isTarget(f[0]):
 		return Usagef("usage: /model [roles | update | <target> | [<target>] provider/model | <target> default]; targets: %s", strings.Join(h.targetNames(), ", "))
 	}
@@ -2650,7 +2650,7 @@ func (h *Host) SetModel(args string) error {
 // It validates, writes through the watched setting and shows the pick; Go
 // callers with a role and id in hand call it directly.
 func (h *Host) SetTargetModel(role, id string) error {
-	if id == defaultRole { // a target following its own model, else the default
+	if id == _defaultRole { // a target following its own model, else the default
 		id = ""
 	}
 	if err := h.modelSetErr(role, id); err != nil {
@@ -2714,17 +2714,17 @@ func (h *Host) CompleteModel(lead, line string) []string {
 	first = append(first, h.targetNames()...)
 	return SubcommandCompleter(append(first, ids...), func(_ *Host, sub string) []string {
 		switch {
-		case sub == defaultRole:
+		case sub == _defaultRole:
 			return ids
 		case h.isTarget(sub):
-			return append([]string{defaultRole}, ids...)
+			return append([]string{_defaultRole}, ids...)
 		default:
 			return nil
 		}
 	})(h, lead, line)
 }
 
-const unlistedTitle = "Model not listed"
+const _unlistedTitle = "Model not listed"
 
 // warnUnlisted toasts a pick the provider does not list. It reads the pick,
 // not the model row: mid-turn the row is the running turn's model.
@@ -2734,7 +2734,7 @@ func (h *Host) warnUnlisted(id string) {
 		if near := DidYouMean(id, h.ModelIDs()); near != "" {
 			detail += "; did you mean " + near + "?"
 		}
-		h.Notify(slog.LevelWarn, unlistedTitle, detail)
+		h.Notify(slog.LevelWarn, _unlistedTitle, detail)
 	}
 }
 
@@ -2766,7 +2766,7 @@ func (h *Host) classifies(name string) bool {
 // provider refuses it.
 func (h *Host) WarnModel() {
 	if row := h.modelRow(); row.Level != HealthOK {
-		title := unlistedTitle
+		title := _unlistedTitle
 		if row.Level == HealthError {
 			title = "Model unavailable"
 		}
@@ -2903,7 +2903,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			if h.hooks() == nil { // zemi health boots plugins with no UI: a turn nobody sees has nothing to bound it
 				L.RaiseError("zemi.agent.send: no UI is running to send from")
 			}
-			if stub := h.luaGate(L, luaAgentSend, "*", func() map[string]any { return map[string]any{"text": text} }); stub != nil {
+			if stub := h.luaGate(L, _luaAgentSend, "*", func() map[string]any { return map[string]any{"text": text} }); stub != nil {
 				L.Push(glua.LTrue) // a test zemi's stub keeps the text and starts no turn
 				return 1
 			}
@@ -2911,7 +2911,7 @@ func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {
 			body = text
 			text = agent.Attached(principal, text)
 		}
-		if _, err := h.resolveModel(h.roleModel(defaultRole)); err != nil {
+		if _, err := h.resolveModel(h.roleModel(_defaultRole)); err != nil {
 			return luaResult(L, err)
 		}
 		h.GoSafe("zemi.agent.send", func() {

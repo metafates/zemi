@@ -45,15 +45,15 @@ type paceDTO struct {
 	Hold int64   `json:"hold,omitempty"`
 }
 
-// paceLockWait bounds one update's wait for the file's lock: the holders
+// _paceLockWait bounds one update's wait for the file's lock: the holders
 // keep it for microseconds, so a wait this long means a machine in trouble,
 // and the call paces per process rather than stall.
-const paceLockWait = 5 * time.Second
+const _paceLockWait = 5 * time.Second
 
 // update runs fn on the shared state under the file's lock.
 func (p *paceFile) update(l *rateLimiter, fn func(st *paceState)) {
 	st := l.freshState()
-	unlock, err := filelock.Lock(p.lock, paceLockWait)
+	unlock, err := filelock.Lock(p.lock, _paceLockWait)
 	if err != nil {
 		fn(st) // unlocked and dropped: fail open
 		return

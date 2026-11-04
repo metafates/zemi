@@ -9,12 +9,12 @@ import (
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
-// notifyLevels are zemi.notify's levels by name, each also a function.
-var notifyLevels = map[string]slog.Level{"info": slog.LevelInfo, "warn": slog.LevelWarn, "error": slog.LevelError}
+// _notifyLevels are zemi.notify's levels by name, each also a function.
+var _notifyLevels = map[string]slog.Level{"info": slog.LevelInfo, "warn": slog.LevelWarn, "error": slog.LevelError}
 
 // notifyName is level's name in notifyLevels, what zemi.notify.list reports.
 func notifyName(level slog.Level) string {
-	for name, l := range notifyLevels {
+	for name, l := range _notifyLevels {
 		if l == level {
 			return name
 		}
@@ -27,7 +27,7 @@ func notifyName(level slog.Level) string {
 // (DESIGN §8).
 func (h *Host) notifyNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
-	for name, level := range notifyLevels {
+	for name, level := range _notifyLevels {
 		tb.RawSetString(name, L.NewFunction(h.notifyFn(level)))
 	}
 	tb.RawSetString("list", L.NewFunction(h.notifyListFn))
@@ -49,7 +49,7 @@ func (h *Host) notifyFn(level slog.Level) glua.LGFunction {
 		}
 		// the closure lives for the generation: a spec's level must not stick
 		level := level
-		if l, ok := notifyLevels[strField(m, "level")]; ok {
+		if l, ok := _notifyLevels[strField(m, "level")]; ok {
 			level = l
 		}
 		h.Log.Log(context.Background(), level, "notify: "+title+" "+body, "origin", string(h.RT.CurrentOrigin(L)))

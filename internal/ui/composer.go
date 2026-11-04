@@ -35,11 +35,11 @@ type composerState struct {
 	typing bool           // the last key typed a word character
 }
 
-// maxDraftChars caps the draft's literal text: every keystroke rewraps and
+// _maxDraftChars caps the draft's literal text: every keystroke rewraps and
 // recomposes the whole draft, so a huge one outruns the key loop and input
 // stops echoing, and the send boundary refuses the message anyway. Bigger
 // text rides a paste token, which expand unfolds at submit.
-const maxDraftChars = 20_000
+const _maxDraftChars = 20_000
 
 type composerSnap struct {
 	text   string
@@ -72,13 +72,13 @@ func (c *composerState) empty() bool { return strings.TrimSpace(c.text) == "" }
 // insert places s at the cursor and moves past it.
 func (c *composerState) insert(s string) { c.replace(c.cursor, s) }
 
-// pasteToken matches a paste token ending at the cursor.
-var pasteToken = regexp.MustCompile(`\[Pasted text #\d+ [^\]]+\]$`)
+// _pasteToken matches a paste token ending at the cursor.
+var _pasteToken = regexp.MustCompile(`\[Pasted text #\d+ [^\]]+\]$`)
 
 // insertFits inserts s at the cursor unless it would push the draft past
 // maxDraftChars; ok false leaves the draft alone.
 func (c *composerState) insertFits(s string) bool {
-	if utf8.RuneCountInString(c.text)+utf8.RuneCountInString(s) > maxDraftChars {
+	if utf8.RuneCountInString(c.text)+utf8.RuneCountInString(s) > _maxDraftChars {
 		return false
 	}
 	c.insert(s)
@@ -141,7 +141,7 @@ func (c *composerState) backspace() {
 		return
 	}
 	r := c.runes()
-	if tok := pasteToken.FindString(string(r[:c.cursor])); c.pastes[tok] != "" {
+	if tok := _pasteToken.FindString(string(r[:c.cursor])); c.pastes[tok] != "" {
 		c.replace(c.cursor-len([]rune(tok)), "")
 		return
 	}
@@ -338,14 +338,14 @@ func (c *composerState) moveEnd() { c.cursor = len(c.runes()) }
 
 // The history walk: histIdx runs 0..len(history), len(history) the live
 // draft - ctrl+p walks back to the entries, ctrl+n returns to the draft.
-const historyCap = 50
+const _historyCap = 50
 
 func (c *composerState) pushHistory(text string) {
 	// a repeat moves the entry to the end, wherever it was
 	c.history = slices.DeleteFunc(c.history, func(s string) bool { return s == text })
 	c.history = append(c.history, text)
-	if len(c.history) > historyCap {
-		c.history = c.history[len(c.history)-historyCap:]
+	if len(c.history) > _historyCap {
+		c.history = c.history[len(c.history)-_historyCap:]
 	}
 	c.histIdx = len(c.history)
 }
@@ -360,13 +360,13 @@ func (a *App) seedHistory() {
 		return
 	}
 	a.histLoaded = true
-	stored := a.host.InputHistory(historyCap)
+	stored := a.host.InputHistory(_historyCap)
 	c := &a.composer
 	// what this run typed is stored too; keep one copy, in store order
 	c.history = slices.DeleteFunc(c.history, func(s string) bool { return slices.Contains(stored, s) })
 	c.history = append(c.history, stored...)
-	if len(c.history) > historyCap {
-		c.history = c.history[len(c.history)-historyCap:]
+	if len(c.history) > _historyCap {
+		c.history = c.history[len(c.history)-_historyCap:]
 	}
 	c.histIdx = len(c.history)
 }
@@ -398,7 +398,7 @@ func (c *composerState) histNext() {
 	c.moveEnd()
 }
 
-const composerMaxRows = 8
+const _composerMaxRows = 8
 
 // draftWrap is the cells a draft row wraps at on w: one kept free for the
 // cursor mark, two more where the slash glyph opens the gutter.
@@ -421,14 +421,14 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 	wrap := draftWrap(w, glyph)
 	a.composerW = w
 	cursorRow, cursorCol, rows, soft := a.wrapComposer(wrap)
-	start := max(0, cursorRow-composerMaxRows+1)
+	start := max(0, cursorRow-_composerMaxRows+1)
 	if cursorRow < len(rows)-1 {
 		// a row of headroom, so the bottom ramp lands below the live cursor
-		start = max(0, cursorRow-composerMaxRows+2)
+		start = max(0, cursorRow-_composerMaxRows+2)
 	}
-	focused := a.topChrome() != noModal || a.chatFocus // the chat cursor takes every key: the composer draws no cursor
+	focused := a.topChrome() != _noModal || a.chatFocus // the chat cursor takes every key: the composer draws no cursor
 	var out [][]hostapi.Segment
-	for i := start; i < len(rows) && len(out) < composerMaxRows; i++ {
+	for i := start; i < len(rows) && len(out) < _composerMaxRows; i++ {
 		text, col := rows[i], cursorCol
 		var gutter []hostapi.Segment
 		switch {
@@ -465,7 +465,7 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 		segs[len(segs)-1].Soft = soft[i] // a wrapped row copies as one line
 		out = append(out, segs)
 	}
-	edgeRamp(out, start, len(rows)-start-len(out), boxFade, func(i int) bool { return i == cursorRow-start })
+	edgeRamp(out, start, len(rows)-start-len(out), _boxFade, func(i int) bool { return i == cursorRow-start })
 	return out
 }
 

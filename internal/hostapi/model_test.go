@@ -17,7 +17,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
-const rolesProvider = `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "big" }, { id = "small" } } })
+const _rolesProvider = `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "big" }, { id = "small" } } })
 `
 
 // TestRoleModel: an empty target follows models.default, which follows the
@@ -52,7 +52,7 @@ func TestRoleModel(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			h, r := newTestHost(t)
-			runUser(t, r, rolesProvider+c.config)
+			runUser(t, r, _rolesProvider+c.config)
 			if c.err != "" && !h.Recorded(c.err) {
 				t.Errorf("the refused set is not flagged: %q", c.err)
 			}
@@ -76,7 +76,7 @@ func TestRoleModel(t *testing.T) {
 func TestModelTargetNames(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
-	runUser(t, r, rolesProvider+`
+	runUser(t, r, _rolesProvider+`
 		zemi.config.set("models.compact", "a/small")
 		zemi.model.add("clf", { desc = "the classifier", model = "compact" })`)
 	if id := h.roleModel("clf"); id != "a/small" {
@@ -124,7 +124,7 @@ func TestModelTargetPick(t *testing.T) {
 	dir, log := t.TempDir(), slog.New(slog.DiscardHandler)
 	dirs := config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()}
 	initLua := filepath.Join(dir, "init.lua")
-	src := rolesProvider + `zemi.model.add("clf", { desc = "the classifier", model = "a/small" })`
+	src := _rolesProvider + `zemi.model.add("clf", { desc = "the classifier", model = "a/small" })`
 	if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestModelTargetPick(t *testing.T) {
 func TestModelTargetHealth(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHostDB(t)
-	runUser(t, r, rolesProvider+
+	runUser(t, r, _rolesProvider+
 		`zemi.model.add("clf", { desc = "the classifier", model = "a/nope" })`+
 		`zemi.provider.add({ id = "jev", kind = "system_one", base_url = "http://x", api_key = "k", models = { { id = "m", decisions = true } } })`+
 		`zemi.model.add("judge", { desc = "settles asks", classify = true, model = "jev/m" })`)
@@ -195,7 +195,7 @@ func TestModelTargetUI(t *testing.T) {
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	runUser(t, r, rolesProvider+`
+	runUser(t, r, _rolesProvider+`
 		zemi.config.set("models.default", "a/big")
 		zemi.model.add("clf", { desc = "the classifier", model = "a/small" })`)
 	if err := h.OpenModelRoles(); err != nil {
@@ -280,7 +280,7 @@ func TestSetModelArgs(t *testing.T) {
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	runUser(t, r, rolesProvider+`zemi.config.set("models.default", "a/big")`)
+	runUser(t, r, _rolesProvider+`zemi.config.set("models.default", "a/big")`)
 	for _, c := range []struct {
 		args   string
 		opened string // the overlay it opens
@@ -386,7 +386,7 @@ func TestInertBoot(t *testing.T) {
 func TestModelPickerOpensOnCurrent(t *testing.T) {
 	t.Parallel()
 	h, r := newTestHost(t)
-	runUser(t, r, rolesProvider)
+	runUser(t, r, _rolesProvider)
 	o := h.modelPicker("")
 	if o.Selected < 0 {
 		t.Fatalf("modelPicker() Selected = %d, want the current model's row", o.Selected)
@@ -403,7 +403,7 @@ func TestModelFavorites(t *testing.T) {
 	h, r := newTestHost(t)
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
-	runUser(t, r, rolesProvider)
+	runUser(t, r, _rolesProvider)
 	h.toggleModelFavorite("a/small", "")
 	favs := h.Settings.List(config.KeyModelsFavorites)
 	if !slices.Equal(favs, []string{"a/small"}) {

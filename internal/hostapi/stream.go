@@ -455,7 +455,7 @@ func (s *streamAdapter) ToolInputDelta(id, delta string) {
 	t := &ag.tools[i]
 	t.partial += delta
 	var label string
-	if m := aboutArg.FindStringSubmatch(t.partial); m != nil && json.Unmarshal([]byte(m[1]), &label) == nil {
+	if m := _aboutArg.FindStringSubmatch(t.partial); m != nil && json.Unmarshal([]byte(m[1]), &label) == nil {
 		t.Label = clipLine(label, 80)
 	}
 	labelled := t.Label != ""

@@ -100,9 +100,9 @@ func (r *Runtime) SetPrintHook(fn func(line string)) {
 	r.printHook = fn
 }
 
-// genKey is the registry slot holding an LState's *Generation. Lua cannot
+// _genKey is the registry slot holding an LState's *Generation. Lua cannot
 // reach the registry (no debug.getregistry), so it cannot forge it.
-const genKey = "zemi.generation"
+const _genKey = "zemi.generation"
 
 // genOf is the generation L belongs to, retired or live, or nil. Frames
 // live on the generation so a retired generation's goroutine, still
@@ -111,7 +111,7 @@ func genOf(L *glua.LState) *Generation {
 	if L == nil {
 		return nil
 	}
-	ud, _ := L.G.Registry.RawGetString(genKey).(*glua.LUserData)
+	ud, _ := L.G.Registry.RawGetString(_genKey).(*glua.LUserData)
 	if ud == nil {
 		return nil
 	}
@@ -277,7 +277,7 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 	// a boot replaces the live generation: the one it replaces must end, or
 	// its dispatcher and LState outlive it (DESIGN §4)
 	r.retire()
-	prefixResolution.Clear()
+	_prefixResolution.Clear()
 	sb, err := NewSandbox(r.CurrentOrigin, r.clock.Now)
 	if err != nil {
 		return nil, err
@@ -301,7 +301,7 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 	gen.ctx, gen.cancel = context.WithCancelCause(context.Background())
 	ud := sb.L.NewUserData()
 	ud.Value = gen
-	sb.L.G.Registry.RawSetString(genKey, ud)
+	sb.L.G.Registry.RawSetString(_genKey, ud)
 	r.installRequire(gen)
 
 	// r.cur is stored before the steps so early callers reach the

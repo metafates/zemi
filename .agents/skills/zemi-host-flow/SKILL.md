@@ -47,7 +47,7 @@ conversation runs on.
 `zemi health`, `zemi models` and the flag completions boot headless (`bootHeadless`, the TUI's
 steps without it; its `stderr` is `Host.Stderr`). None of them sends a prompt: a host with no
 UI never runs a turn. It still drops what
-needs a user (`headlessExcluded`: a no-UI host cannot answer a question or approve a plan).
+needs a user (`_headlessExcluded`: a no-UI host cannot answer a question or approve a plan).
 With no UI `Host.Notify` prints a
 warning or an error to `Host.Stderr` as "zemi: <title>: <body>", so an early failure is never
 swallowed. A command that opens a screen gets `Host.Screen`'s `ErrNeedsTUI` there, which
@@ -216,7 +216,7 @@ applied one. A store made before goose only gains its version table: the baselin
   left out, a score outside its levels, a body that is not JSON are errors, never a nearest
   match - and `classifyQuestions` raises on a state or a question no model could be asked. The
   call is gated as `lua.classify.ask` (a plugin needs `model` in its uses), billed to the
-  live session, and waits `classifyTimeout`, a minute. A `decisions` model is never resolved as
+  live session, and waits `_classifyTimeout`, a minute. A `decisions` model is never resolved as
   a chat model: only the slots `zemi.model.add(name, { classify = true })` made take one.
 - **One ledger.** Every model call is billed through `Host.bill`: the `main` session row, and
   the live tally while the chat runs. A runner's call counts as its stream
@@ -230,8 +230,8 @@ applied one. A store made before goose only gains its version table: the baselin
   A reply is agent rows per text stretch, each call its own tool row, each result an echo
   row, each reasoning stretch a thought row logged as the step's message persists (its
   `stretchMS` queue gives it the wall time its flush measured, and a retried step re-streams
-  without leaving a row). A text past 8,000 characters (`chatSplitChars`) is logged
-  as several sibling rows; an echo clips to 30,000 (`echoClipChars`); a thought row is one
+  without leaving a row). A text past 8,000 characters (`_chatSplitChars`) is logged
+  as several sibling rows; an echo clips to 30,000 (`_echoClipChars`); a thought row is one
   row however long. Every append commits in one transaction and wakes the builder. `Host.Note`
   appends a note row (`/note`), mid-turn included. A turn's readout rides its last reply
   row's meta (`chatLog.setReplyStat` at `TurnDone`, the model, tokens, wall time, ended clock
@@ -248,10 +248,10 @@ applied one. A store made before goose only gains its version table: the baselin
   message lines (a message of at most 512 bytes its own node verbatim; the tool, echo and
   thought leaves template-built in the append transaction), merges join siblings, and both go out as
   calls on `models.compact` carrying the compaction view as context and the 512-dash ruler.
-  Up to 8 calls at once (`buildSlots`), each build up to 5 tries in one conversation with
+  Up to 8 calls at once (`_buildSlots`), each build up to 5 tries in one conversation with
   the shortest fitting line kept; a failed build retries at the next message, no timer -
   except a rate-limited one, or an empty one that parked: either arms a doubling cooldown
-  (the builder's `coolBase` to `buildCoolCap`) that retries without fresh rows (both are the
+  (the builder's `coolBase` to `_buildCoolCap`) that retries without fresh rows (both are the
   provider's mood, and it passes with the clock). A rate limit leaves no /errors entry: a
   rate limit is a wait, not a failure - `/health`'s builder row carries it. An empty reply
   earns one corrected retry in its conversation - the thinking handed back, else the miss
@@ -279,8 +279,8 @@ applied one. A store made before goose only gains its version table: the baselin
   nothing carries between turns but the view; `keepSigned` degenerates to a no-op
   cross-turn. A context-too-large refusal runs one view merge batch (`MergeOnce`, which
   returns once it ran) and retries once; a refused output cap is dropped, and image parts a
-  model refuses become a note, both remembered for the process (`capRejected`,
-  `imagesRejected`).
+  model refuses become a note, both remembered for the process (`_capRejected`,
+  `_imagesRejected`).
 - **A turn's work survives the turn.** A run's runner wires its own `Persist`
   (`storeMessage`), so a cancelled or crashed run keeps what it did in its child session's
   rows; the next send runs
@@ -297,9 +297,9 @@ applied one. A store made before goose only gains its version table: the baselin
   messages are re-inserted every step. Leftovers become one follow-up turn, and `active` stays
   held across that handoff (`nextTurn`) so a submit cannot jump the queue; reset claims
   `active` and a `turnScope` together for the same reason. `joinQueue` carries the newest
-  messages whole within `queueRideBytes` (64 KB) and counts older ones into one line - they
+  messages whole within `_queueRideBytes` (64 KB) and counts older ones into one line - they
   are logged, and the view the turn reads already summarizes them. An interrupt keeps the
-  queue: `nextTurn` arms `drainQueue`, which resumes it after `idleResumeWait` (2m) once the
+  queue: `nextTurn` arms `drainQueue`, which resumes it after `_idleResumeWait` (2m) once the
   user is away, as a clean end would have. With nothing left, a
   set goal's continuation is the other follow-up `nextTurn` starts under the claim, and a
   clean end with background work still running starts a third: a note that holds the turn
@@ -318,7 +318,7 @@ applied one. A store made before goose only gains its version table: the baselin
   keeps one `Loop` per live session in this process, never stored. Its timer is
   `lua.Clock.AfterFunc`, so the fake clock drives it in tests. `fireLoop` sends like the user
   would, on a claim taken under the lock that saw the agent idle, and arms the next run before
-  sending; each run logs its work row (`[loop] Run N of: <prompt>`), so a resume reads it. `loopTurnEnded` (in `runTurns`) knows a loop run by `loopTag` in the turn's text and
+  sending; each run logs its work row (`[loop] Run N of: <prompt>`), so a resume reads it. `loopTurnEnded` (in `runTurns`) knows a loop run by `_loopTag` in the turn's text and
   acts only while `ag.loopRun`, the loop that sent the last run, is the live one, except
   that an interrupt of any turn nobody typed stops the live loop (`loopInterrupted`, which
   `continueGoal` calls for an interrupted check too). `ag.byLoop` marks a chain a run began:
@@ -334,7 +334,7 @@ applied one. A store made before goose only gains its version table: the baselin
   a resume reads it back) and is dropped when the transcript
   moved during the call; while it runs it holds a `Host.Busy` entry with a cancel, so esc
   stops it and the chat's pending row names it.
-- **The chat window** (session.go): the live transcript is the log's last `chatWindowRows`
+- **The chat window** (session.go): the live transcript is the log's last `_chatWindowRows`
   (1000) settled rows (`LogTail` at boot, `setTranscriptFromLog` after a reset), appended to
   and replaced whole; `InputHistory` reads the log's user rows. `historyFrom` decodes a run's
   A reset leaves one note row, "the chat was reset", which the transcript draws
@@ -375,7 +375,7 @@ applied one. A store made before goose only gains its version table: the baselin
   `Arg`, `Preview`, `Agent`, `Owner`, `Script`), never meaning parsed back out of the text.
   Lua reads the composer through a snapshot the UI publishes and
   edits it through `UIHooks.ComposerEdit`, applied on the UI goroutine.
-- **System prompt** (prompt.go): `basePrompt` + `delegationPrompt`,
+- **System prompt** (prompt.go): `_basePrompt` + `_delegationPrompt`,
   then `zemiPrompt`, the user, builtin and plugin skills, the
   user's `~/.config/AGENTS.md` and `<config>/AGENTS.md` under `# User instructions` (their own budget) and Lua sections
   (`agent.assemble`, then the `prompt` of each Lua tool in the tool set). Of the project it holds
@@ -389,11 +389,11 @@ applied one. A store made before goose only gains its version table: the baselin
   and recipes (`skillsIndexPrompt`'s second half), the per-session pinned `environmentPrompt` (in a
   trusted repository with its top level as the read tool lists it, `topLevel`, and the last
   commits: repository free text, left out untrusted) and, for the main agent on the shipped
-  prompt, `replyReminder` last. The main agent stores it as a `context` row (`contextRow`,
+  prompt, `_replyReminder` last. The main agent stores it as a `context` row (`contextRow`,
   which no transcript reader reads) whenever the pin is built anew, so a fork and a builder
   call that re-sends it read the same bytes. It is built from the
   run's tool set (`hasTool`), main agent and subagents alike: no `agent` tool drops
-  `delegationPrompt`, no `skill` tool drops the skills index, no `read`
+  `_delegationPrompt`, no `skill` tool drops the skills index, no `read`
   drops its "Using tools" line. No kept tool's description names a dropped tool
   (`TestPromptFollowsToolSet`). Anything that varies per turn must be
   pinned per session or it busts the provider's prompt cache - which is why `gitStatusSection`

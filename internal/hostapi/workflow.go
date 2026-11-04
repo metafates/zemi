@@ -47,17 +47,17 @@ import (
 )
 
 const (
-	workflowConcurrency    = 5
-	workflowMaxConcurrency = 16
+	_workflowConcurrency    = 5
+	_workflowMaxConcurrency = 16
 	// NOTE: a hard cap on agents per run keeps a runaway loop from spending
 	// without bound; make it a config knob if real workflows outgrow it.
-	workflowMaxAgents = 100
-	// workflowLogCap bounds a run's log the same way: a script logging in a
+	_workflowMaxAgents = 100
+	// _workflowLogCap bounds a run's log the same way: a script logging in a
 	// loop keeps only its last lines.
-	workflowLogCap = 200
-	// workflowDrainGrace bounds the wait for in-flight agents after a
+	_workflowLogCap = 200
+	// _workflowDrainGrace bounds the wait for in-flight agents after a
 	// cancel, so one that ignores its context cannot hold the run open.
-	workflowDrainGrace = 2 * time.Second
+	_workflowDrainGrace = 2 * time.Second
 )
 
 // Workflow is one saved workflow file.
@@ -211,9 +211,9 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 		spec.concurrency = cmp.Or(spec.concurrency, old.head.Concurrency)
 		cache = old.cache()
 	}
-	limit := cmp.Or(spec.concurrency, workflowConcurrency)
-	if limit < 1 || limit > workflowMaxConcurrency {
-		return nil, Usagef("concurrency must be 1-%d, not %d", workflowMaxConcurrency, limit)
+	limit := cmp.Or(spec.concurrency, _workflowConcurrency)
+	if limit < 1 || limit > _workflowMaxConcurrency {
+		return nil, Usagef("concurrency must be 1-%d, not %d", _workflowMaxConcurrency, limit)
 	}
 	// the flow outlives the turn it was started in, a background one from the
 	// start and a foreground one from its handoff, but a run it starts must
@@ -236,7 +236,7 @@ func (h *Host) startFlow(ctx context.Context, spec flowSpec) (*flowRun, error) {
 		}
 		f.script = filepath.Join(pad, flowFile(f.id, ".lua"))
 	}
-	if err := h.tasks.addFlow(f, cmp.Or(spec.advice, foregroundAdvice)); err != nil {
+	if err := h.tasks.addFlow(f, cmp.Or(spec.advice, _foregroundAdvice)); err != nil {
 		cancel()
 		if f.journal != nil { // a run that never ran leaves no files for /workflows to list
 			f.journal.Close()
@@ -384,7 +384,7 @@ func (f *flowRun) finishedAgents() (done, total int) {
 // runScript is the scheduler loop: it resumes the script's coroutines as
 // agents report and control arrives, and returns the script's value.
 func (h *Host) runScript(ctx context.Context, f *flowRun, spec flowSpec) (string, error) {
-	r := &wfRun{h: h, f: f, ctx: ctx, tasks: map[*glua.LState]*wfTask{}, done: make(chan wfDone, workflowMaxAgents), cache: spec.cache}
+	r := &wfRun{h: h, f: f, ctx: ctx, tasks: map[*glua.LState]*wfTask{}, done: make(chan wfDone, _workflowMaxAgents), cache: spec.cache}
 	L, err := r.open(spec.args)
 	if err != nil {
 		return "", fmt.Errorf("workflow prelude: %w", err)
@@ -452,7 +452,7 @@ func (r *wfRun) agentDone(d wfDone) {
 	f.restart.Remove(d.run.id)
 	f.mu.Unlock()
 	stopped := errors.Is(d.err, context.Canceled) && r.ctx.Err() == nil
-	if again && stopped && r.started < workflowMaxAgents {
+	if again && stopped && r.started < _workflowMaxAgents {
 		r.started++
 		spent, cost := d.run.usage() // billed already, so the row and the journal keep it
 		f.mu.Lock()
@@ -523,7 +523,7 @@ func (f *flowRun) changed() {
 // must not hold the run open, and done is buffered at workflowMaxAgents so
 // giving up early leaks nothing.
 func (r *wfRun) drainAgents() {
-	t := time.NewTimer(workflowDrainGrace)
+	t := time.NewTimer(_workflowDrainGrace)
 	defer t.Stop()
 	for r.running > 0 {
 		select {
@@ -553,10 +553,10 @@ func luaResultString(v glua.LValue) string {
 	return string(b)
 }
 
-// workflowPrelude is the part of zemi.workflow written in Lua. The shape
+// _workflowPrelude is the part of zemi.workflow written in Lua. The shape
 // errors raise bare: naming the call is the point, and the chunk's own
 // position ("<string>") would read as the engine's.
-const workflowPrelude = `
+const _workflowPrelude = `
 local parallel = zemi.workflow.parallel
 function zemi.workflow.pipeline(items, ...)
 	local stages = { ... }
@@ -585,9 +585,9 @@ function zemi.workflow.pipeline(items, ...)
 	return parallel(fns)
 end`
 
-// misnamed are the bare names a model used to other harnesses reaches for:
+// _misnamed are the bare names a model used to other harnesses reaches for:
 // a pointed error beats "attempt to call a non-function object".
-var misnamed = map[string]string{
+var _misnamed = map[string]string{
 	"agent": "zemi.workflow.agent", "parallel": "zemi.workflow.parallel", "pipeline": "zemi.workflow.pipeline",
 	"phase": "zemi.workflow.phase", "log": "zemi.workflow.log", "print": "zemi.workflow.log",
 	"args": "zemi.workflow.args", "json": "zemi.json", "wf": "zemi.workflow", "workflow": "zemi.workflow",
@@ -613,7 +613,7 @@ func (r *wfRun) open(args any) (*glua.LState, error) {
 	lua.FixStringLib(L)
 	mt := L.NewTable()
 	mt.RawSetString("__index", L.NewFunction(func(L *glua.LState) int {
-		if to, ok := misnamed[L.CheckString(2)]; ok {
+		if to, ok := _misnamed[L.CheckString(2)]; ok {
 			L.RaiseError("a workflow script has no %s, write %s", L.CheckString(2), to)
 		}
 		return 0
@@ -642,7 +642,7 @@ func (r *wfRun) open(args any) (*glua.LState, error) {
 		}
 		r.f.mu.Lock()
 		r.f.log = append(r.f.log, strings.Join(parts, " "))
-		if over := len(r.f.log) - workflowLogCap; over > 0 {
+		if over := len(r.f.log) - _workflowLogCap; over > 0 {
 			r.f.log = append(r.f.log[:0], r.f.log[over:]...)
 		}
 		r.f.mu.Unlock()
@@ -660,10 +660,10 @@ func (r *wfRun) open(args any) (*glua.LState, error) {
 			// builtins' `type(wf.args) == "string"` guard expects
 			return 0
 		}
-		if to, ok := misnamed[name]; ok {
+		if to, ok := _misnamed[name]; ok {
 			lua.RaiseScriptf(L, "a workflow script has no %s, write %s", name, to)
 		}
-		lua.RaiseScriptf(L, "a workflow script has no %s; zemi.workflow has %s", name, strings.Join(wfMembers, ", "))
+		lua.RaiseScriptf(L, "a workflow script has no %s; zemi.workflow has %s", name, strings.Join(_wfMembers, ", "))
 		return 0
 	}))
 	L.SetMetatable(wf, wmt)
@@ -673,19 +673,19 @@ func (r *wfRun) open(args any) (*glua.LState, error) {
 	zemi.RawSetString("csv", r.h.csvNamespace(L))
 	zemi.RawSetString("yaml", r.h.yamlNamespace(L))
 	L.SetGlobal("zemi", zemi)
-	if err := L.DoString(workflowPrelude); err != nil {
+	if err := L.DoString(_workflowPrelude); err != nil {
 		L.Close()
 		return nil, err
 	}
 	return L, nil
 }
 
-// agentOpts are the option keys zemi.workflow.agent reads; any other raises.
-var agentOpts = []string{"agent", "description", "model", "phase", "schema"}
+// _agentOpts are the option keys zemi.workflow.agent reads; any other raises.
+var _agentOpts = []string{"agent", "description", "model", "phase", "schema"}
 
-// wfMembers are zemi.workflow's members, named when a script reads one the
+// _wfMembers are zemi.workflow's members, named when a script reads one the
 // table lacks.
-var wfMembers = []string{"agent", "parallel", "pipeline", "phase", "log", "args"}
+var _wfMembers = []string{"agent", "parallel", "pipeline", "phase", "log", "args"}
 
 // luaAgent is zemi.workflow.agent(prompt [, opts]): the agent's report, or
 // nil and an error.
@@ -706,8 +706,8 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 		opts = L.NewTable()
 	}
 	opts.ForEach(func(k, v glua.LValue) {
-		if key, ok := k.(glua.LString); !ok || !slices.Contains(agentOpts, string(key)) {
-			lua.RaiseScriptf(L, "agent: unknown option %q; have %s", k, strings.Join(agentOpts, ", "))
+		if key, ok := k.(glua.LString); !ok || !slices.Contains(_agentOpts, string(key)) {
+			lua.RaiseScriptf(L, "agent: unknown option %q; have %s", k, strings.Join(_agentOpts, ", "))
 		}
 	})
 	name, desc, model, phase := rawString(L, opts, "agent"), rawString(L, opts, "description"), rawString(L, opts, "model"), rawString(L, opts, "phase")
@@ -740,8 +740,8 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 		L.Push(answer(L, hit.Result))
 		return 1
 	}
-	if r.started >= workflowMaxAgents {
-		lua.RaiseScriptf(L, "agent: this workflow already started %d agents (the limit)", workflowMaxAgents)
+	if r.started >= _workflowMaxAgents {
+		lua.RaiseScriptf(L, "agent: this workflow already started %d agents (the limit)", _workflowMaxAgents)
 	}
 	r.started++
 	r.f.addAgent(a)
@@ -790,8 +790,8 @@ func (r *wfRun) luaParallel(L *glua.LState) int {
 	n := list.Len()
 	// Every entry becomes a coroutine before the concurrency cap applies,
 	// so refuse a batch larger than the run's whole agent budget.
-	if n > workflowMaxAgents {
-		lua.RaiseScriptf(L, "parallel: %d branches is more than the %d agents a workflow may start", n, workflowMaxAgents)
+	if n > _workflowMaxAgents {
+		lua.RaiseScriptf(L, "parallel: %d branches is more than the %d agents a workflow may start", n, _workflowMaxAgents)
 	}
 	for i := 1; i <= n; i++ {
 		fn, ok := list.RawGetInt(i).(*glua.LFunction)
@@ -1070,13 +1070,13 @@ func (f *flowRun) statusText() string {
 type flowAction string
 
 const (
-	actStatus      flowAction = "status"
-	actWait        flowAction = "wait"
-	actPause       flowAction = "pause"
-	actResume      flowAction = "resume"
-	actStop        flowAction = "stop"
-	actConcurrency flowAction = "concurrency" // n is the new limit
-	actRestart     flowAction = "restart"     // agent is the agent run id
+	_actStatus      flowAction = "status"
+	_actWait        flowAction = "wait"
+	_actPause       flowAction = "pause"
+	_actResume      flowAction = "resume"
+	_actStop        flowAction = "stop"
+	_actConcurrency flowAction = "concurrency" // n is the new limit
+	_actRestart     flowAction = "restart"     // agent is the agent run id
 )
 
 // flowControl acts on run id and says what it did: the one control path
@@ -1088,7 +1088,7 @@ func (h *Host) flowControl(id string, act flowAction, n int, agent string) (stri
 	if f == nil {
 		return "", Usagef("no workflow %q", id)
 	}
-	if act == actStatus {
+	if act == _actStatus {
 		return f.statusText(), nil
 	}
 	f.mu.Lock()
@@ -1097,20 +1097,20 @@ func (h *Host) flowControl(id string, act flowAction, n int, agent string) (stri
 		return "", Usagef("workflow %s is not running", id)
 	}
 	switch act {
-	case actPause:
+	case _actPause:
 		f.paused = true
 		return "Paused " + flowWho(f) + ": running agents finish, no new ones start", nil
-	case actResume:
+	case _actResume:
 		f.paused = false
-	case actStop:
+	case _actStop:
 		f.cancel()
 		return "Stopped " + flowWho(f), nil
-	case actConcurrency:
-		if n < 1 || n > workflowMaxConcurrency {
-			return "", Usagef("concurrency must be 1-%d, not %d", workflowMaxConcurrency, n)
+	case _actConcurrency:
+		if n < 1 || n > _workflowMaxConcurrency {
+			return "", Usagef("concurrency must be 1-%d, not %d", _workflowMaxConcurrency, n)
 		}
 		f.limit = n
-	case actRestart:
+	case _actRestart:
 		i := slices.IndexFunc(f.agents, func(a *flowAgent) bool { return a.run != nil && a.run.id == agent })
 		if i < 0 || !f.agents[i].run.isRunning() {
 			return "", Usagef("no running agent %q in workflow %s", agent, id)
@@ -1125,7 +1125,7 @@ func (h *Host) flowControl(id string, act flowAction, n int, agent string) (stri
 	case f.wake <- struct{}{}:
 	default:
 	}
-	if act == actResume {
+	if act == _actResume {
 		return "Resumed " + flowWho(f), nil
 	}
 	return fmt.Sprintf("%s runs %d agents at once", flowWho(f), n), nil
@@ -1258,10 +1258,10 @@ func readPadFile(pad, name string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !fi.Mode().IsRegular() || fi.Size() > maxAgentFileBytes {
-		return nil, fmt.Errorf("%s: not a regular file of at most %d bytes", f.Name(), maxAgentFileBytes)
+	if !fi.Mode().IsRegular() || fi.Size() > _maxAgentFileBytes {
+		return nil, fmt.Errorf("%s: not a regular file of at most %d bytes", f.Name(), _maxAgentFileBytes)
 	}
-	return io.ReadAll(io.LimitReader(f, maxAgentFileBytes))
+	return io.ReadAll(io.LimitReader(f, _maxAgentFileBytes))
 }
 
 // journal is a run's journal read back; end is zero for a run that never
@@ -1429,9 +1429,9 @@ func (h *Host) workflowTool(pipe *tools.Pipeline) fantasy.AgentTool {
 	return &workflowTool{h: h, pipe: pipe, saved: h.workflows()}
 }
 
-// workflowToolDesc carries the whole script API: a model that must load a
+// _workflowToolDesc carries the whole script API: a model that must load a
 // skill first writes a file instead of passing the script.
-const workflowToolDesc = `Run a Lua script that coordinates subagents with code between them: stages that feed each other, fan-out over a list, loops, checks. For independent tasks send several agent calls at once instead.
+const _workflowToolDesc = `Run a Lua script that coordinates subagents with code between them: stages that feed each other, fan-out over a list, loops, checks. For independent tasks send several agent calls at once instead.
 
 The script gets Lua's string, table and math, zemi.json and zemi.workflow, and no bare copy of them: write local wf = zemi.workflow first, and every call as wf.<name>.
 wf.agent(prompt, {agent, description, phase, model, schema}) -> report, or nil, err; agent defaults to general; the prompt must stand alone; with schema (a JSON Schema object) the report is a table
@@ -1450,15 +1450,15 @@ local checks = wf.parallel({
 local notes = wf.pipeline(wf.args, function(dir) return wf.agent("Summarize " .. dir .. ", citing file:line.", { agent = "explore" }) end)
 return wf.agent("Write a design note from:\n" .. table.concat(notes, "\n"))`
 
-// bgWorkflowStarted opens the result of a workflow call that went on in the
+// _bgWorkflowStarted opens the result of a workflow call that went on in the
 // background, whose row reads as still running (toolStatus).
-const bgWorkflowStarted = "Started workflow "
+const _bgWorkflowStarted = "Started workflow "
 
-// warnWorkflowFinished opens the answer of a foreground workflow call whose
+// _warnWorkflowFinished opens the answer of a foreground workflow call whose
 // run finished with a failed agent or branch inside: the model hears the
 // result may be partial, and the call's own row warns rather than reading a
 // check (toolStatus). The run's report follows it.
-const warnWorkflowFinished = "Finished workflow "
+const _warnWorkflowFinished = "Finished workflow "
 
 // bgFlowText is what a call whose run reports as a message answers: a
 // background start, or a foreground call the user's message handed off.
@@ -1467,7 +1467,7 @@ func bgFlowText(f *flowRun) string {
 	if f.script != "" {
 		where = " (" + f.script + ")"
 	}
-	return bgWorkflowStarted + f.id + where + ". Wait for it with run=" + f.id + " and action=wait, or read its report when it arrives as a message."
+	return _bgWorkflowStarted + f.id + where + ". Wait for it with run=" + f.id + " and action=wait, or read its report when it arrives as a message."
 }
 
 // list names the runs of this session this process holds, newest first: a run
@@ -1509,8 +1509,8 @@ type workflowArgs struct {
 
 func (t *workflowTool) Info() fantasy.ToolInfo {
 	var desc strings.Builder
-	desc.WriteString(workflowToolDesc)
-	actions := []string{string(actStatus), "list", string(actWait), string(actPause), string(actResume), string(actStop), "rerun"}
+	desc.WriteString(_workflowToolDesc)
+	actions := []string{string(_actStatus), "list", string(_actWait), string(_actPause), string(_actResume), string(_actStop), "rerun"}
 	props, required := tools.ArgsOf(workflowArgs{})
 	desc.WriteString(" Set background for runs that take minutes, and act on one with run and action; action list names this session's runs, the user's own from /workflows among them, and status lists the run ids of its agents." +
 		" wait blocks until that run ends, so its result is in the conversation by the time this call returns; a report the same run sends arrives as a message.")
@@ -1518,7 +1518,7 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 		p["enum"] = actions
 	}
 	if p, ok := props["concurrency"].(map[string]any); ok {
-		p["description"] = fmt.Sprintf("agents running at once, 1-%d (default %d); with run, changes a running workflow's", workflowMaxConcurrency, workflowConcurrency)
+		p["description"] = fmt.Sprintf("agents running at once, 1-%d (default %d); with run, changes a running workflow's", _workflowMaxConcurrency, _workflowConcurrency)
 	}
 	if len(t.saved) > 0 {
 		desc.WriteString("\n\nSaved workflows (pass name instead of script):")
@@ -1557,15 +1557,15 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	case in.Action != "" && in.Run == "":
 		return fantasy.NewTextErrorResponse("action acts on a run: pass its id as run"), nil
 	case in.Run != "" && !rerun:
-		if flowAction(in.Action) == actWait {
+		if flowAction(in.Action) == _actWait {
 			return t.wait(ctx, call.ID, in.Run), nil
 		}
 		act := flowAction(in.Action)
 		switch {
 		case act == "" && in.Concurrency > 0:
-			act = actConcurrency
+			act = _actConcurrency
 		case act == "":
-			act = actStatus
+			act = _actStatus
 		}
 		out, err := t.control(in.Run, act, in.Concurrency)
 		if err != nil {
@@ -1835,15 +1835,15 @@ func (h *Host) deliverFlow(attached string) func(*flowRun) {
 // reportAs is an ended run's report with the agent attribute and status it
 // goes to the model under.
 func (f *flowRun) reportAs() (attr string, status reportStatus, report string) {
-	attr, status = "workflow", reportFinished
+	attr, status = "workflow", _reportFinished
 	if f.name != "" {
 		attr += ":" + f.name
 	}
 	report, ok := f.report()
 	if !ok {
-		status = reportFailure
+		status = _reportFailure
 	} else if f.status == RunWarn {
-		status = reportWarn
+		status = _reportWarn
 	}
 	return attr, status, report
 }
@@ -1854,16 +1854,16 @@ func (f *flowRun) asCall(report string) string {
 	if f.status != RunWarn {
 		return report
 	}
-	return warnWorkflowFinished + f.id + " with an agent or branch that failed inside: the result below may be partial.\n\n" + report
+	return _warnWorkflowFinished + f.id + " with an agent or branch that failed inside: the result below may be partial.\n\n" + report
 }
 
 // /workflows and zemi.workflow
 
-var workflowVerbs = []string{"run", "view", "pause", "resume", "stop", "rerun", "concurrency", "restart", "save", "open", "new"}
+var _workflowVerbs = []string{"run", "view", "pause", "resume", "stop", "rerun", "concurrency", "restart", "save", "open", "new"}
 
-// newWorkflowPrompt rides behind /workflows new and takes zemiSkillDir, where
+// _newWorkflowPrompt rides behind /workflows new and takes zemiSkillDir, where
 // the procedure lives.
-const newWorkflowPrompt = "I want a new zemi workflow that does what the command above says; ask me when it says nothing. Read SKILL.md in %s, the zemi skill's directory, then follow the New workflow steps in workflows.md there."
+const _newWorkflowPrompt = "I want a new zemi workflow that does what the command above says; ask me when it says nothing. Read SKILL.md in %s, the zemi skill's directory, then follow the New workflow steps in workflows.md there."
 
 // workflowCommands are /workflows and /review.
 func (h *Host) workflowCommands() []*Command {
@@ -1884,7 +1884,7 @@ func (h *Host) workflowCommands() []*Command {
 			verb := f[0]
 			if verb == "new" {
 				// the line as typed, newlines included, with the prompt behind it
-				return h.sendCommandPrompt("workflows", strings.TrimSpace(typed), agent.Attached("command", fmt.Sprintf(newWorkflowPrompt, h.zemiSkillDir())), attached)
+				return h.sendCommandPrompt("workflows", strings.TrimSpace(typed), agent.Attached("command", fmt.Sprintf(_newWorkflowPrompt, h.zemiSkillDir())), attached)
 			}
 			id := arg(1)
 			if id == "" {
@@ -1921,15 +1921,15 @@ func (h *Host) workflowCommands() []*Command {
 			case "concurrency":
 				n, err := strconv.Atoi(arg(2))
 				if err != nil {
-					return Usagef("/workflows concurrency <id> <1-%d, or +n or -n>", workflowMaxConcurrency)
+					return Usagef("/workflows concurrency <id> <1-%d, or +n or -n>", _workflowMaxConcurrency)
 				}
 				// relative, so a key pressed twice before its view rebuilds acts twice
 				if f := h.tasks.flow(id); f != nil && strings.ContainsAny(arg(2)[:1], "+-") {
 					n += f.view().limit
 				}
-				return say(h.flowControl(id, actConcurrency, n, ""))
+				return say(h.flowControl(id, _actConcurrency, n, ""))
 			case "restart":
-				return say(h.flowControl(id, actRestart, 0, arg(2)))
+				return say(h.flowControl(id, _actRestart, 0, arg(2)))
 			case "rerun":
 				rerun := func() (string, error) {
 					src, err := h.approveRerun(id)
@@ -1957,13 +1957,13 @@ func (h *Host) workflowCommands() []*Command {
 			case "open":
 				return h.openFlowScript(id)
 			default:
-				return Usagef("unknown /workflows subcommand %q (%s)", verb, strings.Join(workflowVerbs, ", "))
+				return Usagef("unknown /workflows subcommand %q (%s)", verb, strings.Join(_workflowVerbs, ", "))
 			}
 		},
 		GoComplete: func(h *Host, _, rest string) []string {
 			f := strings.Fields(rest)
 			if len(f) == 0 || len(f) == 1 && !strings.HasSuffix(rest, " ") {
-				return workflowVerbs
+				return _workflowVerbs
 			}
 			if f[0] == "new" { // what it should do is the user's own text
 				return nil
@@ -2009,12 +2009,12 @@ func (h *Host) runSaved(attached, name, args string) error {
 // background agent, and returns the run's id.
 func (h *Host) startUserFlow(spec flowSpec, attached string) (string, error) {
 	// the refusals before the run, so a start that cannot run leaves nothing
-	if _, err := h.resolveModel(h.roleModel(defaultRole)); err != nil {
+	if _, err := h.resolveModel(h.roleModel(_defaultRole)); err != nil {
 		return "", err
 	}
 	// the user has no foreground version of this run to fall back on,
 	// here and at the late refusal in addFlow
-	spec.advice = waitAdvice
+	spec.advice = _waitAdvice
 	if err := h.tasks.canDetach(); err != nil {
 		return "", err
 	}
@@ -2111,7 +2111,7 @@ func (h *Host) workflowsOverlay() Overlay {
 		}
 		if w.Source != lua.OriginBuiltin {
 			path = perm.TildePath(w.Path)
-			keys = append(keys, ItemKey{Key: "o", Desc: openInEditorLabel, Run: "workflows open " + w.Name})
+			keys = append(keys, ItemKey{Key: "o", Desc: _openInEditorLabel, Run: "workflows open " + w.Name})
 		}
 		items = append(items, OverlayItem{
 			Text:    w.Name,
@@ -2181,7 +2181,7 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 		if strings.TrimSpace(src) == "" {
 			L.RaiseError("zemi.workflow.run: script or name is required")
 		}
-		h.luaGate(L, luaWorkflowRun, cmp.Or(rawString(L, spec, "name"), "(script)"), nil)
+		h.luaGate(L, _luaWorkflowRun, cmp.Or(rawString(L, spec, "name"), "(script)"), nil)
 		args, err := lua.ToGo(spec.RawGetString("args"))
 		if err != nil {
 			L.RaiseError("zemi.workflow.run: args: %v", err)
@@ -2194,7 +2194,7 @@ func (h *Host) workflowNamespace(L *glua.LState) *glua.LTable {
 			return luaResult(L, err)
 		}
 		stopID := make(chan int, 1) // a reload cancels the run, like a job
-		f, err := h.startFlow(context.Background(), flowSpec{name: rawString(L, spec, "name"), src: src, args: args, concurrency: int(n), background: true, advice: waitAdvice, done: func(f *flowRun) {
+		f, err := h.startFlow(context.Background(), flowSpec{name: rawString(L, spec, "name"), src: src, args: args, concurrency: int(n), background: true, advice: _waitAdvice, done: func(f *flowRun) {
 			h.stops.remove(<-stopID)
 			switch {
 			case onDone == nil:

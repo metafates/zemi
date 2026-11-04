@@ -203,10 +203,10 @@ func (h *Host) materializeBuiltinSkills() error {
 	return replaceDir(dir, sub)
 }
 
-// zemiCLI names this binary at the end of every builtin skill, read once:
+// _zemiCLI names this binary at the end of every builtin skill, read once:
 // replaced in place, Linux would name it "(deleted)". With no path it says
 // nothing.
-var zemiCLI = func() string {
+var _zemiCLI = func() string {
 	exe, err := os.Executable()
 	if err != nil {
 		return ""
@@ -218,7 +218,7 @@ var zemiCLI = func() string {
 // builtin skill's steps call the zemi CLI, and another one on PATH may be older.
 func skillNote(s skill.Skill) string {
 	if s.Source == skill.Builtin {
-		return zemiCLI
+		return _zemiCLI
 	}
 	return ""
 }
@@ -361,9 +361,9 @@ func (h *Host) projectOnlySkills() []skill.Skill {
 	})
 }
 
-// skillDescMax caps one skill index line: one marketplace skill's prose
+// _skillDescMax caps one skill index line: one marketplace skill's prose
 // rides every prompt of every session, and the body loads whole on demand.
-const skillDescMax = 240
+const _skillDescMax = 240
 
 // skillsIndexPrompt renders the §10.7 skills index: one line per skill the
 // model may load, description capped at skillDescMax: the prompt carries the
@@ -381,7 +381,7 @@ func (h *Host) skillsIndexPrompt() (mine, project string) {
 		if s.Root != "" { // the fallback description is the first body line
 			desc = plugin.ExpandRootData(desc, s.Root, s.Data)
 		}
-		desc = truncRunes(desc, skillDescMax)
+		desc = truncRunes(desc, _skillDescMax)
 		lines[i].WriteString("- " + s.Name + ": " + desc + "\n")
 	}
 	rule := "A description says when a skill applies; its body is the procedure. When a task matches one, load that skill with the skill tool before the first tool call and follow it, even for a task you know how to do; when none matches, load none.\n"
@@ -591,16 +591,16 @@ func (h *Host) sourceOf[S ~string](source S, path string) string {
 	return string(source)
 }
 
-// sectionAcronym names the first path segments that are abbreviations, not
+// _sectionAcronym names the first path segments that are abbreviations, not
 // words: the section title spells them out like the product does elsewhere.
-var sectionAcronym = map[string]string{"ui": "UI", "lsp": "LSP", "mcp": "MCP", "api": "API"}
+var _sectionAcronym = map[string]string{"ui": "UI", "lsp": "LSP", "mcp": "MCP", "api": "API"}
 
 // sourceSection names a list section after where its rows come from.
 func sourceSection[S ~string](source S) string {
 	if source == "" {
 		return ""
 	}
-	if a, ok := sectionAcronym[string(source)]; ok {
+	if a, ok := _sectionAcronym[string(source)]; ok {
 		return a
 	}
 	return strings.ToUpper(string(source[:1])) + string(source[1:])
@@ -623,17 +623,17 @@ func LowerFirst(s string) string {
 	return s
 }
 
-// sourceOrder is the section order every list shares: user, builtin, plugin,
+// _sourceOrder is the section order every list shares: user, builtin, plugin,
 // project, then a recipe, which no origin names.
-var sourceOrder = []lua.Origin{lua.OriginUser, lua.OriginBuiltin, lua.OriginPlugin, lua.OriginProject}
+var _sourceOrder = []lua.Origin{lua.OriginUser, lua.OriginBuiltin, lua.OriginPlugin, lua.OriginProject}
 
 // sortBySource puts rows in that order.
 func sortBySource[T any, S ~string](rows []T, source func(T) S) {
 	pos := func(s S) int {
-		if i := slices.Index(sourceOrder, lua.Origin(s)); i >= 0 {
+		if i := slices.Index(_sourceOrder, lua.Origin(s)); i >= 0 {
 			return i
 		}
-		return len(sourceOrder)
+		return len(_sourceOrder)
 	}
 	slices.SortStableFunc(rows, func(a, b T) int {
 		return cmp.Compare(pos(source(a)), pos(source(b)))
@@ -683,7 +683,7 @@ func (h *Host) skillItems() []OverlayItem {
 			body = "could not read it: " + err.Error()
 		}
 		if s.Source != skill.Builtin { // zemi rewrites its own on every start
-			item.Keys = append(item.Keys, ItemKey{Key: "o", Desc: openInEditorLabel, Run: "skills open " + s.Name})
+			item.Keys = append(item.Keys, ItemKey{Key: "o", Desc: _openInEditorLabel, Run: "skills open " + s.Name})
 		}
 		if s.Source == skill.Recipe {
 			item.Keys = append(item.Keys, ItemKey{Key: "x", Desc: "delete", Danger: true, Run: "skills delete " + s.Name})

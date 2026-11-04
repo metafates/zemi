@@ -161,9 +161,9 @@ func (f *listFilter) set(query string) {
 	}
 }
 
-// filterMin is the fewest rows a list filters: a shorter one reads at a
+// _filterMin is the fewest rows a list filters: a shorter one reads at a
 // glance, so it shows no filter row and "/" does nothing there.
-const filterMin = 5
+const _filterMin = 5
 
 // filterRow is the query line above a list, a hint while no query is open
 // so opening one adds no row. It is cut to the box's inner width, so a long
@@ -193,8 +193,8 @@ func (f *listFilter) filterHints(hints []hintPair, esc string) []hintPair {
 	return append(hints, hintPair{key: "esc", verb: esc})
 }
 
-// noMatches is how a filtered list with no hit reads, everywhere one reports it.
-const noMatches = "No matches."
+// _noMatches is how a filtered list with no hit reads, everywhere one reports it.
+const _noMatches = "No matches."
 
 // emptyRows is how every empty list or view reads: a sentence in the hint
 // grey, wrapped to w.
@@ -460,7 +460,7 @@ func sameDanger(o, n hostapi.OverlayItem) bool {
 // what it said before.
 func (a *App) refreshDetail(i int) {
 	j := i + 1
-	if j >= len(a.overlays) || !a.overlays[j].back || a.overlays[j].o.ID != a.overlays[i].o.ID+detailSuffix {
+	if j >= len(a.overlays) || !a.overlays[j].back || a.overlays[j].o.ID != a.overlays[i].o.ID+_detailSuffix {
 		return
 	}
 	d := a.overlays[j]
@@ -501,7 +501,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	// only builtin and user lists run commands, so a plugin's label cannot
 	// disguise one
 	for i := range o.Keys { // a desc keeps its spaces, as a row's does: "pause " is as wide as "resume"
-		o.Keys[i].Key, o.Keys[i].Desc = sanitize.Line(o.Keys[i].Key), oneLine.Replace(sanitize.String(o.Keys[i].Desc))
+		o.Keys[i].Key, o.Keys[i].Desc = sanitize.Line(o.Keys[i].Key), _oneLine.Replace(sanitize.String(o.Keys[i].Desc))
 	}
 	// a key the list keeps for itself is dropped here, not named and never
 	// run: the move or the copy would swallow it unseen, and an overlay
@@ -514,7 +514,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	for i, f := range o.Fields {
 		o.Fields[i] = hostapi.Field{Name: sanitize.Line(f.Name), Value: sanitize.String(f.Value)}
 	}
-	st := overlayState{o: o, filterable: len(o.Items) >= filterMin}
+	st := overlayState{o: o, filterable: len(o.Items) >= _filterMin}
 	st.listFilter.keepOrder = o.KeepOrder
 	if o.Input {
 		st.input.secret = o.Secret
@@ -532,7 +532,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 	}
 	for _, item := range o.Items {
 		// a desc keeps its runs of spaces: padded columns (a status word) stay put
-		item.Desc, item.Tag, item.Section = oneLine.Replace(sanitize.String(item.Desc)), sanitize.Line(item.Tag), sanitize.Line(item.Section)
+		item.Desc, item.Tag, item.Section = _oneLine.Replace(sanitize.String(item.Desc)), sanitize.Line(item.Tag), sanitize.Line(item.Section)
 		item.Verb = hostapi.Verb(sanitize.Line(string(item.Verb)))
 		item.Fill, item.Copy, item.Preview = sanitize.String(item.Fill), sanitize.String(item.Copy), sanitize.String(item.Preview)                      // Detail is the detail view's Body, sanitized there
 		it := listItem{label: sanitize.Line(item.Text), desc: item.Desc, key: tagSeg(item.Tag), section: item.Section, mark: itemMark(item), row: item} // a newline would break the box
@@ -542,7 +542,7 @@ func (a *App) overlayState(o hostapi.Overlay) overlayState {
 		if item.Row != nil {
 			// only text and hl: a click id or effect here would act as Go chrome's
 			for _, seg := range item.Row {
-				it.segs = append(it.segs, hostapi.Segment{Text: oneLine.Replace(sanitize.String(seg.Text)), HL: hostapi.UserHL(seg.HL)})
+				it.segs = append(it.segs, hostapi.Segment{Text: _oneLine.Replace(sanitize.String(seg.Text)), HL: hostapi.UserHL(seg.HL)})
 			}
 			it.label = hostapi.SegsText(it.segs) // spaces kept: a filter's offsets index the segments
 		} else if item.Danger {
@@ -594,7 +594,7 @@ func (st *overlayState) rowKey(key string) hostapi.ItemKey {
 	return hostapi.ItemKey{}
 }
 
-var oneLine = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ")
+var _oneLine = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ")
 
 // enterVerb names what enter does on item idx, one word per act in every
 // list: "open" a view or another screen, "pick" a value, "run" a command,
@@ -635,9 +635,9 @@ func (st *overlayState) enterVerb(idx int) hostapi.Verb {
 // screen its run names.
 func hasView(r hostapi.OverlayItem) bool { return r.Detail != "" || r.Fields != nil }
 
-// detailSuffix is the id of the detail view an overlay list's row opens: the
+// _detailSuffix is the id of the detail view an overlay list's row opens: the
 // list's id plus this, so closing by the list's id folds the view with it.
-const detailSuffix = "#detail"
+const _detailSuffix = "#detail"
 
 // openDetail pushes the view of item idx: its facts and text, under the
 // parent's origin so the badge and the run gate stay the parent's. What acts
@@ -649,7 +649,7 @@ func (a *App) openDetail(parent *overlayState, idx int) {
 		title = parent.o.Title + " / " + title
 	}
 	p := parent.o
-	st := a.overlayState(hostapi.Overlay{ID: p.ID + detailSuffix, Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Parts: r.Parts, Fields: r.Fields, Empty: r.Empty, Mark: r.Mark, OnAction: p.OnAction, Follow: p.Follow})
+	st := a.overlayState(hostapi.Overlay{ID: p.ID + _detailSuffix, Title: title, Origin: p.Origin, Path: p.Path, Gen: p.Gen, Anchor: p.Anchor, Body: r.Detail, BodyMD: p.BodyMD, Parts: r.Parts, Fields: r.Fields, Empty: r.Empty, Mark: r.Mark, OnAction: p.OnAction, Follow: p.Follow})
 	// opening a view is navigation: it keeps the list's width and takes its
 	// own height, which it then keeps while open
 	st.back, st.item, st.size = true, parent.o.Items[idx], boxSize{w: parent.size.w}
@@ -673,7 +673,7 @@ func (a *App) pressRowKey(st *overlayState, k hostapi.ItemKey) {
 		}
 		if k.Fill == "" && k.Verb == hostapi.VerbGo {
 			// the run took the chat the list browses: the list goes with it
-			a.closeOverlayByID(strings.TrimSuffix(o.ID, detailSuffix))
+			a.closeOverlayByID(strings.TrimSuffix(o.ID, _detailSuffix))
 			return
 		}
 	default:
@@ -690,7 +690,7 @@ func (a *App) pressRowKey(st *overlayState, k hostapi.ItemKey) {
 	if k.Danger {
 		a.burstSwallow, a.burstKey = a.now(), k.Key
 	}
-	a.closeOverlayByID(strings.TrimSuffix(o.ID, detailSuffix))
+	a.closeOverlayByID(strings.TrimSuffix(o.ID, _detailSuffix))
 }
 
 // reloadOverlay runs call (nil for none) and rebuilds a toggle list's items,
@@ -725,7 +725,7 @@ func (a *App) closeOverlayByID(id string) {
 // then shows what the closed overlay changed.
 func (a *App) closeOverlays(id string) {
 	closes := func(st overlayState) bool {
-		return st.o.ID == id || strings.HasPrefix(st.o.ID, id+" ") || strings.HasPrefix(st.o.ID, id+detailSuffix)
+		return st.o.ID == id || strings.HasPrefix(st.o.ID, id+" ") || strings.HasPrefix(st.o.ID, id+_detailSuffix)
 	}
 	for _, st := range a.overlays { // where each closed list sat, so coming back reopens on its row
 		if closes(st) && !st.back && st.selected < len(st.visible) {
@@ -1290,13 +1290,13 @@ func (a *App) runOverlayRow(r hostapi.OverlayItem) tea.Cmd {
 	return cmd
 }
 
-// listRowsMax is the most rows a list takes before it scrolls: a menu that
+// _listRowsMax is the most rows a list takes before it scrolls: a menu that
 // fills the screen hides what it is a menu over.
-const listRowsMax = 20
+const _listRowsMax = 20
 
 // listRowsCap is that cap, at most three fifths of the screen and never so
 // few that nothing is a list.
-func listRowsCap(h int) int { return max(min(h-4, 3*h/5, listRowsMax), 3) }
+func listRowsCap(h int) int { return max(min(h-4, 3*h/5, _listRowsMax), 3) }
 
 // overlayBox draws a Lua overlay with the Go-stamped origin badge (DESIGN
 // §8): the body, then the list, then the keys that act on the selection. A
@@ -1332,7 +1332,7 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 		} else if st.o.Note != "" {
 			body = append(body, []hostapi.Segment{{Text: st.o.Note, HL: hostapi.GroupDim}})
 		}
-		save := sendHint
+		save := _sendHint
 		if st.o.Secret {
 			save = hintPair{key: "enter", verb: "save"}
 		}
@@ -1359,13 +1359,13 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 			fields = slices.DeleteFunc(slices.Clone(fields), func(f hostapi.Field) bool { return strings.HasSuffix(st.o.Title, " / "+f.Value) })
 		}
 	} else if measuring { // the fewest cells a measuring box keeps, so it reads as a menu
-		floor := textBoxW
+		floor := _textBoxW
 		if len(st.o.Items) > 0 && !previews {
 			// the width the list's own rows take, so the box opens at it and
 			// no label or description trims when the kept width arrives
 			labelW, keyW, descNeeds, rowW := listNeedW(st.items)
 			keep := max(labelW+keyW+max(descNeeds, 3)+4, rowW+4)
-			floor = max(listBoxW, min(keep, inner))
+			floor = max(_listBoxW, min(keep, inner))
 		}
 		st.size.w = max(st.size.w, floor)
 	}
@@ -1415,7 +1415,7 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 		var head, list [][]hostapi.Segment // the filter row, and the list's rows
 		var hints []hintPair
 		// the list's and the body's viewports share what the other rows leave
-		bodyPH, listPH, fixed := oneRow[:min(bodyN, 1)], oneRow, [][]hostapi.Segment(nil)
+		bodyPH, listPH, fixed := _oneRow[:min(bodyN, 1)], _oneRow, [][]hostapi.Segment(nil)
 		switch {
 		case st.back && len(st.o.Items) > 0:
 		case len(st.o.Items) > 0:
@@ -1423,7 +1423,7 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 				head = [][]hostapi.Segment{st.filterRow(bodyW)}
 			}
 			if len(st.visible) == 0 {
-				listPH, fixed = nil, emptyRows(noMatches, bodyW)
+				listPH, fixed = nil, emptyRows(_noMatches, bodyW)
 			}
 		case bodyN == 0 || st.o.Empty != "":
 			listPH, fixed = nil, emptyRows(cmp.Or(st.o.Empty, "Nothing here."), bodyW)
@@ -1442,7 +1442,7 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 				copy(pane, capRows(wrapText(st.items[st.visible[st.selected]].row.Preview, hostapi.ChromeHint, bodyW), len(pane), bodyW))
 			}
 		}
-		room := h - 2 - len(stack(tight, bodyPH, slices.Concat(head, listPH, fixed), pane, oneRow)) + len(bodyPH) + len(listPH)
+		room := h - 2 - len(stack(tight, bodyPH, slices.Concat(head, listPH, fixed), pane, _oneRow)) + len(bodyPH) + len(listPH)
 		limit := min(max(room-min(bodyN, 3), 1), listRowsCap(h)) // the list's rows; the body keeps three
 		enterCopies := false
 		switch {
@@ -1477,7 +1477,7 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 		var body [][]hostapi.Segment
 		if bodyN > 0 {
 			st.body.viewH = max(room-len(list), 1)
-			body = st.body.window(buildBody(bodyW), bodyW, boxFade)
+			body = st.body.window(buildBody(bodyW), bodyW, _boxFade)
 		}
 		// y says nothing enter does not
 		if (bodyN > 0 || len(st.visible) > 0) && !enterCopies {
@@ -1488,7 +1488,7 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 		}
 		scroll := scrolls(st.body, st.view)
 		if scroll == nil && st.o.Reload != nil {
-			scroll = []hintPair{scrollGap}
+			scroll = []hintPair{_scrollGap}
 		}
 		esc := "close"
 		if st.back {
@@ -1555,7 +1555,7 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 				foot = append([]hostapi.Segment{{Text: clipText(s, n), HL: hostapi.ChromeHint}, {Text: "  ", HL: hostapi.ChromeHint}}, foot...)
 			}
 		}
-		tail = len(stack(tight, pane, oneRow))
+		tail = len(stack(tight, pane, _oneRow))
 		rows := stack(tight, body, slices.Concat(head, list, fixed), pane, [][]hostapi.Segment{foot})
 		return rows, bodyN > 0 && st.body.viewH < min(bodyN, 3) || len(listPH) > 0 && st.view.viewH < min(st.view.rows, 3)
 	})
@@ -1731,10 +1731,10 @@ func phaseMark(marks []hostapi.MarkKind) hostapi.MarkKind {
 	return tools.MarkOK
 }
 
-// statusHL colors the status words every screen shares.
+// _statusHL colors the status words every screen shares.
 //
 //exhaustive:enforce
-var statusHL = map[hostapi.ServiceStatus]string{
+var _statusHL = map[hostapi.ServiceStatus]string{
 	hostapi.StatusIdle: hostapi.ChromeHint, hostapi.StatusStarting: hostapi.ChromeWarn, hostapi.StatusReady: hostapi.ChromeOk, hostapi.StatusFailed: hostapi.ChromeDanger,
 	hostapi.StatusSignIn: hostapi.ChromeWarn, hostapi.StatusStopped: hostapi.ChromeHint, hostapi.StatusOff: hostapi.ChromeHint,
 }
@@ -1761,7 +1761,7 @@ func fieldRows(fields []hostapi.Field, mark hostapi.MarkKind, w int) [][]hostapi
 		case "error":
 			hl = hostapi.ChromeDanger
 		case "status":
-			hl, lead = statusHL[hostapi.ServiceStatus(f.Value)], markSeg(mark)
+			hl, lead = _statusHL[hostapi.ServiceStatus(f.Value)], markSeg(mark)
 		}
 		name := f.Name
 		for l := range strings.SplitSeq(f.Value, "\n") {
@@ -1920,7 +1920,7 @@ func ruleAt(rows [][]hostapi.Segment, frame uv.Rectangle) bool {
 		return false
 	}
 	r, _ := utf8.DecodeRuneInString(c[0].Text)
-	return armsOf(r)&(armR|armD) == armR|armD
+	return armsOf(r)&(_armR|_armD) == _armR|_armD
 }
 
 // dropCells removes the first n display cells of a row.

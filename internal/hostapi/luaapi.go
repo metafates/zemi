@@ -227,8 +227,8 @@ func (h *Host) composerNamespace(L *glua.LState) *glua.LTable {
 // agent.assemble
 
 const (
-	assembleSectionMax = 16 << 10
-	assembleTotalMax   = 64 << 10
+	_assembleSectionMax = 16 << 10
+	_assembleTotalMax   = 64 << 10
 )
 
 // assembleSections runs the agent.assemble handlers while a system prompt is
@@ -249,10 +249,10 @@ func (h *Host) assembleSections() string {
 		func(L *glua.LState) ([]any, error) {
 			for _, hd := range handlers {
 				title, text := h.callAssembleHandler(L, hd)
-				if text = strings.TrimSpace(text); text == "" || b.Len() >= assembleTotalMax {
+				if text = strings.TrimSpace(text); text == "" || b.Len() >= _assembleTotalMax {
 					continue
 				}
-				b.WriteString("\n\n## " + cmp.Or(title, "context") + " (from " + string(hd.Origin) + " config)\n" + text[:min(len(text), assembleSectionMax)])
+				b.WriteString("\n\n## " + cmp.Or(title, "context") + " (from " + string(hd.Origin) + " config)\n" + text[:min(len(text), _assembleSectionMax)])
 			}
 			return nil, nil
 		})

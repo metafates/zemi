@@ -396,7 +396,7 @@ func TestClaudeProvides(t *testing.T) {
 	} {
 		dir := t.TempDir()
 		write(t, dir, c.files)
-		if got := claudeProvides(dir, readHead(filepath.Join(dir, ClaudeManifestFile), headMax)); !slices.Equal(got, c.want) {
+		if got := claudeProvides(dir, readHead(filepath.Join(dir, ClaudeManifestFile), _headMax)); !slices.Equal(got, c.want) {
 			t.Errorf("%s: provides %v, want %v", c.name, got, c.want)
 		}
 	}
@@ -407,5 +407,5 @@ func TestClaudeProvides(t *testing.T) {
 // its components still read; a malformed one is an error carrying the zero
 // manifest, for the caller to log and load nothing from.
 func ReadClaude(dir, dataDir string) (ClaudeManifest, error) {
-	return readClaude(dir, dataDir, readHead(filepath.Join(dir, ClaudeManifestFile), headMax))
+	return readClaude(dir, dataDir, readHead(filepath.Join(dir, ClaudeManifestFile), _headMax))
 }

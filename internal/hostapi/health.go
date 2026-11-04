@@ -36,7 +36,7 @@ const (
 	HealthError HealthLevel = "error"
 )
 
-var healthLevels = []HealthLevel{HealthOK, HealthWarn, HealthError}
+var _healthLevels = []HealthLevel{HealthOK, HealthWarn, HealthError}
 
 // HealthRow is one /health check.
 type HealthRow struct {
@@ -176,12 +176,12 @@ func healthResult(v any) (HealthLevel, string, error) {
 		if set {
 			s, ok := raw.(string)
 			if !ok {
-				return "", "", fmt.Errorf("level is not a string: want one of %s", strings.Join(strs(healthLevels), ", "))
+				return "", "", fmt.Errorf("level is not a string: want one of %s", strings.Join(strs(_healthLevels), ", "))
 			}
 			level = HealthLevel(s)
 		}
-		if !slices.Contains(healthLevels, level) {
-			return "", "", fmt.Errorf("level %q is not one of %s", level, strings.Join(strs(healthLevels), ", "))
+		if !slices.Contains(_healthLevels, level) {
+			return "", "", fmt.Errorf("level %q is not one of %s", level, strings.Join(strs(_healthLevels), ", "))
 		}
 		detail, _ := v["detail"].(string)
 		return level, sanitize.String(detail), nil
@@ -190,15 +190,15 @@ func healthResult(v any) (HealthLevel, string, error) {
 	}
 }
 
-// notifiers name the native notifier per GOOS.
-var notifiers = map[string]string{"darwin": "osascript", "linux": "notify-send"}
+// _notifiers name the native notifier per GOOS.
+var _notifiers = map[string]string{"darwin": "osascript", "linux": "notify-send"}
 
 // notifyStyle resolves the ui.notify setting to the style notifyIfAway
 // uses, and why. has runs only when the answer needs it: it walks PATH.
 // missing is the machine-read why: the native notifier the setting names is
 // not there, which /health warns about.
 func notifyStyle(setting, goos string, has func(string) bool) (style, why string, missing bool) {
-	tool := notifiers[goos]
+	tool := _notifiers[goos]
 	switch setting {
 	case config.NotifyNative:
 		if tool != "" && has(tool) {
@@ -229,7 +229,7 @@ func hasNotifier(name string) bool {
 // NOTE: macOS credits an osascript banner to Script Editor, whose icon it
 // shows and whose setting mutes it; terminal-notifier is the upgrade.
 func NotifyArgv(text string) []string {
-	if notifiers[runtime.GOOS] == "osascript" {
+	if _notifiers[runtime.GOOS] == "osascript" {
 		return []string{"osascript", "-e", "on run argv", "-e", `display notification (item 1 of argv) with title "zemi"`, "-e", "end run", text}
 	}
 	text = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(text)
@@ -261,7 +261,7 @@ func (h *Host) builderRow() HealthRow {
 			how += " (see /errors)"
 		}
 		return HealthRow{Level: HealthWarn, Detail: fmt.Sprintf("%d builds failed, %s; %s", failed, detail, how)}
-	case unbuilt > 4*leafWaitLines:
+	case unbuilt > 4*_leafWaitLines:
 		return HealthRow{Level: HealthWarn, Detail: "the view holds " + detail + "; zoom still reads the raw messages"}
 	default:
 		return HealthRow{Level: HealthOK, Detail: detail}
@@ -534,14 +534,14 @@ func (h *Host) WaitMCP(ctx context.Context) {
 	}
 }
 
-// healthActions labels the command a check's detail view runs; its initial
+// _healthActions labels the command a check's detail view runs; its initial
 // is the key.
-var healthActions = map[string]string{"errors": "Show errors", "trust": "Change trust", "mcp": "Open MCP servers", "plugin": "Open plugins"}
+var _healthActions = map[string]string{"errors": "Show errors", "trust": "Change trust", "mcp": "Open MCP servers", "plugin": "Open plugins"}
 
 // healthAction is what a check's Run resolves to. A run the table does not
 // label takes no action rather than reading a missing label.
 func healthAction(run string) (label, key string, ok bool) {
-	label, ok = healthActions[run]
+	label, ok = _healthActions[run]
 	if !ok || label == "" {
 		return "", "", false
 	}
@@ -566,15 +566,15 @@ func (h *Host) OpenHealth() error {
 	return nil
 }
 
-// healthMarks is a check's level as the mark the transcript uses for the same
+// _healthMarks is a check's level as the mark the transcript uses for the same
 // state, so /health reads in the one state vocabulary the product has.
-var healthMarks = map[HealthLevel]MarkKind{HealthOK: tools.MarkOK, HealthWarn: tools.MarkWarn, HealthError: tools.MarkErr}
+var _healthMarks = map[HealthLevel]MarkKind{HealthOK: tools.MarkOK, HealthWarn: tools.MarkWarn, HealthError: tools.MarkErr}
 
 // healthItems are the /health rows, problems first.
 func (h *Host) healthItems() []OverlayItem {
 	var problems, ok []OverlayItem
 	for _, c := range h.HealthRows() {
-		item := OverlayItem{Text: c.Name, Desc: c.Detail, Section: "OK", Mark: healthMarks[c.Level]}
+		item := OverlayItem{Text: c.Name, Desc: c.Detail, Section: "OK", Mark: _healthMarks[c.Level]}
 		// a detail view that only repeats a short, fine row leads nowhere
 		if c.Run != "" || c.Level != HealthOK || utf8.RuneCountInString(c.Detail) > 48 {
 			item.Detail = c.Detail

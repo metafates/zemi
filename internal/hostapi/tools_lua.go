@@ -95,7 +95,7 @@ func (h *Host) toolSections(toolset []fantasy.AgentTool) string {
 		if t.Prompt == "" || !hasTool(toolset, tools.ToolName(t.Name)) {
 			continue
 		}
-		out.WriteString("\n\n## Tool " + t.Name + " (from " + string(t.Origin) + " config)\n" + t.Prompt[:min(len(t.Prompt), assembleSectionMax)])
+		out.WriteString("\n\n## Tool " + t.Name + " (from " + string(t.Origin) + " config)\n" + t.Prompt[:min(len(t.Prompt), _assembleSectionMax)])
 	}
 	return out.String()
 }
@@ -156,7 +156,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 			L.RaiseError("zemi.tool.add: execute callback is required")
 		}
 		name := rawString(L, spec, "name")
-		if !toolName.MatchString(name) {
+		if !_toolName.MatchString(name) {
 			L.RaiseError("zemi.tool.add: name must be an identifier")
 		}
 		if slices.Contains(h.builtinToolNames(), name) {
@@ -257,7 +257,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 	return tb
 }
 
-var toolName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+var _toolName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // luaFantasyTools wraps every registered Lua tool as a fantasy agent tool,
 // checked through pipe.
@@ -496,10 +496,10 @@ func (h *Host) callToolPre(L *glua.LState, hd *EventHandler, tool string, input 
 	}
 }
 
-// toolPostWait bounds one call's tool.post handlers in wall time, their
+// _toolPostWait bounds one call's tool.post handlers in wall time, their
 // waits included; a slice of one gets the host's toolPostCeiling on the
 // interpreter.
-const toolPostWait = 30 * time.Second
+const _toolPostWait = 30 * time.Second
 
 // toolPost runs tool.post after a tool call and returns the output the
 // model gets (DESIGN §6.2): the handlers, then the tool's override posts, in
@@ -512,7 +512,7 @@ func (h *Host) toolPost(ctx context.Context, pad, name string, input map[string]
 
 // postChain runs handlers as tool.post for one call of name.
 func (h *Host) postChain(ctx context.Context, handlers []*EventHandler, pad, name string, input map[string]any, ok bool, output string, changed []string, took time.Duration) string {
-	if !lspQuietTool.Has(tools.ToolName(name)) {
+	if !_lspQuietTool.Has(tools.ToolName(name)) {
 		h.lspDirty()
 	}
 	payload := map[string]any{"tool": name, "input": input, "ok": ok, "output": output, "changed": changed, "ms": took.Milliseconds()}
@@ -524,7 +524,7 @@ func (h *Host) postChain(ctx context.Context, handlers []*EventHandler, pad, nam
 		return output
 	}
 	defer h.refresh() // what the handlers changed, like any event handler
-	postCtx, cancel := context.WithTimeoutCause(ctx, toolPostWait, fmt.Errorf("tool.post handlers ran past %s", toolPostWait))
+	postCtx, cancel := context.WithTimeoutCause(ctx, _toolPostWait, fmt.Errorf("tool.post handlers ran past %s", _toolPostWait))
 	defer cancel()
 	out := output
 	for _, hd := range handlers {

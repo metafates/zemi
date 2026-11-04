@@ -34,9 +34,9 @@ import (
 	"github.com/metafates/zemi/runtime"
 )
 
-// testEpoch is where a test zemi's clock starts, in UTC so os.date reads
+// _testEpoch is where a test zemi's clock starts, in UTC so os.date reads
 // the same on every machine.
-var testEpoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+var _testEpoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // PluginTest is one boot of zemi plugin test: the test file it evaluates,
 // the case it runs, and what that case left for the report.
@@ -79,7 +79,7 @@ type testStub struct {
 // the file, none when run is -1. Boot it with Step where init.lua would
 // run, then Run it and Close the host.
 func NewPluginTest(log *slog.Logger, classes lua.PathClasses, dirs config.Dirs, file string, run int) (*Host, *PluginTest) {
-	clock := &fakeClock{now: testEpoch}
+	clock := &fakeClock{now: _testEpoch}
 	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: runtime.FS, Clock: clock, WholeTasks: true})
 	h := NewHost(rt, log, config.NewStore(), dirs)
 	// from here a test zemi is quiet: the builder's worker, which the host
@@ -512,7 +512,7 @@ func (t *PluginTest) tool(L *glua.LState) int {
 func (t *PluginTest) emit(L *glua.LState) int {
 	name := L.CheckString(1)
 	ev, _ := luaToGoChecked(L, 2, "test.emit").(map[string]any)
-	if !eventCatalogue.Has(name) {
+	if !_eventCatalogue.Has(name) {
 		raisef(L, "test.emit: %q is not a host event; zemi.event.emit sends user.* events", name)
 	}
 	tool, _ := ev["tool"].(string)
@@ -523,7 +523,7 @@ func (t *PluginTest) emit(L *glua.LState) int {
 		}
 		return slices.DeleteFunc(hs, func(hd *EventHandler) bool { return !t.mine(hd.Path) })
 	}
-	t.own(L, "emit", "handled event", name, slices.Sorted(maps.Keys(eventCatalogue)), func(e string) (string, bool) { return e, len(handlers(e)) > 0 })
+	t.own(L, "emit", "handled event", name, slices.Sorted(maps.Keys(_eventCatalogue)), func(e string) (string, bool) { return e, len(handlers(e)) > 0 })
 	hs := handlers(name)
 	input, _ := ev["input"].(map[string]any)
 	return t.drive(L, "emit", "", func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
@@ -717,23 +717,23 @@ func (t *PluginTest) complete(L *glua.LState) int {
 
 // stubs
 
-var httpSubject = regexp.MustCompile(`^lua\.http\.[a-z]+$`)
+var _httpSubject = regexp.MustCompile(`^lua\.http\.[a-z]+$`)
 
 // stubKind is the kind of gated call subject names that test.stub
 // answers, or "".
 func stubKind(subject string) string {
 	switch {
-	case httpSubject.MatchString(subject):
+	case _httpSubject.MatchString(subject):
 		return "http"
-	case subject == luaJobStart:
+	case subject == _luaJobStart:
 		return "job"
-	case subject == luaModelAsk:
+	case subject == _luaModelAsk:
 		return "model"
-	case subject == luaClassifyAsk:
+	case subject == _luaClassifyAsk:
 		return "classify"
-	case subject == luaAgentSend:
+	case subject == _luaAgentSend:
 		return "send"
-	case subject == luaFSWrite:
+	case subject == _luaFSWrite:
 		return "write"
 	default:
 		return ""
@@ -770,9 +770,9 @@ func (t *PluginTest) stub(L *glua.LState) int {
 	return 1
 }
 
-// stubFields are the fields a reply to each kind of call takes, and their
+// _stubFields are the fields a reply to each kind of call takes, and their
 // types: the rest would be dropped without a word, so a typo passes.
-var stubFields = map[string]map[string]glua.LValueType{
+var _stubFields = map[string]map[string]glua.LValueType{
 	"http":     {"status": glua.LTNumber, "body": glua.LTString, "headers": glua.LTTable, "error": glua.LTString},
 	"job":      {"code": glua.LTNumber, "stdout": glua.LTString, "stderr": glua.LTString},
 	"model":    {"text": glua.LTString, "error": glua.LTString},
@@ -787,7 +787,7 @@ func checkReply(kind string, reply glua.LValue) string {
 	if !ok {
 		return ""
 	}
-	fields := stubFields[kind]
+	fields := _stubFields[kind]
 	takes := cmp.Or(strings.Join(slices.Sorted(maps.Keys(fields)), ", "), "no fields")
 	var why []string // sorted, so a reply with two gets the same one each run
 	tb.ForEach(func(k, v glua.LValue) {
@@ -887,11 +887,11 @@ func stubLine(kind, subject, arg string, req map[string]any) string {
 		if args, _ := req["args"].([]string); len(args) > 0 {
 			pattern += " *"
 		}
-		return `test.stub("` + luaJobStart + `", ` + luaLiteral(pattern) + `, { stdout = "..." })`
+		return `test.stub("` + _luaJobStart + `", ` + luaLiteral(pattern) + `, { stdout = "..." })`
 	case "model":
-		return `test.stub("` + luaModelAsk + `", "*", "...")`
+		return `test.stub("` + _luaModelAsk + `", "*", "...")`
 	case "classify":
-		return `test.stub("` + luaClassifyAsk + `", "*", { answers = { safe = { value = true, probability = 0.9 } }, strategy = "logprobs" })`
+		return `test.stub("` + _luaClassifyAsk + `", "*", { answers = { safe = { value = true, probability = 0.9 } }, strategy = "logprobs" })`
 	default:
 		return "test.stub(" + luaLiteral(subject) + ")"
 	}

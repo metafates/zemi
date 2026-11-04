@@ -9,8 +9,8 @@ import (
 	"github.com/metafates/zemi/internal/set"
 )
 
-// gitTimeout bounds a git call whose context has no deadline of its own.
-const gitTimeout = 15 * time.Second
+// _gitTimeout bounds a git call whose context has no deadline of its own.
+const _gitTimeout = 15 * time.Second
 
 // Git is one git command in a repository whose config cannot name a
 // program: fsmonitor, hooks (an index refresh runs post-index-change),
@@ -31,16 +31,16 @@ type Git struct {
 	CPU     *time.Duration // when set, gains the CPU time the call's processes took
 }
 
-// noFilter holds the commands that run no filter driver as zemi calls them,
+// _noFilter holds the commands that run no filter driver as zemi calls them,
 // which skip the driver probe; cat-file would with --filters or --textconv.
-var noFilter = set.Of("cat-file", "config", "fetch", "ls-files", "rev-list", "rev-parse", "tag")
+var _noFilter = set.Of("cat-file", "config", "fetch", "ls-files", "rev-list", "rev-parse", "tag")
 
 // Run runs git with args and returns its stdout; stderr goes only into the
 // error. Without a deadline on ctx the call gets 15 seconds.
 func (g Git) Run(ctx context.Context, args ...string) (string, error) {
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, gitTimeout)
+		ctx, cancel = context.WithTimeout(ctx, _gitTimeout)
 		defer cancel()
 	}
 	safe := []string{
@@ -50,7 +50,7 @@ func (g Git) Run(ctx context.Context, args ...string) (string, error) {
 		"-c", "protocol.allow=never", "-c", "protocol.https.allow=always",
 		"-c", "protocol.ssh.allow=always", "-c", "protocol.file.allow=user",
 	}
-	if !noFilter.Has(subcommand(args)) {
+	if !_noFilter.Has(subcommand(args)) {
 		out, _ := g.run(ctx, "config", "--show-scope", "--name-only", "--get-regexp", `^filter\..*\.(clean|smudge|process)$`)
 		for line := range strings.Lines(out) {
 			scope, key, ok := strings.Cut(strings.TrimSpace(line), "\t")

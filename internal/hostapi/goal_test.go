@@ -21,7 +21,7 @@ import (
 // same rows and restores the same goal. An interrupt of the goal's own work
 // stops a loop too; one of a typed turn does not.
 func TestGoalLoop(t *testing.T) {
-	paused := append(slices.Repeat([]string{"Goal not met yet: x"}, goalMaxRuns), "Goal paused: after 20 turns without you; send a message to go on")
+	paused := append(slices.Repeat([]string{"Goal not met yet: x"}, _goalMaxRuns), "Goal paused: after 20 turns without you; send a message to go on")
 	for _, c := range []struct {
 		name    string
 		verdict func(h *Host, check int) string // the judge's reply to the check-th check, from 0
@@ -55,7 +55,7 @@ func TestGoalLoop(t *testing.T) {
 			}, turns: 2, goal: true,
 			notices: []string{"Goal check gave no verdict; still watching"},
 		},
-		{name: "the cap pauses", turns: goalMaxRuns + 1, goal: true, notices: paused},
+		{name: "the cap pauses", turns: _goalMaxRuns + 1, goal: true, notices: paused},
 		{name: "a failed turn is not checked", fail: true, turns: 1, goal: true},
 		{name: "an interrupted turn is not checked", cancel: true, turns: 1, goal: true},
 		{name: "an interrupted check stops the loop", verdict: func(h *Host, _ int) string {
@@ -159,13 +159,13 @@ func TestResetDropsAStaleGoalRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := h.DB.SetKV(goalKV, string(raw)); err != nil {
+	if err := h.DB.SetKV(_goalKV, string(raw)); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.ResetChat(true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.DB.GetKV(goalKV); !errors.Is(err, store.ErrNotFound) {
+	if _, err := h.DB.GetKV(_goalKV); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("the goal row survived the reset: %v", err)
 	}
 }
@@ -272,12 +272,12 @@ func TestParseVerdict(t *testing.T) {
 		ev    goalEvent
 		why   string
 	}{
-		{"MET: x", goalMet, "x"},
-		{"**NOT YET**: y", goalNotYet, "y"},
-		{"not yet: y", goalNotYet, "y"},
-		{"**BLOCKED:** z", goalBlocked, "z"},
-		{"Let me look: the log.\nMET: x", goalMet, "x"},
-		{"MET", goalMet, ""},
+		{"MET: x", _goalMet, "x"},
+		{"**NOT YET**: y", _goalNotYet, "y"},
+		{"not yet: y", _goalNotYet, "y"},
+		{"**BLOCKED:** z", _goalBlocked, "z"},
+		{"Let me look: the log.\nMET: x", _goalMet, "x"},
+		{"MET", _goalMet, ""},
 		{"Sure, done.", "", ""},
 	} {
 		ev, why, ok := parseVerdict(c.reply)

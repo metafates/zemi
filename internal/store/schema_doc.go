@@ -7,9 +7,9 @@ import (
 	"strings"
 )
 
-// schemaPurpose is the one-line purpose of the tables whose role the schema
+// _schemaPurpose is the one-line purpose of the tables whose role the schema
 // cannot say; a table not here renders bare.
-var schemaPurpose = map[string]string{
+var _schemaPurpose = map[string]string{
 	"sessions":   `the "main" billing and todos anchor, one row per subagent run`,
 	"messages":   "a subagent run's persisted rows, read back in rowid order",
 	"todos":      "a session's todo list",
@@ -72,7 +72,7 @@ func SchemaDoc() (string, error) {
 			return "", fmt.Errorf("store: schema doc %s: %w", t, err)
 		}
 		b.WriteString("- `" + t + "`")
-		if p, ok := schemaPurpose[t]; ok {
+		if p, ok := _schemaPurpose[t]; ok {
 			b.WriteString(" - " + p)
 		}
 		b.WriteString("\n  " + strings.Join(cols, ", ") + "\n")

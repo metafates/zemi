@@ -45,8 +45,8 @@ import (
 func FitImage(data []byte, mt string) ([]byte, string, error) {
 	tooBig := fmt.Errorf("a %d byte image, too large to send even shrunk", len(data))
 	if mt == "image/webp" {
-		if len(data) > imageMaxBytes {
-			return nil, "", fmt.Errorf("a %d byte webp image, over the %d byte limit", len(data), imageMaxBytes)
+		if len(data) > _imageMaxBytes {
+			return nil, "", fmt.Errorf("a %d byte webp image, over the %d byte limit", len(data), _imageMaxBytes)
 		}
 		return data, mt, nil
 	}
@@ -59,27 +59,27 @@ func FitImage(data []byte, mt string) ([]byte, string, error) {
 		return nil, "", fmt.Errorf("a %dx%d image, no pixels to scale", cfg.Width, cfg.Height)
 	}
 	long := max(cfg.Width, cfg.Height)
-	if long <= imageMaxSide && len(data) <= imageMaxBytes {
+	if long <= _imageMaxSide && len(data) <= _imageMaxBytes {
 		return data, mt, nil
 	}
-	if cfg.Width*cfg.Height > imageMaxPixels {
-		return nil, "", fmt.Errorf("a %dx%d image, over the %d megapixels zemi decodes", cfg.Width, cfg.Height, imageMaxPixels/1_000_000)
+	if cfg.Width*cfg.Height > _imageMaxPixels {
+		return nil, "", fmt.Errorf("a %dx%d image, over the %d megapixels zemi decodes", cfg.Width, cfg.Height, _imageMaxPixels/1_000_000)
 	}
 	src, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, "", fmt.Errorf("not a readable image: %w", err)
 	}
 	w, h := cfg.Width, cfg.Height
-	if long > imageMaxSide {
-		w, h = max(w*imageMaxSide/long, 1), max(h*imageMaxSide/long, 1)
+	if long > _imageMaxSide {
+		w, h = max(w*_imageMaxSide/long, 1), max(h*_imageMaxSide/long, 1)
 	}
 	small := boxScale(src, w, h)
 	var buf bytes.Buffer
-	if png.Encode(&buf, small) == nil && buf.Len() <= imageMaxBytes {
+	if png.Encode(&buf, small) == nil && buf.Len() <= _imageMaxBytes {
 		return buf.Bytes(), "image/png", nil
 	}
 	buf.Reset()
-	if jpeg.Encode(&buf, small, &jpeg.Options{Quality: 85}) == nil && buf.Len() <= imageMaxBytes {
+	if jpeg.Encode(&buf, small, &jpeg.Options{Quality: 85}) == nil && buf.Len() <= _imageMaxBytes {
 		return buf.Bytes(), "image/jpeg", nil
 	}
 	return nil, "", tooBig
@@ -103,7 +103,7 @@ func Cut(dir, name, s string, n int, whole bool) string {
 // resultMaxOut, the kept text spilled to dir. lost counts what the proc.Buffer
 // already dropped from the middle, which no spill file can hold.
 func CmdOut(dir, name, raw string, lost int64, whole bool) string {
-	out := Cut(dir, name, cmdText(raw), resultMaxOut, whole)
+	out := Cut(dir, name, cmdText(raw), _resultMaxOut, whole)
 	if lost > 0 {
 		out += fmt.Sprintf("\n(%d more bytes in the middle were not kept)", lost)
 	}
@@ -136,15 +136,15 @@ func Spill(dir, name, s string) string {
 	return "\n(output saved to " + f.Name() + ")"
 }
 
-// imageMaxSide and imageMaxBytes are what an image sent to a model may be:
+// _imageMaxSide and _imageMaxBytes are what an image sent to a model may be:
 // Anthropic refuses over 8000 px a side (2000 with more than 20 images) and
 // over 5 MB of base64, about 3.75 MB of bytes.
 const (
-	imageMaxSide  = 2000
-	imageMaxBytes = 3_750_000
+	_imageMaxSide  = 2000
+	_imageMaxBytes = 3_750_000
 	// NOTE: a decode holds 4 to 8 bytes a pixel, and a 1 MB PNG can declare
 	// 30000x30000; past this ceiling an image is refused, not tiled.
-	imageMaxPixels = 40_000_000
+	_imageMaxPixels = 40_000_000
 )
 
 // OpenRegular opens a file for reading. fi is set once the file is open,
@@ -174,12 +174,12 @@ func WriteFile(path perm.Path, data []byte, mode os.FileMode) error {
 	return cmp.Or(err, f.Close())
 }
 
-// sniffBytes is how much of a body looksBinary reads.
-const sniffBytes = 8000
+// _sniffBytes is how much of a body looksBinary reads.
+const _sniffBytes = 8000
 
 // CallScope gives the calls a turn makes under ctx their own keys.
 func CallScope(ctx context.Context) context.Context {
-	return context.WithValue(ctx, callScopeKey{}, callScopes.Add(1))
+	return context.WithValue(ctx, callScopeKey{}, _callScopes.Add(1))
 }
 
 // CallStart records a write tool's call as the model made it and reports
@@ -196,10 +196,10 @@ func CallStart(ctx context.Context, id, tool, input string) bool {
 		return false
 	}
 	key, id := perm.CanonPath(in.Path), callKey(ctx, id)
-	callOrder.mu.Lock()
-	callOrder.path[id] = key
-	callOrder.ahead[key] = append(callOrder.ahead[key], id)
-	callOrder.mu.Unlock()
+	_callOrder.mu.Lock()
+	_callOrder.path[id] = key
+	_callOrder.ahead[key] = append(_callOrder.ahead[key], id)
+	_callOrder.mu.Unlock()
 	return true
 }
 
@@ -208,7 +208,7 @@ func CallStart(ctx context.Context, id, tool, input string) bool {
 // and, at the end of a turn, whatever a step recorded and never dispatched.
 // Ids Run already released are no-ops.
 func CallDone(ctx context.Context, ids ...string) {
-	c := callOrder
+	c := _callOrder
 	c.mu.Lock()
 	for _, id := range ids {
 		id = callKey(ctx, id)
@@ -221,9 +221,9 @@ func CallDone(ctx context.Context, ids ...string) {
 	c.cond.Broadcast()
 }
 
-// resultMaxOut is what a tool result may carry of a command's
+// _resultMaxOut is what a tool result may carry of a command's
 // output; the rest is spilled to the scratchpad. A skill body has its own cap.
-const resultMaxOut = 10_000
+const _resultMaxOut = 10_000
 
 // EditDistance is the Levenshtein distance between two short names.
 func EditDistance(a, b string) int {
@@ -252,7 +252,7 @@ func EditDistance(a, b string) int {
 // git and not a Go matcher: only the index knows a tracked file an ignore
 // rule covers, and snapshots and lsp sync read git's rules too.
 func ListFiles(ctx context.Context, root string, limit int) (files []string, note string, err error) {
-	gitCtx, cancel := context.WithTimeout(ctx, listWait)
+	gitCtx, cancel := context.WithTimeout(ctx, _listWait)
 	defer cancel()
 	out, err := proc.Git{Dir: root}.Run(gitCtx, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
 	// an index entry is the repository's word: a planted one can say "../x"
@@ -282,9 +282,9 @@ func ListFiles(ctx context.Context, root string, limit int) (files []string, not
 	}
 	// nothing listed: no repository, no git, or a root git ignores whole
 	if len(files) == 0 {
-		note = walkedNote
+		note = _walkedNote
 		if ctx.Err() == nil && errors.Is(gitCtx.Err(), context.DeadlineExceeded) {
-			note = fmt.Sprintf("(git took over %s to list the files here, so a walk did: .gitignore not read, hidden and build directories skipped)", listWait)
+			note = fmt.Sprintf("(git took over %s to list the files here, so a walk did: .gitignore not read, hidden and build directories skipped)", _listWait)
 		}
 		err = walk(ctx, root, func(rel string) error {
 			files = append(files, filepath.ToSlash(rel))
@@ -370,11 +370,11 @@ func SortShallow(paths []string) {
 }
 
 const (
-	readMaxLines   = 2000
-	readMaxBytes   = 50_000
-	readMaxLineLen = 2000
-	readMaxImage   = 20 << 20 // what is read at all; FitImage sizes what is sent
-	editMaxBytes   = 10 << 20
+	_readMaxLines   = 2000
+	_readMaxBytes   = 50_000
+	_readMaxLineLen = 2000
+	_readMaxImage   = 20 << 20 // what is read at all; FitImage sizes what is sent
+	_editMaxBytes   = 10 << 20
 )
 
 // readArgs is the read tool's input and its schema source.
@@ -514,7 +514,7 @@ func (p *Pipeline) writeThrough(path perm.Path, data []byte, mode os.FileMode) e
 	return WriteFile(path, data, mode)
 }
 
-var fileLocks sync.Map // perm.CanonPath -> *sync.Mutex
+var _fileLocks sync.Map // perm.CanonPath -> *sync.Mutex
 
 // ScriptRead reads a whole file for a model's Lua script and records it as
 // seen at the bytes it returned, as a read call does: the script may then
@@ -533,12 +533,12 @@ func (p *Pipeline) ScriptRead(path perm.Path) ([]byte, error) {
 	return b, nil
 }
 
-// callOrder keeps the write tools' calls on one file in the order the model
+// _callOrder keeps the write tools' calls on one file in the order the model
 // made them, though fantasy runs a step's calls in parallel: CallStart records
 // every call of a step before any runs, and Run waits until its id leads its
 // file. Shared by every runner, it clears only the ids a caller names, keyed by
 // the turn's CallScope: a provider may number calls per conversation.
-var callOrder = newCallOrder()
+var _callOrder = newCallOrder()
 
 type callOrderState struct {
 	mu    sync.Mutex
@@ -567,7 +567,7 @@ func (p *Pipeline) ScriptWrite(path perm.Path, data []byte, mode os.FileMode) er
 
 type callScopeKey struct{}
 
-var callScopes atomic.Uint64
+var _callScopes atomic.Uint64
 
 // notFound words a path error; for a missing file it names the three
 // siblings nearest what a typo could have meant (app.go for apps.go or
@@ -772,7 +772,7 @@ type writeArgs struct {
 // looksBinary is the sniff read and command output share: a NUL near
 // the start, as git decides.
 func looksBinary[T string | []byte](b T) bool {
-	return strings.IndexByte(string(b[:min(len(b), sniffBytes)]), 0) >= 0
+	return strings.IndexByte(string(b[:min(len(b), _sniffBytes)]), 0) >= 0
 }
 
 // cmdText is command output as the model reads it: like read,
@@ -821,11 +821,11 @@ func runRead(ctx context.Context, p *Pipeline, in readArgs) (fantasy.ToolRespons
 	p.markRead(path, fi)
 	rel := workRel(path)
 	br := bufio.NewReaderSize(f, 64<<10)
-	head, _ := br.Peek(sniffBytes)
+	head, _ := br.Peek(_sniffBytes)
 	switch mt := http.DetectContentType(head); {
 	case slices.Contains([]string{"image/png", "image/jpeg", "image/gif", "image/webp"}, mt):
-		if fi.Size() > readMaxImage {
-			return fantasy.NewTextErrorResponse(fmt.Sprintf("%s is a %d byte image, over the %d byte limit", rel, fi.Size(), readMaxImage)), nil
+		if fi.Size() > _readMaxImage {
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("%s is a %d byte image, over the %d byte limit", rel, fi.Size(), _readMaxImage)), nil
 		}
 		if p.Images != nil && !p.Images() {
 			return fantasy.NewTextErrorResponse(rel + " is an image and the current model does not take images, so a screenshot is no use either; go on without it, or ask the user to describe it or switch model"), nil
@@ -845,7 +845,7 @@ func runRead(ctx context.Context, p *Pipeline, in readArgs) (fantasy.ToolRespons
 	if in.Offset > 1 {
 		start = in.Offset - 1
 	}
-	limit := readMaxLines
+	limit := _readMaxLines
 	if in.Limit > 0 {
 		limit = min(in.Limit, limit)
 	}
@@ -855,7 +855,7 @@ func runRead(ctx context.Context, p *Pipeline, in readArgs) (fantasy.ToolRespons
 	size := 0
 	more := 0
 	for ; ; n++ {
-		line, err := readLine(br, readMaxLineLen)
+		line, err := readLine(br, _readMaxLineLen)
 		if err != nil {
 			break
 		}
@@ -863,7 +863,7 @@ func runRead(ctx context.Context, p *Pipeline, in readArgs) (fantasy.ToolRespons
 			continue
 		}
 		// the number prefix is at most 4 wide, so +6 bounds the row overhead
-		if kept == limit || kept > 0 && size+len(line)+6 > readMaxBytes {
+		if kept == limit || kept > 0 && size+len(line)+6 > _readMaxBytes {
 			more = n + 1
 			break
 		}
@@ -931,7 +931,7 @@ func listDir(path perm.Path) fantasy.ToolResponse {
 	slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
 	var shown []string
 	for i, e := range entries {
-		if len(shown) == globMaxFiles {
+		if len(shown) == _globMaxFiles {
 			shown = append(shown, fmt.Sprintf("... (up to %d more; narrow it with glob)", len(entries)-i))
 			break
 		}
@@ -962,8 +962,8 @@ func readGated(path perm.Path) (data []byte, fi os.FileInfo, err error) {
 		return nil, fi, err
 	}
 	defer f.Close()
-	if fi.Size() > editMaxBytes {
-		return nil, fi, fmt.Errorf("%s is %d bytes, over edit's %d MB limit; make this change with a shell command", workRel(path.String()), fi.Size(), editMaxBytes>>20)
+	if fi.Size() > _editMaxBytes {
+		return nil, fi, fmt.Errorf("%s is %d bytes, over edit's %d MB limit; make this change with a shell command", workRel(path.String()), fi.Size(), _editMaxBytes>>20)
 	}
 	data, err = io.ReadAll(f)
 	return data, fi, err
@@ -972,7 +972,7 @@ func readGated(path perm.Path) (data []byte, fi os.FileInfo, err error) {
 // lockFile serializes read-modify-write of one file across concurrent
 // agents and returns the unlock.
 func lockFile(path string) func() {
-	m, _ := fileLocks.LoadOrStore(perm.CanonPath(path), &sync.Mutex{})
+	m, _ := _fileLocks.LoadOrStore(perm.CanonPath(path), &sync.Mutex{})
 	mu, _ := m.(*sync.Mutex)
 	mu.Lock()
 	return mu.Unlock
@@ -993,7 +993,7 @@ func callKey(ctx context.Context, id string) string {
 // recorded, or ctx ends, and returns the release the caller runs once its
 // write landed.
 func turn(ctx context.Context, id string) func() {
-	c := callOrder
+	c := _callOrder
 	// taking mu first means the waiter is inside Wait when the broadcast lands
 	defer context.AfterFunc(ctx, func() { c.mu.Lock(); c.cond.Broadcast(); c.mu.Unlock() })()
 	c.mu.Lock()
@@ -1079,25 +1079,25 @@ func relErr(err error) error {
 }
 
 const (
-	globMaxFiles   = 200
-	grepMaxMatches = 100
+	_globMaxFiles   = 200
+	_grepMaxMatches = 100
 	// ListLimit caps a glob, grep or zemi.fs listing, so a walk of a huge
 	// tree outside any repository ends.
 	ListLimit = 200_000
-	// grepMaxSize is the largest file grep reads.
+	// _grepMaxSize is the largest file grep reads.
 	// NOTE: a bigger file (a bundle, a dump, a huge lock file) is not
 	// searched; a streaming line reader would lift the cap, at the price of
 	// the one pass over the whole file that rules most files out.
-	grepMaxSize = 4 << 20
+	_grepMaxSize = 4 << 20
 )
 
-// walkedNote tells the model that walk, not git, picked the files it sees.
-const walkedNote = "(no git file list here: .gitignore not read, hidden and build directories skipped)"
+// _walkedNote tells the model that walk, not git, picked the files it sees.
+const _walkedNote = "(no git file list here: .gitignore not read, hidden and build directories skipped)"
 
-// listWait bounds git's file listing. git walks every untracked file before
+// _listWait bounds git's file listing. git walks every untracked file before
 // it prints one, which in a huge untracked tree (a $HOME dotfiles repo) runs
 // for seconds; the biggest repository measured, 26k files, lists in 0.3 s cold.
-var listWait = 2 * time.Second
+var _listWait = 2 * time.Second
 
 // globArgs is the glob tool's input and its schema source.
 type globArgs struct {
@@ -1233,7 +1233,7 @@ func runGlob(ctx context.Context, p *Pipeline, in globArgs) (fantasy.ToolRespons
 	}
 	shown := 0
 	for i, rel := range rels {
-		if shown == globMaxFiles {
+		if shown == _globMaxFiles {
 			out = append(out, fmt.Sprintf("... (up to %d more; narrow the pattern or path)", len(rels)-i))
 			break
 		}
@@ -1282,7 +1282,7 @@ func runGrep(ctx context.Context, p *Pipeline, in grepArgs) (fantasy.ToolRespons
 	capped := len(files) == ListLimit
 	listed := len(files)
 	files = slices.DeleteFunc(files, func(rel string) bool { return !match(rel) })
-	hits, err := Grep(ctx, root, files, re, grepMaxMatches)
+	hits, err := Grep(ctx, root, files, re, _grepMaxMatches)
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
@@ -1297,8 +1297,8 @@ func runGrep(ctx context.Context, p *Pipeline, in grepArgs) (fantasy.ToolRespons
 		out = append(out, fmt.Sprintf("%s:%d: %s", name(h.Rel), h.Line, truncLine(h.Text)))
 	}
 	switch {
-	case len(hits) == grepMaxMatches:
-		out = append(out, fmt.Sprintf("... (stopped at %d matches; narrow the pattern, path or include)", grepMaxMatches))
+	case len(hits) == _grepMaxMatches:
+		out = append(out, fmt.Sprintf("... (stopped at %d matches; narrow the pattern, path or include)", _grepMaxMatches))
 	case capped && len(files) > 0:
 		out = append(out, fmt.Sprintf("... (searched the first %d files; narrow the path)", ListLimit))
 	}
@@ -1322,7 +1322,7 @@ func runGrep(ctx context.Context, p *Pipeline, in grepArgs) (fantasy.ToolRespons
 func grepFile(root, rel string, re, whole *regexp.Regexp, limit int, buf *[]byte) []Hit {
 	path := filepath.Join(root, rel)
 	fi, err := os.Lstat(path)
-	if err != nil || !fi.Mode().IsRegular() || fi.Size() > grepMaxSize {
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() > _grepMaxSize {
 		return nil
 	}
 	f, err := os.Open(path)

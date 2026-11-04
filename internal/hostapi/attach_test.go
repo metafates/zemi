@@ -199,7 +199,7 @@ func TestExpandAttachments(t *testing.T) {
 			t.Fatal("a FIFO reference blocked the message")
 		}
 	}
-	write(filepath.Join(proj, "big.txt"), strings.Repeat("x", attachMax+1))
+	write(filepath.Join(proj, "big.txt"), strings.Repeat("x", _attachMax+1))
 	write(filepath.Join(proj, "blob.txt"), "\xff\xfe binary")
 	got, _ = h.expandAttachments("@big.txt @blob.txt", true)
 	for _, want := range []string{
@@ -223,7 +223,7 @@ func TestExpandAttachments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.Truncate(attachImageMax + 1); err != nil { // sparse: the size check reads nothing
+	if err := f.Truncate(_attachImageMax + 1); err != nil { // sparse: the size check reads nothing
 		t.Fatal(err)
 	}
 	f.Close()
@@ -417,7 +417,7 @@ func TestDirListingCaps(t *testing.T) {
 	}
 
 	many := mk("many")
-	for i := range dirListMax + 30 {
+	for i := range _dirListMax + 30 {
 		write(many, fmt.Sprintf("f%03d.txt", i))
 	}
 	mixed := mk("mixed")
@@ -428,7 +428,7 @@ func TestDirListingCaps(t *testing.T) {
 	write(filepath.Join(mixed, "sub"), "inner.txt")
 
 	long := mk("long")
-	for i := range dirListMax + 20 {
+	for i := range _dirListMax + 20 {
 		write(long, fmt.Sprintf("%0147d.txt", i)) // 151 chars: the byte budget binds before the entry cap
 	}
 
@@ -440,10 +440,10 @@ func TestDirListingCaps(t *testing.T) {
 		total  int      // the count the element names
 		shown  int      // entry lines shown
 	}{
-		{"count cap", many, []string{"... 30 more"}, "", dirListMax + 30, dirListMax},
+		{"count cap", many, []string{"... 30 more"}, "", _dirListMax + 30, _dirListMax},
 		{"one level", mixed, []string{"a.txt\n", "sub/\n"}, "inner.txt", 2, 2},
 		{"empty", mk("empty"), []string{"(empty)"}, "", 0, 0},
-		{"byte cap", long, []string{fmt.Sprintf("... %d more", dirListMax+20-attachMax/152)}, "", dirListMax + 20, attachMax / 152},
+		{"byte cap", long, []string{fmt.Sprintf("... %d more", _dirListMax+20-_attachMax/152)}, "", _dirListMax + 20, _attachMax / 152},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -458,7 +458,7 @@ func TestDirListingCaps(t *testing.T) {
 			if lines := strings.Count(body, "\n"); lines != c.shown {
 				t.Errorf("%d lines shown, want %d: %q", lines, c.shown, body)
 			}
-			if len(body) > attachMax {
+			if len(body) > _attachMax {
 				t.Errorf("body exceeds the file budget: %d bytes", len(body))
 			}
 			for _, want := range c.want {
@@ -631,7 +631,7 @@ func TestDropsSweptAfterTTL(t *testing.T) {
 	if err := os.WriteFile(stale, []byte("old"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	old := time.Now().Add(-dropTTL - time.Hour)
+	old := time.Now().Add(-_dropTTL - time.Hour)
 	for _, p := range []string{stale, filepath.Join(dir, name)} {
 		if err := os.Chtimes(p, old, old); err != nil {
 			t.Fatal(err)
@@ -713,7 +713,7 @@ func TestImagesRefusedContinues(t *testing.T) {
 				t.Fatal("tool row of the first step lost")
 			}
 			model := h.roleModel("default")
-			t.Cleanup(func() { imagesRejected.Delete(model) })
+			t.Cleanup(func() { _imagesRejected.Delete(model) })
 			if h.takesImages(model) == c.textOnly || h.agents.runner.TextOnly != c.textOnly {
 				t.Fatalf("text-only: model %v, runner %v, want %v", !h.takesImages(model), h.agents.runner.TextOnly, c.textOnly)
 			}

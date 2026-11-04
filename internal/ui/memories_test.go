@@ -117,7 +117,7 @@ func TestMemoriesLeafPreview(t *testing.T) {
 	// the built leaf, message 4
 	ov.selected = 2
 	app.Frame()
-	before := app.scrolls[regionChat].focus
+	before := app.scrolls[_regionChat].focus
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
 	pump(t, app)
 	st := &app.overlays[len(app.overlays)-1]
@@ -127,7 +127,7 @@ func TestMemoriesLeafPreview(t *testing.T) {
 	if len(app.overlays) != 2 {
 		t.Fatalf("%d overlays open, want the browser under the preview", len(app.overlays))
 	}
-	if got := app.scrolls[regionChat].focus; got != before {
+	if got := app.scrolls[_regionChat].focus; got != before {
 		t.Fatalf("enter moved the chat to %d, want it left at %d", got, before)
 	}
 }

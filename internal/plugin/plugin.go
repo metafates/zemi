@@ -98,7 +98,7 @@ const InitFile = CodeDir + "/init.lua"
 
 // manifestBytes is the raw manifest of the plugin in dir, nil for the plugins
 // that have none: the reader takes the first 4 KB of a regular file.
-func manifestBytes(dir string) []byte { return readHead(filepath.Join(dir, ManifestFile), headMax) }
+func manifestBytes(dir string) []byte { return readHead(filepath.Join(dir, ManifestFile), _headMax) }
 
 // manifest is ManifestFile parsed; every field is optional.
 type manifest struct {
@@ -187,7 +187,7 @@ func manifestOf(dir string) (m manifest, err error) {
 	if m.Description == "" || len(m.Author) == 0 || m.Homepage == "" {
 		if IsClaude(dir) {
 			var j claudeManifestJSON
-			if err := json.Unmarshal(readHead(filepath.Join(dir, ClaudeManifestFile), headMax), &j); err == nil {
+			if err := json.Unmarshal(readHead(filepath.Join(dir, ClaudeManifestFile), _headMax), &j); err == nil {
 				if m.Description == "" {
 					m.Description = j.Description
 				}
@@ -207,13 +207,13 @@ func manifestOf(dir string) (m manifest, err error) {
 
 // a dot dir, such as a clone in flight, is never a plugin, and no name
 // holds a dot, which require("<name>") would read as a directory
-var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
+var _nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
-// nameWhy is why a plugins-dir entry is not a plugin name.
-const nameWhy = "lowercase letters, digits, '_' and '-' only"
+// _nameWhy is why a plugins-dir entry is not a plugin name.
+const _nameWhy = "lowercase letters, digits, '_' and '-' only"
 
-// netTimeout bounds a clone or a fetch; other git calls get proc.Git's.
-const netTimeout = 2 * time.Minute
+// _netTimeout bounds a clone or a fetch; other git calls get proc.Git's.
+const _netTimeout = 2 * time.Minute
 
 // ErrUsage is Run's error for a verb or arguments it does not take.
 var ErrUsage = errors.New("usage: plugin marketplace add <source> | marketplace list | marketplace remove <name> | marketplace update [name] | install <name>[@<marketplace>] | enable <name> | disable <name> | delete <name>")
@@ -240,7 +240,7 @@ func List(ctx context.Context, d config.Dirs) ([]Plugin, []Skipped, error) {
 			continue
 		}
 		ps[i].Marketplace = reg.Marketplace
-		if reg.Kind == kindCache {
+		if reg.Kind == _kindCache {
 			// the cache clone is the plugin's own repo: its tag is the
 			// version an entry without one shows
 			if target, err := filepath.EvalSymlinks(p.Dir); err == nil {
@@ -291,9 +291,9 @@ func Scan(d config.Dirs) ([]Plugin, []Skipped, error) {
 		for _, e := range entries {
 			// a symlink is listed, so the loader can judge the link and say
 			// why it refuses one it cannot follow
-			if !nameRe.MatchString(e.Name()) {
+			if !_nameRe.MatchString(e.Name()) {
 				if e.IsDir() || e.Type()&fs.ModeSymlink != 0 {
-					skipped = append(skipped, Skipped{Name: e.Name(), Why: nameWhy, Local: local})
+					skipped = append(skipped, Skipped{Name: e.Name(), Why: _nameWhy, Local: local})
 				}
 				continue
 			}
@@ -342,7 +342,7 @@ func OldLayout(dir string) error {
 // keyed by the install name (dir's base), nil for a plugin that is
 // neither. What IsClaude reads, link-aware.
 func ClaudeRaw(d config.Dirs, dir string) []byte {
-	if raw := readHead(filepath.Join(dir, ClaudeManifestFile), headMax); raw != nil {
+	if raw := readHead(filepath.Join(dir, ClaudeManifestFile), _headMax); raw != nil {
 		return raw
 	}
 	if reg, ok := MarketplaceOf(d, filepath.Base(dir)); ok && len(reg.Manifest) > 0 {
@@ -488,7 +488,7 @@ func cloneRepo(ctx context.Context, url, tmp string) (err error) {
 			os.RemoveAll(tmp)
 		}
 	}()
-	nctx, cancel := context.WithTimeout(ctx, netTimeout)
+	nctx, cancel := context.WithTimeout(ctx, _netTimeout)
 	defer cancel()
 	_, err = git(nctx, parent, "clone", "--quiet", "--no-recurse-submodules", "--", url, tmp)
 	return err
@@ -528,7 +528,7 @@ func CheckMarketplaces(ctx context.Context, d config.Dirs) ([]string, error) {
 			continue // its clone is gone; there is nothing to compare against
 		}
 		ref := f.Marketplaces[name].Ref
-		nctx, cancel := context.WithTimeout(ctx, netTimeout)
+		nctx, cancel := context.WithTimeout(ctx, _netTimeout)
 		fetch := []string{"fetch", "--quiet", "--tags"}
 		if ref != "" {
 			fetch = append(fetch, "origin", ref)
@@ -567,7 +567,7 @@ func remove(d config.Dirs, name string) error {
 			if err := os.Remove(dir); err != nil {
 				return err
 			}
-			if reg, ok := MarketplaceOf(d, name); ok && reg.Kind == kindCache {
+			if reg, ok := MarketplaceOf(d, name); ok && reg.Kind == _kindCache {
 				os.RemoveAll(cacheDir(d, reg.Marketplace, name))
 			}
 			dir = "" // the link is gone; nothing else to delete
@@ -593,7 +593,7 @@ func remove(d config.Dirs, name string) error {
 
 // SetEnabled turns a plugin on or off from the next load.
 func SetEnabled(d config.Dirs, name string, on bool) error {
-	if !nameRe.MatchString(name) || free(d, name) == nil {
+	if !_nameRe.MatchString(name) || free(d, name) == nil {
 		return fmt.Errorf("no plugin is named %q", name)
 	}
 	return setDisabled(d, name, !on)
@@ -631,7 +631,7 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 		// <entry>@<marketplace> installs an entry of a registered
 		// marketplace; a git URL with a user part, git@host:path, never
 		// parses as one
-		if entry, mkt, ok := strings.Cut(arg, "@"); ok && nameRe.MatchString(mkt) &&
+		if entry, mkt, ok := strings.Cut(arg, "@"); ok && _nameRe.MatchString(mkt) &&
 			entry != "" && !strings.ContainsAny(entry, `<>:"|?*@`) {
 			p, err := InstallFromMarketplace(ctx, d, mkt, entry)
 			if err == nil {
@@ -639,7 +639,7 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 			}
 			return err
 		}
-		if !nameRe.MatchString(arg) {
+		if !_nameRe.MatchString(arg) {
 			return fmt.Errorf("%q is not a plugin name: zemi installs plugins from marketplaces; add one with plugin marketplace add <source>", arg)
 		}
 		return installBare(ctx, d, arg, out)
@@ -659,10 +659,10 @@ func Run(ctx context.Context, d config.Dirs, args []string, out io.Writer) error
 type InstallKind string
 
 const (
-	kindLink  InstallKind = "link"
-	kindCache InstallKind = "cache"
-	kindCopy  InstallKind = "copy" // legacy: a copied subtree, re-linked on boot
-	kindGit   InstallKind = "git"  // legacy: a clone in installed/, moved into the cache
+	_kindLink  InstallKind = "link"
+	_kindCache InstallKind = "cache"
+	_kindCopy  InstallKind = "copy" // legacy: a copied subtree, re-linked on boot
+	_kindGit   InstallKind = "git"  // legacy: a clone in installed/, moved into the cache
 )
 
 // marketplaceFile is marketplaces.json under the plugins root: the
@@ -954,7 +954,7 @@ func removeMarketplace(d config.Dirs, name string, out io.Writer) error {
 	if err := os.RemoveAll(filepath.Join(d.PluginsRoot(), "marketplaces", name)); err != nil {
 		return err
 	}
-	if err := os.RemoveAll(filepath.Join(d.PluginsRoot(), "marketplaces", cacheDirName, name)); err != nil {
+	if err := os.RemoveAll(filepath.Join(d.PluginsRoot(), "marketplaces", _cacheDirName, name)); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "marketplace %s removed\n", name)
@@ -1003,7 +1003,7 @@ func updateMarketplaces(ctx context.Context, d config.Dirs, names []string, out 
 				continue
 			}
 			installs = append(installs, pname)
-			caches = caches || reg.Kind == kindCache
+			caches = caches || reg.Kind == _kindCache
 		}
 		slices.Sort(installs)
 		var lines []string
@@ -1032,7 +1032,7 @@ func updateMarketplaces(ctx context.Context, d config.Dirs, names []string, out 
 					}
 				}
 				src := filepath.Join(dir, e.Source.Dir)
-				if kind == kindCache {
+				if kind == _kindCache {
 					mv, err := refreshCache(ctx, d, name, pname, e)
 					if err != nil {
 						errs = append(errs, fmt.Errorf("%s: %w", pname, err))
@@ -1076,9 +1076,9 @@ func updateMarketplaces(ctx context.Context, d config.Dirs, names []string, out 
 	return errors.Join(errs...)
 }
 
-// sweepEvery is how long a marketplace set goes unchecked: the daily sweep
+// _sweepEvery is how long a marketplace set goes unchecked: the daily sweep
 // runs when marketplaces.json's last one is older than this.
-const sweepEvery = 24 * time.Hour
+const _sweepEvery = 24 * time.Hour
 
 // AutoUpdate is the daily sweep zemi runs on open: with auto on it pulls
 // every marketplace and moves the plugins installed from them, with auto off
@@ -1103,7 +1103,7 @@ func AutoUpdate(ctx context.Context, d config.Dirs, auto bool) (news []string, m
 	if len(f.Marketplaces) == 0 {
 		return nil, false, nil
 	}
-	if !f.Checked.IsZero() && time.Since(f.Checked) < sweepEvery {
+	if !f.Checked.IsZero() && time.Since(f.Checked) < _sweepEvery {
 		return nil, false, nil
 	}
 	if !auto {
@@ -1299,23 +1299,23 @@ func EntryProvides(d config.Dirs, mkt string) map[string][]string {
 // clone's own material links, another repo's clones into the cache.
 func kindLinkKind(kind SourceKind) InstallKind {
 	if kind == SourceRelative {
-		return kindLink
+		return _kindLink
 	}
-	return kindCache
+	return _kindCache
 }
 
-// cacheDirName is the dot directory under marketplaces/ holding the clones
+// _cacheDirName is the dot directory under marketplaces/ holding the clones
 // of entries whose source is another repo. A dot name keeps it out of every
 // glob that walks marketplace clones.
-const cacheDirName = ".cache"
+const _cacheDirName = ".cache"
 
 // CacheDirName is cacheDirName for callers outside the package.
-const CacheDirName = cacheDirName
+const CacheDirName = _cacheDirName
 
 // cacheDir is where the entry an install came from keeps its own clone, for
 // the cache kinds whose material is not the marketplace clone itself.
 func cacheDir(d config.Dirs, mkt, name string) string {
-	return filepath.Join(d.PluginsRoot(), "marketplaces", cacheDirName, mkt, name)
+	return filepath.Join(d.PluginsRoot(), "marketplaces", _cacheDirName, mkt, name)
 }
 
 // ensureCache clones url into the entry's cache clone at the pin, or fetches
@@ -1382,7 +1382,7 @@ func relinkInstall(ctx context.Context, d config.Dirs, mkt, name string, e Marke
 	if filepath.Clean(e.Source.Dir) != "." && e.Source.Dir != "" {
 		target = filepath.Join(target, e.Source.Dir)
 	}
-	if kind == kindCache {
+	if kind == _kindCache {
 		t, err := ensureCache(ctx, d, mkt, name, e.Source.URL, e.Source.Ref, e.Source.SHA)
 		if err != nil {
 			return "", err
@@ -1404,7 +1404,7 @@ func relinkInstall(ctx context.Context, d config.Dirs, mkt, name string, e Marke
 // manifest, so a symlinked install loads and grants without one. A source
 // with a manifest carries nothing.
 func sidecar(src string, e MarketplacePlugin) (uses []string, manifest jsontext.Value) {
-	if manifestBytes(src) != nil || readHead(filepath.Join(src, ClaudeManifestFile), headMax) != nil {
+	if manifestBytes(src) != nil || readHead(filepath.Join(src, ClaudeManifestFile), _headMax) != nil {
 		return nil, nil
 	}
 	return e.Uses, e.entryManifest()
@@ -1465,7 +1465,7 @@ func EnsureLinks(d config.Dirs) error {
 		var target string
 		var uses []string
 		var manifest jsontext.Value
-		rowKind := kindLink
+		rowKind := _kindLink
 		switch {
 		case kind == SourceRelative && filepath.Clean(e.Source.Dir) == ".":
 			// the marketplace's own repo is the plugin
@@ -1474,7 +1474,7 @@ func EnsureLinks(d config.Dirs) error {
 		case kind == SourceRelative:
 			target = filepath.Join(clone, e.Source.Dir)
 			uses, manifest = sidecar(target, e)
-		case reg.Kind == kindGit:
+		case reg.Kind == _kindGit:
 			// a legacy git-kind row: its clone is the entry's repo, and it
 			// moves into the cache whole, where its updates find it
 			cache := cacheDir(d, reg.Marketplace, name)
@@ -1485,7 +1485,7 @@ func EnsureLinks(d config.Dirs) error {
 			if err := os.Rename(dest, cache); err != nil {
 				return err
 			}
-			target, uses, manifest, rowKind = cache, e.Uses, e.entryManifest(), kindCache
+			target, uses, manifest, rowKind = cache, e.Uses, e.entryManifest(), _kindCache
 		default:
 			continue // a subtree copy of another repo needs a clone; an update re-links it
 		}
@@ -1544,7 +1544,7 @@ func linkPlugin(d config.Dirs, name, target string, on bool) error {
 // the clone is a cache. It reports whether the reset moved HEAD, the
 // movement a versionless entry has to show for an update.
 func pullMarketplace(ctx context.Context, dir, ref string) (bool, error) {
-	nctx, cancel := context.WithTimeout(ctx, netTimeout)
+	nctx, cancel := context.WithTimeout(ctx, _netTimeout)
 	defer cancel()
 	fetch := []string{"fetch", "--quiet", "--tags"}
 	if ref != "" {
@@ -1600,13 +1600,13 @@ func load(ctx context.Context, dir string, local, enabled bool) Plugin {
 
 // firstLine reads line 1 of a regular file, or "" for anything else.
 func firstLine(path string) string {
-	line, _, _ := strings.Cut(string(readHead(path, headMax)), "\n")
+	line, _, _ := strings.Cut(string(readHead(path, _headMax)), "\n")
 	return line
 }
 
-// headMax is what readHead reads by default: a manifest and the metadata
+// _headMax is what readHead reads by default: a manifest and the metadata
 // readers take the first 4 KB.
-const headMax = 4 << 10
+const _headMax = 4 << 10
 
 // readHead reads the first limit bytes of a regular file: a clone can hold a
 // symlink to /dev/zero or a FIFO, which would never end.
@@ -1628,13 +1628,13 @@ func readHead(path string, limit int64) []byte {
 	return data
 }
 
-// idFile, in a clone's .git, holds the random id an install gave it.
-const idFile = "zemi-install"
+// _idFile, in a clone's .git, holds the random id an install gave it.
+const _idFile = "zemi-install"
 
 // InstallID tells one install of a plugin from another under the same name,
 // so the host can drop the state a deleted one left; "" for a local plugin.
 func InstallID(dir string) string {
-	return strings.TrimSpace(firstLine(filepath.Join(dir, ".git", idFile)))
+	return strings.TrimSpace(firstLine(filepath.Join(dir, ".git", _idFile)))
 }
 
 // highest returns the highest vX.Y.Z tag among the lines of tags in major
@@ -1653,8 +1653,8 @@ func highest(tags, major string) string {
 
 // free refuses a bad name and one a local or installed plugin already has.
 func free(d config.Dirs, name string) error {
-	if !nameRe.MatchString(name) {
-		return fmt.Errorf("%q is not a plugin name: %s", name, nameWhy)
+	if !_nameRe.MatchString(name) {
+		return fmt.Errorf("%q is not a plugin name: %s", name, _nameWhy)
 	}
 	for _, kind := range []string{DirLocal, DirInstalled} {
 		if dir := filepath.Join(d.PluginsRoot(), kind, name); exists(dir) {

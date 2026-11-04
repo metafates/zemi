@@ -180,30 +180,30 @@ const ImplementPlan = "Implement it; track its steps with todos if it has severa
 
 // The plan results PlanOutcome reads back.
 const (
-	planApproved = "The user approved the plan"
-	planHeld     = "The user approved the plan; the user has not asked for it yet"
-	planChanges  = "The user has not approved the plan and asked for changes: "
-	planRevise   = "\nRevise the plan"
-	planSaved    = "\nThe plan is saved at "
+	_planApproved = "The user approved the plan"
+	_planHeld     = "The user approved the plan; the user has not asked for it yet"
+	_planChanges  = "The user has not approved the plan and asked for changes: "
+	_planRevise   = "\nRevise the plan"
+	_planSaved    = "\nThe plan is saved at "
 )
 
 // PlanOutcome is the verdict in a plan result, which is written for the
 // model, for its row to show: path is where an approved plan was saved, ""
 // when it was not. Any other result comes back whole.
 func PlanOutcome(output string) (verdict, path string) {
-	if feedback, ok := strings.CutPrefix(output, planChanges); ok {
-		feedback, _, _ = strings.Cut(feedback, planRevise)
+	if feedback, ok := strings.CutPrefix(output, _planChanges); ok {
+		feedback, _, _ = strings.Cut(feedback, _planRevise)
 		return "changes requested: " + feedback, ""
 	}
 	switch {
-	case strings.HasPrefix(output, planHeld): // before planApproved, its prefix
+	case strings.HasPrefix(output, _planHeld): // before planApproved, its prefix
 		verdict = "approved (held)"
-	case strings.HasPrefix(output, planApproved):
+	case strings.HasPrefix(output, _planApproved):
 		verdict = "approved"
 	default:
 		return output, ""
 	}
-	_, path, _ = strings.Cut(output, planSaved)
+	_, path, _ = strings.Cut(output, _planSaved)
 	return verdict, strings.TrimSuffix(path, ".")
 }
 
@@ -218,7 +218,7 @@ type planArgs struct {
 // $VARS expanded, no ~ or %VAR%, project-relative or absolute.
 func (p *Pipeline) planFile(raw string) (string, error) {
 	raw = p.expandEnv(raw)
-	if unexpanded.MatchString(raw) {
+	if _unexpanded.MatchString(raw) {
 		return "", errors.New(p.unexpandedText(raw))
 	}
 	path, err := perm.Resolve(raw)
@@ -230,8 +230,8 @@ func (p *Pipeline) planFile(raw string) (string, error) {
 		return "", errors.New(p.notFound(path.String(), err))
 	}
 	defer f.Close()
-	if fi.Size() > readMaxBytes {
-		return "", fmt.Errorf("%s is %d bytes, over plan's %d byte limit: a plan is short; point at a shorter file", workRel(path.String()), fi.Size(), readMaxBytes)
+	if fi.Size() > _readMaxBytes {
+		return "", fmt.Errorf("%s is %d bytes, over plan's %d byte limit: a plan is short; point at a shorter file", workRel(path.String()), fi.Size(), _readMaxBytes)
 	}
 	data, err := io.ReadAll(f)
 	return string(data), err
@@ -257,19 +257,19 @@ func runPlan(ctx context.Context, p *Pipeline, in planArgs) (fantasy.ToolRespons
 	v, ok := p.ApprovePlan(plan, in.Name)
 	saved := ""
 	if v.Path != "" {
-		saved = planSaved + v.Path + "."
+		saved = _planSaved + v.Path + "."
 	}
 	implement := " " + ImplementPlan + saved
 	switch {
 	case !ok:
 		p.outcome(ctx, Outcome{Stopped: true})
-		return stopTurn(userDismissed + " the plan without approving it. Stop and wait for them to say how to proceed."), nil
+		return stopTurn(_userDismissed + " the plan without approving it. Stop and wait for them to say how to proceed."), nil
 	case v.Approved && v.Hold:
-		return endTurn(planHeld + ", so do not start implementing: stop here and wait for them to say when." + saved), nil
+		return endTurn(_planHeld + ", so do not start implementing: stop here and wait for them to say when." + saved), nil
 	case v.Approved:
-		return fantasy.NewTextResponse(planApproved + "." + implement), nil
+		return fantasy.NewTextResponse(_planApproved + "." + implement), nil
 	default:
-		return fantasy.NewTextResponse(planChanges + v.Feedback + planRevise + ", and call plan again."), nil
+		return fantasy.NewTextResponse(_planChanges + v.Feedback + _planRevise + ", and call plan again."), nil
 	}
 }
 
@@ -305,7 +305,7 @@ const (
 	TypeFreeText QuestionType = "free_text"
 )
 
-var questionTypes = []QuestionType{TypeSingle, TypeMulti, TypeFreeText}
+var _questionTypes = []QuestionType{TypeSingle, TypeMulti, TypeFreeText}
 
 // Question is one structured ask to the user, drawn by a Go-owned overlay.
 // single_choice picks one option, multi_choice marks several, free_text
@@ -340,7 +340,7 @@ type Answer struct {
 
 func (a Answer) Open() bool { return len(a.Picked) == 0 && a.Typed == "" }
 
-const maxQuestions = 4
+const _maxQuestions = 4
 
 // questionArgs is the question tool's input and its schema source.
 type questionArgs struct {
@@ -365,8 +365,8 @@ type questionOption struct {
 
 func runQuestion(ctx context.Context, p *Pipeline, in questionArgs) (fantasy.ToolResponse, error) {
 	raw := in.Questions
-	if len(raw) == 0 || len(raw) > maxQuestions {
-		return fantasy.NewTextErrorResponse(fmt.Sprintf("questions must hold 1 to %d questions", maxQuestions)), nil
+	if len(raw) == 0 || len(raw) > _maxQuestions {
+		return fantasy.NewTextErrorResponse(fmt.Sprintf("questions must hold 1 to %d questions", _maxQuestions)), nil
 	}
 	qs := make([]Question, 0, len(raw))
 	for i, q := range raw {
@@ -387,7 +387,7 @@ func runQuestion(ctx context.Context, p *Pipeline, in questionArgs) (fantasy.Too
 				ask.Type = TypeFreeText
 			}
 		}
-		if !slices.Contains(questionTypes, ask.Type) {
+		if !slices.Contains(_questionTypes, ask.Type) {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: type must be single_choice, multi_choice or free_text", i+1)), nil
 		}
 		if ask.Type == TypeFreeText {
@@ -409,7 +409,7 @@ func runQuestion(ctx context.Context, p *Pipeline, in questionArgs) (fantasy.Too
 	answers, ok := p.Question(qs)
 	if !ok || len(answers) != len(qs) {
 		p.outcome(ctx, Outcome{Stopped: true})
-		return stopTurn(userDismissed + " the questions. Stop and wait for them to say how to proceed."), nil
+		return stopTurn(_userDismissed + " the questions. Stop and wait for them to say how to proceed."), nil
 	}
 	res := questionResult{Answers: make([]questionAnswer, len(qs))}
 	for i, q := range qs {

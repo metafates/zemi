@@ -58,9 +58,9 @@ func reloadUI(t testing.TB, host *hostapi.Host, extra ...lua.BootStep) {
 	}
 }
 
-// tipClock pins the Lua clock so the hourly splash tip is the first one and
+// _tipClock pins the Lua clock so the hourly splash tip is the first one and
 // tests never depend on wall time.
-var tipClock = fixedClock{now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+var _tipClock = fixedClock{now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
 
 type fixedClock struct{ now time.Time }
 
@@ -75,7 +75,7 @@ func (c fixedClock) AfterFunc(d time.Duration, f func()) func() bool {
 func bootAgentApp(t testing.TB, w, h int) (*App, *hostapi.Host) {
 	t.Helper()
 	_, cfg := tempHome(t)
-	return bootAgentAppOn(t, w, h, tipClock, cfg)
+	return bootAgentAppOn(t, w, h, _tipClock, cfg)
 }
 
 // bootAgentAppPinned is bootAgentApp with $HOME pointed at the boot's own
@@ -84,7 +84,7 @@ func bootAgentAppPinned(t testing.TB, w, h int) (*App, *hostapi.Host) {
 	t.Helper()
 	home, cfg := tempHome(t)
 	t.Setenv("HOME", home)
-	return bootAgentAppOn(t, w, h, tipClock, cfg)
+	return bootAgentAppOn(t, w, h, _tipClock, cfg)
 }
 
 // bootAgentAppOn is bootAgentApp on clock, nil for the wall clock, with cfg
@@ -150,7 +150,7 @@ func renderChat(t testing.TB, app *App, w, h int, st hostapi.UIState) ([][]hosta
 	if wg == nil {
 		t.Fatal("the shipped chat is not registered")
 	}
-	lines, more, err := app.renderWidget(shownWidget{ID: "chat", Region: regionChat, Wrap: wg.wrap, Go: wg, width: w, height: h}, app.host.ScreenState(w, h, st))
+	lines, more, err := app.renderWidget(shownWidget{ID: "chat", Region: _regionChat, Wrap: wg.wrap, Go: wg, width: w, height: h}, app.host.ScreenState(w, h, st))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,14 +196,14 @@ func seedLongChat(host *hostapi.Host, turns int) {
 	}
 }
 
-// frameTurns: a long transcript costs a frame only a slice of its line
+// _frameTurns: a long transcript costs a frame only a slice of its line
 // headers, never converting or wrapping its lines again.
-var frameTurns = []int{10, 500}
+var _frameTurns = []int{10, 500}
 
 // BenchmarkStreamingFrame is one frame while a reply streams: the widget
 // re-renders and only the streamed rows are converted and wrapped again.
 func BenchmarkStreamingFrame(b *testing.B) {
-	for _, turns := range frameTurns {
+	for _, turns := range _frameTurns {
 		b.Run(strconv.Itoa(turns), func(b *testing.B) {
 			app, host := bootAgentApp(b, 140, 40)
 			seedLongChat(host, turns)
@@ -307,7 +307,7 @@ func TestColdChatRender(t *testing.T) {
 	app.renderSync(t)
 	app.Frame()
 	for range 60 {
-		app.applyScroll(hostapi.ScrollUp, regionNone)
+		app.applyScroll(hostapi.ScrollUp, _regionNone)
 	}
 	app.Frame()
 	st := app.scrolls[app.scrollDef]
@@ -729,7 +729,7 @@ func TestTurnStats(t *testing.T) {
 
 // BenchmarkIdleFrame is a frame with nothing changed since the last one.
 func BenchmarkIdleFrame(b *testing.B) {
-	for _, turns := range frameTurns {
+	for _, turns := range _frameTurns {
 		b.Run(strconv.Itoa(turns), func(b *testing.B) {
 			app, host := bootAgentApp(b, 140, 40)
 			seedLongChat(host, turns)
@@ -1631,12 +1631,12 @@ func TestPromptKeyGrace(t *testing.T) {
 		// prompt opened so the ask still ran inline
 		app.program = tea.NewProgram(nil)
 		opened := app.now()
-		app.now = func() time.Time { return opened.Add(permGrace / 4) }
+		app.now = func() time.Time { return opened.Add(_permGrace / 4) }
 		app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 		if !c.open(app) || len(done) != 0 {
 			t.Fatalf("%s: a key inside the grace answered the prompt", c.name)
 		}
-		app.now = func() time.Time { return opened.Add(permGrace + time.Millisecond) }
+		app.now = func() time.Time { return opened.Add(_permGrace + time.Millisecond) }
 		app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 		if got := <-done; got != c.want {
 			t.Errorf("%s answered %q after the grace", c.name, got)
@@ -1684,12 +1684,12 @@ func TestAskGuardUnderDraft(t *testing.T) {
 				now = now.Add(time.Millisecond)
 				app.Update(tea.KeyPressMsg{Code: rune(key[0]), Text: key})
 			}
-			now = opened.Add(permGrace / 4)
+			now = opened.Add(_permGrace / 4)
 			typeKey("x")
 			if !c.open(app) || app.composer.text != "do " {
 				t.Fatalf("a key inside the grace answered or drafted: open=%v text=%q", c.open(app), app.composer.text)
 			}
-			now = opened.Add(permGrace + time.Millisecond)
+			now = opened.Add(_permGrace + time.Millisecond)
 			typeKey(c.answer)
 			select {
 			case <-done:
@@ -1733,13 +1733,13 @@ func TestPermissionAnswersUnderADraft(t *testing.T) {
 		now = now.Add(time.Millisecond)
 		app.Update(tea.KeyPressMsg{Code: rune(key[0]), Text: key})
 	}
-	now = opened.Add(permGrace + time.Millisecond)
+	now = opened.Add(_permGrace + time.Millisecond)
 	typeKey("hold this draft")
 	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"}) // the y types and arms
 	if app.composer.text != "hold this drafty" {
 		t.Fatalf("the arm's first press types: %q", app.composer.text)
 	}
-	now = now.Add(permGrace + time.Millisecond)
+	now = now.Add(_permGrace + time.Millisecond)
 	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"}) // a human's second press answers
 	select {
 	case <-done:
@@ -1800,7 +1800,7 @@ func TestPermissionProseTypesUnderTheAsk(t *testing.T) {
 		now = now.Add(time.Millisecond)
 		app.Update(tea.KeyPressMsg{Code: rune(key[0]), Text: key})
 	}
-	now = opened.Add(permGrace + time.Millisecond)
+	now = opened.Add(_permGrace + time.Millisecond)
 	typeKey("you bet, run it") // the arm's first press types: prose keeps its letters
 	if app.permAsk == nil || app.composer.text != "you bet, run it" {
 		t.Fatalf("prose under the ask must draft whole: ask=%v text=%q", app.permAsk != nil, app.composer.text)
@@ -1813,7 +1813,7 @@ func TestPermissionProseTypesUnderTheAsk(t *testing.T) {
 	if app.permAsk == nil || app.composer.text != "you bet, run ityx" {
 		t.Fatalf("prose keeps drafting under the ask: ask=%v text=%q", app.permAsk != nil, app.composer.text)
 	}
-	now = now.Add(permGrace + time.Millisecond)
+	now = now.Add(_permGrace + time.Millisecond)
 	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"}) // the arm was dropped: this y arms again
 	if app.permAsk == nil {
 		t.Fatal("a y past a dropped arm must arm again, not answer")
@@ -1875,7 +1875,7 @@ func TestNoopKeysBumpNothing(t *testing.T) {
 	go func() { done <- app.AskTrust("/proj", "/proj", "") }()
 	waitPrompt(t, app, func() bool { return app.trust != nil })
 	app.program = tea.NewProgram(nil)
-	app.now = func() time.Time { return app.trust.opened.Add(permGrace + time.Millisecond) }
+	app.now = func() time.Time { return app.trust.opened.Add(_permGrace + time.Millisecond) }
 	gen := app.frameGen
 	app.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
 	if app.frameGen != gen {
@@ -2010,7 +2010,7 @@ func TestReasoningSpinsBehindModal(t *testing.T) {
 	if spinA == "" || spinA == spinB {
 		t.Fatalf("the live mark froze behind a box:\n%s", a)
 	}
-	if !app.spun || app.tickInterval() != frameInterval {
+	if !app.spun || app.tickInterval() != _frameInterval {
 		t.Fatalf("a spinner behind a box ticks %v (spun %v)", app.tickInterval(), app.spun)
 	}
 }
@@ -2979,8 +2979,8 @@ func TestEllipsizeSegsWordBoundary(t *testing.T) {
 }
 
 func TestStreamEventsCoalesce(t *testing.T) {
-	app := &App{testQueue: make(chan tea.Msg, hookQueueSize), log: slog.New(slog.DiscardHandler), focused: true, now: time.Now}
-	for range 3 * hookQueueSize {
+	app := &App{testQueue: make(chan tea.Msg, _hookQueueSize), log: slog.New(slog.DiscardHandler), focused: true, now: time.Now}
+	for range 3 * _hookQueueSize {
 		app.AgentStream()
 	}
 	if n := len(app.testQueue); n != 1 {
@@ -3003,7 +3003,7 @@ func TestStreamEventsCoalesce(t *testing.T) {
 func TestWidgetErrorRecordedOnce(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 20)
-	addWidget(app, &widget{id: "bad", region: regionStatusRight, render: func(*hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	addWidget(app, &widget{id: "bad", region: _regionStatusRight, render: func(*hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 		panic("boom")
 	}})
 	run := func(src string) {

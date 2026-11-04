@@ -25,7 +25,7 @@ type paletteRole struct {
 	field func(*Palette) *color.Color
 }
 
-var paletteRoles = []paletteRole{
+var _paletteRoles = []paletteRole{
 	{"bg", func(p *Palette) *color.Color { return &p.Bg }},
 	{"fg", func(p *Palette) *color.Color { return &p.Fg }},
 	{"accent", func(p *Palette) *color.Color { return &p.Accent }},
@@ -46,15 +46,15 @@ var paletteRoles = []paletteRole{
 var Roles = paletteRoleNames()
 
 func paletteRoleNames() []string {
-	names := make([]string, len(paletteRoles))
-	for i, r := range paletteRoles {
+	names := make([]string, len(_paletteRoles))
+	for i, r := range _paletteRoles {
 		names[i] = r.name
 	}
 	return names
 }
 
 func (p *Palette) role(name string) *color.Color {
-	for _, r := range paletteRoles {
+	for _, r := range _paletteRoles {
 		if r.name == name {
 			return r.field(p)
 		}
@@ -84,13 +84,13 @@ func (p *Palette) Color(ref string) color.Color {
 	return nil
 }
 
-// mixes derive the rest, each role mixed from one toward another in OkLab.
+// _mixes derive the rest, each role mixed from one toward another in OkLab.
 // The band tints the panel, since only a box draws it.
 // The diff tints are mixed far enough to keep an OKLCH chroma over the
 // 256-color quantizer's grey cut (0.03) on whorl.
 // NOTE: on a greyish bg they may still round to one grey at 256 colors;
 // the diff's colored numbers tell the rows apart.
-var mixes = [...]struct {
+var _mixes = [...]struct {
 	role, from, to string
 	t              float64
 }{
@@ -107,13 +107,13 @@ var mixes = [...]struct {
 	{"well", "panel", "fg", 0.08},
 }
 
-// surfaceSpan is how far in OKLCH lightness panel and band may sit from bg,
+// _surfaceSpan is how far in OKLCH lightness panel and band may sit from bg,
 // a spec's own included: a box stays a box, and text reads on it.
-const surfaceSpan = 0.13
+const _surfaceSpan = 0.13
 
-// floors are the WCAG contrast each text role is clamped to on bg, panel,
+// _floors are the WCAG contrast each text role is clamped to on bg, panel,
 // band and well, the surfaces text draws on.
-var floors = [...]struct {
+var _floors = [...]struct {
 	role  string
 	floor float64
 }{
@@ -168,7 +168,7 @@ func derive(p *Palette) {
 		d := math.Mod(h2-h1+540, 360) - 180
 		p.Literal = inGamut((l1+l2)/2, (c1+c2)/2, math.Mod(h1+d/2+360, 360))
 	}
-	for _, m := range mixes {
+	for _, m := range _mixes {
 		dst := p.role(m.role)
 		if *dst != nil {
 			continue
@@ -178,10 +178,10 @@ func derive(p *Palette) {
 	lbg, _, _ := col(p.Bg).OkLch()
 	for _, s := range []*color.Color{&p.Panel, &p.Band} {
 		l, c, h := col(*s).OkLch()
-		*s = inGamut(min(max(l, lbg-surfaceSpan), lbg+surfaceSpan), c, h)
+		*s = inGamut(min(max(l, lbg-_surfaceSpan), lbg+_surfaceSpan), c, h)
 	}
 	on := []colorful.Color{col(p.Bg), col(p.Panel), col(p.Band), col(p.Well)}
-	for _, f := range floors {
+	for _, f := range _floors {
 		dst := p.role(f.role)
 		*dst = clampContrast(col(*dst), on, f.floor)
 	}

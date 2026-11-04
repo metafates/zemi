@@ -212,29 +212,29 @@ func (h *Host) callViewRow(n int) (row ChatMessage, took time.Duration, ok bool)
 	return ChatMessage{}, 0, false
 }
 
-// callTitles name a call's view by what it is, not by the verb its row reads
+// _callTitles name a call's view by what it is, not by the verb its row reads
 // with; any other tool reads as its own name's words.
-var callTitles = map[tools.ToolName]string{
+var _callTitles = map[tools.ToolName]string{
 	tools.ToolShell: "Command", tools.ToolEdit: "Edit", tools.ToolWrite: "Write", tools.ToolRead: "Read",
 	tools.ToolGrep: "Search", tools.ToolGlob: "Find", tools.ToolSkill: "Skill",
 	tools.ToolPlan: "Plan", tools.ToolLua: "Script", tools.ToolTodos: "Todos",
 }
 
-// callWords say where a call stands, beside its mark.
-var callWords = map[CallStatus]string{
+// _callWords say where a call stands, beside its mark.
+var _callWords = map[CallStatus]string{
 	CallWait: "waiting", CallRun: "running", CallOK: "ok", CallWarn: "warned",
 	CallErr: "failed", CallStopped: "stopped", CallBG: "in the background", CallCancelled: "cancelled",
 }
 
-// callMarks are the chat's own marks for a call's state.
-var callMarks = map[CallStatus]MarkKind{
+// _callMarks are the chat's own marks for a call's state.
+var _callMarks = map[CallStatus]MarkKind{
 	CallWait: tools.MarkWait, CallRun: tools.MarkSpin, CallOK: tools.MarkOK, CallWarn: tools.MarkWarn,
 	CallErr: tools.MarkErr, CallStopped: tools.MarkStop, CallBG: tools.MarkBG, CallCancelled: tools.MarkStop,
 }
 
-// callArg names what a call was given, so the facts table says what it acted
+// _callArg names what a call was given, so the facts table says what it acted
 // on before the body says what came back.
-var callArg = map[tools.ToolName]string{
+var _callArg = map[tools.ToolName]string{
 	tools.ToolRead: "file", tools.ToolEdit: "file", tools.ToolWrite: "file", tools.ToolGrep: "pattern",
 	tools.ToolGlob: "pattern", tools.ToolSkill: "skill",
 	tools.ToolTodos: "what",
@@ -250,7 +250,7 @@ func callInput(m ChatMessage) string {
 	if m.Tool == tools.ToolShell || m.Tool == tools.ToolLua {
 		return m.Text
 	}
-	if _, ok := callArg[m.Tool]; ok {
+	if _, ok := _callArg[m.Tool]; ok {
 		return m.Text
 	}
 	return ""
@@ -279,10 +279,10 @@ func (h *Host) logCallView(seq int64, m ChatMessage) Overlay {
 func (h *Host) callBody(m ChatMessage, took time.Duration) Overlay {
 	o := Overlay{
 		Title: callTitle(m), Origin: lua.OriginBuiltin,
-		Mark: callMarks[m.Status], Live: m.Status == CallRun || m.Status == CallWait,
+		Mark: _callMarks[m.Status], Live: m.Status == CallRun || m.Status == CallWait,
 	}
 	var parts []BodyPart
-	fields := []Field{{Name: "status", Value: callWords[m.Status]}}
+	fields := []Field{{Name: "status", Value: _callWords[m.Status]}}
 	if m.Kind == RowReasoning {
 		parts = append(parts, BodyPart{Text: m.Text, Lang: "markdown"})
 		if m.Stat != nil && m.Stat.ThoughtMS > 0 {
@@ -301,7 +301,7 @@ func (h *Host) callBody(m ChatMessage, took time.Duration) Overlay {
 				// and sinks into the well its answer lifts out of
 				parts = append(parts, BodyPart{Text: in, Lang: "bash", Fill: FillCanvas})
 			} else {
-				fields = append(fields, Field{Name: callArg[m.Tool], Value: in})
+				fields = append(fields, Field{Name: _callArg[m.Tool], Value: in})
 			}
 		}
 		if m.Diff != "" {
@@ -562,10 +562,10 @@ func callTitle(m ChatMessage) string {
 	case m.Tool == tools.ToolQuestion:
 		return "Question"
 	}
-	if t, ok := callTitles[m.Tool]; ok {
+	if t, ok := _callTitles[m.Tool]; ok {
 		return t
 	}
-	return upperFirst(strings.ReplaceAll(strings.TrimPrefix(string(m.Tool), mcpToolPrefix), "_", " "))
+	return upperFirst(strings.ReplaceAll(strings.TrimPrefix(string(m.Tool), _mcpToolPrefix), "_", " "))
 }
 
 // callOutput is what the call answered, as its view shows it: a question's

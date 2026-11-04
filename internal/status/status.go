@@ -85,11 +85,11 @@ func (k Kind) String() string {
 // The protocol's caps: a report breaking one is discarded whole by the
 // terminal, so the encoder refuses or truncates to stay inside them.
 const (
-	appLimit = 32   // app: bytes
-	idLimit  = 128  // id: bytes in all
-	titleMax = 192  // title: decoded bytes (256 encoded)
-	msgMax   = 2048 // msg: decoded bytes (2732 encoded)
-	seqMax   = 4096 // the whole sequence
+	_appLimit = 32   // app: bytes
+	_idLimit  = 128  // id: bytes in all
+	_titleMax = 192  // title: decoded bytes (256 encoded)
+	_msgMax   = 2048 // msg: decoded bytes (2732 encoded)
+	_seqMax   = 4096 // the whole sequence
 )
 
 // Report is one report: a record's complete next state. Msg and Title are
@@ -129,24 +129,24 @@ func (r Report) Sequence() string {
 			b.WriteString(kind)
 		}
 	}
-	if r.App != "" && len(r.App) <= appLimit && validApp(r.App) {
+	if r.App != "" && len(r.App) <= _appLimit && validApp(r.App) {
 		b.WriteString(":app=")
 		b.WriteString(r.App)
 	}
 	if r.Title != "" {
-		if v, ok := encode(r.Title, titleMax); ok {
+		if v, ok := encode(r.Title, _titleMax); ok {
 			b.WriteString(":title=")
 			b.WriteString(v)
 		}
 	}
 	if r.Msg != "" {
-		if v, ok := encode(r.Msg, msgMax); ok {
+		if v, ok := encode(r.Msg, _msgMax); ok {
 			b.WriteString(":msg=")
 			b.WriteString(v)
 		}
 	}
 	b.WriteString("\x1b\\")
-	if b.Len() > seqMax {
+	if b.Len() > _seqMax {
 		return ""
 	}
 	return b.String()
@@ -181,7 +181,7 @@ func encode(text string, limit int) (string, bool) {
 // validID holds the record-id grammar: segments of 1..32 word bytes,
 // at most 8 levels deep.
 func validID(id string) bool {
-	if len(id) > idLimit {
+	if len(id) > _idLimit {
 		return false
 	}
 	for seg := range strings.SplitSeq(id, "/") {

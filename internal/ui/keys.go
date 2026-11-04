@@ -17,9 +17,9 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// goKeys are the bindings this router owns: they are not Lua keymaps, so
+// _goKeys are the bindings this router owns: they are not Lua keymaps, so
 // /help would list none of them.
-var goKeys = [][2]string{
+var _goKeys = [][2]string{
 	{"enter", "send; steers a running turn"},
 	{"shift/alt/ctrl+enter", "newline"},
 	{"esc", "back; twice to interrupt"},
@@ -40,8 +40,8 @@ var goKeys = [][2]string{
 	{"ctrl+space", "reopen the @ or / popup at the word"},
 }
 
-// listKeys are the keys every list and box takes.
-var listKeys = [][2]string{
+// _listKeys are the keys every list and box takes.
+var _listKeys = [][2]string{
 	{"up, down, j, k, ctrl+p, ctrl+n", "move; j, k type in the / and @ popups"},
 	{"g, G, home, end", "first row, last row; g, G type in the / and @ popups"},
 	{"ctrl+home, ctrl+b", "to the top, bottom"},
@@ -56,7 +56,7 @@ var listKeys = [][2]string{
 
 // KeyHelp implements hostapi.UIHooks: what /help lists as keys, owned here
 // because this file is what routes them.
-func (a *App) KeyHelp() (keys, lists [][2]string) { return goKeys, listKeys }
+func (a *App) KeyHelp() (keys, lists [][2]string) { return _goKeys, _listKeys }
 
 // handleKey is the key router (DESIGN §6.6 order): the Go-reserved ctrl+c,
 // the chrome drawn on top (topChrome), a focused layout node's keymaps,
@@ -67,7 +67,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// a danger key's fire closed onto a fresh surface: one burst key is the
 	// confirm's echo, not input
 	if !a.burstSwallow.IsZero() {
-		echo := a.now().Sub(a.burstSwallow) < permGrace && key == a.burstKey
+		echo := a.now().Sub(a.burstSwallow) < _permGrace && key == a.burstKey
 		a.burstSwallow, a.burstKey = time.Time{}, ""
 		if echo {
 			a.bump()
@@ -78,7 +78,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// whole, since a burst's leftover keys deny the next ask and mangle the
 	// draft under it. esc and ctrl+c pass — the way out never swallows.
 	if !a.askSwallow.IsZero() {
-		if a.now().Sub(a.askSwallow) < askSwallowWindow && key != "esc" && key != "ctrl+c" {
+		if a.now().Sub(a.askSwallow) < _askSwallowWindow && key != "esc" && key != "ctrl+c" {
 			a.bump()
 			return nil
 		}
@@ -89,7 +89,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// an armed key acts only when pressed again right away on the bare
 	// composer: an esc that answers a box in between does not count, and a
 	// held key prefix never outlives a key that bypasses keySequence
-	elsewhere := top != noModal || a.palette.open || a.completion.shown()
+	elsewhere := top != _noModal || a.palette.open || a.completion.shown()
 	// a list alias (zemi.keymap.set with list = true) swaps the key before
 	// any list, popup or prompt sees it, but for a move a typed line edits with
 	if b := a.host.Keymaps.ListAlias(key); elsewhere && b != nil && !(lineKey(b.RHS.Move) && a.typing(top)) {
@@ -106,7 +106,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// printable keys stay with the composer, and an open popup keeps its
 	// keys. The composer is Go-drawn, so typing must not bump the frame
 	// generation: that would re-render every widget on every keystroke.
-	if a.chatFocus && top == noModal && !a.palette.open && !a.completion.shown() && key != "ctrl+c" {
+	if a.chatFocus && top == _noModal && !a.palette.open && !a.completion.shown() && key != "ctrl+c" {
 		// the chat cursor's keys: an esc here leaves focus, it never arms
 		// the interrupt, and a held sequence never outlives the focus
 		a.armed, a.keySeq = armed{}, nil
@@ -116,7 +116,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		// a key the cursor does not take is ignored while the chat holds focus
 		return nil
 	}
-	if top == noModal && key != "ctrl+c" {
+	if top == _noModal && key != "ctrl+c" {
 		if a.palette.open || a.completion.shown() {
 			return a.composerKey(key, msg)
 		}
@@ -155,15 +155,15 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	if key == "ctrl+c" {
 		a.bump() // every branch below acts
 		switch {
-		case top == modalPerm && a.permAsk.answer != nil:
+		case top == _modalPerm && a.permAsk.answer != nil:
 			a.answerPerm(false, tools.ByUser)
-		case top == modalPlan:
+		case top == _modalPlan:
 			a.finishPlan(tools.PlanVerdict{}, false)
-		case top == modalQuestion:
+		case top == _modalQuestion:
 			a.finishQuestion(false)
-		case top == modalTrust:
+		case top == _modalTrust:
 			a.answerTrust("later")
-		case top == modalOverlay:
+		case top == _modalOverlay:
 			a.cancelMenu()
 		case !a.composer.empty():
 			// the draft stays one up away, and one ctrl+z
@@ -186,7 +186,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// soon as the grace passes or nothing opened
 	if !a.answeredTrust.IsZero() {
 		switch {
-		case a.now().Sub(a.answeredTrust) > permGrace:
+		case a.now().Sub(a.answeredTrust) > _permGrace:
 			a.answeredTrust, a.guardOpen = time.Time{}, 0
 		case len(a.overlays) > a.guardOpen:
 			a.answeredTrust, a.guardOpen = time.Time{}, 0
@@ -196,7 +196,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	// Go-owned chrome and Lua overlays capture all keys (§8, §10.4).
 	switch top {
-	case modalBoot:
+	case _modalBoot:
 		// the shipped Lua layer failed: nothing else on this screen acts
 		a.bump()
 		if scrollKey(&a.bootView, key, false) {
@@ -208,12 +208,12 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case "q":
 			a.Quit()
 		}
-	case modalTrust:
+	case _modalTrust:
 		if a.askGuard(a.trust.opened, false) {
 			return nil
 		}
 		tp := a.trust
-		if scrollKey(&tp.view, key, false) || moveSel(&tp.sel, len(trustAnswers), len(trustAnswers), key) {
+		if scrollKey(&tp.view, key, false) || moveSel(&tp.sel, len(_trustAnswers), len(_trustAnswers), key) {
 			a.bump()
 			return nil
 		}
@@ -225,9 +225,9 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case "l", "esc":
 			a.answerTrust("later")
 		case "enter":
-			a.answerTrust(trustAnswers[tp.sel])
+			a.answerTrust(_trustAnswers[tp.sel])
 		}
-	case modalPerm:
+	case _modalPerm:
 		pa := a.permAsk
 		if pa == nil {
 			return nil
@@ -252,7 +252,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			switch key {
 			case "y", "n", "t":
 				if pa.answerArmed == key && a.now().Before(pa.answerUntil) &&
-					a.now().Sub(pa.armedAt) >= permGrace {
+					a.now().Sub(pa.armedAt) >= _permGrace {
 					a.askSwallow = a.now() // the paste behind the second press eats whole
 					for _, c := range pa.choices() {
 						if c.key == key {
@@ -292,17 +292,17 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return a.composerKey(key, msg)
 		}
 		return nil
-	case modalPlan:
+	case _modalPlan:
 		if a.askGuard(a.planAsk.opened, false) {
 			return nil
 		}
 		a.planKey(key, keyText(msg))
-	case modalQuestion:
+	case _modalQuestion:
 		if a.askGuard(a.question.opened, false) {
 			return nil
 		}
 		a.questionKey(key, keyText(msg))
-	case modalOverlay:
+	case _modalOverlay:
 		// an open box holds every key: the composer under it never types
 		// while one is up. A reading box (an answer, a report: a body and no
 		// rows) keeps esc, the scroll keys and y copy, and enter closes it
@@ -312,7 +312,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		return a.overlayKey(key, keyText(msg))
-	case noModal:
+	case _noModal:
 	}
 	return nil
 }
@@ -448,7 +448,7 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 				a.host.CancelBusy()
 				a.interrupt()
 			}
-		} else if utf8.RuneCountInString(a.composer.text) > maxDraftChars {
+		} else if utf8.RuneCountInString(a.composer.text) > _maxDraftChars {
 			a.clearDraft()
 		} else if len(a.toasts) > 0 {
 			a.toasts = a.toasts[:len(a.toasts)-1]
@@ -480,7 +480,7 @@ func (a *App) draftCapToast() {
 	if a.now().Before(a.capToastAt) {
 		return
 	}
-	a.capToastAt = a.now().Add(capToastTTL)
+	a.capToastAt = a.now().Add(_capToastTTL)
 	a.draftCapToastNow()
 }
 
@@ -488,12 +488,12 @@ func (a *App) draftCapToast() {
 // why, the throttle is for the key flood a paste flood makes.
 func (a *App) draftCapToastNow() {
 	a.pushToast(slog.LevelWarn, "Draft too long",
-		fmt.Sprintf("a message holds at most %dk characters; save the text to a file and attach it with @path", maxDraftChars/1000))
+		fmt.Sprintf("a message holds at most %dk characters; save the text to a file and attach it with @path", _maxDraftChars/1000))
 }
 
-// capToastTTL is how long a draft-cap toast lives and how long the next one
+// _capToastTTL is how long a draft-cap toast lives and how long the next one
 // waits: pushToast's warn ttl.
-const capToastTTL = 8 * time.Second
+const _capToastTTL = 8 * time.Second
 
 // clearDraft empties the draft the way ctrl+c does: the text stays one
 // ctrl+z back and never joins the prompt history — Up still recalls the
@@ -575,7 +575,7 @@ func moveSel(sel *int, n, page int, key string) bool {
 	return true
 }
 
-const keySeqTimeout = 1500 * time.Millisecond
+const _keySeqTimeout = 1500 * time.Millisecond
 
 // keySequence runs bindings for focus, including multi-key ones ("ctrl+x
 // s"): a key that starts or continues a bound sequence is held until the
@@ -589,7 +589,7 @@ func (a *App) keySequence(key string) (bool, tea.Cmd) {
 	}
 	var replay tea.Cmd
 	seq := key
-	if len(held) > 0 && a.now().Sub(a.keySeqAt) <= keySeqTimeout {
+	if len(held) > 0 && a.now().Sub(a.keySeqAt) <= _keySeqTimeout {
 		seq = strings.Join(append(held, key), " ")
 	} else {
 		replay, held = a.replayKeys(held), nil
@@ -613,7 +613,7 @@ func (a *App) keySequence(key string) (bool, tea.Cmd) {
 // replayKeys hands held keys to the composer as plain ones, so a Go key
 // under a leader (ctrl+g opens the editor) still works on its own.
 func (a *App) replayKeys(held []string) tea.Cmd {
-	if a.topChrome() != noModal {
+	if a.topChrome() != _noModal {
 		return nil
 	}
 	var cmds []tea.Cmd
@@ -700,17 +700,17 @@ func lineKey(key string) bool { return key == "home" || key == "end" }
 // filter, an input overlay or a typed answer.
 func (a *App) typing(top modal) bool {
 	switch top {
-	case noModal:
+	case _noModal:
 		return true
-	case modalOverlay:
+	case _modalOverlay:
 		st := &a.overlays[len(a.overlays)-1]
 		return st.o.Input || st.active
-	case modalPlan:
+	case _modalPlan:
 		return a.planAsk.typing
-	case modalQuestion:
+	case _modalQuestion:
 		qp := a.question
 		return !qp.reviewing() && qp.states[qp.at].typing
-	case modalPerm:
+	case _modalPerm:
 		return true // the box takes prose under it: j/k are letters, not moves
 	default:
 		return false
@@ -825,13 +825,13 @@ func keyText(msg tea.KeyPressMsg) string {
 type modal int
 
 const (
-	noModal modal = iota
-	modalBoot
-	modalPerm
-	modalPlan
-	modalQuestion
-	modalTrust
-	modalOverlay
+	_noModal modal = iota
+	_modalBoot
+	_modalPerm
+	_modalPlan
+	_modalQuestion
+	_modalTrust
+	_modalOverlay
 )
 
 // topChrome is the prompt drawn on top. It mirrors the splice order in
@@ -839,19 +839,19 @@ const (
 func (a *App) topChrome() modal {
 	switch {
 	case a.bootErr != nil:
-		return modalBoot
+		return _modalBoot
 	case a.permAsk != nil:
-		return modalPerm
+		return _modalPerm
 	case a.planAsk != nil:
-		return modalPlan
+		return _modalPlan
 	case a.question != nil:
-		return modalQuestion
+		return _modalQuestion
 	case a.trust != nil:
-		return modalTrust
+		return _modalTrust
 	case len(a.overlays) > 0:
-		return modalOverlay
+		return _modalOverlay
 	default:
-		return noModal
+		return _noModal
 	}
 }
 
@@ -891,24 +891,24 @@ func (a *App) wheel(x, y, step int) {
 // false with no box on top.
 func (a *App) boxScroll() (text *viewport, sel *int, n int, ok bool) {
 	switch a.topChrome() {
-	case modalPerm:
+	case _modalPerm:
 		text, sel, n = &a.permAsk.view, &a.permAsk.sel, len(a.permAsk.choices())
-	case modalPlan:
+	case _modalPlan:
 		text = &a.planAsk.view
-	case modalQuestion:
+	case _modalQuestion:
 		if qp := a.question; qp.reviewing() {
 			text = &qp.review
 		} else {
 			st := &qp.states[qp.at]
 			text, sel, n = &st.ask, &st.sel, qp.qs[qp.at].ListRows()
 		}
-	case modalOverlay:
+	case _modalOverlay:
 		if st := &a.overlays[len(a.overlays)-1]; !st.o.Input {
 			text, sel, n = &st.body, &st.selected, len(st.visible)
 		}
-	case modalTrust:
+	case _modalTrust:
 		text = &a.trust.view
-	case modalBoot:
+	case _modalBoot:
 		text = &a.bootView
 	default:
 		switch {
@@ -928,9 +928,9 @@ func (a *App) boxScroll() (text *viewport, sel *int, n int, ok bool) {
 func (a *App) pasteChrome(text string) bool {
 	line := strings.Join(strings.Fields(text), " ")
 	switch a.topChrome() {
-	case noModal:
+	case _noModal:
 		return false
-	case modalQuestion:
+	case _modalQuestion:
 		qp := a.question
 		if qp.reviewing() {
 			break
@@ -940,18 +940,18 @@ func (a *App) pasteChrome(text string) bool {
 			st.typing = true
 			st.input.insert(line)
 		}
-	case modalPlan:
+	case _modalPlan:
 		p := a.planAsk
 		p.typing = true
 		p.input.insert(line)
-	case modalOverlay:
+	case _modalOverlay:
 		st := &a.overlays[len(a.overlays)-1]
 		if st.o.Input {
 			st.input.insert(line)
 		} else if st.filterable {
 			st.edit("", line)
 		}
-	case modalPerm, modalTrust, modalBoot: // no text input: swallowed
+	case _modalPerm, _modalTrust, _modalBoot: // no text input: swallowed
 	}
 	a.bump()
 	return true

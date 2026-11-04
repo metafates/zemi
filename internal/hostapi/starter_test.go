@@ -11,7 +11,7 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
-var starterCall = regexp.MustCompile(`zemi\.[a-z_][a-z_.]*[a-z_]`)
+var _starterCall = regexp.MustCompile(`zemi\.[a-z_][a-z_.]*[a-z_]`)
 
 // TestStarterInitNamesLiveAPI: the starter init.lua is the first Lua most
 // users read, and it is all comments, so nothing else catches a member a
@@ -19,7 +19,7 @@ var starterCall = regexp.MustCompile(`zemi\.[a-z_][a-z_.]*[a-z_]`)
 func TestStarterInitNamesLiveAPI(t *testing.T) {
 	t.Parallel()
 	_, r := newTestHost(t)
-	names := starterCall.FindAllString(config.StarterInit, -1)
+	names := _starterCall.FindAllString(config.StarterInit, -1)
 	slices.Sort(names)
 	names = slices.Compact(names)
 	if len(names) < 8 {

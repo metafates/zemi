@@ -78,7 +78,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 	h := newTestHostUI(t)
 	pad := h.ScratchDir()
 	h.SetUIHooks(&fakeUI{})
-	defs := append(slices.Clone(builtinAgents), AgentDef{Name: "reviewer", ReadOnly: true}, AgentDef{Name: "no-read", Tools: []toolRef{{name: "shell"}}})
+	defs := append(slices.Clone(_builtinAgents), AgentDef{Name: "reviewer", ReadOnly: true}, AgentDef{Name: "no-read", Tools: []toolRef{{name: "shell"}}})
 	for _, c := range []struct {
 		name string
 		def  string // a subagent's name in defs, "" for the main conversation
@@ -101,7 +101,7 @@ func TestPromptFollowsToolSet(t *testing.T) {
 		text := h.buildSystem()
 		if i := slices.IndexFunc(defs, func(d AgentDef) bool { return d.Name == c.name }); i >= 0 {
 			def := defs[i]
-			toolset, _ = filterRefs(tools.All(h.PipelineFor()), def.Tools, subagentExcluded)
+			toolset, _ = filterRefs(tools.All(h.PipelineFor()), def.Tools, _subagentExcluded)
 			text = h.systemText(h.subagentSystem(def, toolset, def.ReadOnly), toolset, h.ScratchDir(), def.ReadOnly)
 		}
 		for _, tool := range toolset {
@@ -177,7 +177,7 @@ func TestGitRunsNoRepoPrograms(t *testing.T) {
 			// a stat-dirty file makes status refresh the index, which runs the hook
 			later := time.Now().Add(time.Hour)
 			os.Chtimes(filepath.Join(dir, "a"), later, later)
-			if s := h.gitStatusSection(dir); !strings.Contains(s, recentCommits) {
+			if s := h.gitStatusSection(dir); !strings.Contains(s, _recentCommits) {
 				t.Fatal(s)
 			}
 			if _, err := os.Stat(marker); err == nil {
@@ -220,7 +220,7 @@ func TestUserInstructionsOwnBudget(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "AGENTS.md"), []byte("my rules"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte(strings.Repeat("a", contextBudget+100)), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte(strings.Repeat("a", _contextBudget+100)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	got := h.systemText("base", nil, "", false)
@@ -322,8 +322,8 @@ func TestPromptPinned(t *testing.T) {
 			runUser(t, r, `zemi.event.on("agent.assemble", function() return "changed" end)`)
 		}, false, 0},
 		{"provider refused images", "", func(t *testing.T, _ *Host, _ *lua.Runtime) {
-			imagesRejected.Store("stub/m", true)
-			t.Cleanup(func() { imagesRejected.Delete("stub/m") })
+			_imagesRejected.Store("stub/m", true)
+			t.Cleanup(func() { _imagesRejected.Delete("stub/m") })
 		}, true, 0},
 		{"model switch", "", func(t *testing.T, _ *Host, r *lua.Runtime) {
 			runUser(t, r, `zemi.config.set("models.default", "stub/m2")`)

@@ -120,7 +120,7 @@ func TestAutoUpdate(t *testing.T) {
 	if news, _, err := AutoUpdate(t.Context(), d, true); err == nil {
 		t.Errorf("a broken clone passed: %v", news)
 	}
-	if f, _ := readMarketplaces(d); !f.Checked.IsZero() && time.Since(f.Checked) < sweepEvery {
+	if f, _ := readMarketplaces(d); !f.Checked.IsZero() && time.Since(f.Checked) < _sweepEvery {
 		t.Error("the failed run dated the sweep")
 	}
 }

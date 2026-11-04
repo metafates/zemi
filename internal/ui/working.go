@@ -20,15 +20,15 @@ import (
 // view; an agent view names the run it shows there instead, and leaves on esc
 // where the interrupt key stands.
 
-// reads are the calls whose eyes say zemi is reading.
-var reads = map[string]bool{"read": true, "grep": true, "glob": true, "skill": true}
+// _reads are the calls whose eyes say zemi is reading.
+var _reads = map[string]bool{"read": true, "grep": true, "glob": true, "skill": true}
 
-// ruleState remembers between frames how many rows the chat drew below its
+// _ruleState remembers between frames how many rows the chat drew below its
 // pending row, which says whether that row left the view. Renders may overlap,
 // so it takes a lock.
 // NOTE: the count is the last chat render's on the package, not the frame's:
 // a test reading it must not run parallel to a chat render.
-var ruleState = struct {
+var _ruleState = struct {
 	mu    sync.Mutex
 	after int
 }{}
@@ -36,9 +36,9 @@ var ruleState = struct {
 // setRowsAfterPending is the chat's report of the rows it drew below its
 // pending row: the rule carries that row only once it left the view.
 func setRowsAfterPending(n int) {
-	ruleState.mu.Lock()
-	ruleState.after = n
-	ruleState.mu.Unlock()
+	_ruleState.mu.Lock()
+	_ruleState.after = n
+	_ruleState.mu.Unlock()
 }
 
 // eyes is the snail's cycle against the state it is in: an eye cycle starts
@@ -53,7 +53,7 @@ type eyes struct {
 // workingWidget is the rule above the composer.
 func workingWidget() *widget {
 	e := &eyes{}
-	return &widget{id: "working", region: regionWorking, priority: 10, render: func(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	return &widget{id: "working", region: _regionWorking, priority: 10, render: func(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 		return workingRule(e, st)
 	}}
 }
@@ -89,9 +89,9 @@ func clock(d time.Duration) string {
 // centres, a cell of rule on either side of it.
 func workingRule(e *eyes, st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	ag := st.Agent
-	ruleState.mu.Lock()
-	rowsAfter := ruleState.after
-	ruleState.mu.Unlock()
+	_ruleState.mu.Lock()
+	rowsAfter := _ruleState.after
+	_ruleState.mu.Unlock()
 	var parts []workingPart
 	state := "idle"
 	key, verb := "esc", "interrupt"
@@ -130,7 +130,7 @@ func workingRule(e *eyes, st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 			call := t.Stream
 			if call.Status == hostapi.CallRun {
 				running = true
-				if reads[call.Name] {
+				if _reads[call.Name] {
 					state = "reading"
 				}
 				break
@@ -279,7 +279,7 @@ func workingRule(e *eyes, st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 // The snail: a mascot whose shell is the "@", one cell off the rule's left
 // end. Text only, and only the shell takes a color. It stays at the left end
 // of the rule: the state shows in its eyes, stepped by the 50ms frame clock.
-var snailHeads = map[string]struct {
+var _snailHeads = map[string]struct {
 	eyes  []string
 	ticks int
 }{
@@ -295,9 +295,9 @@ var snailHeads = map[string]struct {
 
 // snailEyes is the eyes of state, frame frames after it began.
 func snailEyes(state string, frame int) string {
-	heads, ok := snailHeads[state]
+	heads, ok := _snailHeads[state]
 	if !ok {
-		heads = snailHeads["idle"]
+		heads = _snailHeads["idle"]
 	}
 	return heads.eyes[(frame/heads.ticks)%len(heads.eyes)]
 }

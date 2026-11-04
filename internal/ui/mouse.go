@@ -85,7 +85,7 @@ func clamp(r uv.Rectangle, x, y int) (int, int) {
 func (a *App) selClip(x, y int) uv.Rectangle {
 	p := uv.Position{X: x, Y: y}
 	switch {
-	case a.topChrome() != noModal:
+	case a.topChrome() != _noModal:
 		if p.In(a.chromeRect) {
 			return boxText(a.chromeRect)
 		}
@@ -210,7 +210,7 @@ func (a *App) barAt(x, y int) barHold {
 func (a *App) dragBar(y int) {
 	b := a.barDrag
 	rel, span := max(0, min(y-b.top, b.h-1)), max(b.h-1, 1)
-	if b.region != regionNone {
+	if b.region != _regionNone {
 		if st := a.scrolls[b.region]; st != nil {
 			a.scrollRows(b.region, rel*(st.rows-st.viewH)/span-st.top)
 		}
@@ -232,9 +232,9 @@ func (a *App) dragBar(y int) {
 func (a *App) dismissOutside(x, y int) bool {
 	out := func(r uv.Rectangle) bool { return !r.Empty() && !(uv.Position{X: x, Y: y}).In(r) }
 	switch {
-	case a.topChrome() == modalOverlay && out(a.chromeRect):
+	case a.topChrome() == _modalOverlay && out(a.chromeRect):
 		a.cancelMenu()
-	case a.topChrome() != noModal:
+	case a.topChrome() != _noModal:
 		return false
 	case a.palette.open && out(a.popRect):
 		a.dismissPalette()
@@ -318,7 +318,7 @@ func (a *App) highlightHover(rows [][]hostapi.Segment) {
 		return
 	}
 	style := func(s *hostapi.Segment) { s.Over = "Hover" }
-	if top := a.topChrome(); top == modalPerm || top == modalTrust {
+	if top := a.topChrome(); top == _modalPerm || top == _modalTrust {
 		style = func(s *hostapi.Segment) { s.HL = hostapi.ChromeHover }
 	} else if rest := dropCells(rows[a.hoverY], a.hoverX); len(rest) > 0 && rest[0].Hit > 0 {
 		style = func(s *hostapi.Segment) { s.Over = "HoverItem" }
@@ -430,7 +430,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 	}
 	pinID, pinK, pinSpan := a.pinAt(x, y, under)
 	switch top := a.topChrome(); {
-	case top == modalPerm:
+	case top == _modalPerm:
 		pa := a.permAsk
 		choices := pa.choices()
 		spans, ok := item(len(choices))
@@ -439,14 +439,14 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		}
 		c := choices[hit-1]
 		return spans, func() { a.choosePerm(c) }, true
-	case top == modalTrust:
-		spans, ok := item(len(trustAnswers))
+	case top == _modalTrust:
+		spans, ok := item(len(_trustAnswers))
 		if !ok || a.fresh(a.trust.opened) {
 			return nil, nil, false
 		}
-		answer := trustAnswers[hit-1]
+		answer := _trustAnswers[hit-1]
 		return spans, func() { a.answerTrust(answer) }, true
-	case top == modalPlan:
+	case top == _modalPlan:
 		p := a.planAsk
 		choices := p.choices()
 		spans, ok := item(len(choices)) // the buttons; the changes input has no hits
@@ -455,7 +455,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		}
 		c := choices[hit-1]
 		return spans, func() { a.planKey(c.key, "") }, true
-	case top == modalQuestion:
+	case top == _modalQuestion:
 		qp := a.question
 		if qp.reviewing() { // a summary row opens its question, the button submits
 			n := len(qp.qs)
@@ -481,7 +481,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 			return spans, func() { st.sel = hit - 1; a.questionKey("enter", "") }, ok
 		}
 		return list(n, &st.sel, func() { a.questionKey("enter", "") })
-	case top == modalOverlay:
+	case top == _modalOverlay:
 		st := &a.overlays[len(a.overlays)-1]
 		if under.Hit == 0 && under.Link != "" {
 			// a link in the body, a detail view's README: the list's rows
@@ -502,7 +502,7 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		p := &a.palette
 		spans, ok := item(p.count())
 		return spans, func() { p.selected = hit - 1; a.acceptPalette() }, ok
-	case top == noModal && pinSpan.hi > 0:
+	case top == _noModal && pinSpan.hi > 0:
 		// found by where it is: a Hit would light it as a list row, and a
 		// Click with no widget runs a command. The header lands on its own
 		// row of the pins, under the ones above it.
@@ -511,12 +511,12 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 				a.scrollRows(pinID, st.pin[pinK]-pinK-st.top)
 			}
 		}, true
-	case top == noModal && under.Link != "":
+	case top == _noModal && under.Link != "":
 		// a link is the terminal's own thing: no widget, no command, just the
 		// URL under the click
 		spans, ok := at(func(s hostapi.Segment) bool { return s.Link == under.Link })
 		return firstRow(spans), func() { a.openLink(under.Link) }, ok
-	case top == noModal && under.Click != "":
+	case top == _noModal && under.Click != "":
 		w, _ := under.Widget.(*widget)
 		act := func() { a.clickWidget(w, under, x, y) }
 		if w == nil || w.onClick == nil {
@@ -563,7 +563,7 @@ func (a *App) pinAt(x, y int, under hostapi.Segment) (region, int, cellSpan) {
 			return id, k, sp
 		}
 	}
-	return regionNone, 0, cellSpan{}
+	return _regionNone, 0, cellSpan{}
 }
 
 // painted is true of a segment filled with something other than the app's
@@ -652,14 +652,14 @@ func (a *App) clickWidget(w *widget, s hostapi.Segment, x, y int) {
 	a.Refresh()
 }
 
-// openURL is where a clicked link goes; a test swaps it.
-var openURL = proc.OpenURL
+// _openURL is where a clicked link goes; a test swaps it.
+var _openURL = proc.OpenURL
 
 // openLink hands a link to the system's browser off the UI goroutine, since
 // the opener can take a moment to start.
 func (a *App) openLink(url string) {
 	a.background(func() {
-		if err := openURL(url); err != nil {
+		if err := _openURL(url); err != nil {
 			a.Notify(slog.LevelError, "Could not open the link", err.Error())
 		}
 	})

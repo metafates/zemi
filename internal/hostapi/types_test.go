@@ -27,9 +27,9 @@ import (
 // the shipped annotations, so a member can be pinned either as a function
 // or as a field of its namespace class.
 var (
-	reAnnotatedFn    = regexp.MustCompile(`(?m)^function (zemi\.[A-Za-z0-9_.]+)\(`)
-	reAnnotatedClass = regexp.MustCompile(`(?m)^---@class (zemi\.[A-Za-z0-9_.]+)`)
-	reAnnotatedField = regexp.MustCompile(`(?m)^---@field ([A-Za-z0-9_]+)`)
+	_reAnnotatedFn    = regexp.MustCompile(`(?m)^function (zemi\.[A-Za-z0-9_.]+)\(`)
+	_reAnnotatedClass = regexp.MustCompile(`(?m)^---@class (zemi\.[A-Za-z0-9_.]+)`)
+	_reAnnotatedField = regexp.MustCompile(`(?m)^---@field ([A-Za-z0-9_]+)`)
 )
 
 // TestTypesCoverAPI fails when a zemi.* member has no annotation, so the
@@ -38,18 +38,18 @@ var (
 func TestTypesCoverAPI(t *testing.T) {
 	src := typesSource(t)
 	declared := map[string]bool{}
-	for _, m := range reAnnotatedFn.FindAllStringSubmatch(src, -1) {
+	for _, m := range _reAnnotatedFn.FindAllStringSubmatch(src, -1) {
 		declared[m[1]] = true
 	}
 	// A class member covers sub-tables a namespace holds as one value: an
 	// annotation field covers the dotted member without a function of its own.
 	var class string
 	for line := range strings.SplitSeq(src, "\n") {
-		if m := reAnnotatedClass.FindStringSubmatch(line); m != nil {
+		if m := _reAnnotatedClass.FindStringSubmatch(line); m != nil {
 			class = m[1]
 			continue
 		}
-		if m := reAnnotatedField.FindStringSubmatch(line); m != nil && class != "" {
+		if m := _reAnnotatedField.FindStringSubmatch(line); m != nil && class != "" {
 			declared[class+"."+m[1]] = true
 		}
 	}
@@ -76,7 +76,7 @@ func TestTypesDeclareNothingExtra(t *testing.T) {
 			live[ns+"."+trimLast(member)] = true // zemi.ui.overlay, from overlay.open
 		}
 	}
-	for _, m := range reAnnotatedFn.FindAllStringSubmatch(typesSource(t), -1) {
+	for _, m := range _reAnnotatedFn.FindAllStringSubmatch(typesSource(t), -1) {
 		if !live[m[1]] {
 			t.Errorf("runtime/types/zemi.lua annotates %s, which zemi does not register", m[1])
 		}
@@ -274,7 +274,7 @@ func trimLast(path string) string {
 // the Go side, so these tests keep the two in step.
 
 func TestTypesEventNames(t *testing.T) {
-	assertSameNames(t, "zemi.EventName", annotatedAlias(t, "zemi.EventName"), slices.Collect(maps.Keys(eventCatalogue)))
+	assertSameNames(t, "zemi.EventName", annotatedAlias(t, "zemi.EventName"), slices.Collect(maps.Keys(_eventCatalogue)))
 }
 
 // TestTypesEnums: each enum table's class, keyed upper-cased, and each
@@ -289,18 +289,18 @@ func TestTypesEnums(t *testing.T) {
 	}{
 		{"zemi.ProviderKind", "", strs(agent.Kinds)},
 		{"zemi.ProviderObjectMode", "", strs(agent.ObjectModes)},
-		{"zemi.Level", "", slices.Collect(maps.Keys(notifyLevels))},
-		{"zemi.ServiceStatus", "", strs(serviceStatuses)},
+		{"zemi.Level", "", slices.Collect(maps.Keys(_notifyLevels))},
+		{"zemi.ServiceStatus", "", strs(_serviceStatuses)},
 		{"zemi.TodoStatus", "", strs(store.TodoStatuses)},
 		{"zemi.ToolVerdict", "", strs(tools.PreVerdicts)},
 		{"zemi.SkillSource", "", strs(skill.Sources)},
-		{"zemi.HealthLevel", "", strs(healthLevels)},
-		{"zemi.NArgs", "", strs(nargsSpecs)},
-		{"zemi.ScrollAction", "", strs(scrollActions)},
-		{"zemi.OverlayAnchor", "", strs(overlayAnchors)},
+		{"zemi.HealthLevel", "", strs(_healthLevels)},
+		{"zemi.NArgs", "", strs(_nargsSpecs)},
+		{"zemi.ScrollAction", "", strs(_scrollActions)},
+		{"zemi.OverlayAnchor", "", strs(_overlayAnchors)},
 		{"zemi.MarkKind", "", strs(slices.Collect(maps.Keys(Marks)))},
-		{"zemi.TurnEnd", "", strs(turnEnds)},
-		{"zemi.Waiting", "", strs(waitings)},
+		{"zemi.TurnEnd", "", strs(_turnEnds)},
+		{"zemi.Waiting", "", strs(_waitings)},
 		{"zemi.SettingKind", "", strs(config.Kinds)},
 	} {
 		if c.alias != "" {

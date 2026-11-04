@@ -270,7 +270,7 @@ func traceback(th *glua.LState) string {
 	return strings.Join(lines, "\n")
 }
 
-var suspendingProto = func() *glua.FunctionProto {
+var _suspendingProto = func() *glua.FunctionProto {
 	chunk, err := parse.Parse(strings.NewReader(`local f = ... return function(...) local a, b, e = f(...) if e ~= nil then error(e, 0) end return a, b end`), "wait")
 	if err != nil {
 		panic(err)
@@ -289,7 +289,7 @@ var suspendingProto = func() *glua.FunctionProto {
 // position. A third value the waiter hands back is raised at the call, as
 // is. GuardFuncs guards the fn inside.
 func Suspending(L *glua.LState, fn *glua.LFunction) *glua.LFunction {
-	L.Push(L.NewFunctionFromProto(suspendingProto))
+	L.Push(L.NewFunctionFromProto(_suspendingProto))
 	L.Push(fn)
 	L.Call(1, 1)
 	w, _ := L.Get(-1).(*glua.LFunction)
@@ -299,7 +299,7 @@ func Suspending(L *glua.LState, fn *glua.LFunction) *glua.LFunction {
 
 // suspended is fn's inner Go function when fn is a Suspending wrapper.
 func suspended(fn *glua.LFunction) (*glua.LFunction, bool) {
-	if fn.IsG || fn.Proto != suspendingProto.FunctionPrototypes[0] {
+	if fn.IsG || fn.Proto != _suspendingProto.FunctionPrototypes[0] {
 		return nil, false
 	}
 	inner, ok := fn.Upvalues[0].Value().(*glua.LFunction)
@@ -329,7 +329,7 @@ func RaiseScriptf(L *glua.LState, format string, args ...any) {
 			continue
 		}
 		switch {
-		case fn.IsG, fn.Proto == suspendingProto.FunctionPrototypes[0]:
+		case fn.IsG, fn.Proto == _suspendingProto.FunctionPrototypes[0]:
 		case slices.Contains([]string{"", "[G]", "<string>"}, fn.Proto.SourceName):
 		default:
 			L.Error(glua.LString(msg), level+1)

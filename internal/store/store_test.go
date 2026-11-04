@@ -121,7 +121,7 @@ func TestMigrationFresh(t *testing.T) {
 		t.Fatalf("goose version after a reopen = %d, %v; want %d", again, err, version)
 	}
 	var n int
-	if err := db.db.QueryRow(`SELECT count(*) FROM sessions WHERE ` + topLevelSessions).Scan(&n); err != nil || n != 1 {
+	if err := db.db.QueryRow(`SELECT count(*) FROM sessions WHERE ` + _topLevelSessions).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("sessions = %d, %v", n, err)
 	}
 }
@@ -164,7 +164,7 @@ func TestOpenReadUnmigrated(t *testing.T) {
 		t.Fatal(err)
 	}
 	var n int
-	err = db.db.QueryRow(`SELECT count(*) FROM sessions WHERE ` + topLevelSessions).Scan(&n)
+	err = db.db.QueryRow(`SELECT count(*) FROM sessions WHERE ` + _topLevelSessions).Scan(&n)
 	db.Close()
 	if err != nil || n != 1 {
 		t.Fatalf("a migrated store reads: %d, %v", n, err)
@@ -457,7 +457,7 @@ func TestClaimForDelete(t *testing.T) {
 					}
 				}
 				var n int
-				if err := db.db.QueryRow(`SELECT count(*) FROM sessions WHERE ` + topLevelSessions).Scan(&n); err != nil || n != 2 {
+				if err := db.db.QueryRow(`SELECT count(*) FROM sessions WHERE ` + _topLevelSessions).Scan(&n); err != nil || n != 2 {
 					t.Fatalf("top-level sessions = %d, %v; want 2", n, err)
 				}
 				if c.held {

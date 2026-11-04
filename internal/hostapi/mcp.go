@@ -74,11 +74,11 @@ type mcpReg struct {
 }
 
 // no "_" in server names: mcp_<server>_<tool> must split one way
-var mcpServerName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
+var _mcpServerName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 
 // addMCP registers (or replaces) a server and starts it in the background.
 func (h *Host) addMCP(name string, spec mcpSpec) error {
-	if !mcpServerName.MatchString(name) {
+	if !_mcpServerName.MatchString(name) {
 		return fmt.Errorf("server name %q must match [a-z0-9][a-z0-9-]{0,31}", name)
 	}
 	if (spec.Command == "") == (spec.URL == "") {
@@ -139,7 +139,7 @@ func (h *Host) addMCP(name string, spec mcpSpec) error {
 // unreachable. Parked servers stay out: the config's final state decides.
 func (h *Host) checkMCPGroupName(name, group string) error {
 	if group != "" {
-		if !mcpServerName.MatchString(group) {
+		if !_mcpServerName.MatchString(group) {
 			return fmt.Errorf("group name %q must match [a-z0-9][a-z0-9-]{0,31}", group)
 		}
 		if group == name {
@@ -159,16 +159,16 @@ func (h *Host) checkMCPGroupName(name, group string) error {
 	return nil
 }
 
-// kvMCPPrefix is the kv namespace an MCP server's persisted switch lives
+// _kvMCPPrefix is the kv namespace an MCP server's persisted switch lives
 // under.
-const kvMCPPrefix = "mcp:"
+const _kvMCPPrefix = "mcp:"
 
 // mcpEnabled reads a server's persisted switch; no row, or no store, is on.
 func (h *Host) mcpEnabled(name string) bool {
 	if h.GlobalDB == nil {
 		return true
 	}
-	v, err := h.GlobalDB.GetKV(kvMCPPrefix + name)
+	v, err := h.GlobalDB.GetKV(_kvMCPPrefix + name)
 	if err != nil {
 		return true
 	}
@@ -181,10 +181,10 @@ func (h *Host) setMCPEnabled(name string, on bool) error {
 		return errors.New("MCP state store unavailable")
 	}
 	if on {
-		_, err := h.GlobalDB.DelKV(kvMCPPrefix + name)
+		_, err := h.GlobalDB.DelKV(_kvMCPPrefix + name)
 		return err
 	}
-	return h.GlobalDB.SetKV(kvMCPPrefix+name, "false")
+	return h.GlobalDB.SetKV(_kvMCPPrefix+name, "false")
 }
 
 // kvFalse reports a kv value that is the JSON false, never a string
@@ -268,8 +268,8 @@ func (h *Host) toggleMCPName(name string) error {
 	}
 }
 
-// signInTimeout is how long one sign-in flow may take.
-const signInTimeout = 5 * time.Minute
+// _signInTimeout is how long one sign-in flow may take.
+const _signInTimeout = 5 * time.Minute
 
 // keeps reports whether s can serve spec as it is: a failed server restarts,
 // one waiting for a sign-in keeps waiting, since a start would fail the same
@@ -353,7 +353,7 @@ func (h *Host) startMCP(s *mcpServer) {
 			return
 		}
 		h.Log.Warn("server failed", "origin", "mcp", "server", s.name, "error", err)
-		h.RecordError(errMCP, s.name, err.Error())
+		h.RecordError(_errMCP, s.name, err.Error())
 	}
 	client, err := mcp.Start(ctx, cfg)
 	if err != nil {
@@ -439,7 +439,7 @@ func (h *Host) checkToolNames(s *mcpServer, list []mcp.Tool) {
 		}
 	}
 	if len(unknown) > 0 {
-		h.RecordErrorOnce(errMCP, s.name, "enabled_tools or disabled_tools names no tool the server lists: "+strings.Join(unknown, ", "))
+		h.RecordErrorOnce(_errMCP, s.name, "enabled_tools or disabled_tools names no tool the server lists: "+strings.Join(unknown, ", "))
 	}
 }
 
@@ -551,14 +551,14 @@ func (w serverLogWriter) Write(p []byte) (int, error) {
 
 // tools
 
-var mcpNameUnsafe = regexp.MustCompile(`[^A-Za-z0-9_-]`)
+var _mcpNameUnsafe = regexp.MustCompile(`[^A-Za-z0-9_-]`)
 
-// mcpToolPrefix marks a tool as an MCP server's, for the model and for
+// _mcpToolPrefix marks a tool as an MCP server's, for the model and for
 // /usage's prompt breakdown.
-const mcpToolPrefix = "mcp_"
+const _mcpToolPrefix = "mcp_"
 
 func mcpToolName(server, tool string) string {
-	n := mcpToolPrefix + server + "_" + mcpNameUnsafe.ReplaceAllString(tool, "_")
+	n := _mcpToolPrefix + server + "_" + _mcpNameUnsafe.ReplaceAllString(tool, "_")
 	if len(n) > 64 {
 		n = n[:64]
 	}
@@ -622,13 +622,13 @@ func (h *Host) mcpFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 	return out
 }
 
-// mcpDeferAt is the most MCP tools whose schemas ride every step: past it
+// _mcpDeferAt is the most MCP tools whose schemas ride every step: past it
 // only the ones tool_search loaded are sent, since a big catalog costs
 // every request and is rarely called.
-const mcpDeferAt = 10
+const _mcpDeferAt = 10
 
-// mcpSearchMax is the most tools one search loads.
-const mcpSearchMax = 5
+// _mcpSearchMax is the most tools one search loads.
+const _mcpSearchMax = 5
 
 // deferMCP adds tool_search to a set holding more than mcpDeferAt MCP tools
 // and returns the names each step offers: every other tool, tool_search and
@@ -643,7 +643,7 @@ func (h *Host) deferMCP(set []fantasy.AgentTool, loaded *sync.Map) ([]fantasy.Ag
 			always = append(always, t.Info().Name)
 		}
 	}
-	if len(deferred) <= mcpDeferAt {
+	if len(deferred) <= _mcpDeferAt {
 		return set, nil
 	}
 	always = append(always, string(tools.ToolSearch))
@@ -665,7 +665,7 @@ func (h *Host) deferMCP(set []fantasy.AgentTool, loaded *sync.Map) ([]fantasy.Ag
 func seedLoaded(loaded *sync.Map, history []fantasy.Message) {
 	for _, m := range history {
 		for _, part := range m.Content {
-			if call, ok := part.(fantasy.ToolCallPart); ok && strings.HasPrefix(call.ToolName, mcpToolPrefix) {
+			if call, ok := part.(fantasy.ToolCallPart); ok && strings.HasPrefix(call.ToolName, _mcpToolPrefix) {
 				loaded.Store(call.ToolName, true)
 			}
 		}
@@ -689,7 +689,7 @@ func newToolSearch(h *Host, list []*mcpTool, loaded *sync.Map) *toolSearch {
 		byServer[m.srv.name] = append(byServer[m.srv.name], m.shortName())
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Load deferred MCP tools, callable from your next step on. Pass the names you need, space-separated, up to %d per call, or keywords matched against names, descriptions and parameters.\n\nDeferred tools by server, each named mcp_<server>_<tool>:", mcpSearchMax)
+	fmt.Fprintf(&b, "Load deferred MCP tools, callable from your next step on. Pass the names you need, space-separated, up to %d per call, or keywords matched against names, descriptions and parameters.\n\nDeferred tools by server, each named mcp_<server>_<tool>:", _mcpSearchMax)
 	for _, server := range slices.Sorted(maps.Keys(byServer)) {
 		b.WriteString("\n- " + server + ": " + strings.Join(slices.Sorted(slices.Values(byServer[server])), ", "))
 	}
@@ -774,7 +774,7 @@ func searchMCP(list []*mcpTool, query string, loaded *sync.Map) []string {
 	}
 	slices.SortStableFunc(hits, func(a, b hit) int { return b.score - a.score })
 	var out []string
-	for _, hit := range hits[:min(len(hits), mcpSearchMax)] {
+	for _, hit := range hits[:min(len(hits), _mcpSearchMax)] {
 		out = append(out, hit.name)
 	}
 	return out
@@ -782,15 +782,15 @@ func searchMCP(list []*mcpTool, query string, loaded *sync.Map) []string {
 
 // shortName is the tool's name without its mcp_<server>_ prefix.
 func (t *mcpTool) shortName() string {
-	return strings.TrimPrefix(mcpToolName(t.srv.name, t.tool.Name), mcpToolPrefix+t.srv.name+"_")
+	return strings.TrimPrefix(mcpToolName(t.srv.name, t.tool.Name), _mcpToolPrefix+t.srv.name+"_")
 }
 
-// mcpMaxImage is the read tool's ceiling on an image read at all;
-// tools.FitImage sizes what is sent. mcpMaxMedia caps an audio part, which
+// _mcpMaxImage is the read tool's ceiling on an image read at all;
+// tools.FitImage sizes what is sent. _mcpMaxMedia caps an audio part, which
 // nothing shrinks.
 const (
-	mcpMaxImage = 20 << 20
-	mcpMaxMedia = 5 << 20
+	_mcpMaxImage = 20 << 20
+	_mcpMaxMedia = 5 << 20
 )
 
 type mcpTool struct {
@@ -872,9 +872,9 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 // would drop every image in the history, or all images for the process.
 func mcpMedia(text string, data []byte, mime string, images, audio func() bool) fantasy.ToolResponse {
 	kind, _, _ := strings.Cut(mime, "/")
-	limit := mcpMaxMedia
+	limit := _mcpMaxMedia
 	if kind == "image" {
-		limit = mcpMaxImage
+		limit = _mcpMaxImage
 	}
 	var err error
 	switch {
@@ -1089,9 +1089,9 @@ func (h *Host) mcpWaitingNames() []string {
 	return names
 }
 
-// mcpMarks are the list rows' status marks, the chat's: starting spins and
+// _mcpMarks are the list rows' status marks, the chat's: starting spins and
 // a server waiting for a sign-in waits.
-var mcpMarks = map[ServiceStatus]MarkKind{
+var _mcpMarks = map[ServiceStatus]MarkKind{
 	StatusStarting: tools.MarkSpin, StatusReady: tools.MarkOK, StatusFailed: tools.MarkErr,
 	StatusSignIn: tools.MarkWait, StatusStopped: tools.MarkStop, StatusOff: tools.MarkStop,
 }
@@ -1235,7 +1235,7 @@ func (h *Host) mcpItem(s *mcpServer) OverlayItem {
 	}
 	item := OverlayItem{
 		ID: "mcp " + s.name, Text: s.name, Desc: desc,
-		Mark: mcpMarks[status], On: new(s.enabledFlag()), Run: "mcp toggle " + s.name,
+		Mark: _mcpMarks[status], On: new(s.enabledFlag()), Run: "mcp toggle " + s.name,
 		Fields: fields, Keys: keys,
 	}
 	if signIn != "" {
@@ -1303,7 +1303,7 @@ func (h *Host) signInMCP(name string) error {
 		return Usagef("%s runs a local command; only HTTP servers sign in", name)
 	}
 	h.GoSafe("mcp sign-in "+name, func() {
-		ctx, cancel := context.WithTimeout(context.Background(), signInTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), _signInTimeout)
 		defer cancel()
 		switch err := h.authorizeMCP(ctx, s); {
 		case err == nil:
@@ -1348,7 +1348,7 @@ func (h *Host) authorizeMCP(ctx context.Context, s *mcpServer) error {
 	s.mu.Unlock()
 	h.mcpChanged()
 	if err != nil && !errors.Is(err, context.Canceled) {
-		h.RecordError(errMCP, s.name, err.Error())
+		h.RecordError(_errMCP, s.name, err.Error())
 		h.Alert(slog.LevelError, "Could not sign in to "+s.name, err.Error())
 	}
 	return err
@@ -1390,7 +1390,7 @@ func (h *Host) signInAllMCP() error {
 			if !idle {
 				continue // signed in since, already waiting, or another flow holds it
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), signInTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), _signInTimeout)
 			done := h.Busy("Signing in to "+name, cancel)
 			aborted := false
 			func() {

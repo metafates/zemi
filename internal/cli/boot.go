@@ -248,7 +248,7 @@ func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App) []lua.BootStep {
 		[]lua.BootStep{soft(trust.step())},
 		soft(h.PluginsStep()),
 		[]lua.BootStep{
-			soft(lua.LoadFileStep(initStep, filepath.Join(h.Dirs.ConfigHome, "init.lua"), lua.OriginUser)),
+			soft(lua.LoadFileStep(_initStep, filepath.Join(h.Dirs.ConfigHome, "init.lua"), lua.OriginUser)),
 			soft(h.SkillsUserHooksStep()),
 		},
 		app != nil,
@@ -601,9 +601,9 @@ func stopCompleter(set func(*hostapi.Host) bool) func(h *hostapi.Host, lead, lin
 	}
 }
 
-// initStep is the user init.lua step's name, which softStep blames a broken
+// _initStep is the user init.lua step's name, which softStep blames a broken
 // config on (Host.SetInitError).
-const initStep = "init"
+const _initStep = "init"
 
 // softStep keeps a failing config step (a typo in init.lua, a broken plugin)
 // from stopping boot: the error goes to the log and
@@ -615,11 +615,11 @@ func softStep(h *hostapi.Host, headless bool, s lua.BootStep) lua.BootStep {
 	run := s.Run
 	s.Run = func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
 		err := run(ctx, r, g)
-		if s.Name == initStep {
+		if s.Name == _initStep {
 			h.SetInitError("")
 		}
 		if err != nil {
-			if s.Name == initStep {
+			if s.Name == _initStep {
 				h.SetInitError(hostapi.Headline(err.Error()))
 			}
 			h.Log.Error(s.Name+" failed", "origin", "boot", "error", err)

@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// keepLogs bounds the log directory: one file per launch, newest kept.
-const keepLogs = 20
+// _keepLogs bounds the log directory: one file per launch, newest kept.
+const _keepLogs = 20
 
 // New returns a logger writing one record per line to a new file under
 // dir, the level var its handler reads, the file's path, and the func that
@@ -23,7 +23,7 @@ func New(dir string) (*slog.Logger, *slog.LevelVar, string, func()) {
 	if dir == "" || os.MkdirAll(dir, 0o755) != nil {
 		return slog.New(slog.DiscardHandler), &slog.LevelVar{}, "", func() {}
 	}
-	prune(dir, keepLogs)
+	prune(dir, _keepLogs)
 	path := filepath.Join(dir, time.Now().Format("2006-01-02_150405.000000000")+".log")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {

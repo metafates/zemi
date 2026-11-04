@@ -70,7 +70,7 @@ func TestShellChanges(t *testing.T) {
 			t.Errorf("diff lacks %q:\n%s", want, diff)
 		}
 	}
-	for _, bad := range []string{"ignored", "tool.txt", "staged.txt", snapOverlap} {
+	for _, bad := range []string{"ignored", "tool.txt", "staged.txt", _snapOverlap} {
 		if strings.Contains(diff, bad) {
 			t.Errorf("diff holds %q:\n%s", bad, diff)
 		}
@@ -88,7 +88,7 @@ func TestShellChanges(t *testing.T) {
 	first, second := h.shellChanges(dir), h.shellChanges(dir)
 	write("b.txt", "b\n")
 	first()
-	if _, diff, _ := second(); !strings.HasPrefix(diff, snapOverlap) {
+	if _, diff, _ := second(); !strings.HasPrefix(diff, _snapOverlap) {
 		t.Errorf("overlap not labeled:\n%s", diff)
 	}
 

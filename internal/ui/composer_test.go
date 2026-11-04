@@ -103,8 +103,8 @@ func TestDraftCap(t *testing.T) {
 	for range 30 {
 		app.composerKey("x", tea.KeyPressMsg{Text: chunk})
 	}
-	if got := utf8.RuneCountInString(app.composer.text); got > maxDraftChars || got <= maxDraftChars-len(chunk) {
-		t.Fatalf("the draft holds %d runes, want the cap %d minus one refused chunk", got, maxDraftChars)
+	if got := utf8.RuneCountInString(app.composer.text); got > _maxDraftChars || got <= _maxDraftChars-len(chunk) {
+		t.Fatalf("the draft holds %d runes, want the cap %d minus one refused chunk", got, _maxDraftChars)
 	}
 	if toast := lastToast(app); !strings.Contains(toast, "20k") {
 		t.Fatalf("the cap toasted %q", toast)
@@ -135,17 +135,17 @@ func TestDraftCap(t *testing.T) {
 // a flood of them recomposes nothing.
 func TestOverCapDraft(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
-	over := strings.Repeat("x", maxDraftChars+1000)
+	over := strings.Repeat("x", _maxDraftChars+1000)
 	app.composer.text, app.composer.cursor = over, utf8.RuneCountInString(over)
 
 	// one backspace trims one cluster and keeps the rest, still over cap
 	app.composerKey("backspace", tea.KeyPressMsg{})
-	if got := utf8.RuneCountInString(app.composer.text); got != maxDraftChars+999 {
-		t.Fatalf("backspace left %d runes, want %d intact", got, maxDraftChars+999)
+	if got := utf8.RuneCountInString(app.composer.text); got != _maxDraftChars+999 {
+		t.Fatalf("backspace left %d runes, want %d intact", got, _maxDraftChars+999)
 	}
 	// enter refuses whole: the draft stands and the cap toasted
 	app.submitComposer()
-	if got := utf8.RuneCountInString(app.composer.text); got != maxDraftChars+999 {
+	if got := utf8.RuneCountInString(app.composer.text); got != _maxDraftChars+999 {
 		t.Fatalf("enter left %d runes, want the draft kept", got)
 	}
 	if toast := lastToast(app); !strings.Contains(toast, "20k") {
@@ -177,7 +177,7 @@ func TestOverCapDraft(t *testing.T) {
 		}
 		t.Fatal("a refused keystroke marked the frame")
 	}
-	if got := utf8.RuneCountInString(app.composer.text); got != maxDraftChars+1000 {
+	if got := utf8.RuneCountInString(app.composer.text); got != _maxDraftChars+1000 {
 		t.Fatalf("the flood left %d runes, want the draft untouched", got)
 	}
 }
@@ -199,8 +199,8 @@ func TestCapNeverClamps(t *testing.T) {
 		return app.composer.history[n-1]
 	}
 	// a 20000-char draft sends whole: the submit event saw every byte
-	app.composer.text = strings.Repeat("x", maxDraftChars)
-	app.composer.cursor = maxDraftChars
+	app.composer.text = strings.Repeat("x", _maxDraftChars)
+	app.composer.cursor = _maxDraftChars
 	app.submitComposer()
 	if got := sent(); got != "reached whole" {
 		t.Fatalf("the send boundary sent %q, want the draft at the cap whole", got)
@@ -209,14 +209,14 @@ func TestCapNeverClamps(t *testing.T) {
 	// one keystroke past the cap is refused: the draft holds the cap, no
 	// character of the user's text was dropped
 	app.clearComposer()
-	app.composer.text = strings.Repeat("x", maxDraftChars)
-	app.composer.cursor = maxDraftChars
+	app.composer.text = strings.Repeat("x", _maxDraftChars)
+	app.composer.cursor = _maxDraftChars
 	app.composerKey("y", tea.KeyPressMsg{Text: "y"})
-	if got := utf8.RuneCountInString(app.composer.text); got != maxDraftChars || strings.ContainsRune(app.composer.text, 'y') {
+	if got := utf8.RuneCountInString(app.composer.text); got != _maxDraftChars || strings.ContainsRune(app.composer.text, 'y') {
 		t.Fatalf("the past-cap keystroke left %d runes, want the cap kept whole", got)
 	}
 	// a 20001-char paste rides its token whole and enter refuses it whole
-	big := strings.Repeat("p", maxDraftChars+1)
+	big := strings.Repeat("p", _maxDraftChars+1)
 	app.clearComposer()
 	app.Update(tea.PasteMsg{Content: big})
 	if got := app.composer.expand(app.composer.text); got != big {
@@ -321,10 +321,10 @@ func TestComposerHistory(t *testing.T) {
 	if len(c2.history) != 2 || c2.history[0] != "two" {
 		t.Fatalf("duplicate: %#v", c2.history)
 	}
-	for i := range historyCap {
+	for i := range _historyCap {
 		c2.pushHistory(strconv.Itoa(i))
 	}
-	if len(c2.history) != historyCap || c2.history[0] != "0" {
+	if len(c2.history) != _historyCap || c2.history[0] != "0" {
 		t.Fatalf("cap: %d entries from %q", len(c2.history), c2.history[0])
 	}
 }
@@ -395,8 +395,8 @@ func TestComposerHiddenRows(t *testing.T) {
 		for i, r := range rows {
 			got[i] = r[0].Fade
 		}
-		if len(rows) != composerMaxRows || !slices.EqualFunc(got, c.want, near) {
-			t.Errorf("%s: %d rows %v, want %d %v", c.name, len(rows), got, composerMaxRows, c.want)
+		if len(rows) != _composerMaxRows || !slices.EqualFunc(got, c.want, near) {
+			t.Errorf("%s: %d rows %v, want %d %v", c.name, len(rows), got, _composerMaxRows, c.want)
 		}
 	}
 }
@@ -1249,8 +1249,8 @@ func TestCompletionListingCaps(t *testing.T) {
 	}
 	app.composer.text, app.composer.cursor = "@"+out+"/", len("@"+out+"/")
 	app.updateCompletion()
-	if got := len(app.completion.paths); got != listMaxFiles {
-		t.Fatalf("candidates: %d, want %d", got, listMaxFiles)
+	if got := len(app.completion.paths); got != _listMaxFiles {
+		t.Fatalf("candidates: %d, want %d", got, _listMaxFiles)
 	}
 	var dirs int
 	for _, r := range app.completion.paths {
@@ -1258,12 +1258,12 @@ func TestCompletionListingCaps(t *testing.T) {
 			dirs++
 		}
 	}
-	if dirs != listMaxFiles/2 {
-		t.Fatalf("dirs: %d, want %d", dirs, listMaxFiles/2)
+	if dirs != _listMaxFiles/2 {
+		t.Fatalf("dirs: %d, want %d", dirs, _listMaxFiles/2)
 	}
 	app.completion.selected = app.completion.count() - 1
 	app.acceptCompletion()
-	if got := app.composer.text; got != "@"+out+fmt.Sprintf("/f%03d.txt ", listMaxFiles/2-1) {
+	if got := app.composer.text; got != "@"+out+fmt.Sprintf("/f%03d.txt ", _listMaxFiles/2-1) {
 		t.Fatalf("the last row accepted as %q", got)
 	}
 }
@@ -1275,7 +1275,7 @@ func TestCompletionListWidth(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
 	app.composerKey("@", tea.KeyPressMsg{Text: "@"})
 	files := []string{"a/deeply/nested/a_really_long_file_name_here.txt"}
-	for i := range 2 * listMaxFiles {
+	for i := range 2 * _listMaxFiles {
 		files = append(files, fmt.Sprintf("f%03d.go", i))
 	}
 	app.onFilesScanned(filesScannedMsg{gen: app.completion.walkGen, files: files})
@@ -1288,7 +1288,7 @@ func TestCompletionListWidth(t *testing.T) {
 	// and agents, which the files cap never governed
 	app.completion.selected = len(app.completion.matches) - 1
 	rows := app.completionRows(76, 10, 0)
-	if w := hostapi.SegsWidth(rows[1]); w != first || len(app.completion.matches) != listMaxFiles {
+	if w := hostapi.SegsWidth(rows[1]); w != first || len(app.completion.matches) != _listMaxFiles {
 		t.Fatalf("width %d then %d, %d file matches", first, w, len(app.completion.matches))
 	}
 }
@@ -1298,8 +1298,8 @@ func TestCompletionListWidth(t *testing.T) {
 // matches keeps the size it had.
 func TestCompletionPopupRefits(t *testing.T) {
 	app, _ := bootAgentApp(t, 100, 30)
-	files := make([]string, 0, listMaxFiles+1)
-	for i := range listMaxFiles {
+	files := make([]string, 0, _listMaxFiles+1)
+	for i := range _listMaxFiles {
 		files = append(files, fmt.Sprintf("f%03d.go", i))
 	}
 	files = append(files, "a/really/long/project/path/that/stretches/the/popup/wide.go")

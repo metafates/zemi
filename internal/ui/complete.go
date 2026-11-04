@@ -46,23 +46,23 @@ type wordCompleter struct {
 	dirPending string   // the directory a listing fetch is in flight for
 }
 
-// scanMaxFiles caps the scan so a walk that never ends cannot eat memory.
-const scanMaxFiles = 50000
+// _scanMaxFiles caps the scan so a walk that never ends cannot eat memory.
+const _scanMaxFiles = 50000
 
-// dirMaxFiles caps one directory's share of the scan, so a directory of
+// _dirMaxFiles caps one directory's share of the scan, so a directory of
 // small files cannot eat the whole corpus on its own.
-const dirMaxFiles = 2000
+const _dirMaxFiles = 2000
 
-// listMaxFiles caps the matches and the directory candidates the popup
+// _listMaxFiles caps the matches and the directory candidates the popup
 // lists: every frame builds the whole list, and nobody scrolls past a few
 // hundred paths to find one.
-const listMaxFiles = 200
+const _listMaxFiles = 200
 
-// dirListWait bounds a directory listing, the bound git's file listing
+// _dirListWait bounds a directory listing, the bound git's file listing
 // takes too (tools.listWait, fs_tools.go:1045).
-const dirListWait = 2 * time.Second
+const _dirListWait = 2 * time.Second
 
-const completionMaxRows = 10
+const _completionMaxRows = 10
 
 // updateCompletion recomputes both popups after a composer edit: the
 // palette, and the completion whose token is the text between a trigger
@@ -431,7 +431,7 @@ func readDir(dir string) []string {
 		n := 0
 		for _, de := range des {
 			if de.IsDir() {
-				if n++; n > scanMaxFiles {
+				if n++; n > _scanMaxFiles {
 					break // NOTE: a directory past the scan ceiling narrows its first scanMaxFiles entries
 				}
 				out = append(out, de.Name()+"/")
@@ -440,7 +440,7 @@ func readDir(dir string) []string {
 		n = 0
 		for _, de := range des {
 			if !de.IsDir() {
-				if n++; n > scanMaxFiles {
+				if n++; n > _scanMaxFiles {
 					break
 				}
 				out = append(out, de.Name())
@@ -451,7 +451,7 @@ func readDir(dir string) []string {
 	select {
 	case out := <-ch:
 		return out
-	case <-time.After(dirListWait):
+	case <-time.After(_dirListWait):
 		return nil
 	}
 }
@@ -481,7 +481,7 @@ func (a *App) repaths() {
 	// a word typed ranks the candidates by score, like the Files section;
 	// a bare listing keeps the directory's own order
 	if base != "" {
-		hits = hostapi.Rank(hits, f.dirList, listMaxFiles)
+		hits = hostapi.Rank(hits, f.dirList, _listMaxFiles)
 	}
 	// each kind keeps half the list, so a directory dense in one kind
 	// cannot hide the other from the bare listing
@@ -491,7 +491,7 @@ func (a *App) repaths() {
 		if strings.HasSuffix(f.dirList[h.Index], "/") {
 			k = 1
 		}
-		if kept[k] >= listMaxFiles/2 {
+		if kept[k] >= _listMaxFiles/2 {
 			continue
 		}
 		kept[k]++
@@ -517,7 +517,7 @@ func (f *wordCompleter) rematch() {
 	}
 	if _, _, ok := pathToken(rest); !ok {
 		if rest == "" {
-			f.matches = hostapi.Match("", f.files[:min(len(f.files), listMaxFiles)], nil)
+			f.matches = hostapi.Match("", f.files[:min(len(f.files), _listMaxFiles)], nil)
 		} else {
 			// chunks of the tree match at once: scoring the thousands of hits
 			// a short token has in a big tree takes longer than a keystroke
@@ -531,7 +531,7 @@ func (f *wordCompleter) rematch() {
 				})
 			}
 			wg.Wait()
-			f.matches = hostapi.Rank(slices.Concat(best...), f.files, listMaxFiles)
+			f.matches = hostapi.Rank(slices.Concat(best...), f.files, _listMaxFiles)
 		}
 	}
 	f.trim()
@@ -560,7 +560,7 @@ func (f *wordCompleter) matchFiles(lo, hi int, token string) []hostapi.Hit {
 	for i := range hits {
 		hits[i].Index += lo
 	}
-	return hostapi.Rank(hits, f.files, listMaxFiles)
+	return hostapi.Rank(hits, f.files, _listMaxFiles)
 }
 
 // candRows are completion candidates as list rows under section; a path
@@ -739,9 +739,9 @@ func (f *wordCompleter) kindWord(kind, name string) string {
 // their blank. No skill matches, no cap: narrowing does the work.
 func (f *wordCompleter) fileCap() int {
 	if len(f.skillRows) == 0 {
-		return listMaxFiles
+		return _listMaxFiles
 	}
-	n := completionMaxRows - 4
+	n := _completionMaxRows - 4
 	if len(f.extra) > 0 {
 		n -= len(f.extra) + 1
 	}
@@ -815,7 +815,7 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 		if f.dirPending != "" && f.dirPending == a.resolveDir(rest) {
 			return [][]hostapi.Segment{note("listing…")}
 		}
-		return emptyRows(noMatches, maxW)
+		return emptyRows(_noMatches, maxW)
 	}
 	var items []listItem
 	if kind == "" { // a kind filter is not a Lua source's
@@ -828,7 +828,7 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	items = append(items, f.paths...)
 	items = append(items, f.skillRows...)
 	items = append(items, f.entityRows...)
-	return listRowsW(items, items, f.selected, &f.view, min(completionMaxRows, room), minW, maxW)
+	return listRowsW(items, items, f.selected, &f.view, min(_completionMaxRows, room), minW, maxW)
 }
 
 // scanFilesCmd lists the project's files off the UI goroutine.
@@ -875,7 +875,7 @@ func walkFiles(ctx context.Context, root string) []string {
 				cur, n = dir, 0
 			}
 			n++
-			if n > dirMaxFiles {
+			if n > _dirMaxFiles {
 				return filepath.SkipDir
 			}
 		}
@@ -887,7 +887,7 @@ func walkFiles(ctx context.Context, root string) []string {
 			rel += "/"
 		}
 		files = append(files, filepath.ToSlash(rel))
-		if len(files) >= scanMaxFiles {
+		if len(files) >= _scanMaxFiles {
 			return filepath.SkipAll
 		}
 		return nil

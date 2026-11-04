@@ -160,10 +160,10 @@ func TestVerifyLockOrderUnderTurnContention(t *testing.T) {
 	close(stop)
 	wg.Wait()
 	tr := h.Session().Transcript
-	if len(tr) > chatWindowRows {
-		t.Fatalf("the window holds %d rows, bound %d", len(tr), chatWindowRows)
+	if len(tr) > _chatWindowRows {
+		t.Fatalf("the window holds %d rows, bound %d", len(tr), _chatWindowRows)
 	}
-	if total := appendedSettled.Load() + appendedLive.Load(); total > 2*chatWindowRows && h.trCut.Load() == 0 {
+	if total := appendedSettled.Load() + appendedLive.Load(); total > 2*_chatWindowRows && h.trCut.Load() == 0 {
 		t.Fatalf("no trim ran in %d appends", total)
 	}
 }
@@ -197,14 +197,14 @@ func TestVerifyUnstoreGoalTOCTOU(t *testing.T) {
 	}
 	lost := ""
 	for i := 0; i < 4000 && lost == ""; i++ {
-		if err := h.DB.SetKV(goalKV, row(101)); err != nil {
+		if err := h.DB.SetKV(_goalKV, row(101)); err != nil {
 			t.Fatal(err)
 		}
 		runtime.Gosched() // the deleter reads goal one here
-		if err := h.DB.SetKV(goalKV, row(102)); err != nil {
+		if err := h.DB.SetKV(_goalKV, row(102)); err != nil {
 			t.Fatal(err)
 		}
-		if raw, err := h.DB.GetKV(goalKV); err != nil || raw != row(102) {
+		if raw, err := h.DB.GetKV(_goalKV); err != nil || raw != row(102) {
 			lost = fmt.Sprintf("round %d: the writer's row(102) is %q (%v) after its write", i, raw, err)
 		}
 	}

@@ -21,30 +21,30 @@ import (
 )
 
 const (
-	railKeep    = 6      // a rail keeps its last entries, the earlier behind one row
-	railEdge    = 4      // the air a rail row keeps after the text it cuts
-	noticesKeep = 3      // notice rows of one burst kept in view
-	sinkRows    = 4      // a clipped block's first rows sink at its top
-	prose       = 80     // the widest a thought draws, in cells
-	hang        = "  ⎿ " // a detail row hangs under its head by one corner
-	indent      = "    " // every later row stands the same cells in
+	_railKeep    = 6      // a rail keeps its last entries, the earlier behind one row
+	_railEdge    = 4      // the air a rail row keeps after the text it cuts
+	_noticesKeep = 3      // notice rows of one burst kept in view
+	_sinkRows    = 4      // a clipped block's first rows sink at its top
+	_prose       = 80     // the widest a thought draws, in cells
+	_hang        = "  ⎿ " // a detail row hangs under its head by one corner
+	_indent      = "    " // every later row stands the same cells in
 )
 
 // runMode is how a run of activity rows draws.
 type runMode int
 
 const (
-	runNone   runMode = iota // not a run of activity: the row stands alone
-	runFold                  // its digest alone
-	runUnfold                // that digest over its whole rail
-	runRail                  // a rail of one row per step: the live turn, a view
+	_runNone   runMode = iota // not a run of activity: the row stands alone
+	_runFold                  // its digest alone
+	_runUnfold                // that digest over its whole rail
+	_runRail                  // a rail of one row per step: the live turn, a view
 )
 
 // the window fill: a pass draws the view plus this slack at once, and the
-// older rows it still owes another fillBudget at a time (DESIGN §Rendering loop).
+// older rows it still owes another _fillBudget at a time (DESIGN §Rendering loop).
 const (
-	fillSlack  = 60
-	fillBudget = 30 * time.Millisecond
+	_fillSlack  = 60
+	_fillBudget = 30 * time.Millisecond
 )
 
 // blockKind is the block a row belongs to: blocks stand one blank row apart,
@@ -52,13 +52,13 @@ const (
 type blockKind int
 
 const (
-	blockNone blockKind = iota
-	blockUser
-	blockActivity
-	blockText
-	blockNote
-	blockStats
-	blockQueued
+	_blockNone blockKind = iota
+	_blockUser
+	_blockActivity
+	_blockText
+	_blockNote
+	_blockStats
+	_blockQueued
 )
 
 // entry is one row the chat draws: a settled transcript row or a live call,
@@ -136,10 +136,10 @@ func activity(e entry) bool { return e.kind == hostapi.RowReasoning || e.kind ==
 // notice says whether a row is a notice: a burst of them draws as one block.
 func notice(e entry) bool { return e.kind == hostapi.RowNotice }
 
-// markOf is how a finished row's status marks it. A call running or not
+// _markOf is how a finished row's status marks it. A call running or not
 // started yet spins, unless the open prompt asks about it: that one waits on
 // the user, so it neither spins nor counts.
-var markOf = map[hostapi.CallStatus]tools.MarkKind{
+var _markOf = map[hostapi.CallStatus]tools.MarkKind{
 	hostapi.CallOK: tools.MarkOK, hostapi.CallErr: tools.MarkErr, hostapi.CallStopped: tools.MarkStop,
 	hostapi.CallBG: tools.MarkBG, hostapi.CallWarn: tools.MarkWarn,
 }
@@ -169,10 +169,10 @@ func airRow() []hostapi.Segment {
 // sink is how far a clipped block's row at k sinks toward the surface: its
 // first rows, deepest first, easing off as the hidden rows come back.
 func sink(k, past int) float64 {
-	if k >= sinkRows || past == 0 {
+	if k >= _sinkRows || past == 0 {
 		return 0
 	}
-	return float64(sinkRows-k) / (sinkRows + 1) * min(1, float64(past)/sinkRows)
+	return float64(_sinkRows-k) / (_sinkRows + 1) * min(1, float64(past)/_sinkRows)
 }
 
 // settling says whether the next flush settles a call beside the thought: the
@@ -210,8 +210,8 @@ func relPath(s, cwd, home string) string {
 	return strings.ReplaceAll(s, cwd+"/", "")
 }
 
-// verb is what a tool call does, as its row and the working rule say it.
-var verb = map[string]string{
+// _verb is what a tool call does, as its row and the working rule say it.
+var _verb = map[string]string{
 	"read": "Read", "write": "Write", "edit": "Edit", "glob": "Find", "grep": "Search", "shell": "Run",
 	"job_start": "Start", "job_read": "Check", "job_list": "List jobs", "job_kill": "Stop",
 	"todos": "Update", "question": "Ask", "plan": "Plan", "skill": "Load skill", "tool_search": "Find tools",
@@ -222,10 +222,10 @@ var verb = map[string]string{
 // many. A family with no noun is a verb alone and never counts.
 type noun struct{ verb, one, many string }
 
-// countFamilies are the call families a digest counts. A call of any other
+// _countFamilies are the call families a digest counts. A call of any other
 // name keeps a row of its own, and family adds the entry an MCP call counts
 // under.
-var countFamilies = map[string]noun{
+var _countFamilies = map[string]noun{
 	"read":        {"read", "file", "files"},
 	"glob":        {"searched for", "pattern", "patterns"},
 	"grep":        {"searched for", "pattern", "patterns"},
@@ -248,7 +248,7 @@ var countFamilies = map[string]noun{
 // and a server name holds no "_", one entry per server however many of its
 // tools ran.
 func family(name string) (noun, bool) {
-	if f, ok := countFamilies[name]; ok {
+	if f, ok := _countFamilies[name]; ok {
 		return f, true
 	}
 	rest, ok := strings.CutPrefix(name, "mcp_")
@@ -271,9 +271,9 @@ func oneName(calls []entry) string {
 	return calls[0].name()
 }
 
-// waits are the calls the turn waits on: their work is another agent loop, so
+// _waits are the calls the turn _waits on: their work is another agent loop, so
 // nothing streams until they end and their row says what holds the turn.
-var waits = map[string]bool{"agent": true, "workflow": true}
+var _waits = map[string]bool{"agent": true, "workflow": true}
 
 // gateStopped is a call the permission gate stopped: denied or dismissed, the
 // reader's own act. An interrupted call's stop the turn's own row tells.
@@ -306,7 +306,7 @@ func counted(e entry) bool {
 // waitOnly is a call the turn only waited on: its row names the waiting,
 // which a digest would fold into a run that never started.
 func waitOnly(e entry) bool {
-	if !waits[e.name()] {
+	if !_waits[e.name()] {
 		return false
 	}
 	if e.text == "all" {
@@ -379,7 +379,7 @@ func counts(calls []entry, commands []string, withVerb bool) string {
 	}
 	var parts []string
 	ran := ""
-	shell := countFamilies["shell"]
+	shell := _countFamilies["shell"]
 	for _, key := range order {
 		k := fam[key]
 		var part string
@@ -435,7 +435,7 @@ func headText(name, label, input string, status hostapi.CallStatus) (string, str
 		rest = " " + input
 	}
 	waiting := status == hostapi.CallRun || status == hostapi.CallWait
-	if waits[name] && input == "all" {
+	if _waits[name] && input == "all" {
 		if waiting {
 			return "waiting for", " all agents and workflows"
 		}
@@ -447,7 +447,7 @@ func headText(name, label, input string, status hostapi.CallStatus) (string, str
 		}
 		return "waited on", " workflow " + id
 	}
-	if status == hostapi.CallRun && waits[name] {
+	if status == hostapi.CallRun && _waits[name] {
 		return "waiting on " + name, rest
 	}
 	if name == "shell" && label != "" {
@@ -457,7 +457,7 @@ func headText(name, label, input string, status hostapi.CallStatus) (string, str
 		}
 		return word, ""
 	}
-	return cmp.Or(verb[name], title(name)), rest
+	return cmp.Or(_verb[name], title(name)), rest
 }
 
 // thoughtText is how long a thought took, as a digest or a thought row says it.
@@ -580,7 +580,7 @@ func digest(rows []entry, first, last int, cwd, home string) string {
 	if len(fails) > 0 {
 		switch {
 		case len(fails) == 1 && len(calls) == 0:
-			name := lower(cmp.Or(verb[fails[0].name()], title(fails[0].name())))
+			name := lower(cmp.Or(_verb[fails[0].name()], title(fails[0].name())))
 			if fails[0].status == hostapi.CallStopped {
 				parts = append(parts, name+" "+stoppedWhy(fails[0].output))
 				break
@@ -682,7 +682,7 @@ func chatWidget(h *hostapi.Host) *widget {
 		md: map[string][][]hostapi.Segment{}, hl: map[string][]hostapi.Segment{},
 	}
 	return &widget{
-		id: "chat", region: regionChat, priority: 10, wrap: true,
+		id: "chat", region: _regionChat, priority: 10, wrap: true,
 		render:  func(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) { return f.render(h, st) },
 		onClick: f.click,
 	}
@@ -797,7 +797,7 @@ func (b *chatBuilder) push(row []hostapi.Segment) { b.lines = append(b.lines, ro
 
 // gap stands one blank row between blocks, activity rows staying together.
 func (b *chatBuilder) gap(block blockKind) {
-	if b.prev != blockNone && !(b.prev == blockActivity && block == blockActivity) {
+	if b.prev != _blockNone && !(b.prev == _blockActivity && block == _blockActivity) {
 		b.push([]hostapi.Segment{{Text: ""}})
 	}
 	b.prev = block
@@ -904,7 +904,7 @@ func (b *chatBuilder) user(text string, waiting bool) {
 // but a click acts as the row above them.
 func (b *chatBuilder) reasoning(text string, tail int, click string) {
 	text = strings.TrimRight(text, " \t\n\v\f\r")
-	body := hostapi.WrapText(text, max(min(b.width-4, prose), 20))
+	body := hostapi.WrapText(text, max(min(b.width-4, _prose), 20))
 	from := 0
 	if tail > 0 {
 		from = max(0, len(body)-tail)
@@ -950,7 +950,7 @@ func (b *chatBuilder) group(group []entry, click string) {
 	b.push([]hostapi.Segment{
 		barSeg(""),
 		railMark(tools.MarkOK, click),
-		{Text: clipText(b.said(group), b.width-4-railEdge), HL: "Normal", Click: click},
+		{Text: clipText(b.said(group), b.width-4-_railEdge), HL: "Normal", Click: click},
 	})
 }
 
@@ -991,7 +991,7 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 		below = "│ "
 	}
 	// a running row reads Dim beside its spinner until it ends
-	_, known := markOf[t.status]
+	_, known := _markOf[t.status]
 	dim := !asked && !known
 	inner := b.width - 2
 	if pad != "" {
@@ -1020,7 +1020,7 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 	if sw > 0 {
 		room -= sw + 2
 	} else {
-		room -= 1 + railEdge
+		room -= 1 + _railEdge
 	}
 	// a command is highlighted where it is what the row reads, the head; under
 	// its label it stays a Dim detail
@@ -1047,7 +1047,7 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 	} else if looks(t) {
 		vhl = "Normal"
 	}
-	kind := markOf[t.status]
+	kind := _markOf[t.status]
 	if asked {
 		kind = tools.MarkWait
 	} else if !known {
@@ -1077,7 +1077,7 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 	}
 	first := len(b.lines)
 	b.push(b.suffixed(head, tail, click))
-	hangLead, indentLead := hang, indent
+	hangLead, indentLead := _hang, _indent
 	if pad != "" {
 		hangLead, indentLead = "⎿ ", "  "
 	}
@@ -1109,7 +1109,7 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 			if code != nil {
 				detail(code)
 			} else {
-				detailText(clipText(input, inner-2-railEdge), "Dim")
+				detailText(clipText(input, inner-2-_railEdge), "Dim")
 			}
 		}
 		// a zoom or date row previews the line it opened: the first line only,
@@ -1119,12 +1119,12 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 			if i := strings.IndexByte(line, '|'); i > 0 && zoomHead(line[:i]) {
 				line = line[i+1:]
 			}
-			if line = clipText(oneLineText(line), inner-2-railEdge); line != "" {
+			if line = clipText(oneLineText(line), inner-2-_railEdge); line != "" {
 				detailText(line, "Dim")
 			}
 		}
 		if t.detail != "" {
-			detailText(clipText(oneLineText(t.detail), inner-2-railEdge), "Dim")
+			detailText(clipText(oneLineText(t.detail), inner-2-_railEdge), "Dim")
 		}
 		// the job a timed-out command went on as opens its own view; the
 		// wording holds after the job exits and after a restart
@@ -1286,14 +1286,14 @@ func (b *chatBuilder) digestRow(text, click string, pin hostapi.Pin, open bool) 
 	}
 	b.push([]hostapi.Segment{
 		{Text: glyph, HL: "Dim", NoCopy: true, NoHover: true, Click: click, Pin: pin},
-		{Text: clipText(text, max(b.width-railEdge-2, 6)), HL: "Dim", Click: click, Pin: pin},
+		{Text: clipText(text, max(b.width-_railEdge-2, 6)), HL: "Dim", Click: click, Pin: pin},
 	})
 }
 
 // noteRow is a notice row: the status mark it came in with, what it says, and
 // any detail in brackets after it.
 func (b *chatBuilder) noteRow(status hostapi.CallStatus, text, detail, click string) []hostapi.Segment {
-	kind, ok := markOf[status]
+	kind, ok := _markOf[status]
 	if !ok {
 		kind = tools.MarkNote
 	}
@@ -1307,8 +1307,8 @@ func (b *chatBuilder) noteRow(status hostapi.CallStatus, text, detail, click str
 // notices draws a burst of notice rows as one block, no blank row between
 // them: the older ones of a long burst sit behind one row a click opens.
 func (b *chatBuilder) notices(list []entry, first, last int) {
-	b.gap(blockNote)
-	hidden := last - first + 1 - noticesKeep
+	b.gap(_blockNote)
+	hidden := last - first + 1 - _noticesKeep
 	if hidden > 1 {
 		key := keyOf(b.st.TranscriptCut, first+1)
 		open := b.folds.whole[key]
@@ -1317,7 +1317,7 @@ func (b *chatBuilder) notices(list []entry, first, last int) {
 			{Text: foldLabel(open, hidden), HL: "Dim", Click: "more:" + strconv.FormatInt(key, 10)},
 		})
 		if !open {
-			first = last - noticesKeep + 1
+			first = last - _noticesKeep + 1
 		}
 	}
 	for i := first; i <= last; i++ {
@@ -1360,7 +1360,7 @@ func (b *chatBuilder) rail(list []entry, first, last int, o railOpts) {
 		i = nextStep(list, i, last)
 		n++
 	}
-	n -= railKeep
+	n -= _railKeep
 	from := first
 	if n >= 2 && !b.folds.whole[key] {
 		for range n {
@@ -1495,16 +1495,16 @@ func (b *chatBuilder) unit(tr []entry, first, last int, mode runMode) {
 	start := len(b.lines)
 	content := -1 // where the message ends, -1 for all of it
 	switch {
-	case mode == runFold || mode == runUnfold:
-		b.gap(blockActivity)
-		b.foldRun(tr, first, last, mode == runUnfold)
-	case mode == runRail:
-		b.gap(blockActivity)
+	case mode == _runFold || mode == _runUnfold:
+		b.gap(_blockActivity)
+		b.foldRun(tr, first, last, mode == _runUnfold)
+	case mode == _runRail:
+		b.gap(_blockActivity)
 		b.rail(tr, first, last, railOpts{run: first + 1})
 	case m.kind == hostapi.RowShell:
 		// a shell command: the command, then its output, already cut to a head
 		// and a tail by the host; a failure's mark takes the prompt's place
-		b.gap(blockUser)
+		b.gap(_blockUser)
 		head := []hostapi.Segment{{Text: "$ ", HL: "PromptShell", NoCopy: true}}
 		if m.status == hostapi.CallErr {
 			head[0] = railMark(tools.MarkErr, "")
@@ -1517,7 +1517,7 @@ func (b *chatBuilder) unit(tr []entry, first, last int, mode runMode) {
 		b.notices(tr, first, last)
 	case m.kind == hostapi.RowError:
 		// the headline, then the raw error as its detail
-		b.gap(blockNote)
+		b.gap(_blockNote)
 		cancelled := m.status == hostapi.CallCancelled
 		n := 0
 		for text := range strings.SplitSeq(m.text, "\n") {
@@ -1527,18 +1527,18 @@ func (b *chatBuilder) unit(tr []entry, first, last int, mode runMode) {
 			case n == 0:
 				b.push([]hostapi.Segment{railMark(tools.MarkErr, ""), {Text: text, HL: "Danger"}})
 			case n == 1:
-				b.push([]hostapi.Segment{{Text: hang, HL: "Dim", NoCopy: true}, {Text: text, HL: "Dim"}})
+				b.push([]hostapi.Segment{{Text: _hang, HL: "Dim", NoCopy: true}, {Text: text, HL: "Dim"}})
 			default:
-				b.push([]hostapi.Segment{{Text: indent, HL: "Dim", NoCopy: true}, {Text: text, HL: "Dim"}})
+				b.push([]hostapi.Segment{{Text: _indent, HL: "Dim", NoCopy: true}, {Text: text, HL: "Dim"}})
 			}
 			n++
 		}
 	case m.role == fantasy.MessageRoleUser:
 		// plain text: what the user typed is not markdown
-		b.gap(blockUser)
+		b.gap(_blockUser)
 		b.user(m.text, false)
 	default:
-		b.gap(blockText)
+		b.gap(_blockText)
 		b.markdown(m.text)
 		content = b.readout(tr, last, m)
 	}
@@ -1588,7 +1588,7 @@ func (b *chatBuilder) readout(tr []entry, last int, m entry) int {
 	if len(stats) == 0 {
 		return content
 	}
-	b.gap(blockStats)
+	b.gap(_blockStats)
 	b.push(append([]hostapi.Segment{{Text: "  ", NoCopy: true}}, stats...))
 	return content
 }
@@ -1648,17 +1648,17 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		}
 		modeOf := func(first int) runMode {
 			if !activity(tr[first]) {
-				return runNone
+				return _runNone
 			}
 			// the live turn's own run reads whole; every other run folds, the one
 			// an agent view shows included
 			if first+1 == liveFirst {
-				return runRail
+				return _runRail
 			}
 			if f.unfolded[keyOf(st.TranscriptCut, first+1)] {
-				return runUnfold
+				return _runUnfold
 			}
-			return runFold
+			return _runFold
 		}
 		// The window fills newest first, 30 ms at a time but never less than a
 		// full view, topped with the prompt it pins even when that prompt sits
@@ -1678,16 +1678,16 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		blockOf := func(k int) blockKind {
 			m, first := modeOf(units[k].first), units[k].first
 			switch {
-			case m == runFold || m == runUnfold || m == runRail:
-				return blockActivity
+			case m == _runFold || m == _runUnfold || m == _runRail:
+				return _blockActivity
 			case tr[first].kind == hostapi.RowShell:
-				return blockUser
+				return _blockUser
 			case notice(tr[first]), tr[first].kind == hostapi.RowError:
-				return blockNote
+				return _blockNote
 			case tr[first].role == fantasy.MessageRoleUser:
-				return blockUser
+				return _blockUser
 			default:
-				return blockText
+				return _blockText
 			}
 		}
 		unitLines := func(k int) [][]hostapi.Segment {
@@ -1714,7 +1714,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 				covered += len(f.built[k])
 			}
 			newX = k
-			if covered >= b.st.Height+fillSlack && (fresh || time.Since(t0) >= fillBudget) {
+			if covered >= b.st.Height+_fillSlack && (fresh || time.Since(t0) >= _fillBudget) {
 				break
 			}
 		}
@@ -1766,7 +1766,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		}
 		f.settled = lines
 		f.fillUnit = newX
-		f.settledPrev, f.settledKey = blockNone, key
+		f.settledPrev, f.settledKey = _blockNone, key
 		if len(units) > 0 {
 			f.settledPrev = blockOf(len(units) - 1)
 		}
@@ -1786,26 +1786,26 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		// calls that follow it
 		switch {
 		case ag.Thinking && ag.Reasoning != "" && ag.Text == "":
-			b.gap(blockActivity)
+			b.gap(_blockActivity)
 			b.thinking(ag.Reasoning)
 		// The thought no longer draws as the thinking block (the reply
 		// streams): the digest row it will settle as stands here already, so
 		// the settle shifts nothing. A thought a flush settles beside its calls
 		// draws nothing: the digest names the calls, not the thought.
 		case tailFirst == 0 && st.View == nil && (ag.Thought >= 50*time.Millisecond || !settling(calls)) && strings.TrimSpace(ag.Reasoning) != "":
-			b.gap(blockActivity)
+			b.gap(_blockActivity)
 			b.digestRow(thoughtText(ag.Thought), "", hostapi.PinNone, false)
 		case ag.Text == "" && len(calls) == 0 && ag.Active && st.View == nil && ag.Retry == nil &&
 			!st.Cancelling && st.Waiting == "" && ag.Elapsed >= 300*time.Millisecond:
 			// the wait before any output: the thinking row opens with the turn,
 			// after the same 300ms that guards the working rule's block
-			b.gap(blockActivity)
+			b.gap(_blockActivity)
 			b.thinking("")
 		}
 		liveFrom := 0
 		if len(calls) > 0 {
 			liveFrom = len(b.lines)
-			b.gap(blockActivity)
+			b.gap(_blockActivity)
 			b.rail(calls, 0, len(calls)-1, railOpts{live: true})
 		}
 		// the live rail is rows of the run it extends: the settled tail's run,
@@ -1822,13 +1822,13 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 			}
 		}
 		if ag.Text != "" {
-			b.gap(blockText)
+			b.gap(_blockText)
 			b.markdown(ag.Text)
 		}
 		// what waits for the turn's next step boundary: the user's own words as
 		// typed, folding past the paste threshold like any user row
 		for _, q := range queued {
-			b.gap(blockQueued)
+			b.gap(_blockQueued)
 			b.user(q, true)
 		}
 	}

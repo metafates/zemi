@@ -29,9 +29,9 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// NOTE: finished runs past maxKeptRuns are forgotten oldest first; /agents
+// NOTE: finished runs past _maxKeptRuns are forgotten oldest first; /agents
 // still reads their transcripts from the store.
-const maxKeptRuns = 50
+const _maxKeptRuns = 50
 
 // RunStatus is where an agent run stands.
 type RunStatus string
@@ -171,8 +171,8 @@ func (r *taskReg) maxBackground() int {
 // in the foreground; a user asking for a workflow, or a Lua caller, has no
 // foreground version of it to fall back on.
 const (
-	foregroundAdvice = "wait for one, run this one in the foreground, or raise agent.max_background"
-	waitAdvice       = "wait for one or raise agent.max_background"
+	_foregroundAdvice = "wait for one, run this one in the foreground, or raise agent.max_background"
+	_waitAdvice       = "wait for one or raise agent.max_background"
 )
 
 // detached refuses one more detached run past maxBackground, agents
@@ -204,7 +204,7 @@ func (r *taskReg) detached(advice string) error {
 func (r *taskReg) canDetach() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.detached(waitAdvice)
+	return r.detached(_waitAdvice)
 }
 
 // addFlow registers a workflow run, as add does an agent run. advice is
@@ -218,7 +218,7 @@ func (r *taskReg) addFlow(f *flowRun, advice string) error {
 		}
 	}
 	r.flows[f.id] = f
-	if len(r.flows) > maxKeptRuns {
+	if len(r.flows) > _maxKeptRuns {
 		var oldest *flowRun
 		for _, x := range r.flows {
 			if !x.isRunning() && (oldest == nil || x.started.Before(oldest.started)) {
@@ -287,12 +287,12 @@ func (r *taskReg) add(run *agentRun) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if run.background {
-		if err := r.detached(foregroundAdvice); err != nil {
+		if err := r.detached(_foregroundAdvice); err != nil {
 			return err
 		}
 	}
 	r.runs[run.id] = run
-	if len(r.runs) > maxKeptRuns {
+	if len(r.runs) > _maxKeptRuns {
 		var oldest *agentRun
 		for _, x := range r.runs {
 			// never the run just added: loadRun adds old finished runs to view them
@@ -845,11 +845,11 @@ func (h *Host) deliverAgent(run *agentRun, text string, err error) {
 	}
 	body := text
 	if err != nil {
-		body = strings.TrimSpace(reportFailed + h.friendlyError(err) + "\n\n" + text)
+		body = strings.TrimSpace(_reportFailed + h.friendlyError(err) + "\n\n" + text)
 	}
-	status := reportFailure
+	status := _reportFailure
 	if err == nil {
-		status = reportFinished
+		status = _reportFinished
 	}
 	h.deliverReport(run.parent, report{
 		id: run.id, agent: run.agent,
@@ -864,11 +864,11 @@ func (h *Host) deliverAgent(run *agentRun, text string, err error) {
 type reportStatus string
 
 const (
-	reportFinished reportStatus = "finished"
-	reportFailure  reportStatus = "failed"
-	// reportWarn is RunWarn as a report carries it: a workflow that ended
+	_reportFinished reportStatus = "finished"
+	_reportFailure  reportStatus = "failed"
+	// _reportWarn is RunWarn as a report carries it: a workflow that ended
 	// with a failed agent or branch inside
-	reportWarn reportStatus = reportStatus(RunWarn)
+	_reportWarn reportStatus = reportStatus(RunWarn)
 )
 
 // report is a run's report identity and text: the tag a report message names
@@ -900,9 +900,9 @@ func (h *Host) deliverReport(parent string, r report, attached string) {
 	}
 }
 
-// updateStatus is the status an update reaches the user under: it names the
+// _updateStatus is the status an update reaches the user under: it names the
 // run's line and keeps its toast off the warning level.
-const updateStatus = reportStatus("update")
+const _updateStatus = reportStatus("update")
 
 // deliverUpdate hands a running agent's own line to the session that started
 // it, as deliverReport hands a finished run's report: onto the turn in
@@ -911,10 +911,10 @@ const updateStatus = reportStatus("update")
 func (h *Host) deliverUpdate(run *agentRun, text string) error {
 	defer h.tasks.bump()
 	if h.AgentSessionID() != run.parent {
-		h.notifyReport(report{id: run.id, agent: run.agent, status: updateStatus, description: run.description, body: text})
+		h.notifyReport(report{id: run.id, agent: run.agent, status: _updateStatus, description: run.description, body: text})
 		return nil
 	}
-	h.work(run.id, cmp.Or(run.description, run.agent), run.agent, string(updateStatus), text)
+	h.work(run.id, cmp.Or(run.description, run.agent), run.agent, string(_updateStatus), text)
 	if err := h.AgentSend(h.updateMessage(h.ScratchDir(), run.id, run.agent, cmp.Or(run.description, run.agent), text)); err != nil {
 		h.Notify(slog.LevelError, "Could not send the update of "+run.id, h.friendlyError(err))
 		return fmt.Errorf("the update did not reach the caller: %s", h.friendlyError(err))
@@ -1035,9 +1035,9 @@ func reportHead(r report) string {
 // updated for the statuses that are no events of their own.
 func reportTense(s reportStatus) string {
 	switch s {
-	case reportWarn:
+	case _reportWarn:
 		return "warned"
-	case updateStatus:
+	case _updateStatus:
 		return "updated"
 	default:
 		return string(s)
@@ -1059,9 +1059,9 @@ func (h *Host) reportMessage(pad string, r report) string {
 	return agent.Attached(fmt.Sprintf("agent-report run=%q agent=%q status=%q description=%q", r.id, r.agent, string(r.status), r.description), h.truncOutput(pad, "agent", r.body))
 }
 
-// reportFailed heads a failed run's report for the model; the toast of one
+// _reportFailed heads a failed run's report for the model; the toast of one
 // leaves it out, since the title says failed.
-const reportFailed = "the agent failed: "
+const _reportFailed = "the agent failed: "
 
 // notifyReport tells the user of a report the live conversation will not
 // read, and stores it in the session that started the run, where a resume
@@ -1076,7 +1076,7 @@ func (h *Host) notifyReport(r report) {
 	if parent != "" && h.DB != nil {
 		pad := h.ScratchDir()
 		msg := h.reportMessage(pad, r)
-		if r.status == updateStatus {
+		if r.status == _updateStatus {
 			msg = h.updateMessage(pad, r.id, r.agent, cmp.Or(r.description, r.agent), r.body)
 		}
 		parts, err := json.Marshal(agent.UserMessage(msg), json.Deterministic(true))
@@ -1088,10 +1088,10 @@ func (h *Host) notifyReport(r report) {
 		}
 	}
 	level := slog.LevelWarn
-	if r.status != reportFailure {
+	if r.status != _reportFailure {
 		level = slog.LevelInfo
 	}
-	if detail := strings.TrimPrefix(r.body, reportFailed); detail != "" {
+	if detail := strings.TrimPrefix(r.body, _reportFailed); detail != "" {
 		detail = clipRunes(detail, 300)
 		if r.description != "" {
 			detail = r.description + "\n" + detail
@@ -1106,11 +1106,11 @@ func (h *Host) notifyReport(r report) {
 // nothing for an update or a plugin send, which no outcome names.
 func workStatus(status string) CallStatus {
 	switch reportStatus(status) {
-	case reportFailure:
+	case _reportFailure:
 		return CallErr
-	case reportWarn:
+	case _reportWarn:
 		return CallWarn
-	case reportFinished:
+	case _reportFinished:
 		return CallOK
 	default:
 		return ""
@@ -1255,9 +1255,9 @@ func (h *Host) loadRun(id string) (*agentRun, error) {
 	return run, nil
 }
 
-// sectionRunning is the section a list puts its live rows in, and how the
+// _sectionRunning is the section a list puts its live rows in, and how the
 // /agents screen knows its first row is one.
-const sectionRunning = "Running"
+const _sectionRunning = "Running"
 
 // agentRunItems are the /agents rows for the live session's runs, the
 // stored ones this process does not hold included; enter opens the run's
@@ -1287,7 +1287,7 @@ func (h *Host) agentRunItems() []OverlayItem {
 		item.Section = "Earlier in this session"
 		if status == RunRunning {
 			item.Keys = append(item.Keys, ItemKey{Key: "s", Desc: "stop", Run: "agents stop " + id, Danger: true})
-			item.Section = sectionRunning
+			item.Section = _sectionRunning
 			running = append(running, item)
 			return
 		}

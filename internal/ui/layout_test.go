@@ -10,11 +10,11 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
-func cells(n int) Size   { return Size{Kind: sizeCells, N: n} }
-func percent(n int) Size { return Size{Kind: sizePercent, N: n} }
-func fill(n int) Size    { return Size{Kind: sizeFill, N: n} }
+func cells(n int) Size   { return Size{Kind: _sizeCells, N: n} }
+func percent(n int) Size { return Size{Kind: _sizePercent, N: n} }
+func fill(n int) Size    { return Size{Kind: _sizeFill, N: n} }
 
-var contentSize = Size{Kind: sizeContent}
+var _contentSize = Size{Kind: _sizeContent}
 
 func TestSpan(t *testing.T) {
 	for _, c := range []struct {
@@ -28,8 +28,8 @@ func TestSpan(t *testing.T) {
 		{"fills share by weight", 9, []spanKid{{size: fill(2)}, {size: fill(1)}}, []int{6, 3}},
 		{"a capped fill gives the rest to other fills", 20, []spanKid{{size: fill(1), ceil: 5}, {size: fill(1)}}, []int{5, 15}},
 		{"room no fill takes stays blank", 20, []spanKid{{size: fill(1), ceil: 5}, {size: cells(2)}}, []int{5, 2}},
-		{"content clamps to max", 20, []spanKid{{size: contentSize, want: 12, ceil: 8}, {size: fill(1)}}, []int{8, 12}},
-		{"too small: content gives before a fill below its min", 4, []spanKid{{size: contentSize, want: 3}, {size: fill(1), floor: 2}}, []int{2, 2}},
+		{"content clamps to max", 20, []spanKid{{size: _contentSize, want: 12, ceil: 8}, {size: fill(1)}}, []int{8, 12}},
+		{"too small: content gives before a fill below its min", 4, []spanKid{{size: _contentSize, want: 3}, {size: fill(1), floor: 2}}, []int{2, 2}},
 		{"too small: last child first within a rank", 3, []spanKid{{size: cells(2)}, {size: cells(2)}}, []int{2, 1}},
 		{"below every min: fill goes first", 1, []spanKid{{size: fill(1), floor: 3}, {size: cells(1), floor: 1}}, []int{0, 1}},
 		{"no room hands out nothing", -5, []spanKid{{size: cells(3)}, {size: fill(1)}}, []int{0, 0}},
@@ -64,7 +64,7 @@ func FuzzSpan(f *testing.F) {
 		mins, sum, openFill := 0, 0, false
 		for _, k := range kids {
 			mins += k.floor
-			openFill = openFill || k.size.Kind == sizeFill && k.ceil == 0
+			openFill = openFill || k.size.Kind == _sizeFill && k.ceil == 0
 		}
 		for i, k := range kids {
 			sum += out[i]
@@ -107,11 +107,11 @@ func TestViewport(t *testing.T) {
 				lines[i] = []hostapi.Segment{{Text: fmt.Sprintf("%0*d", c.width, i)}}
 			}
 			v := c.v
-			v.window(lines, c.width, boxFade) // a frame drew it
+			v.window(lines, c.width, _boxFade) // a frame drew it
 			if c.move != nil {
 				c.move(&v)
 			}
-			out := v.window(lines, c.width, boxFade)
+			out := v.window(lines, c.width, _boxFade)
 			bar := false
 			for i, r := range out {
 				if j := v.top + i; !strings.HasPrefix(hostapi.SegsText(r), lines[j][0].Text) {

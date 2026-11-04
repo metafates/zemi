@@ -32,9 +32,9 @@ import (
 const ProtocolVersion = "2025-06-18"
 
 const (
-	maxMessage    = 32 << 20
-	sessionHeader = "Mcp-Session-Id"
-	sendTries     = 3 // attempts per send before a rate limit fails the call
+	_maxMessage    = 32 << 20
+	_sessionHeader = "Mcp-Session-Id"
+	_sendTries     = 3 // attempts per send before a rate limit fails the call
 )
 
 // Config picks the transport: Command starts a child process, URL talks
@@ -461,7 +461,7 @@ func startStdio(cfg Config, c *Client) error {
 			c.end(fmt.Errorf("mcp: %s: %w", cfg.Command, err))
 		}()
 		sc := bufio.NewScanner(stdout)
-		sc.Buffer(make([]byte, 64<<10), maxMessage)
+		sc.Buffer(make([]byte, 64<<10), _maxMessage)
 		for sc.Scan() {
 			c.handle(sc.Bytes())
 		}
@@ -504,11 +504,11 @@ var _ transport = (*httpTransport)(nil)
 // renewing marks the handshake renew runs, whose sends must not renew again.
 type renewing struct{}
 
-// httpConn is the transport the streams dial with, so closing a client drops
+// _httpConn is the transport the streams dial with, so closing a client drops
 // its idle connections instead of parking them in the process-wide pool.
-var httpConn = &http.Transport{}
+var _httpConn = &http.Transport{}
 
-var httpClient = &http.Client{Transport: httpConn}
+var _httpClient = &http.Client{Transport: _httpConn}
 
 // send POSTs one message. The reply is JSON or an SSE stream whose events
 // are messages; both are routed through handle before send returns.
@@ -530,7 +530,7 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 			continue
 		}
 		// the server forgot the session (a redeploy): the spec says start another
-		if old := resp.Request.Header.Get(sessionHeader); resp.StatusCode == http.StatusNotFound && old != "" && !renewed && ctx.Value(renewing{}) == nil {
+		if old := resp.Request.Header.Get(_sessionHeader); resp.StatusCode == http.StatusNotFound && old != "" && !renewed && ctx.Value(renewing{}) == nil {
 			renewed = true
 			resp.Body.Close()
 			if err := t.renew(ctx, old); err != nil {
@@ -538,7 +538,7 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 			}
 			continue
 		}
-		if id := resp.Header.Get(sessionHeader); id != "" {
+		if id := resp.Header.Get(_sessionHeader); id != "" {
 			t.mu.Lock()
 			t.session = id
 			t.mu.Unlock()
@@ -560,7 +560,7 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 					err = fmt.Errorf("%w (retry after %s)", err, after)
 				}
 			}
-			if attempts+1 >= sendTries {
+			if attempts+1 >= _sendTries {
 				return err
 			}
 			select {
@@ -599,7 +599,7 @@ func (t *httpTransport) send(ctx context.Context, msg []byte) error {
 			}
 			return nil
 		}
-		body, err := io.ReadAll(io.LimitReader(resp.Body, maxMessage))
+		body, err := io.ReadAll(io.LimitReader(resp.Body, _maxMessage))
 		resp.Body.Close()
 		if err != nil {
 			return err
@@ -675,13 +675,13 @@ func (t *httpTransport) post(ctx context.Context, msg []byte) (*http.Response, s
 	}
 	t.mu.Lock()
 	if t.session != "" {
-		req.Header.Set(sessionHeader, t.session)
+		req.Header.Set(_sessionHeader, t.session)
 	}
 	if t.version != "" {
 		req.Header.Set("MCP-Protocol-Version", t.version)
 	}
 	t.mu.Unlock()
-	resp, err := httpClient.Do(req)
+	resp, err := _httpClient.Do(req)
 	return resp, bearer, redactURL(err)
 }
 
@@ -709,14 +709,14 @@ func (t *httpTransport) close() error {
 	for b := range streams {
 		_ = b.Close()
 	}
-	httpConn.CloseIdleConnections()
+	_httpConn.CloseIdleConnections()
 	return nil
 }
 
 // readSSE feeds each event's data to handle until the stream ends.
 func readSSE(r io.Reader, handle func([]byte)) error {
 	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 64<<10), maxMessage)
+	sc.Buffer(make([]byte, 64<<10), _maxMessage)
 	var data []string
 	size := 0
 	flush := func() {
@@ -731,7 +731,7 @@ func readSSE(r io.Reader, handle func([]byte)) error {
 			flush()
 		} else if v, ok := strings.CutPrefix(line, "data:"); ok {
 			v = strings.TrimPrefix(v, " ")
-			if size += len(v); size > maxMessage {
+			if size += len(v); size > _maxMessage {
 				return errors.New("mcp: sse event exceeds the message cap")
 			}
 			data = append(data, v)

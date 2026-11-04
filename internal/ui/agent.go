@@ -47,17 +47,17 @@ type permAskPrompt struct {
 	armedAt     time.Time
 }
 
-// permGrace swallows keys right after a prompt opens: someone typing a
+// _permGrace swallows keys right after a prompt opens: someone typing a
 // message should not approve a command by accident.
-const permGrace = 400 * time.Millisecond
+const _permGrace = 400 * time.Millisecond
 
-// askSwallowWindow is how long a key that answered an ask eats the keys
+// _askSwallowWindow is how long a key that answered an ask eats the keys
 // behind it: a paste's tail arrives within it, a human's next key does not.
-const askSwallowWindow = 100 * time.Millisecond
+const _askSwallowWindow = 100 * time.Millisecond
 
 // fresh reports whether a prompt opened within permGrace.
 func (a *App) fresh(opened time.Time) bool {
-	return a.program != nil && a.now().Sub(opened) < permGrace
+	return a.program != nil && a.now().Sub(opened) < _permGrace
 }
 
 // permChoice is one answer of the permission prompt: its button, whose
@@ -190,9 +190,9 @@ func boxInner(w int) int { return max(min(w-4, 100)-4, 1) }
 // counts the cells inside the padding.
 type boxSize struct{ w, h int }
 
-// listBoxW and textBoxW are the fewest cells inside a box of a list, and of
+// _listBoxW and _textBoxW are the fewest cells inside a box of a list, and of
 // a box that reads as text.
-const listBoxW, textBoxW = 56, 72
+const _listBoxW, _textBoxW = 56, 72
 
 // promptBox is the frame every modal draws in; body ends in its hint row.
 // Blank rows before the hint pad it to size's height, within h rows, and
@@ -242,9 +242,9 @@ func fitBox(h int, render func(level int) ([][]hostapi.Segment, bool)) [][]hosta
 	}
 }
 
-// oneRow is a block's placeholder for a viewport while the rows around it
+// _oneRow is a block's placeholder for a viewport while the rows around it
 // are counted.
-var oneRow = [][]hostapi.Segment{nil}
+var _oneRow = [][]hostapi.Segment{nil}
 
 // scrollChoiceBody is a prompt's body fit to h rows: the head rows (a tab
 // strip), text scrolled in v at textW, the choice rows act draws (compact
@@ -261,8 +261,8 @@ func scrollChoiceBody(h, w int, head [][]hostapi.Segment, v *viewport,
 		if act != nil {
 			list = act(level > 1)
 		}
-		v.viewH = max(h-2-len(stack(tight, head, oneRow, list, oneRow))+1, 1)
-		rows := v.window(text(textW), textW, boxFade)
+		v.viewH = max(h-2-len(stack(tight, head, _oneRow, list, _oneRow))+1, 1)
+		rows := v.window(text(textW), textW, _boxFade)
 		hintRow := hint(w, slices.Concat(hints, scrolls(*v))...)
 		return stack(tight, head, rows, list, [][]hostapi.Segment{hintRow}), v.viewH < min(v.rows, 3)
 	})
@@ -389,8 +389,8 @@ func choiceView(choices []promptChoice, sel int, v *viewport, w int, short bool)
 			top, end = min(top, y), y+1
 		}
 	}
-	v.reveal(top-boxFade, end+boxFade)
-	return v.window(list, w, boxFade)
+	v.reveal(top-_boxFade, end+_boxFade)
+	return v.window(list, w, _boxFade)
 }
 
 // hostBox draws a chrome box at most maxW wide whose rows pad to at least
@@ -477,10 +477,10 @@ func cutBar(r []hostapi.Segment) (row, bar []hostapi.Segment) {
 	return r, nil
 }
 
-// clipFragment is how many cells a fragment the cut leaves may take: one that
+// _clipFragment is how many cells a fragment the cut leaves may take: one that
 // short is dropped whole, so the ellipsis lands after a word rather than
 // inside it.
-const clipFragment = 12
+const _clipFragment = 12
 
 // ellipsizeSegs cuts a row to w cells ending in "…", at a word boundary
 // when the cut splits one. Trailing blanks are padding and cut without one.
@@ -491,7 +491,7 @@ func ellipsizeSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	out := truncateSegs(segs, w-1)
 	if n := len(out); n > 0 {
 		last := out[n-1]
-		if i := strings.LastIndex(last.Text, " "); i > 0 && ansi.StringWidth(last.Text[i:]) <= clipFragment && cutSplitWord(segs, len(out), last.Text) {
+		if i := strings.LastIndex(last.Text, " "); i > 0 && ansi.StringWidth(last.Text[i:]) <= _clipFragment && cutSplitWord(segs, len(out), last.Text) {
 			last.Text = strings.TrimRight(last.Text[:i], " ,;:-·.")
 		} else {
 			last.Text = strings.TrimRight(last.Text, " ,;:-·.")
@@ -786,7 +786,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 		v.top = 0
 		return rows
 	}
-	v.reveal(selTop-boxFade, selEnd+boxFade)
+	v.reveal(selTop-_boxFade, selEnd+_boxFade)
 	for v.top < selTop && !starts.Has(v.top) {
 		v.top++
 	}
@@ -808,7 +808,7 @@ func listRowsW(items, all []listItem, sel int, v *viewport, room, minW, maxW int
 			win = append(win, nil) // the last item pushed the window past the end
 		}
 	}
-	return v.window(win, widest, boxFade)
+	return v.window(win, widest, _boxFade)
 }
 
 // matchSegs draws the runes at byte offsets pos of a row's text, a filter's
@@ -863,7 +863,7 @@ func shimmer(thm themeResolver, frame int, seg hostapi.Segment) []hostapi.Segmen
 	}
 	const band = 3.0
 	runes := []rune(seg.Text)
-	pos := float64(frame*frameMS%2000)/2000*(float64(len(runes))+2*band) - band
+	pos := float64(frame*_frameMS%2000)/2000*(float64(len(runes))+2*band) - band
 	out := make([]hostapi.Segment, 0, len(runes))
 	for i, r := range runes {
 		k := 0.0
@@ -946,7 +946,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	for _, c := range pa.choices() {
 		btns = append(btns, c.promptChoice)
 	}
-	hints := []hintPair{pickHint, {key: "esc", verb: "deny"}}
+	hints := []hintPair{_pickHint, {key: "esc", verb: "deny"}}
 	if !a.composer.empty() {
 		// a draft under the box: enter sends the draft and the answers arm,
 		// so the footer says the dance the keys actually do
@@ -956,7 +956,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 			{key: "esc", verb: "deny"},
 		}
 	}
-	placeholder := oneRow
+	placeholder := _oneRow
 	if len(content) == 0 {
 		placeholder = nil
 	}
@@ -967,7 +967,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 		tight, list = level > 0, choiceRows(btns, pa.sel, inner, level > 1)
 		// the panel keeps two rows before the model's words give way, then
 		// the reason; the target, the answers and the hint never do
-		room := h - 2 - len(stack(tight, placeholder, list, oneRow)) + len(placeholder)
+		room := h - 2 - len(stack(tight, placeholder, list, _oneRow)) + len(placeholder)
 		left := func() int {
 			facts := len(target) + nWhy + nSays
 			gap := 0
@@ -992,12 +992,12 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 		dimRows(list) // answered: no longer a target
 	}
 	if len(content) > pa.view.viewH {
-		hints = append(hints, scrollHint)
+		hints = append(hints, _scrollHint)
 	}
 	hintRow := hint(inner, hints...)
 	// panels span the box, and the box fits its content: a padded panel
 	// counts by its text, other rows whole as hostBox counts them
-	fit := listBoxW
+	fit := _listBoxW
 	for _, r := range content {
 		fit = max(fit, ansi.StringWidth(strings.TrimRight(hostapi.SegsText(r), " ")))
 	}
@@ -1008,7 +1008,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	for i := range content {
 		content[i] = padPanel(content[i], fit)
 	}
-	content = pa.view.window(content, fit, boxFade)
+	content = pa.view.window(content, fit, _boxFade)
 	// who asks, whose code runs, and how many asks wait (an upper bound: a
 	// waiting ask may settle without a prompt)
 	badge := []string{req.Agent, req.Owner, req.Script}
@@ -1167,8 +1167,8 @@ type hintPair struct {
 // for every button and one for typed text, as wide as "pick" and "open",
 // since a changing width shifts the row.
 var (
-	pickHint = hintPair{key: "enter", verb: "pick"}
-	sendHint = hintPair{key: "enter", verb: "send"}
+	_pickHint = hintPair{key: "enter", verb: "pick"}
+	_sendHint = hintPair{key: "enter", verb: "send"}
 )
 
 // hintSlot is where a pair sits in a footer: moving, enter, space, copy,
@@ -1188,7 +1188,7 @@ func hintSlot(p hintPair) int {
 		return 3
 	case p.key == "esc":
 		return 5
-	case p == scrollHint || p == scrollGap:
+	case p == _scrollHint || p == _scrollGap:
 		return 6
 	default:
 		return 4
@@ -1206,10 +1206,10 @@ func hint(w int, pairs ...hintPair) []hostapi.Segment {
 		var out []hostapi.Segment
 		for _, p := range pairs {
 			switch {
-			case p == scrollGap && len(out) > 0: // scrollHint's cells, its separator included
-				out = append(out, hostapi.Segment{Text: strings.Repeat(" ", 4+ansi.StringWidth(scrollHint.key+scrollHint.verb))})
+			case p == _scrollGap && len(out) > 0: // scrollHint's cells, its separator included
+				out = append(out, hostapi.Segment{Text: strings.Repeat(" ", 4+ansi.StringWidth(_scrollHint.key+_scrollHint.verb))})
 				continue
-			case p == scrollGap:
+			case p == _scrollGap:
 				continue
 			case len(out) > 0:
 				out = append(out, hostapi.Segment{Text: "  ", HL: hostapi.ChromeHint})
@@ -1219,7 +1219,7 @@ func hint(w int, pairs ...hintPair) []hostapi.Segment {
 				out = append(out, hostapi.Segment{Text: " " + p.verb, HL: hostapi.ChromeHint})
 			}
 		}
-		i := slices.IndexFunc(pairs, func(p hintPair) bool { return p == scrollHint || p == scrollGap })
+		i := slices.IndexFunc(pairs, func(p hintPair) bool { return p == _scrollHint || p == _scrollGap })
 		if i < 0 {
 			i = slices.IndexFunc(pairs, func(p hintPair) bool { return p.key == "y" })
 		}
@@ -1244,19 +1244,19 @@ func hint(w int, pairs ...hintPair) []hostapi.Segment {
 	}
 }
 
-// scrollHint names the half-page keys, which every box's text scrolls on
+// _scrollHint names the half-page keys, which every box's text scrolls on
 // and a laptop has.
-var scrollHint = hintPair{key: "ctrl+d/u", verb: "scroll"}
+var _scrollHint = hintPair{key: "ctrl+d/u", verb: "scroll"}
 
-// scrollGap keeps scrollHint's cells blank in a list that can grow past its
+// _scrollGap keeps scrollHint's cells blank in a list that can grow past its
 // view, so the hint coming moves none of the keys after it.
-var scrollGap = hintPair{verb: "scroll gap"}
+var _scrollGap = hintPair{verb: "scroll gap"}
 
 // scrolls is scrollHint while any of views overflows.
 func scrolls(views ...viewport) []hintPair {
 	for _, v := range views {
 		if v.overflows() {
-			return []hintPair{scrollHint}
+			return []hintPair{_scrollHint}
 		}
 	}
 	return nil

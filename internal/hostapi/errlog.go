@@ -22,7 +22,7 @@ import (
 	"github.com/metafates/zemi/internal/sanitize"
 )
 
-const errLogMax = 50
+const _errLogMax = 50
 
 type errEntry struct {
 	at         time.Time
@@ -52,8 +52,8 @@ type errLog struct {
 // word of the command the /errors restart row runs ("<kind> restart <name>"),
 // so a record site spelling it off would silently lose the key.
 const (
-	errMCP = "mcp"
-	errLSP = "lsp"
+	_errMCP = "mcp"
+	_errLSP = "lsp"
 )
 
 // RecordError keeps one error (sanitized) and raises the badge. kind names
@@ -66,7 +66,7 @@ func (h *Host) RecordError(kind, name, msg string) {
 	if n := len(l.entries); n > 0 && l.entries[n-1].msg == msg {
 		l.entries[n-1].at = h.now() // the badge is back, so the row says when
 	} else {
-		l.entries = appendLast(l.entries, errEntry{at: h.now(), kind: kind, name: name, msg: msg}, errLogMax)
+		l.entries = appendLast(l.entries, errEntry{at: h.now(), kind: kind, name: name, msg: msg}, _errLogMax)
 	}
 	l.unseen = true
 	l.mu.Unlock()
@@ -144,10 +144,10 @@ func (h *Host) HasUnseenErrors() bool {
 	return h.errs.unseen
 }
 
-// errorAskPrompt takes an error's time and source, zemiSkillDir and the
+// _errorAskPrompt takes an error's time and source, zemiSkillDir and the
 // error's text; it rides behind the typed line, which names the error since
 // its index dies with the process.
-const errorAskPrompt = "zemi recorded this error at %s from %s. Read SKILL.md, then debug.md, in %s, the zemi skill's directory, find the cause, and fix it if it is in my config; otherwise tell me what to do.\n\n%s"
+const _errorAskPrompt = "zemi recorded this error at %s from %s. Read SKILL.md, then debug.md, in %s, the zemi skill's directory, find the cause, and fix it if it is in my config; otherwise tell me what to do.\n\n%s"
 
 // OpenErrors runs /errors: it lists the recent errors newest first and
 // clears the badge; "<n>" selects one, "ask <n>" hands it to the agent to
@@ -171,7 +171,7 @@ func (h *Host) OpenErrors(args string) error {
 		if i, err := strconv.Atoi(f[len(f)-1]); err == nil && i >= 0 && i < len(entries) {
 			if f[0] == "ask" {
 				e := entries[i]
-				prompt := "/errors ask " + e.source() + ": " + Headline(e.msg) + agent.Attached("command", fmt.Sprintf(errorAskPrompt, e.at.Format(time.TimeOnly), e.source(), h.zemiSkillDir(), e.msg))
+				prompt := "/errors ask " + e.source() + ": " + Headline(e.msg) + agent.Attached("command", fmt.Sprintf(_errorAskPrompt, e.at.Format(time.TimeOnly), e.source(), h.zemiSkillDir(), e.msg))
 				h.GoSafe("errors ask", func() {
 					if err := h.AgentSend(prompt); err != nil {
 						h.Notify(slog.LevelError, "Could not send", h.friendlyError(err))
@@ -183,14 +183,14 @@ func (h *Host) OpenErrors(args string) error {
 		}
 	}
 	items := make([]OverlayItem, 0, len(entries))
-	noModel := h.modelErr(h.roleModel(defaultRole))
+	noModel := h.modelErr(h.roleModel(_defaultRole))
 	for i, e := range slices.Backward(entries) {
 		at := e.at.Format(time.TimeOnly)
 		var keys []ItemKey
 		if noModel == nil {
 			keys = append(keys, ItemKey{Key: "a", Desc: "ask zemi to fix it", Run: fmt.Sprintf("errors ask %d", i)})
 		}
-		if (e.kind == errMCP || e.kind == errLSP) && e.name != "" {
+		if (e.kind == _errMCP || e.kind == _errLSP) && e.name != "" {
 			keys = append(keys, ItemKey{Key: "r", Desc: "restart", Run: e.kind + " restart " + e.name})
 		}
 		items = append(items, OverlayItem{
@@ -204,14 +204,14 @@ func (h *Host) OpenErrors(args string) error {
 	return nil
 }
 
-// chunkPath matches a Lua chunk name ("@user:/home/me/.config/zemi/init.lua:"),
+// _chunkPath matches a Lua chunk name ("@user:/home/me/.config/zemi/init.lua:"),
 // tagged with its origin or not.
-var chunkPath = regexp.MustCompile(`(?:@\w+:)?(/\S*/[^/:\s]+):`)
+var _chunkPath = regexp.MustCompile(`(?:@\w+:)?(/\S*/[^/:\s]+):`)
 
 // ShortChunk makes chunk names readable: the origin tag dropped and home
 // shortened to ~.
 func ShortChunk(s string) string {
-	return chunkPath.ReplaceAllStringFunc(s, func(m string) string { return perm.TildePath(m[strings.Index(m, "/"):]) })
+	return _chunkPath.ReplaceAllStringFunc(s, func(m string) string { return perm.TildePath(m[strings.Index(m, "/"):]) })
 }
 
 // Headline is an error's first line, chunk names shortened: what stderr,

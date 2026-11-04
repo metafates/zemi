@@ -25,12 +25,12 @@ import (
 // the one being added, however old that one is.
 func TestTaskRegEviction(t *testing.T) {
 	reg := newTaskReg(config.NewStore())
-	for i := range maxKeptRuns {
+	for i := range _maxKeptRuns {
 		reg.add(&agentRun{id: strconv.Itoa(i), status: "done", started: time.Now()})
 	}
 	old := &agentRun{id: "old", status: "done", started: time.Now().Add(-time.Hour)}
 	reg.add(old)
-	if reg.find("old") != old || len(reg.runs) != maxKeptRuns {
+	if reg.find("old") != old || len(reg.runs) != _maxKeptRuns {
 		t.Fatalf("added run evicted, or nothing was: %d runs", len(reg.runs))
 	}
 }
@@ -49,7 +49,7 @@ func TestViewedRunOutlivesTheRegistry(t *testing.T) {
 	if err := h.ViewAgent(shown.id); err != nil {
 		t.Fatal(err)
 	}
-	for i := range maxKeptRuns {
+	for i := range _maxKeptRuns {
 		h.tasks.add(&agentRun{id: "later" + strconv.Itoa(i), status: "done", started: time.Now()})
 	}
 	if h.tasks.find(shown.id) != nil {
@@ -71,7 +71,7 @@ func TestBackgroundCap(t *testing.T) {
 
 	// a workflow and a background agent count toward one cap
 	reg := newTaskReg(settings)
-	if err := reg.addFlow(&flowRun{id: "f1", background: true, status: RunRunning}, foregroundAdvice); err != nil {
+	if err := reg.addFlow(&flowRun{id: "f1", background: true, status: RunRunning}, _foregroundAdvice); err != nil {
 		t.Fatalf("background workflow refused: %v", err)
 	}
 	if err := reg.add(run("r1")); err != nil {
@@ -107,13 +107,13 @@ func TestBackgroundCap(t *testing.T) {
 	// the refusal names what the caller can still do: the model can run its
 	// call in the foreground, a user's or a Lua caller's run has no such
 	// version of it
-	if err := one.canDetach(); err == nil || !strings.Contains(err.Error(), waitAdvice) {
+	if err := one.canDetach(); err == nil || !strings.Contains(err.Error(), _waitAdvice) {
 		t.Fatalf("a check past the cap = %v, want the wait advice", err)
 	}
-	if err := one.add(run("r7")); err == nil || !strings.Contains(err.Error(), foregroundAdvice) {
+	if err := one.add(run("r7")); err == nil || !strings.Contains(err.Error(), _foregroundAdvice) {
 		t.Fatalf("a background run past the cap = %v, want the foreground advice", err)
 	}
-	if err := one.addFlow(&flowRun{id: "f2", background: true, status: RunRunning}, waitAdvice); err == nil || !strings.Contains(err.Error(), waitAdvice) {
+	if err := one.addFlow(&flowRun{id: "f2", background: true, status: RunRunning}, _waitAdvice); err == nil || !strings.Contains(err.Error(), _waitAdvice) {
 		t.Fatalf("a user's background flow past the cap = %v, want the wait advice", err)
 	}
 }
@@ -245,10 +245,10 @@ func TestReportNoticeWhereRead(t *testing.T) {
 		r    report
 		want string
 	}{
-		{report{id: "a1", agent: "explore", status: reportFinished, description: "Counting tests"}, "Counting tests finished (a1)"},
-		{report{id: "a1", agent: "explore", status: reportWarn, description: "Counting tests"}, "Counting tests warned (a1)"},
-		{report{id: "a1", agent: "explore", status: updateStatus, description: ""}, "explore updated (a1)"},
-		{report{id: "f1", agent: "workflow", status: reportFailure, description: ""}, "workflow failed (f1)"},
+		{report{id: "a1", agent: "explore", status: _reportFinished, description: "Counting tests"}, "Counting tests finished (a1)"},
+		{report{id: "a1", agent: "explore", status: _reportWarn, description: "Counting tests"}, "Counting tests warned (a1)"},
+		{report{id: "a1", agent: "explore", status: _updateStatus, description: ""}, "explore updated (a1)"},
+		{report{id: "f1", agent: "workflow", status: _reportFailure, description: ""}, "workflow failed (f1)"},
 	} {
 		if got := reportHead(c.r); got != c.want {
 			t.Errorf("reportHead(%+v) = %q, want %q", c.r, got, c.want)
@@ -577,7 +577,7 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	// a paused workflow of that session is one row, its agent none
-	if err := h.tasks.addFlow(&flowRun{id: "0000000f", description: "slow scan", parent: "other", status: RunRunning, paused: true, limit: 1, started: time.Now()}, foregroundAdvice); err != nil {
+	if err := h.tasks.addFlow(&flowRun{id: "0000000f", description: "slow scan", parent: "other", status: RunRunning, paused: true, limit: 1, started: time.Now()}, _foregroundAdvice); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.tasks.add(&agentRun{id: "agent-8", agent: "general", description: "scan part1", parent: "other", workflow: "0000000f", status: "running", started: time.Now(), cancel: func() {}}); err != nil {

@@ -11,7 +11,7 @@ import (
 
 // Registries accept any non-nil function at the Go level (real guards live
 // in the host API layer); an empty LFunction satisfies the shape checks.
-var noopFn = &glua.LFunction{}
+var _noopFn = &glua.LFunction{}
 
 func bind(key string, origin lua.Origin) *KeyBinding {
 	return &KeyBinding{Key: key, RHS: RHS{API: "zemi.ui.help"}, Origin: origin}
@@ -100,7 +100,7 @@ func TestCommandCaseCollision(t *testing.T) {
 	r := &CommandRegistry{}
 
 	add := func(name string, origin lua.Origin) (*Command, error) {
-		return r.Add(&Command{Name: name, Fn: noopFn, Origin: origin})
+		return r.Add(&Command{Name: name, Fn: _noopFn, Origin: origin})
 	}
 
 	// The reserved-name guard chain: a case variant never shadows :Reload; an
@@ -147,7 +147,7 @@ func TestCommandCaseCollision(t *testing.T) {
 func TestEventRegistry(t *testing.T) {
 	r := &EventRegistry{}
 	mk := func(event, id string, origin lua.Origin) *EventHandler {
-		return &EventHandler{Event: event, ID: id, Fn: noopFn, Origin: origin}
+		return &EventHandler{Event: event, ID: id, Fn: _noopFn, Origin: origin}
 	}
 
 	// Auto ids.
@@ -174,7 +174,7 @@ func TestEventRegistry(t *testing.T) {
 	if _, err := r.Add(&EventHandler{Event: "user.x"}); err == nil {
 		t.Fatal("nil handler must be refused")
 	}
-	if _, err := r.Add(&EventHandler{Fn: noopFn}); err == nil {
+	if _, err := r.Add(&EventHandler{Fn: _noopFn}); err == nil {
 		t.Fatal("empty event must be refused")
 	}
 	r.Purge()
@@ -210,7 +210,7 @@ func TestPluginOwnership(t *testing.T) {
 			r.owner = owner
 			return ops{
 				func(o lua.Origin, p string) error {
-					_, err := r.Add(&Command{Name: "x", Fn: noopFn, Origin: o, Path: p})
+					_, err := r.Add(&Command{Name: "x", Fn: _noopFn, Origin: o, Path: p})
 					return err
 				},
 				func(o lua.Origin, p string) (bool, error) { return r.Remove("x", o, p) },
@@ -221,7 +221,7 @@ func TestPluginOwnership(t *testing.T) {
 			r.owner = owner
 			return ops{
 				func(o lua.Origin, p string) error {
-					_, err := r.Add(&EventHandler{ID: "x", Event: "permission.request", Fn: noopFn, Origin: o, Path: p})
+					_, err := r.Add(&EventHandler{ID: "x", Event: "permission.request", Fn: _noopFn, Origin: o, Path: p})
 					return err
 				},
 				func(o lua.Origin, p string) (bool, error) { return r.Remove("x", o, p) },

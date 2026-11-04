@@ -21,9 +21,9 @@ import (
 	"github.com/metafates/zemi/internal/set"
 )
 
-// waitDelay bounds how long Wait waits on pipes an orphaned grandchild
+// _waitDelay bounds how long Wait waits on pipes an orphaned grandchild
 // keeps open after the command itself exited or was killed.
-const waitDelay = 2 * time.Second
+const _waitDelay = 2 * time.Second
 
 // NonInteractiveEnv keeps common tools from waiting on a person: no git
 // credential prompts, pagers or editors, and no colors or progress bars
@@ -34,15 +34,15 @@ var NonInteractiveEnv = []string{
 }
 
 var (
-	mu   sync.Mutex
-	live = set.Set[int]{}
+	_mu   sync.Mutex
+	_live = set.Set[int]{}
 )
 
 // Command is exec.Command in its own session.
 func Command(name string, args ...string) *exec.Cmd {
 	cmd := exec.Command(name, args...)
 	setSession(cmd)
-	cmd.WaitDelay = waitDelay
+	cmd.WaitDelay = _waitDelay
 	return cmd
 }
 
@@ -55,27 +55,27 @@ func CommandContext(ctx context.Context, name string, args ...string) *exec.Cmd 
 		killGroup(cmd.Process.Pid)
 		return nil
 	}
-	cmd.WaitDelay = waitDelay
+	cmd.WaitDelay = _waitDelay
 	return cmd
 }
 
 // ErrRefused is every start's error while a Refuse holds.
 var ErrRefused = errors.New("zemi plugin test starts no process")
 
-var refusing atomic.Int32
+var _refusing atomic.Int32
 
 // Refuse makes every start fail, zemi's own git included, until each release it returned has run, so one runner ending
 // never lifts another's.
 // NOTE: process wide: a zemi not under test in the same process starts
 // nothing either meanwhile. zemi plugin test is a process of its own.
 func Refuse() (release func()) {
-	refusing.Add(1)
-	return sync.OnceFunc(func() { refusing.Add(-1) })
+	_refusing.Add(1)
+	return sync.OnceFunc(func() { _refusing.Add(-1) })
 }
 
 // Refused is ErrRefused while a Refuse holds, else nil.
 func Refused() error {
-	if refusing.Load() > 0 {
+	if _refusing.Load() > 0 {
 		return ErrRefused
 	}
 	return nil
@@ -89,9 +89,9 @@ func Start(cmd *exec.Cmd) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	mu.Lock()
-	live.Add(cmd.Process.Pid)
-	mu.Unlock()
+	_mu.Lock()
+	_live.Add(cmd.Process.Pid)
+	_mu.Unlock()
 	return nil
 }
 
@@ -104,9 +104,9 @@ func Wait(cmd *exec.Cmd) error {
 	err := cmd.Wait()
 	if cmd.Process != nil {
 		killGroup(cmd.Process.Pid)
-		mu.Lock()
-		live.Remove(cmd.Process.Pid)
-		mu.Unlock()
+		_mu.Lock()
+		_live.Remove(cmd.Process.Pid)
+		_mu.Unlock()
 	}
 	return err
 }
@@ -147,9 +147,9 @@ func Kill(cmd *exec.Cmd) {
 // KillAll stops every group started through Start that has not been waited
 // for: running commands, jobs and servers.
 func KillAll() {
-	mu.Lock()
-	pids := live.Slice()
-	mu.Unlock()
+	_mu.Lock()
+	pids := _live.Slice()
+	_mu.Unlock()
 	for _, pid := range pids {
 		killGroup(pid)
 	}
@@ -159,10 +159,10 @@ func KillAll() {
 // by its Wait: on darwin an exec while a waiter is still reaping can crash the
 // new image at its first instruction.
 func Reaped() {
-	for deadline := time.Now().Add(waitDelay); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
-		mu.Lock()
-		n := len(live)
-		mu.Unlock()
+	for deadline := time.Now().Add(_waitDelay); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		_mu.Lock()
+		n := len(_live)
+		_mu.Unlock()
 		if n == 0 {
 			return
 		}

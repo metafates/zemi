@@ -38,15 +38,15 @@ import (
 )
 
 const (
-	frameInterval = frameMS * time.Millisecond
+	_frameInterval = _frameMS * time.Millisecond
 	// Terminals hide the OSC 9;4 spinner after a few seconds unless the
 	// program keeps sending it, so it is resent on this interval while running.
-	progressInterval = 2 * time.Second
-	idleInterval     = 250 * time.Millisecond // the tick with nothing moving on its own; a bump wakes it
-	frameMS          = 50                     // the frame clock: spinner, eyes and shimmer step once per tick
-	doneLinger       = 3 * time.Second        // how long the mascot's eyes say how a turn ended
+	_progressInterval = 2 * time.Second
+	_idleInterval     = 250 * time.Millisecond // the tick with nothing moving on its own; a bump wakes it
+	_frameMS          = 50                     // the frame clock: spinner, eyes and shimmer step once per tick
+	_doneLinger       = 3 * time.Second        // how long the mascot's eyes say how a turn ended
 	// NOTE: 64 waiting hooks is the burst bound; past it dispatch drops a message, await waits.
-	hookQueueSize = 64
+	_hookQueueSize = 64
 )
 
 // App is the root bubbletea model. It implements hostapi.UIHooks.
@@ -278,7 +278,7 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 		timeStr:  "--:--",
 		now:      time.Now,
 		focused:  true,
-		hooks:    make(chan tea.Msg, hookQueueSize),
+		hooks:    make(chan tea.Msg, _hookQueueSize),
 
 		copyTools: [][]string{{"pbcopy"}, {"wl-copy"}, {"xclip", "-selection", "clipboard"}},
 
@@ -416,7 +416,7 @@ type hookMsg struct{ inner tea.Msg }
 
 func (a *App) Init() tea.Cmd {
 	// the background query learns whether the terminal repaints its own bg
-	return tea.Batch(a.frameTickCmd(frameInterval), a.drainHooksCmd(), tea.RequestBackgroundColor,
+	return tea.Batch(a.frameTickCmd(_frameInterval), a.drainHooksCmd(), tea.RequestBackgroundColor,
 		func() tea.Msg { return tea.RequestProgramStatusSupport() })
 }
 
@@ -530,7 +530,7 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		text := sanitize.String(msg.text)
-		if utf8.RuneCountInString(text) > maxDraftChars {
+		if utf8.RuneCountInString(text) > _maxDraftChars {
 			a.draftCapToast()
 			return nil
 		}
@@ -602,7 +602,7 @@ func (a *App) View() tea.View {
 // flips every progressInterval.
 func (a *App) progressTick(running bool) {
 	a.progress = running
-	if now := a.now(); a.progress && now.Sub(a.progressAt) >= progressInterval {
+	if now := a.now(); a.progress && now.Sub(a.progressAt) >= _progressInterval {
 		a.progressAt, a.beat = now, 1-a.beat
 	}
 }
@@ -708,11 +708,11 @@ func (a *App) wakeTick() {
 // frameTickCmd ticks on the last frame boundary within d, or the next one
 // after a wake: frame() then advances by exactly one per tick.
 func (a *App) frameTickCmd(d time.Duration) tea.Cmd {
-	at := time.Now().Add(d).Truncate(frameInterval)
+	at := time.Now().Add(d).Truncate(_frameInterval)
 	return func() tea.Msg {
 		select {
 		case <-a.wake:
-			at = time.Now().Add(frameInterval).Truncate(frameInterval)
+			at = time.Now().Add(_frameInterval).Truncate(_frameInterval)
 		case <-time.After(time.Until(at)):
 		}
 		time.Sleep(time.Until(at))
@@ -737,9 +737,9 @@ func (a *App) frameAwake(st hostapi.UIState) bool {
 // frame's expiry. Everything else bumps.
 func (a *App) tickInterval() time.Duration {
 	if a.frameAwake(a.lastState) {
-		return frameInterval
+		return _frameInterval
 	}
-	return idleInterval
+	return _idleInterval
 }
 
 func (a *App) onFrame() tea.Cmd {
@@ -785,7 +785,7 @@ func (a *App) onFrame() tea.Cmd {
 	// tick alone does not, it only matters while a turn bumps the frame
 	// anyway, and Ended turning on and off bumps at both ends by itself
 	var replay tea.Cmd
-	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) > keySeqTimeout {
+	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) > _keySeqTimeout {
 		replay = a.replayKeys(a.keySeq)
 		a.keySeq = nil
 	}
@@ -862,10 +862,10 @@ func (a *App) uiState() hostapi.UIState {
 		RowsBelow:      a.rowsBelow(),
 		Cancelling:     a.cancelling, Editing: a.editing,
 	}
-	if !a.turnActive && a.now().Sub(a.turnEnd) < doneLinger {
+	if !a.turnActive && a.now().Sub(a.turnEnd) < _doneLinger {
 		st.Ended = a.turnEnded
 	}
-	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) <= keySeqTimeout {
+	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) <= _keySeqTimeout {
 		st.KeySeq = strings.Join(a.keySeq, " ")
 	}
 	st.Waiting = a.waiting()
@@ -910,7 +910,7 @@ func (a *App) windowTitle() string {
 // frameClock is the frame clock's tick, frameMS each: what the spinner, the
 // eyes and the shimmer step on.
 func frameClock(now func() time.Time) int {
-	return int(now().UnixMilli() / frameMS)
+	return int(now().UnixMilli() / _frameMS)
 }
 
 // frame is the app's tick of the frame clock.
@@ -989,7 +989,7 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 func (a *App) widgetRegion(id string) (region, bool) {
 	w := a.widgetByID(id)
 	if w == nil {
-		return regionNone, false
+		return _regionNone, false
 	}
 	return w.region, true
 }
@@ -1054,11 +1054,11 @@ type toast struct {
 	recorded    bool // its caller recorded the whole error in /errors
 }
 
-// toastRows caps a toast's body and toastsLive the toasts shown at once: a
+// _toastRows caps a toast's body and _toastsLive the toasts shown at once: a
 // long error, a stack trace or a burst of them would cover the transcript.
 const (
-	toastRows  = 3
-	toastsLive = 5
+	_toastRows  = 3
+	_toastsLive = 5
 )
 
 // boxArea is what a modal box centers over: the stage (the shipped layout's
@@ -1087,8 +1087,8 @@ func (a *App) pushToast(level slog.Level, title, body string) {
 	// instead of adding a twin
 	a.toasts = slices.DeleteFunc(a.toasts, func(o toast) bool { return o.level == level && o.title == title && o.body == t.body })
 	a.toasts = append(a.toasts, t)
-	if len(a.toasts) > toastsLive {
-		a.toasts = a.toasts[len(a.toasts)-toastsLive:]
+	if len(a.toasts) > _toastsLive {
+		a.toasts = a.toasts[len(a.toasts)-_toastsLive:]
 	}
 	a.frameDirty = true
 }
@@ -1354,9 +1354,9 @@ func dimRows(rows [][]hostapi.Segment) {
 	})
 }
 
-// modalFade is how far the backdrop under a box sinks toward the canvas: its
+// _modalFade is how far the backdrop under a box sinks toward the canvas: its
 // content stays readable as a shape, and no color of it competes with the box.
-const modalFade = 0.7
+const _modalFade = 0.7
 
 // fadeRows sinks rows toward the canvas for the backdrop of a modal box: a
 // cell keeps its text, style and effect, so a spinner behind the box keeps
@@ -1382,7 +1382,7 @@ func (a *App) fadeRows(rows [][]hostapi.Segment) [][]hostapi.Segment {
 			faded[k] = hostapi.Segment{
 				Text: s.Text, HL: s.HL, Over: s.Over, Effect: s.Effect,
 				NoCopy: s.NoCopy, NoHover: s.NoHover, Soft: s.Soft, Pin: s.Pin,
-				Fill: s.Fill, Fade: max(s.Fade, modalFade),
+				Fill: s.Fill, Fade: max(s.Fade, _modalFade),
 			}
 		}
 		out[i] = faded
@@ -1439,7 +1439,7 @@ func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.R
 		return uv.Rectangle{}
 	}
 	maxW := boxInner(width)
-	size.w = max(size.w, listBoxW)
+	size.w = max(size.w, _listBoxW)
 	body := append(render(maxW, bottom-top-4, size.w), nil, hint(maxW, hints...))
 	box := promptBox(title, "", body, width, bottom-top, 100, size)
 	if up {
@@ -1546,14 +1546,14 @@ func (a *App) syncChatScroll() {
 	}
 	fromSession := a.chatView == ""
 	a.chatView = v
-	chat := regionNone
+	chat := _regionNone
 	for _, id := range a.scrollIDs { // last paint's order, so the pick is stable
-		if st := a.scrolls[id]; st != nil && st.region == regionChat {
+		if st := a.scrolls[id]; st != nil && st.region == _regionChat {
 			chat = id
 			break
 		}
 	}
-	if chat == regionNone {
+	if chat == _regionNone {
 		return
 	}
 	// an edge or a jump parked for the outgoing view must not fire into the
@@ -1582,7 +1582,7 @@ func (a *App) syncChatScroll() {
 // rows that arrive after it or a region not drawn yet.
 func (a *App) applyScroll(kind hostapi.ScrollAction, id region) {
 	a.syncChatScroll()
-	if id == regionNone {
+	if id == _regionNone {
 		id = a.scrollDef
 	}
 	st := a.scrolls[id]
@@ -1749,13 +1749,13 @@ func (a *App) chatCursorKey(key string) (tea.Cmd, bool) {
 		a.chatSelMemo = a.chatSel
 		a.chatFocus = false
 	case "shift+up":
-		a.applyScroll(hostapi.ScrollLineUp, regionNone)
+		a.applyScroll(hostapi.ScrollLineUp, _regionNone)
 	case "shift+down":
-		a.applyScroll(hostapi.ScrollLineDown, regionNone)
+		a.applyScroll(hostapi.ScrollLineDown, _regionNone)
 	case "ctrl+d", "pgdown":
-		a.applyScroll(hostapi.ScrollUp, regionNone)
+		a.applyScroll(hostapi.ScrollUp, _regionNone)
 	case "ctrl+u", "pgup":
-		a.applyScroll(hostapi.ScrollDown, regionNone)
+		a.applyScroll(hostapi.ScrollDown, _regionNone)
 	default:
 		return nil, false
 	}
@@ -1962,8 +1962,8 @@ type statusItem struct {
 // outermost and one that comes and goes never moves it: the left widgets and
 // the pills left to right, the right widgets right to left.
 func (a *App) statusClusters(w int) (left, right []hostapi.Segment) {
-	leftItems := append(a.statusItems(regionStatusLeft), a.pills()...)
-	return fitClusters(leftItems, a.statusItems(regionStatusRight), w)
+	leftItems := append(a.statusItems(_regionStatusLeft), a.pills()...)
+	return fitClusters(leftItems, a.statusItems(_regionStatusRight), w)
 }
 
 // fitClusters joins the clusters, dropping the highest priority widget (the
@@ -1995,14 +1995,14 @@ func joinItems(items []statusItem, reverse bool) []hostapi.Segment {
 			i = len(items) - 1 - i
 		}
 		if len(out) > 0 {
-			out = append(out, statusDot)
+			out = append(out, _statusDot)
 		}
 		out = append(out, items[i].segs...)
 	}
 	return out
 }
 
-var statusDot = hostapi.Segment{Text: "  ", HL: hostapi.GroupDim, NoCopy: true}
+var _statusDot = hostapi.Segment{Text: "  ", HL: hostapi.GroupDim, NoCopy: true}
 
 // statusItems are the widgets of r that draw, by priority.
 func (a *App) statusItems(r region) []statusItem {
@@ -2033,12 +2033,12 @@ func toastTray(ts []toast, w, h int) [][]hostapi.Segment {
 			title, text, hl = "", t.title+t.body, toastHL(t.level)
 		}
 		rows := wrapText(text, hl, inner)
-		if len(rows) > toastRows {
-			more := []hostapi.Segment{{Text: hostapi.MoreLines(len(rows) - toastRows + 1), HL: hostapi.ChromeHint}}
+		if len(rows) > _toastRows {
+			more := []hostapi.Segment{{Text: hostapi.MoreLines(len(rows) - _toastRows + 1), HL: hostapi.ChromeHint}}
 			if t.recorded {
 				more = append(more, hostapi.Segment{Text: " /errors", HL: hostapi.ChromeHint})
 			}
-			rows = append(rows[:toastRows-1], more)
+			rows = append(rows[:_toastRows-1], more)
 		}
 		i := slices.IndexFunc(secs, func(s section) bool { return s.level == t.level && s.title == title })
 		if i < 0 {
@@ -2221,9 +2221,9 @@ func truncateSegs(segs []hostapi.Segment, w int) []hostapi.Segment {
 	return out
 }
 
-// blank is the run of spaces a padded row slices: a strings.Repeat per row
+// _blank is the run of spaces a padded row slices: a strings.Repeat per row
 // costed a few hundred small allocations a frame.
-var blank = strings.Repeat(" ", 4096)
+var _blank = strings.Repeat(" ", 4096)
 
 // padSeg is the segment padding a row out to w cells, or false when the row
 // already fills them.
@@ -2232,8 +2232,8 @@ func padSeg(segs []hostapi.Segment, w int) (hostapi.Segment, bool) {
 	if pad <= 0 {
 		return hostapi.Segment{}, false
 	}
-	text := blank[:min(pad, len(blank))]
-	if pad > len(blank) { // not a width a terminal reports
+	text := _blank[:min(pad, len(_blank))]
+	if pad > len(_blank) { // not a width a terminal reports
 		text = strings.Repeat(" ", pad)
 	}
 	// a Normal fill cell sits on the canvas, the palette's bg, instead of

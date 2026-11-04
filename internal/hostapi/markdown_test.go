@@ -259,7 +259,7 @@ func TestMarkdownCacheBounded(t *testing.T) {
 	for i := range 4000 {
 		c.put(mdKey{style: strconv.Itoa(i)}, [][]Segment{line})
 	}
-	if c.bytes > mdBytesMax+8192 || len(c.lines) == 4000 {
+	if c.bytes > _mdBytesMax+8192 || len(c.lines) == 4000 {
 		t.Fatalf("cache holds %d entries, %d bytes", len(c.lines), c.bytes)
 	}
 }

@@ -38,9 +38,9 @@ const (
 	EventLSPRequest          = "lsp.request"
 )
 
-// eventCatalogue is the v1 event list (DESIGN §6.2). Lua subscribes to
+// _eventCatalogue is the v1 event list (DESIGN §6.2). Lua subscribes to
 // these or to `user.*` names; host-owned prefixes cannot be emitted.
-var eventCatalogue = set.Of(
+var _eventCatalogue = set.Of(
 	EventAppReady, EventAppQuit, EventConfigReloaded,
 	EventAgentStart, EventAgentFinish, EventAgentError,
 	EventAgentAssemble, EventAgentSubagentStart, EventAgentSubagentFinish,
@@ -56,7 +56,7 @@ var eventCatalogue = set.Of(
 // eventNames lists the catalogue for an error message: a near miss
 // ("agent.done") is fixed from the list without a doc lookup.
 func eventNames() string {
-	return strings.Join(slices.Sorted(maps.Keys(eventCatalogue)), ", ")
+	return strings.Join(slices.Sorted(maps.Keys(_eventCatalogue)), ", ")
 }
 
 func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
@@ -65,7 +65,7 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("on", L.NewFunction(func(L *glua.LState) int {
 		name := L.CheckString(1)
 		fn := L.CheckFunction(2)
-		if !eventCatalogue.Has(name) && !strings.HasPrefix(name, "user.") {
+		if !_eventCatalogue.Has(name) && !strings.HasPrefix(name, "user.") {
 			L.RaiseError("zemi.event.on: unknown event %q (%s, or a user.* name)", name, eventNames())
 		}
 		hd := &EventHandler{

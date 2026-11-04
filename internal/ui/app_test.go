@@ -63,7 +63,7 @@ func TestRelaunch(t *testing.T) {
 func TestFadeSparesTheWidgetCache(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 20)
-	addWidget(app, &widget{id: "notes.wide", region: regionChat, priority: 20, wrap: true, render: func(*hostapi.ScreenState) ([][]hostapi.Segment, bool) {
+	addWidget(app, &widget{id: "notes.wide", region: _regionChat, priority: 20, wrap: true, render: func(*hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 		return [][]hostapi.Segment{{{Text: strings.Repeat("word ", 14)}}}, false
 	}})
 	app.screen(t)

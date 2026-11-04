@@ -19,8 +19,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   `sendPruning` clears their own old
   tool output when the window fills and, with none left to clear, drops the middle of the
   history once, keeping the task and a recent tail. The delegation guidance lives in
-  `delegationPrompt`: without it models rarely delegate. The fork is the one run that is no
-  definition: `agent = "fork"` (`forkAgent`, and `agents/fork.md` is ignored with an error)
+  `_delegationPrompt`: without it models rarely delegate. The fork is the one run that is no
+  definition: `agent = "fork"` (`_forkAgent`, and `agents/fork.md` is ignored with an error)
   continues the caller's conversation off the live `Runner.Fork` - the caller's model, system
   prompt, context message and request options, with the history it last sent - over a pipe of its
   own, where `forkTools` rebuilds the caller's own names and order (`Runner.Tools`) and pins the
@@ -133,12 +133,12 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   projects' pads with nothing in them changed for a week, never the live one; a deleted
   project takes its pad with its store.
 - **Lua tool** (luatool.go, tool name `lua`; DESIGN §9): model Lua runs through `Runtime.Eval`
-  as `user` origin, default-deny: without approval it may call only `luaReadOnly` members,
+  as `user` origin, default-deny: without approval it may call only `_luaReadOnly` members,
   which the sandbox guard (`Sandbox.SetGuard` -> `guardLua`) enforces on every Go function in
   a namespace: the gate asks once for the whole script (`perm.SubjectLua`, the script as
   preview), and past that the guard raises on each member the run may not call. A read-only
   agent's script is denied outright, never asked. A new API member is guarded until added to
-  `luaReadOnly`; `TestLuaToolDefaultDeny` checks every member. Not a new origin: the gate is a
+  `_luaReadOnly`; `TestLuaToolDefaultDeny` checks every member. Not a new origin: the gate is a
   flag on the chunk name (`lua-tool#<n>` for an approved run). Runs on the interpreter as a
   task (10s ceiling per slice), main agent only. Once approved, a changed config reloads
   before the script (`ReloadIfChanged`), whose note leads the result: the model never
@@ -154,7 +154,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   trusted project or not: `npx` and `uv` read config from the working directory, and most
   servers need the network. Tools are
   `mcp_<server>_<tool>`, gated as subject `mcp.<server>` with the tool name as argument. Past
-  `mcpDeferAt` (10) MCP tools in a set, `deferMCP` adds `tool_search` and `Runner.ActiveTools`
+  `_mcpDeferAt` (10) MCP tools in a set, `deferMCP` adds `tool_search` and `Runner.ActiveTools`
   offers each step only the other tools, `tool_search` and the loaded ones: a search loads at
   most five into the session's set (`sessionLogs`, dropped with the session, reseeded on resume
   from the history's `mcp_` calls; a subagent run has its own). Every MCP tool stays

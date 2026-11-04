@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	eventLogMax  = 500
-	notifyLogMax = 100
+	_eventLogMax  = 500
+	_notifyLogMax = 100
 )
 
 type eventEntry struct {
@@ -63,13 +63,13 @@ func (h *Host) recordEvent(name, from string, payload map[string]any) {
 	if strings.HasSuffix(name, "_delta") {
 		return
 	}
-	l.entries = appendLast(l.entries, eventEntry{at: h.now(), name: name, from: from, payload: payload}, eventLogMax)
+	l.entries = appendLast(l.entries, eventEntry{at: h.now(), name: name, from: from, payload: payload}, _eventLogMax)
 }
 
 func (h *Host) recordNotify(level slog.Level, title, body string) {
 	l := &h.evlog
 	l.mu.Lock()
-	l.notes = appendLast(l.notes, notifyEntry{at: h.now(), level: notifyName(level), title: title, body: body}, notifyLogMax)
+	l.notes = appendLast(l.notes, notifyEntry{at: h.now(), level: notifyName(level), title: title, body: body}, _notifyLogMax)
 	l.mu.Unlock()
 }
 
@@ -77,7 +77,7 @@ func (h *Host) recordNotify(level slog.Level, title, body string) {
 // newest first, each the table its handlers saw plus at and ts.
 func (h *Host) eventLogFn(L *glua.LState) int {
 	var name string
-	limit := eventLogMax
+	limit := _eventLogMax
 	if opts, ok := luaToGoChecked(L, 1, "zemi.event.list").(map[string]any); ok {
 		name = strField(opts, "name")
 		if n, ok := opts["limit"].(float64); ok && n > 0 {

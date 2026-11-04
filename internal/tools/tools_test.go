@@ -539,10 +539,10 @@ func TestGlobAndGrep(t *testing.T) {
 		{tool: glob, input: `{"pattern":"*"}`, want: "main.go", not: ".git/"},
 		{tool: glob, input: `{"pattern":"**"}`, want: "sub/x.go", not: "node_modules"},
 		{tool: glob, input: `{"pattern":"**/*"}`, want: "sub/x.go", not: ".agents/worktrees"},
-		{tool: glob, input: `{"pattern":"**/*.yml"}`, want: ".github/workflows/ci.yml", not: walkedNote},
-		{tool: glob, input: `{"pattern":"*","path":"gen"}`, want: walkedNote + "\n" + dir + "/gen/b.txt"},
-		{tool: grep, input: `{"pattern":"needle"}`, want: walkedNote + "\n" + out + "/loose.txt:1", root: out},
-		{tool: glob, input: `{"pattern":"*.go"}`, want: walkedNote + "\n", not: "build/", noGit: true},
+		{tool: glob, input: `{"pattern":"**/*.yml"}`, want: ".github/workflows/ci.yml", not: _walkedNote},
+		{tool: glob, input: `{"pattern":"*","path":"gen"}`, want: _walkedNote + "\n" + dir + "/gen/b.txt"},
+		{tool: grep, input: `{"pattern":"needle"}`, want: _walkedNote + "\n" + out + "/loose.txt:1", root: out},
+		{tool: glob, input: `{"pattern":"*.go"}`, want: _walkedNote + "\n", not: "build/", noGit: true},
 		{tool: grep, input: `{"pattern":"needle"}`, want: "src/a.txt:1", not: "bin.dat", noGit: true},
 		{tool: glob, input: `{"pattern":"*.go"}`, want: "(git took over 50ms to list the files here, so a walk did: .gitignore not read", not: "build/", slowGit: true},
 	} {
@@ -554,8 +554,8 @@ func TestGlobAndGrep(t *testing.T) {
 				bin := t.TempDir()
 				os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\nexec /bin/sleep 60\n"), 0o755)
 				t.Setenv("PATH", bin)
-				defer func(w time.Duration) { listWait = w }(listWait)
-				listWait = 50 * time.Millisecond
+				defer func(w time.Duration) { _listWait = w }(_listWait)
+				_listWait = 50 * time.Millisecond
 			}
 			root := cmp.Or(c.root, dir)
 			input := strings.Replace(strings.ReplaceAll(c.input, "DIR", root), "{", `{"path":"`+root+`",`, 1)
@@ -939,7 +939,7 @@ func TestPostHookRuns(t *testing.T) {
 func TestOutputLimits(t *testing.T) {
 	dir := perm.RealPath(t.TempDir())
 	path := filepath.Join(dir, "big.txt")
-	lines := make([]string, readMaxLines+5)
+	lines := make([]string, _readMaxLines+5)
 	for i := range lines {
 		lines[i] = fmt.Sprintf("line %d match", i+1)
 	}
@@ -984,9 +984,9 @@ func TestFitImage(t *testing.T) {
 		{"fits as it is", "image/png", encode(40, 20), "40x20 image/png"},
 		{"a long side is shrunk", "image/png", encode(3000, 150), "2000x100 image/png"},
 		{"garbage", "image/png", []byte("not a png"), "not a readable image"},
-		{"a big webp", "image/webp", make([]byte, imageMaxBytes+1), "over the 3750000 byte limit"},
+		{"a big webp", "image/webp", make([]byte, _imageMaxBytes+1), "over the 3750000 byte limit"},
 		{"too many pixels to decode", "image/png", encode(7000, 6000), "over the 40 megapixels"},
-		{"a 0x0 jpeg", "image/jpeg", zero(imageMaxBytes + 1), "no pixels to scale"},
+		{"a 0x0 jpeg", "image/jpeg", zero(_imageMaxBytes + 1), "no pixels to scale"},
 	} {
 		got := ""
 		data, mt, err := FitImage(c.data, c.mt)
@@ -1080,7 +1080,7 @@ func TestReadPagesAHugeFile(t *testing.T) {
 	}
 	line := strings.Repeat("x", 99) + "\n"
 	chunk := strings.Repeat(line, 1000)
-	for range (editMaxBytes / len(chunk)) + 1 {
+	for range (_editMaxBytes / len(chunk)) + 1 {
 		if _, err := f.WriteString(chunk); err != nil {
 			t.Fatal(err)
 		}
@@ -1161,7 +1161,7 @@ func TestCmdOutScript(t *testing.T) {
 			if cut := strings.Contains(out, "output saved to"); cut != c.cut {
 				t.Fatalf("cut %v, want %v: %q", cut, c.cut, trunc(out, 120))
 			}
-			if c.cut && len(out) > resultMaxOut+200 {
+			if c.cut && len(out) > _resultMaxOut+200 {
 				t.Fatalf("the cut kept %d bytes", len(out))
 			}
 			if !c.cut && out != cmdText(raw) {

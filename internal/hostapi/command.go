@@ -51,7 +51,7 @@ const (
 	NArgsAny      NArgs = "*"
 )
 
-var nargsSpecs = []NArgs{NArgsNone, NArgsOptional, NArgsSome, NArgsAny}
+var _nargsSpecs = []NArgs{NArgsNone, NArgsOptional, NArgsSome, NArgsAny}
 
 // nargsOK validates a raw argument string against command name's nargs spec.
 // Attached text is no argument. A failed arity is a usage error, the kind a
@@ -92,8 +92,8 @@ func (h *Host) commandNamespace(L *glua.LState) *glua.LTable {
 		}
 		if opts := L.OptTable(3, nil); opts != nil {
 			cmd.Desc, cmd.NArgs = rawString(L, opts, "desc"), NArgs(rawString(L, opts, "nargs"))
-			if !slices.Contains(nargsSpecs, cmd.NArgs) {
-				L.RaiseError("zemi.command.add: invalid nargs %q (want one of %q)", cmd.NArgs, nargsSpecs)
+			if !slices.Contains(_nargsSpecs, cmd.NArgs) {
+				L.RaiseError("zemi.command.add: invalid nargs %q (want one of %q)", cmd.NArgs, _nargsSpecs)
 			}
 			cmd.Complete, _ = opt[*glua.LFunction](L, opts, "complete")
 		}
@@ -196,10 +196,10 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []C
 	}
 	hits := Match(lead, labels, nil)
 	if lead != "" {
-		hits = Rank(hits, labels, maxCompletions)
+		hits = Rank(hits, labels, _maxCompletions)
 	}
 	var out []CompletionItem
-	for _, hit := range hits[:min(len(hits), maxCompletions)] {
+	for _, hit := range hits[:min(len(hits), _maxCompletions)] {
 		out = append(out, cands[hit.Index])
 	}
 	return out
@@ -231,17 +231,17 @@ func argAt(lead, line string) ([]string, int) {
 	return fields, len(fields)
 }
 
-// usageToastBytes is the body length past which a usage refusal cannot fit
+// _usageToastBytes is the body length past which a usage refusal cannot fit
 // the toast's three rows on a common terminal: cut there, its payload would
 // name no place to read on. A wide terminal could have shown more; the body
 // is readable in /errors either way.
-const usageToastBytes = 100
+const _usageToastBytes = 100
 
 // CommandFailed reports a command's error: one of how it was asked
 // (ErrUsage) is a warn, anything else did not happen and is recorded. A
 // usage body too long for the toast rides /errors, where its hint points.
 func (h *Host) CommandFailed(name string, err error) {
-	if errors.Is(err, ErrUsage) && len(err.Error()) <= usageToastBytes {
+	if errors.Is(err, ErrUsage) && len(err.Error()) <= _usageToastBytes {
 		// a usage warn is the driver's input, not a failure: the command
 		// names itself and the body says what it needed
 		h.Notify(slog.LevelWarn, "/"+name, err.Error())

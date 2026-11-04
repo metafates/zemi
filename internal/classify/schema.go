@@ -23,7 +23,7 @@ func schemaAsk(ctx context.Context, chat Chat, req Request) (Result, error) {
 		props[name] = &s
 	}
 	res, err := chat.Model.GenerateObject(ctx, fantasy.ObjectCall{
-		Prompt:      []fantasy.Message{fantasy.NewSystemMessage(systemPrompt), fantasy.NewUserMessage(schemaPrompt(req))},
+		Prompt:      []fantasy.Message{fantasy.NewSystemMessage(_systemPrompt), fantasy.NewUserMessage(schemaPrompt(req))},
 		Schema:      fantasy.Schema{Type: "object", Properties: props, Required: sortedKeys(req.Questions)},
 		Temperature: chat.Temperature,
 		Headers:     chat.Headers,

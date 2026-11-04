@@ -767,7 +767,7 @@ func TestPipelineForCheck(t *testing.T) {
 	}
 
 	// No veto policy: the same call settles on its own.
-	runUser(t, r, askEverythingOff)
+	runUser(t, r, _askEverythingOff)
 	pipe3 := h.PipelineFor()
 	if v := pipe3.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); !v.Allowed || v.DecidedBy != tools.ByDefault {
 		t.Fatalf("allowed shell: %+v by %q", v, v.DecidedBy)
@@ -1033,7 +1033,7 @@ func TestTodoNag(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
 		set(h, both)
-		engage(h, todoNagAfter-1)
+		engage(h, _todoNagAfter-1)
 		if got := takeNag(h); got != "" {
 			t.Fatalf("pre-threshold nag = %q", got)
 		}
@@ -1041,7 +1041,7 @@ func TestTodoNag(t *testing.T) {
 		if got := takeNag(h); !strings.Contains(got, "in_progress") {
 			t.Fatalf("post-threshold nag = %q", got)
 		}
-		engage(h, todoNagAfter-1)
+		engage(h, _todoNagAfter-1)
 		if got := takeNag(h); got != "" {
 			t.Fatalf("within the period: %q", got)
 		}
@@ -1057,20 +1057,20 @@ func TestTodoNag(t *testing.T) {
 		set(h, both)
 		engage(h, 0)
 		s := h.streamHooks()
-		for i := range todoNagAfter * 2 {
+		for i := range _todoNagAfter * 2 {
 			s.ToolCallEnd(strconv.Itoa(i), "read", out(""), "")
 		}
 		s.StepDone(agent.Step{})
 		s.ToolCallEnd("t", string(tools.ToolTodos), out(""), "")
 		s.StepDone(agent.Step{})
-		for range todoNagAfter - 2 {
+		for range _todoNagAfter - 2 {
 			s.StepDone(agent.Step{})
 		}
 		if got := takeNag(h); got != "" {
 			t.Fatalf("a batch of calls is one step: %q", got)
 		}
 		s.StepDone(agent.Step{})
-		if got := takeNag(h); !strings.Contains(got, fmt.Sprintf("for %d steps", todoNagAfter)) {
+		if got := takeNag(h); !strings.Contains(got, fmt.Sprintf("for %d steps", _todoNagAfter)) {
 			t.Fatalf("nag after the threshold: %q", got)
 		}
 	})
@@ -1079,7 +1079,7 @@ func TestTodoNag(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
 		set(h, both)
-		engage(h, todoNagAfter) // a StopTurn step (a dismissed question) past the threshold
+		engage(h, _todoNagAfter) // a StopTurn step (a dismissed question) past the threshold
 		h.agents.mu.Lock()
 		scope := h.claim()
 		h.agents.mu.Unlock()
@@ -1089,7 +1089,7 @@ func TestTodoNag(t *testing.T) {
 		if got := takeNag(h); got != "" {
 			t.Fatalf("the next turn's first step would carry the stale nag: %q", got)
 		}
-		engage(h, todoNagAfter) // the tracker restarted at the turn boundary
+		engage(h, _todoNagAfter) // the tracker restarted at the turn boundary
 		if got := takeNag(h); got == "" {
 			t.Fatal("a dropped nag must re-arm, the model never saw it")
 		}
@@ -1112,12 +1112,12 @@ func TestTodoNag(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
 		set(h, both)
-		engage(h, todoNagAfter)
+		engage(h, _todoNagAfter)
 		if takeNag(h) == "" {
 			t.Fatal("expected one nag before re-arm")
 		}
 		set(h, both) // any update re-arms
-		engage(h, todoNagAfter)
+		engage(h, _todoNagAfter)
 		if takeNag(h) == "" {
 			t.Fatal("after re-arm expect a second nag")
 		}
@@ -1127,10 +1127,10 @@ func TestTodoNag(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
 		set(h, both)
-		for range todoNagAfter {
+		for range _todoNagAfter {
 			h.maybeNagTodos() // a background agent's calls, the main agent idle
 		}
-		engage(h, todoNagAfter-1)
+		engage(h, _todoNagAfter-1)
 		if got := takeNag(h); got != "" {
 			t.Fatalf("idle calls must not count or arm: %q", got)
 		}
@@ -1143,7 +1143,7 @@ func TestTodoNag(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 		h.turn.Store(&turnScope{ctx: ctx, cancel: cancel})
-		engage(h, todoNagAfter)
+		engage(h, _todoNagAfter)
 		if got := takeNag(h); got != "" {
 			t.Fatalf("a nag for a cancelled turn would lead the next message: %q", got)
 		}
@@ -1153,12 +1153,12 @@ func TestTodoNag(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
 		set(h, []store.Todo{{Content: "solo", Status: "in_progress"}})
-		engage(h, todoNagAfter+2)
+		engage(h, _todoNagAfter+2)
 		if got := takeNag(h); got != "" {
 			t.Fatalf("single item must not nag: %q", got)
 		}
 		set(h, []store.Todo{{Content: "a", Status: "done"}, {Content: "b", Status: "done"}})
-		engage(h, todoNagAfter+2)
+		engage(h, _todoNagAfter+2)
 		if got := takeNag(h); got != "" {
 			t.Fatalf("all done must not nag: %q", got)
 		}
@@ -1168,12 +1168,12 @@ func TestTodoNag(t *testing.T) {
 		t.Parallel()
 		h, _ := newTestHostDB(t)
 		set(h, []store.Todo{{Content: "a", Status: "done"}, {Content: "b", Status: "pending"}, {Content: "c", Status: "pending"}})
-		engage(h, todoNagAfter)
+		engage(h, _todoNagAfter)
 		if got := takeNag(h); !strings.Contains(got, "none is in_progress") {
 			t.Fatalf("all-pending nag = %q", got)
 		}
 		set(h, []store.Todo{{Content: "b", Status: "in_progress"}, {Content: "c", Status: "pending"}})
-		engage(h, todoNagAfter)
+		engage(h, _todoNagAfter)
 		if got := takeNag(h); !strings.Contains(got, "in_progress for") {
 			t.Fatalf("a write re-arms onto the in_progress item: %q", got)
 		}
@@ -1838,7 +1838,7 @@ func TestConcurrentSendsQueue(t *testing.T) {
 func TestRetryRestreamsStep(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	run, _ := h.newRun(t.Context(), builtinAgents[0], "d", "p", false)
+	run, _ := h.newRun(t.Context(), _builtinAgents[0], "d", "p", false)
 	epoch := h.trEpoch.Load()
 	for name, c := range map[string]struct {
 		hooks agent.StreamHooks
@@ -1850,7 +1850,7 @@ func TestRetryRestreamsStep(t *testing.T) {
 			func() int { return len(h.Session().Transcript) + len(h.AgentStream().Tools) },
 		},
 		"subagent": {
-			&subagentHooks{h: h, def: builtinAgents[0], run: run},
+			&subagentHooks{h: h, def: _builtinAgents[0], run: run},
 			func() string { run.mu.Lock(); defer run.mu.Unlock(); return run.text },
 			func() int { run.mu.Lock(); defer run.mu.Unlock(); return len(run.tr) },
 		},
@@ -1890,8 +1890,8 @@ func TestRetryRestreamsStep(t *testing.T) {
 func TestRunRetryDropsItsThought(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
-	run, _ := h.newRun(t.Context(), builtinAgents[0], "d", "p", false)
-	hk := &subagentHooks{h: h, def: builtinAgents[0], run: run}
+	run, _ := h.newRun(t.Context(), _builtinAgents[0], "d", "p", false)
+	hk := &subagentHooks{h: h, def: _builtinAgents[0], run: run}
 	hk.StepStart()
 	hk.ReasoningDelta("half a thought")
 	hk.ReasoningDelta(" and the rest of it")
@@ -1952,14 +1952,14 @@ func TestHeadlessToolsetDropsPrompts(t *testing.T) {
 		}
 		return out
 	}
-	for name := range headlessExcluded {
+	for name := range _headlessExcluded {
 		if names()[string(name)] {
 			t.Errorf("the toolset still ships %q", name)
 		}
 	}
 
 	h.SetUIHooks(&fakeUI{})
-	for name := range headlessExcluded {
+	for name := range _headlessExcluded {
 		if !names()[string(name)] {
 			t.Errorf("the TUI toolset lost %q", name)
 		}
@@ -2224,8 +2224,8 @@ func TestLateReasoningKeepsReplyWhole(t *testing.T) {
 		},
 		"subagent": func() string {
 			h, _ := newTestHostDB(t)
-			run, _ := h.newRun(t.Context(), builtinAgents[0], "d", "p", false)
-			stream(&subagentHooks{h: h, def: builtinAgents[0], run: run})
+			run, _ := h.newRun(t.Context(), _builtinAgents[0], "d", "p", false)
+			stream(&subagentHooks{h: h, def: _builtinAgents[0], run: run})
 			run.mu.Lock()
 			defer run.mu.Unlock()
 			run.flush()
@@ -2335,7 +2335,7 @@ func TestInterruptedQueueDrains(t *testing.T) {
 	if n != 1 || clock.armed() != 1 {
 		t.Fatalf("queue %d, timers %d; want the report queued and the drain armed", n, clock.armed())
 	}
-	f, ok := clock.due(clock.Now().Add(idleResumeWait))
+	f, ok := clock.due(clock.Now().Add(_idleResumeWait))
 	if !ok {
 		t.Fatal("no drain timer due")
 	}

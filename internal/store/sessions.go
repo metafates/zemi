@@ -55,7 +55,7 @@ func (s *DB) CreateSession(id, parentID, title, agent string) error {
 	return nil
 }
 
-const sessionCols = `id, COALESCE(parent_id, ''), title, agent, created_at, updated_at,
+const _sessionCols = `id, COALESCE(parent_id, ''), title, agent, created_at, updated_at,
 	prompt_tokens, completion_tokens, cost, cache_read_tokens, cache_billed_tokens, last_in, run_status`
 
 // SetSessionRunStatus records how a run ended. It leaves updated_at alone: a
@@ -71,16 +71,16 @@ func (s *DB) SetSessionLastIn(id string, lastIn int64) error {
 }
 
 func (s *DB) GetSession(id string) (*Session, error) {
-	return one(s.db.QueryRow(`SELECT `+sessionCols+` FROM sessions WHERE id = ?`, id), scanSession)
+	return one(s.db.QueryRow(`SELECT `+_sessionCols+` FROM sessions WHERE id = ?`, id), scanSession)
 }
 
-// topLevelSessions is the WHERE the run lists read through: the anchor row
+// _topLevelSessions is the WHERE the run lists read through: the anchor row
 // the migration plants is not a conversation.
-const topLevelSessions = `COALESCE(parent_id, '') = '' AND id <> '` + MainSessionID + `'`
+const _topLevelSessions = `COALESCE(parent_id, '') = '' AND id <> '` + MainSessionID + `'`
 
 // ChildSessions returns the subagent runs a session started, newest first.
 func (s *DB) ChildSessions(parentID string) ([]*Session, error) {
-	rows, err := s.db.Query(`SELECT `+sessionCols+` FROM sessions WHERE parent_id = ? ORDER BY created_at DESC`, parentID)
+	rows, err := s.db.Query(`SELECT `+_sessionCols+` FROM sessions WHERE parent_id = ? ORDER BY created_at DESC`, parentID)
 	return collect(rows, err, scanSession)
 }
 

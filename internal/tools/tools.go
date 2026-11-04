@@ -137,13 +137,13 @@ const (
 
 // DeniedText and stopTurn build their user-stop wordings from these.
 const (
-	deniedPrefix  = "permission denied ("
-	userDismissed = "The user dismissed"
+	_deniedPrefix  = "permission denied ("
+	_userDismissed = "The user dismissed"
 )
 
-// readOnlyVerdict is the gate's deny for a read-only agent, named once so
+// _readOnlyVerdict is the gate's deny for a read-only agent, named once so
 // the wording cannot drift from the self-executing actions that repeat it.
-var readOnlyVerdict = Verdict{DecidedBy: ByReadOnly, Reason: "the read-only agent may not change anything"}
+var _readOnlyVerdict = Verdict{DecidedBy: ByReadOnly, Reason: "the read-only agent may not change anything"}
 
 // DeniedText is the tool error a refused gate returns: who decided, what
 // it was about, and the reason the asker gave.
@@ -156,7 +156,7 @@ func DeniedText(v Verdict, what string) string {
 		}
 		return s + ": " + v.Reason
 	}
-	s := deniedPrefix + v.DecidedBy + "): " + what
+	s := _deniedPrefix + v.DecidedBy + "): " + what
 	if v.Reason == "" {
 		return s
 	}
@@ -345,7 +345,7 @@ func (p *Pipeline) check(req Request) Verdict {
 		if PathSubject(req.Subject) && perm.InPad(p.Pad, req.Arg) {
 			return Verdict{Allowed: true, DecidedBy: ByDefault}
 		}
-		return readOnlyVerdict
+		return _readOnlyVerdict
 	}
 	if p.Ask != nil && p.Veto != nil {
 		decision, reason := p.Veto(req)
@@ -454,7 +454,7 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 			input = maps.Clone(input)
 			input["path"] = expanded
 		}
-		if unexpanded.MatchString(str(input["path"])) {
+		if _unexpanded.MatchString(str(input["path"])) {
 			return fantasy.NewTextErrorResponse(pipe.unexpandedText(str(input["path"]))), nil
 		}
 	}
@@ -514,10 +514,10 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 	return t.run(ctx, &run, input)
 }
 
-// unexpanded is a path whose shell variable did not resolve ($NOPE/x), and
+// _unexpanded is a path whose shell variable did not resolve ($NOPE/x), and
 // one the file tools never expand (~/x, %TEMP%\x): it would name a directory
 // of that name in the project.
-var unexpanded = regexp.MustCompile(`^(\$|~|%\w+%)`)
+var _unexpanded = regexp.MustCompile(`^(\$|~|%\w+%)`)
 
 // expandEnv expands $VAR and ${VAR} in a file-tool path against the vars a
 // shell tool's child sees, plus the pad and the project dir; an unset
@@ -1021,13 +1021,13 @@ func TruncOut(s string, n int) string {
 	return s[:h] + fmt.Sprintf("... (lines %d-%d of %d cut) ...\n", a, a+strings.Count(s[h:t], "\n")-1, strings.Count(strings.TrimSuffix(s, "\n"), "\n")+1) + s[t:]
 }
 
-// cutLinesMarker is the marker TruncOut leaves where it dropped whole lines.
-var cutLinesMarker = regexp.MustCompile(`^\.\.\. \(lines (\d+)-(\d+) of \d+ cut\) \.\.\.$`)
+// _cutLinesMarker is the marker TruncOut leaves where it dropped whole lines.
+var _cutLinesMarker = regexp.MustCompile(`^\.\.\. \(lines (\d+)-(\d+) of \d+ cut\) \.\.\.$`)
 
 // CutLines reads that marker back: the first and last line dropped, in the
 // numbering of the text the cut came from.
 func CutLines(line string) (from, to int, ok bool) {
-	m := cutLinesMarker.FindStringSubmatch(line)
+	m := _cutLinesMarker.FindStringSubmatch(line)
 	if m == nil {
 		return 0, 0, false
 	}

@@ -227,7 +227,7 @@ func (h *Host) ExportSession(path string, full bool) (string, error) {
 // LogMarkdown is the chat log as markdown; full expands every tool call with
 // its result.
 func LogMarkdown(db *store.DB, full bool) (string, error) {
-	rows, err := db.LogFrom(0, exportMaxRows)
+	rows, err := db.LogFrom(0, _exportMaxRows)
 	if err != nil {
 		return "", err
 	}
@@ -244,9 +244,9 @@ func LogMarkdown(db *store.DB, full bool) (string, error) {
 	return b.String(), nil
 }
 
-// exportMaxRows bounds one export; the log is eternal, a markdown file is
+// _exportMaxRows bounds one export; the log is eternal, a markdown file is
 // not the archive.
-const exportMaxRows = 5000
+const _exportMaxRows = 5000
 
 // exportLog writes log rows as markdown under level headers, one over each
 // run of rows by one speaker. Every string is sanitized: a file the user
@@ -324,7 +324,7 @@ func demoteHeadings(s string, level int) string {
 		wasFence := fs.run != ""
 		switch {
 		case fs.line(line, 0):
-		case !wasFence && len(line)-len(body) < 4 && atxHeading.MatchString(body):
+		case !wasFence && len(line)-len(body) < 4 && _atxHeading.MatchString(body):
 			n := len(body) - len(strings.TrimLeft(body, "#"))
 			line = strings.Repeat("#", min(n+level, 6)) + body[n:]
 		}
@@ -333,7 +333,7 @@ func demoteHeadings(s string, level int) string {
 	return b.String()
 }
 
-var atxHeading = regexp.MustCompile(`^#{1,6}(\s|$)`)
+var _atxHeading = regexp.MustCompile(`^#{1,6}(\s|$)`)
 
 // codeFence fences text in more backticks than any fence line inside it, so
 // a result holding ``` cannot close the block early.

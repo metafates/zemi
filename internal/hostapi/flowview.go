@@ -69,12 +69,12 @@ func (h *Host) flowItem(f *flowRun, section string) OverlayItem {
 	}
 }
 
-var notSlug = regexp.MustCompile(`[^a-z0-9]+`)
+var _notSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
 // slug is a name made from a description: lowercased words joined by dashes,
 // at most 40 characters, fallback when nothing survives.
 func slug(s, fallback string) string {
-	s = notSlug.ReplaceAllString(strings.ToLower(s), "-") // ascii from here
+	s = _notSlug.ReplaceAllString(strings.ToLower(s), "-") // ascii from here
 	return cmp.Or(strings.Trim(s[:min(len(s), 40)], "-"), fallback)
 }
 

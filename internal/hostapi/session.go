@@ -72,7 +72,7 @@ func (h *Host) setTranscriptFromLog() {
 	if h.DB == nil {
 		return
 	}
-	rows, err := h.DB.LogTail(chatWindowRows)
+	rows, err := h.DB.LogTail(_chatWindowRows)
 	if err != nil {
 		h.Log.Warn("chat window not rebuilt", "origin", "reset", "error", err)
 		return
@@ -122,7 +122,7 @@ func (h *Host) stampLogSeqs() {
 // stampLogSeqsLocked is stampLogSeqs with tMu held.
 func (h *Host) stampLogSeqsLocked() {
 	tr := h.session.Transcript
-	rows, err := h.DB.LogFrom(h.stampFrom, stampBatch)
+	rows, err := h.DB.LogFrom(h.stampFrom, _stampBatch)
 	if err != nil || len(rows) == 0 {
 		return
 	}
@@ -491,7 +491,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 	reasoning := -1 // the transcript index of the latest reasoning row
 	reply := -1     // and of the latest reply, which a turn's stat belongs to
 	for _, row := range rows {
-		if row.Role == contextRole {
+		if row.Role == _contextRole {
 			continue
 		}
 		var tc telemetry

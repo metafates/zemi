@@ -78,11 +78,11 @@ func TestJobTail(t *testing.T) {
 		t.Fatalf("short output = %q, want it whole but for the last newline", got)
 	}
 	lines := strings.Split(jobTail(long.String()), "\n")
-	if lines[0] != MoreLines(300-jobViewLines) || lines[len(lines)-1] != "line 299" {
+	if lines[0] != MoreLines(300-_jobViewLines) || lines[len(lines)-1] != "line 299" {
 		t.Fatalf("tail starts %q and ends %q, want the cut named and the last line kept", lines[0], lines[len(lines)-1])
 	}
-	if n := len(lines); n != jobViewLines+1 {
-		t.Fatalf("tail holds %d rows, want %d", n, jobViewLines+1)
+	if n := len(lines); n != _jobViewLines+1 {
+		t.Fatalf("tail holds %d rows, want %d", n, _jobViewLines+1)
 	}
 }
 

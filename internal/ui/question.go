@@ -349,7 +349,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 			moves = []hintPair{{key: "shift+tab", verb: "previous"}}
 		}
 	}
-	qp.size.w = max(qp.size.w, listBoxW)
+	qp.size.w = max(qp.size.w, _listBoxW)
 	if qp.reviewing() {
 		n, done := len(qp.qs), 0
 		for i, q := range qp.qs {
@@ -367,7 +367,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 			}
 			return rows
 		}
-		hints := slices.Concat(moves, []hintPair{sendHint, {key: fmt.Sprintf("1-%d", n), verb: "change"}, {key: "esc", verb: "dismiss"}})
+		hints := slices.Concat(moves, []hintPair{_sendHint, {key: fmt.Sprintf("1-%d", n), verb: "change"}, {key: "esc", verb: "dismiss"}})
 		return scrollChoiceBody(h, inner, tabs, &qp.review, qp.reviewRows, inner, act, hints...)
 	}
 
@@ -416,16 +416,16 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 		if len(q.Options) == 0 {
 			escVerb = "dismiss"
 		}
-		hints = slices.Concat(moves, []hintPair{sendHint, {key: "esc", verb: escVerb}})
+		hints = slices.Concat(moves, []hintPair{_sendHint, {key: "esc", verb: escVerb}})
 	case q.Multi():
-		hints = slices.Concat(moves, []hintPair{{key: "space", verb: "toggle"}, sendHint, {key: "esc", verb: "dismiss"}})
+		hints = slices.Concat(moves, []hintPair{{key: "space", verb: "toggle"}, _sendHint, {key: "esc", verb: "dismiss"}})
 	default:
-		hints = slices.Concat(moves, []hintPair{pickHint, {key: "esc", verb: "dismiss"}})
+		hints = slices.Concat(moves, []hintPair{_pickHint, {key: "esc", verb: "dismiss"}})
 	}
 	field := [][]hostapi.Segment{st.field(q, min(inner, qp.size.w))}
 	return fitBox(h, func(level int) ([][]hostapi.Segment, bool) {
 		tight := level > 0
-		optsPH := oneRow[:min(len(items), 1)]
+		optsPH := _oneRow[:min(len(items), 1)]
 		paneRows := paneN
 		if level > 1 {
 			paneRows = 1
@@ -436,9 +436,9 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 		}
 		// what is asked scrolls when it would push the first options off
 		// screen; the rest goes to the options
-		room := h - 2 - len(stack(tight, tabs, oneRow, optsPH, pane, field, oneRow)) + 1 + len(optsPH)
+		room := h - 2 - len(stack(tight, tabs, _oneRow, optsPH, pane, field, _oneRow)) + 1 + len(optsPH)
 		st.ask.viewH = max(room-min(len(items), 4), 1)
-		ask := st.ask.window(askText(inner), inner, boxFade)
+		ask := st.ask.window(askText(inner), inner, _boxFade)
 		var opts [][]hostapi.Segment
 		switch {
 		case q.Multi():

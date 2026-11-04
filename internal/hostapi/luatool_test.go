@@ -28,11 +28,11 @@ func TestAgentSelfAccess(t *testing.T) {
 	h.Dirs.ProjectDir = outsideTemp(t)
 	ctx := t.Context()
 
-	out, err := h.runModelLua(ctx, `print("hi", 1 + 1) leak = 1 return { n = #zemi.agent.list() }`, luaToolChunk)
+	out, err := h.runModelLua(ctx, `print("hi", 1 + 1) leak = 1 return { n = #zemi.agent.list() }`, _luaToolChunk)
 	if err != nil || out != "hi\t2\nreturn: {\"n\":4}" {
 		t.Fatalf("lua: %q %v", out, err)
 	}
-	if out, _ := h.runModelLua(ctx, `return leak == nil`, luaToolChunk); out != "return: true" {
+	if out, _ := h.runModelLua(ctx, `return leak == nil`, _luaToolChunk); out != "return: true" {
 		t.Fatalf("globals leaked between runs: %q", out)
 	}
 
@@ -86,7 +86,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 		{"model call", `zemi.model.ask({ prompt = "x" })`, "zemi.model.ask", "model.ask"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			if _, err := h.runModelLua(t.Context(), c.script, luaToolChunk); err == nil || !strings.Contains(err.Error(), "asks before zemi."+c.member) {
+			if _, err := h.runModelLua(t.Context(), c.script, _luaToolChunk); err == nil || !strings.Contains(err.Error(), "asks before zemi."+c.member) {
 				t.Errorf("unapproved run: %v", err)
 			}
 			ui, out := run(c.script, false)
@@ -136,7 +136,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 	var members []string
 	for ns, ms := range bootedNamespaces(t, false) {
 		for _, m := range ms {
-			if name := strings.TrimPrefix(ns, "zemi.") + "." + m; !luaReadOnly.Has(name) && !luaDelegated.Has(name) {
+			if name := strings.TrimPrefix(ns, "zemi.") + "." + m; !_luaReadOnly.Has(name) && !_luaDelegated.Has(name) {
 				members = append(members, strconv.Quote(name))
 			}
 		}
@@ -151,7 +151,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 				if ok or not tostring(err):find("asks before zemi." .. m, 1, true) then open[#open + 1] = m end
 			end
 		end
-		return n, table.concat(open, " ")`, luaToolChunk)
+		return n, table.concat(open, " ")`, _luaToolChunk)
 	if err != nil || !strings.HasSuffix(out, `,""]`) || strings.HasPrefix(out, "return: [0,") {
 		t.Errorf("unguarded members: %s %v", out, err)
 	}
@@ -177,7 +177,7 @@ func TestLuaToolCeiling(t *testing.T) {
 		input, _ := json.Marshal(map[string]string{"about": "x", "script": c.script}, json.Deterministic(true))
 		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
 		if err != nil || !resp.IsError || !strings.Contains(resp.Content, c.want) ||
-			(c.named && !strings.Contains(resp.Content, "error: "+luaToolChunk+"#")) || strings.Contains(resp.Content, "context canceled") {
+			(c.named && !strings.Contains(resp.Content, "error: "+_luaToolChunk+"#")) || strings.Contains(resp.Content, "context canceled") {
 			t.Errorf("%s: %+v (%v)", c.script, resp, err)
 		}
 	}
@@ -350,7 +350,7 @@ func TestLuaToolDrivesTools(t *testing.T) {
 	if !strings.Contains(out, "permission denied") || strings.Contains(out, "rm -rf") {
 		t.Fatalf("denied call: %q", out)
 	}
-	runUser(t, r, askEverythingOff)
+	runUser(t, r, _askEverythingOff)
 	// an unknown tool and unusable arguments come back as nil, err; nothing runs
 	ui.asked = nil
 	if out := run(`local h, e = zemi.tool.call("nope", {}) print(h == nil, e ~= nil)`); out != "true\ttrue" {
@@ -369,7 +369,7 @@ func TestLuaToolDrivesTools(t *testing.T) {
 	}
 	// outside a running script the member raises (misuse), so config and
 	// callbacks cannot drive tools
-	if _, err := h.runModelLua(t.Context(), `zemi.tool.call("read", { path = "x" })`, luaToolChunk); err == nil || !strings.Contains(err.Error(), "while it runs") {
+	if _, err := h.runModelLua(t.Context(), `zemi.tool.call("read", { path = "x" })`, _luaToolChunk); err == nil || !strings.Contains(err.Error(), "while it runs") {
 		t.Fatalf("call outside a script: %v", err)
 	}
 }

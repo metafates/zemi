@@ -78,9 +78,9 @@ func chatCompletion(content string, top map[string]float64) string {
 		fmt.Sprintf("%q", content) + `},"finish_reason":"stop","logprobs":` + lp + `}],"usage":{"prompt_tokens":10,"completion_tokens":1,"total_tokens":11,"prompt_tokens_details":{"cached_tokens":4}}}`
 }
 
-// classifyAskSrc is one classify call: its questions are always the one bool,
+// _classifyAskSrc is one classify call: its questions are always the one bool,
 // and what it learned lands in the state for the test to read.
-const classifyAskSrc = `
+const _classifyAskSrc = `
 	local res, err = zemi.classify.ask({
 		model = "clf",
 		state = { cmd = "rm -rf build" },
@@ -181,7 +181,7 @@ func TestClassifyAsk(t *testing.T) {
 			h, r := newTestHostDB(t)
 			sid := seedSession(t, h)
 			runUser(t, r, fmt.Sprintf(c.providers, f.srv.URL))
-			runUser(t, r, classifyAskSrc)
+			runUser(t, r, _classifyAskSrc)
 			if failed, _ := h.GlobalDB.GetKV("failed"); failed != "" {
 				t.Fatalf("the call failed: %s", failed)
 			}
@@ -240,7 +240,7 @@ func TestClassifyAskErrors(t *testing.T) {
 	f := newEndpoint(t, func(string) string { return "not json" })
 	h, r := newTestHostDB(t)
 	runUser(t, r, fmt.Sprintf(`zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "%s", api_key = "k", models = { { id = "m", pricing = { input = 1, output = 2, cache_read = 3 } } } }) zemi.model.add("clf", { desc = "the classifier", classify = true, model = "a/m" })`, f.srv.URL))
-	runUser(t, r, classifyAskSrc)
+	runUser(t, r, _classifyAskSrc)
 	if failed, _ := h.GlobalDB.GetKV("failed"); failed == "" {
 		t.Fatal("a provider answering nothing but prose answered the call")
 	} else if v, _ := h.GlobalDB.GetKV("strategy"); v != "" {

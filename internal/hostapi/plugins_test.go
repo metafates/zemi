@@ -667,7 +667,7 @@ func TestPluginSettings(t *testing.T) {
 // vocabulary in both directions, so a word one adds and the other does not
 // cannot drift.
 func TestPluginCapVocabulary(t *testing.T) {
-	for _, c := range pluginCaps {
+	for _, c := range _pluginCaps {
 		probe := c.prefix
 		if strings.HasSuffix(probe, ".") {
 			probe += "x"
@@ -698,7 +698,7 @@ func TestPluginCapVocabulary(t *testing.T) {
 	// the gate's other halves check ("perm" gates a permission.request
 	// handler and zemi.perm.ask, not a call subject)
 	mapped := map[string]bool{"job": true, "perm": true}
-	for _, c := range pluginCaps {
+	for _, c := range _pluginCaps {
 		mapped[c.capability] = true
 	}
 	for _, u := range plugin.Uses {

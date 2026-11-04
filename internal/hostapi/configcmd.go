@@ -113,7 +113,7 @@ func (h *Host) configSections() []OverlayItem {
 		{Text: "Open init.lua", Verb: VerbOpen, Run: "config open", Preview: "your config in the editor; zemi reloads when you save it"},
 	}
 	for _, sec := range order {
-		desc, ok := sectionDesc[sec]
+		desc, ok := _sectionDesc[sec]
 		if !ok {
 			desc = pluralCount(counts[sec], "setting", "settings")
 		}
@@ -125,9 +125,9 @@ func (h *Host) configSections() []OverlayItem {
 	return items
 }
 
-// sectionDesc is the line a /config section row reads by, per first path
+// _sectionDesc is the line a /config section row reads by, per first path
 // segment of the schema.
-var sectionDesc = map[string]string{
+var _sectionDesc = map[string]string{
 	"models":    "the model each job runs on",
 	"providers": "the builtin providers and their keys",
 	"ui":        "the theme, the mouse and alerts",
@@ -184,7 +184,7 @@ func (h *Host) configSet(path config.Key, value string) error {
 func (h *Host) SetConfig(path config.Key, val any) error {
 	s, _ := val.(string)
 	if role, ok := config.ModelRole(path); ok {
-		return h.SetTargetModel(role, cmp.Or(s, defaultRole))
+		return h.SetTargetModel(role, cmp.Or(s, _defaultRole))
 	}
 	err := h.setWatched(path, val)
 	if _, bad := errors.AsType[*config.BadValueError](err); bad {

@@ -311,7 +311,7 @@ printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}'`
 // TestSSEEventCap: an event whose data lines never end is refused at the
 // message cap instead of growing without bound.
 func TestSSEEventCap(t *testing.T) {
-	stream := strings.Repeat("data: "+strings.Repeat("x", 1<<20)+"\n", maxMessage>>20+1)
+	stream := strings.Repeat("data: "+strings.Repeat("x", 1<<20)+"\n", _maxMessage>>20+1)
 	if err := readSSE(strings.NewReader(stream), func([]byte) { t.Fatal("oversized event delivered") }); err == nil {
 		t.Fatal("oversized event read without an error")
 	}
@@ -493,7 +493,7 @@ func TestHTTPRateLimit(t *testing.T) {
 		}, 3, ""},
 		{"429 always", func(int) (int, string) {
 			return http.StatusTooManyRequests, "0"
-		}, sendTries, "retry after 0s"},
+		}, _sendTries, "retry after 0s"},
 		{"503 with retry-after then ok", func(n int) (int, string) {
 			if n == 1 {
 				return http.StatusServiceUnavailable, "0"

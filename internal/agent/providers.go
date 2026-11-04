@@ -337,8 +337,8 @@ func plainID(id string) bool {
 		!strings.ContainsFunc(id, unicode.IsControl)
 }
 
-// bundledRefs are the "$NAME" references the bundled catalog makes.
-var bundledRefs = sync.OnceValue(func() set.Set[string] {
+// _bundledRefs are the "$NAME" references the bundled catalog makes.
+var _bundledRefs = sync.OnceValue(func() set.Set[string] {
 	refs := set.Set[string]{}
 	for _, p := range embedded.GetAll() {
 		refs.Add(p.APIKey)
@@ -351,14 +351,14 @@ var bundledRefs = sync.OnceValue(func() set.Set[string] {
 // catalog reads, so a fetched catalog cannot pick which secret zemi sends.
 // NOTE: a provider the feed adds with a variable of its own waits for the
 // zemi release that bundles it.
-func bundledRef(ref string) bool { return !strings.HasPrefix(ref, "$") || bundledRefs().Has(ref) }
+func bundledRef(ref string) bool { return !strings.HasPrefix(ref, "$") || _bundledRefs().Has(ref) }
 
 // CatalogURL is where UpdateCatalog fetches the catwalk catalog.
 const CatalogURL = "https://catwalk.charm.land"
 
-// catalogFile is the fetched catalog, kept in zemi's data dir, not the
+// _catalogFile is the fetched catalog, kept in zemi's data dir, not the
 // project: it decides where each builtin key is sent.
-const catalogFile = "catwalk.json"
+const _catalogFile = "catwalk.json"
 
 type savedCatalog struct {
 	Catwalk   string             `json:"catwalk"` // the bundled version it was fetched under
@@ -397,7 +397,7 @@ func LoadCatalog(dir string, getenv func(string) string) Catalog {
 func loadCatalog(dir string) ([]catwalk.Provider, CatalogInfo) {
 	info := CatalogInfo{Version: bundledVersion()}
 	var s savedCatalog
-	data, err := os.ReadFile(filepath.Join(dir, catalogFile))
+	data, err := os.ReadFile(filepath.Join(dir, _catalogFile))
 	if err == nil {
 		err = json.Unmarshal(data, &s)
 	}
@@ -441,7 +441,7 @@ func UpdateCatalog(ctx context.Context, url, dir string, getenv func(string) str
 	if err != nil {
 		return Catalog{}, false, err
 	}
-	if err := config.WriteFileAtomic(filepath.Join(dir, catalogFile), data); err != nil {
+	if err := config.WriteFileAtomic(filepath.Join(dir, _catalogFile), data); err != nil {
 		return Catalog{}, false, err
 	}
 	return c, changed, nil
@@ -989,8 +989,8 @@ func (r *Registry) SessionHeaders(id ModelID, sessionID string) map[string]strin
 	return map[string]string{name: sessionID}
 }
 
-// effortRank orders the catalog's reasoning levels.
-var effortRank = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+// _effortRank orders the catalog's reasoning levels.
+var _effortRank = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 
 // EffortName is a reasoning level as a person reads it, the display name the
 // catalog carries ("X-High"), title case for one it does not.
@@ -1012,7 +1012,7 @@ func nearestEffort(levels []string, effort string) string {
 		return ""
 	}
 	dist := func(l string) int {
-		d := slices.Index(effortRank, l) - slices.Index(effortRank, effort)
+		d := slices.Index(_effortRank, l) - slices.Index(_effortRank, effort)
 		return max(d, -d)
 	}
 	return slices.MinFunc(levels, func(a, b string) int { return dist(a) - dist(b) })
@@ -1241,7 +1241,7 @@ func (r *Registry) languageModel[O any](spec Spec, key, model string, newProvide
 	if err != nil {
 		return nil, err
 	}
-	return idleModel{LanguageModel: m, idle: modelIdleTimeout, provider: spec.ID, kind: spec.Kind}, nil
+	return idleModel{LanguageModel: m, idle: _modelIdleTimeout, provider: spec.ID, kind: spec.Kind}, nil
 }
 
 // ModelError tags a model failure with its provider, so the advice can
@@ -1267,15 +1267,15 @@ func final(err error) bool {
 	return dns || errors.Is(err, syscall.ECONNREFUSED)
 }
 
-// modelIdleTimeout is how long a model call may make no progress. The
+// _modelIdleTimeout is how long a model call may make no progress. The
 // header timeout only counts until the status line arrives, so a gateway
 // that accepts a stream and then stops sending would hold the turn until
 // the user interrupts it.
 // NOTE: one fixed ceiling, not a setting: a model that thinks longer than
 // this without sending a part is cut off.
-const modelIdleTimeout = 5 * time.Minute
+const _modelIdleTimeout = 5 * time.Minute
 
-var errModelIdle = fmt.Errorf("the model sent nothing for %s", modelIdleTimeout)
+var errModelIdle = fmt.Errorf("the model sent nothing for %s", _modelIdleTimeout)
 
 // idleModel bounds a call by idle time, resetting on every stream part, so
 // a slow but live answer runs as long as it likes. Tools run between model

@@ -239,9 +239,9 @@ func TestViewedRunThinksLive(t *testing.T) {
 // rowsAfterPending is the chat's report of the rows it drew below its pending
 // row, which the rule reads.
 func rowsAfterPending() int {
-	ruleState.mu.Lock()
-	defer ruleState.mu.Unlock()
-	return ruleState.after
+	_ruleState.mu.Lock()
+	defer _ruleState.mu.Unlock()
+	return _ruleState.after
 }
 
 // TestPendingRowCarriesOnlyOnceItLeavesTheView: the chat draws its pending row

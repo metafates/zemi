@@ -350,12 +350,12 @@ func TestBuiltinSkillFilesFitOneRead(t *testing.T) {
 		data, err := fs.ReadFile(runtime.Skills, path)
 		lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
 		// a page row is the line behind a 7-byte number column
-		if page := len(data) + 7*len(lines); page > readMaxBytes || len(lines) > readMaxLines {
-			t.Errorf("%s is a %d byte page of %d lines, one read holds %d bytes and %d lines", path, page, len(lines), readMaxBytes, readMaxLines)
+		if page := len(data) + 7*len(lines); page > _readMaxBytes || len(lines) > _readMaxLines {
+			t.Errorf("%s is a %d byte page of %d lines, one read holds %d bytes and %d lines", path, page, len(lines), _readMaxBytes, _readMaxLines)
 		}
 		for i, line := range lines {
-			if len(line) > readMaxLineLen {
-				t.Errorf("%s:%d is %d bytes, read cuts a line at %d", path, i+1, len(line), readMaxLineLen)
+			if len(line) > _readMaxLineLen {
+				t.Errorf("%s:%d is %d bytes, read cuts a line at %d", path, i+1, len(line), _readMaxLineLen)
 			}
 		}
 		return err

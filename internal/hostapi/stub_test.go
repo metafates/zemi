@@ -101,8 +101,8 @@ func (m *replyStubModel) Stream(ctx context.Context, call fantasy.Call) (fantasy
 // sideCall reports a builder or recap call, which a turn's script does not
 // answer.
 func sideCall(call fantasy.Call) bool {
-	return len(call.Prompt) > 0 && (slices.Contains([]string{chatSystem}, concatText(call.Prompt[0].Content)) ||
-		concatText(call.Prompt[len(call.Prompt)-1].Content) == recapPrompt)
+	return len(call.Prompt) > 0 && (slices.Contains([]string{_chatSystem}, concatText(call.Prompt[0].Content)) ||
+		concatText(call.Prompt[len(call.Prompt)-1].Content) == _recapPrompt)
 }
 
 // streamOf replays a reply as the stream a side call reads.

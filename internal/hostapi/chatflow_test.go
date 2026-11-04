@@ -123,8 +123,8 @@ func TestPendingLineNamesAndClips(t *testing.T) {
 		{"a reply", store.KindAgent, "", "hello there", "agent: hello there"},
 		{"a call", store.KindTool, `{"tool":"shell"}`, `{"command":"ls"}`, `tool shell: {"command":"ls"}`},
 		{
-			"a long row", store.KindUser, "", strings.Repeat("x", 4*nodeBytes),
-			"user: " + strings.Repeat("x", nodeBytes-6) + "...",
+			"a long row", store.KindUser, "", strings.Repeat("x", 4*_nodeBytes),
+			"user: " + strings.Repeat("x", _nodeBytes-6) + "...",
 		},
 	} {
 		seq, err := h.DB.AppendLog(c.kind, c.text, c.meta, "", "")
@@ -357,11 +357,11 @@ func TestPromptCarriesTheViewSection(t *testing.T) {
 			t.Errorf("the turn prompt misses %q", want)
 		}
 	}
-	if !strings.Contains(chatSystem, viewPrompt) {
+	if !strings.Contains(_chatSystem, _viewPrompt) {
 		t.Error("the builder's prompt does not share the view section")
 	}
 	pipe := h.PipelineFor()
-	kept, _ := filterTools(h.allTools(pipe), []string{"shell", "read"}, subagentExcluded)
+	kept, _ := filterTools(h.allTools(pipe), []string{"shell", "read"}, _subagentExcluded)
 	sub := h.defaultSystemPrompt(kept)
 	if strings.Contains(sub, "# The chat") || strings.Contains(sub, "zoom") {
 		t.Error("the subagent prompt gained the view section")
@@ -632,7 +632,7 @@ func (m slowThought) Stream(ctx context.Context, call fantasy.Call) (fantasy.Str
 // log's reply row, so the window a restart rebuilds from the log keeps both,
 // as the live one did.
 func TestResumedWindowKeepsTheTurn(t *testing.T) {
-	clock := &fakeClock{now: testEpoch}
+	clock := &fakeClock{now: _testEpoch}
 	h := newTestHostUI(t, clock)
 	h.SetUIHooks(&fakeUI{})
 	// the turn as it ran: the words, a thought, a call, the reply; the log
@@ -643,7 +643,7 @@ func TestResumedWindowKeepsTheTurn(t *testing.T) {
 	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: "go"})
 	hk := h.streamHooks()
 	hk.ReasoningDelta("thinking it over.")
-	clock.set(testEpoch.Add(3 * time.Second))
+	clock.set(_testEpoch.Add(3 * time.Second))
 	if err := h.chat.Thought("thinking it over.", 3*time.Second); err != nil {
 		t.Fatal(err)
 	}
@@ -661,11 +661,11 @@ func TestResumedWindowKeepsTheTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.agents.mu.Lock()
-	h.agents.turnStart, h.agents.turnModel = testEpoch, "acme-gateway/big"
+	h.agents.turnStart, h.agents.turnModel = _testEpoch, "acme-gateway/big"
 	h.agents.mu.Unlock()
 	(&streamAdapter{h: h}).TurnDone(nil, fantasy.Usage{OutputTokens: 895})
 	// the restart: the window rebuilds from the log's tail
-	rows, err := h.DB.LogTail(chatWindowRows)
+	rows, err := h.DB.LogTail(_chatWindowRows)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -721,12 +721,12 @@ func TestResumedWindowNamesADeadTail(t *testing.T) {
 		}, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			h := newTestHostUI(t, &fakeClock{now: testEpoch})
+			h := newTestHostUI(t, &fakeClock{now: _testEpoch})
 			h.SetUIHooks(&fakeUI{})
 			if err := c.seed(h); err != nil {
 				t.Fatal(err)
 			}
-			rows, err := h.DB.LogTail(chatWindowRows)
+			rows, err := h.DB.LogTail(_chatWindowRows)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -746,7 +746,7 @@ func TestResumedWindowNamesADeadTail(t *testing.T) {
 // child for the row to preview; a date row's summary is its id and its result
 // the compact local stamp, not the provider's RFC3339Nano one.
 func TestResumedZoomAndDateRowsKeepTheirHeads(t *testing.T) {
-	h := newTestHostUI(t, &fakeClock{now: testEpoch})
+	h := newTestHostUI(t, &fakeClock{now: _testEpoch})
 	h.SetUIHooks(&fakeUI{})
 	seed := func(tool, input, output string, ok bool) {
 		if err := h.chat.Tool(tool, input, ""); err != nil {
@@ -759,7 +759,7 @@ func TestResumedZoomAndDateRowsKeepTheirHeads(t *testing.T) {
 	seed("zoom", `{"id":16032,"n":8}`, "16032+4|Rate-limit fixed: real quotas (big 50000)\n16034+2|second child line", true)
 	seed("date", `{"id":16033}`, "2026-10-29T11:03:12.487654321Z", true)
 	seed("zoom", `{"id":9,"n":8}`, "no line 9+8 in a chat of 10 messages", false)
-	rows, err := h.DB.LogTail(chatWindowRows)
+	rows, err := h.DB.LogTail(_chatWindowRows)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -778,7 +778,7 @@ func TestResumedZoomAndDateRowsKeepTheirHeads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := at.Local().Format(previewStamp); tr[1].Output != want {
+	if want := at.Local().Format(_previewStamp); tr[1].Output != want {
 		t.Fatalf("the date row reads %q, want the compact local %q", tr[1].Output, want)
 	}
 	if tr[2].Status != CallErr || tr[2].Output != "no line 9+8 in a chat of 10 messages" {
@@ -821,7 +821,7 @@ func TestResumedWindowKeepsTheFailuresAndCommands(t *testing.T) {
 	if liveErr == nil || liveShell == nil {
 		t.Fatalf("the live window holds no error and shell rows: %+v", live)
 	}
-	rows, err := h.DB.LogTail(chatWindowRows)
+	rows, err := h.DB.LogTail(_chatWindowRows)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -910,7 +910,7 @@ func TestChatlogConcurrencyUnderTurns(t *testing.T) {
 // TestTurnStatSkipsPromptWait: time the user spent at a prompt (ask, plan,
 // question) is not billed to the model in the reply's stat.
 func TestTurnStatSkipsPromptWait(t *testing.T) {
-	clock := &fakeClock{now: testEpoch}
+	clock := &fakeClock{now: _testEpoch}
 	h := newTestHostUI(t, clock)
 	h.SetUIHooks(&fakeUI{})
 	if _, err := h.chat.User("go", ""); err != nil {
@@ -918,13 +918,13 @@ func TestTurnStatSkipsPromptWait(t *testing.T) {
 	}
 	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: "go"})
 	h.agents.mu.Lock()
-	h.agents.turnStart = testEpoch
+	h.agents.turnStart = _testEpoch
 	h.agents.promptWait = 6 * time.Second
 	h.agents.mu.Unlock()
 	h.streamHooks().TextDelta("The answer.")
-	clock.set(testEpoch.Add(7500 * time.Millisecond))
+	clock.set(_testEpoch.Add(7500 * time.Millisecond))
 	(&streamAdapter{h: h}).TurnDone(nil, fantasy.Usage{OutputTokens: 100})
-	rows, err := h.DB.LogTail(chatWindowRows)
+	rows, err := h.DB.LogTail(_chatWindowRows)
 	if err != nil {
 		t.Fatal(err)
 	}

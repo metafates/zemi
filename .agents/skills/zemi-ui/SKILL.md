@@ -169,7 +169,7 @@ the highest first (`fitClusters`), so what lasts sits outermost and never moves.
   whitespace, or ending in the punctuation a sentence ends on - rides quoted, the project frame
   kept (`'` when the name itself holds `"`): `@"docs/My Notes.md"` inside the project,
   `@"~/My Docs/a.txt"` outside, which
-  `attachRef`'s grammar reads back (the closing quote optional, so a
+  `_attachRef`'s grammar reads back (the closing quote optional, so a
   word still being typed resolves too; a space closes an open-quoted word
   whose path resolves, so prose after it rides outside). A clipboard image has no source path: it lands a copy as
   `pasted-<ts>.png` in `<data>/drops` and inserts the copy's `@` word. `expandAttachments` looks

@@ -23,12 +23,12 @@ import (
 const (
 	// git CPU time, or a wall time load alone does not reach, that makes a
 	// snapshot slow
-	snapSlow    = 300 * time.Millisecond
-	snapStall   = 3 * time.Second
-	snapFiles   = 5       // files a row's diff shows
-	snapBytes   = 4 << 10 // and the bytes they may take
-	snapNoteMax = 10      // paths the model's line names
-	snapOverlap = "may include changes from concurrent commands"
+	_snapSlow    = 300 * time.Millisecond
+	_snapStall   = 3 * time.Second
+	_snapFiles   = 5       // files a row's diff shows
+	_snapBytes   = 4 << 10 // and the bytes they may take
+	_snapNoteMax = 10      // paths the model's line names
+	_snapOverlap = "may include changes from concurrent commands"
 )
 
 type snapshots struct {
@@ -113,7 +113,7 @@ func (h *Host) snapshot(dir string) (root string, env []string, tree string) {
 		h.Log.Warn("snapshot failed", "origin", "snapshot", "error", err)
 		return "", nil, ""
 	}
-	if wall := time.Since(start); cpu < snapSlow && wall < snapStall {
+	if wall := time.Since(start); cpu < _snapSlow && wall < _snapStall {
 		s.slow = 0
 	} else if s.slow++; s.slow == 2 {
 		h.Log.Warn("snapshots are slow in this repository; shell rows show no diff", "origin", "snapshot", "cpu_ms", cpu.Milliseconds(), "ms", wall.Milliseconds())
@@ -216,7 +216,7 @@ func (h *Host) treeDiff(root string, env []string, before, after string, mixed b
 		// NOTE: changed is uncapped; a branch switch in a huge repo marshals every
 		// path once per tool.post handler. Cap it here if that shows up.
 		paths, changed = append(paths, path), append(changed, abs)
-		if len(paths) <= snapFiles {
+		if len(paths) <= _snapFiles {
 			shown = append(shown, path)
 		}
 		lines = append(lines, status+" "+path)
@@ -224,8 +224,8 @@ func (h *Host) treeDiff(root string, env []string, before, after string, mixed b
 	if len(paths) == 0 {
 		return "", "", nil
 	}
-	note = "files changed: " + strings.Join(paths[:min(len(paths), snapNoteMax)], ", ")
-	if more := len(paths) - snapNoteMax; more > 0 {
+	note = "files changed: " + strings.Join(paths[:min(len(paths), _snapNoteMax)], ", ")
+	if more := len(paths) - _snapNoteMax; more > 0 {
 		note += fmt.Sprintf(" and %d more", more)
 	}
 	bodies := map[string][]string{}
@@ -253,14 +253,14 @@ func (h *Host) treeDiff(root string, env []string, before, after string, mixed b
 	}
 	var b strings.Builder
 	if mixed {
-		b.WriteString(snapOverlap + "\n")
+		b.WriteString(_snapOverlap + "\n")
 	}
 	cut := false
 	for _, head := range lines {
 		b.WriteString(head + "\n")
 		_, path, _ := strings.Cut(head, " ")
 		for _, l := range bodies[path] {
-			if cut = cut || b.Len()+len(l) > snapBytes; cut {
+			if cut = cut || b.Len()+len(l) > _snapBytes; cut {
 				break
 			}
 			b.WriteString(l + "\n")
@@ -269,7 +269,7 @@ func (h *Host) treeDiff(root string, env []string, before, after string, mixed b
 	if cut {
 		b.WriteString("… diff cut\n")
 	}
-	if more := len(paths) - snapFiles; more > 0 {
+	if more := len(paths) - _snapFiles; more > 0 {
 		fmt.Fprintf(&b, "%d more %s\n", more, Plural(more, "file", "files"))
 	}
 	return note, strings.TrimRight(b.String(), "\n"), changed
