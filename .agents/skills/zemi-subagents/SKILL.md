@@ -75,7 +75,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   early when a run sends an update or when a sibling - another run or workflow of the session -
   ends or sends an update, the answer naming that sibling and the run that still goes on
   (`watchSiblings`/`sibMoves`; a workflow's own agents are no sibling), and refuses `stop` and
-  `send_to`. A run's queue is
+  `send_to`. A steer row's view shows the message it sent whole (`ChatMessage.Prompt`, which
+  the row's 80-rune summary clips), the queued notice still its output. A run's queue is
   its `Runner.Steer`; what arrives after its last step boundary becomes one more `Send`
   (`followUp`), which closes the queue in the same lock when there is nothing left, so a
     message is never accepted and then dropped. A foreground `agent` or

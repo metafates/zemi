@@ -392,6 +392,7 @@ type ChatMessage struct {
 	Tail   string     // a running shell row: its output tail, which its view reads as it grows
 	Job    string     // shell and job_start rows: the job the call handed the work to
 	Run    string     // agent tool rows: the run id
+	Prompt string     // agent tool rows: the message a send_to sent a run, whole (the row's summary clips it)
 	Diff   string     // file tool rows: the applied change as "- "/"+ " lines
 	Output string     // tool rows: the last lines of the result (shortOutput)
 	Stat   *TurnStat

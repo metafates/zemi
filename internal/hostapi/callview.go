@@ -8,6 +8,7 @@ package hostapi
 
 import (
 	"cmp"
+	"encoding/json"
 	"slices"
 	"strconv"
 	"strings"
@@ -123,6 +124,7 @@ func streamRow(t StreamTool) (ChatMessage, time.Duration) {
 	}
 	return ChatMessage{
 		Kind: RowTool, CallID: t.ID, Tool: tools.ToolName(t.Name), Text: t.Input, Label: t.Label,
+		Prompt: steerPrompt(t.Name, t.Raw),
 		Status: t.Status, Detail: t.Detail, Tail: t.Tail, Run: t.Run, Diff: t.Diff, Output: t.Output,
 	}, took
 }
@@ -240,10 +242,31 @@ var _callArg = map[tools.ToolName]string{
 	tools.ToolTodos: "what",
 }
 
+// steerPrompt is the message an agent call sent a run, whole: the row's
+// summary keeps 80 runes of it. Empty for a call that started a run, whose
+// prompt is its task, or one that only stopped or waited.
+func steerPrompt(tool, raw string) string {
+	if tools.ToolName(tool) != tools.ToolAgent {
+		return ""
+	}
+	var in struct {
+		To     string `json:"send_to"`
+		Prompt string `json:"prompt"`
+	}
+	if json.Unmarshal([]byte(raw), &in) != nil || in.To == "" {
+		return ""
+	}
+	return strings.TrimSpace(in.Prompt)
+}
+
 // callInput is the input a call acted on, what copying a call row means to
-// take: the command a shell or lua call ran, else the file, pattern or name
-// its argument names. Empty when the call took nothing worth copying.
+// take: the command a shell or lua call ran, the message an agent call sent a
+// run, else the file, pattern or name its argument names. Empty when the call
+// took nothing worth copying.
 func callInput(m ChatMessage) string {
+	if m.Tool == tools.ToolAgent {
+		return m.Prompt
+	}
 	if m.Text == "" {
 		return ""
 	}
@@ -296,11 +319,16 @@ func (h *Host) callBody(m ChatMessage, took time.Duration) Overlay {
 			fields = append(fields, Field{Name: "about", Value: m.Label})
 		}
 		if in := callInput(m); in != "" {
-			if m.Tool == tools.ToolShell || m.Tool == tools.ToolLua {
+			switch m.Tool {
+			case tools.ToolShell, tools.ToolLua:
 				// a command is code, so it heads the body rather than the facts,
 				// and sinks into the well its answer lifts out of
 				parts = append(parts, BodyPart{Text: in, Lang: "bash", Fill: FillCanvas})
-			} else {
+			case tools.ToolAgent:
+				// a message to a run is prose it reads, so it heads the body
+				// whole where the row's summary clips it
+				parts = append(parts, BodyPart{Text: in, Lang: "markdown"})
+			default:
 				fields = append(fields, Field{Name: _callArg[m.Tool], Value: in})
 			}
 		}

@@ -874,7 +874,7 @@ func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	run.retryAt = time.Time{}
 	n := run.calls - s.base
 	run.rows[id] = len(run.tr)
-	run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: tools.ToolName(name), Text: toolSummary(name, input), Label: toolLabel(input), Status: CallWait, Diff: diff})
+	run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: tools.ToolName(name), Text: toolSummary(name, input), Label: toolLabel(input), Prompt: steerPrompt(name, input), Status: CallWait, Diff: diff})
 	run.touch()
 	run.mu.Unlock()
 	// one line: the widget wraps, and a long command would push the chat around

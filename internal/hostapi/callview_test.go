@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/metafates/zemi/internal/lua"
+	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -140,11 +142,96 @@ func TestCallInput(t *testing.T) {
 		{"grep", "callInput", "callInput"},
 		{"skill", "mine", "mine"},
 		{"question", "Where?", ""},
+		{"agent", "to r9: look", ""},
 		{"shell", "", ""},
 	} {
 		if got := callInput(ChatMessage{Tool: tools.ToolName(c.tool), Text: c.text}); got != c.want {
 			t.Errorf("callInput(%s, %q) = %q, want %q", c.tool, c.text, got, c.want)
 		}
+	}
+}
+
+// TestSteerPrompt: only a message a send_to sent a run is a steer; the call
+// that started the run carries its task, and stop or wait sends nothing.
+func TestSteerPrompt(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name, tool, raw, want string
+	}{
+		{"a message", "agent", `{"send_to":"r9","prompt":"check the parser"}`, "check the parser"},
+		{"beside a wait", "agent", `{"send_to":"r9","wait":"all","prompt":"check the parser"}`, "check the parser"},
+		{"a stop", "agent", `{"send_to":"r9","stop":true}`, ""},
+		{"a new run", "agent", `{"agent":"general","prompt":"look around"}`, ""},
+		{"blank", "agent", `{"send_to":"r9","prompt":"  "}`, ""},
+		{"another tool", "shell", `{"command":"ls"}`, ""},
+	} {
+		if got := steerPrompt(c.tool, c.raw); got != c.want {
+			t.Errorf("%s: steerPrompt(%q) = %q, want %q", c.name, c.raw, got, c.want)
+		}
+	}
+}
+
+// TestCallViewShowsTheSteerMessage: a send_to row's view shows the message it
+// sent whole, where the row's summary keeps 80 runes of it, and the notice the
+// model got stays the row's output - from the live turn, its settled row and
+// the log a restart rebuilds alike.
+func TestCallViewShowsTheSteerMessage(t *testing.T) {
+	t.Parallel()
+	prompt := strings.TrimSpace(strings.Repeat("re-read the parser, then the golden table. ", 5))
+	raw := fmt.Sprintf(`{"send_to":"r9","prompt":%q}`, prompt)
+	const canned = "Queued for agent r9: it reads the message at its next step. Its report still arrives when it finishes."
+	live := StreamTool{
+		ID: "call_1", Name: "agent", Run: "r9", Raw: raw, Input: toolSummary("agent", raw),
+		Label: toolLabel(raw), Status: CallOK, Output: canned,
+	}
+	for _, c := range []struct {
+		name string
+		row  func(t *testing.T, h *Host) ChatMessage
+	}{
+		{"a live call", func(t *testing.T, h *Host) ChatMessage {
+			h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{live}})
+			return mustRow(t, h, -1)
+		}},
+		{"a settled call", func(t *testing.T, h *Host) ChatMessage {
+			h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{live}})
+			h.agents.mu.Lock()
+			h.flushOutput(TurnStat{})
+			h.agents.mu.Unlock()
+			return mustRow(t, h, 1)
+		}},
+		{"a call rebuilt from the log", func(t *testing.T, h *Host) ChatMessage {
+			echo := `{"tool":"agent","ok":true,"id":"call_1"}`
+			tr := logRows([]store.LogEntry{
+				{Seq: 0, Kind: store.KindTool, Text: raw, MetaJSON: `{"tool":"agent","id":"call_1"}`},
+				{Seq: 1, Kind: store.KindEcho, Text: canned, MetaJSON: echo},
+			})
+			if len(tr) != 1 {
+				t.Fatalf("logRows drew %+v, want the one call", tr)
+			}
+			return tr[0]
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h, _ := newLoopHost(t)
+			m := c.row(t, h)
+			if m.Prompt != prompt {
+				t.Fatalf("the row holds prompt %q, want the message sent", m.Prompt)
+			}
+			if m.Text != toolSummary("agent", raw) || len([]rune(m.Text)) >= len([]rune(prompt)) {
+				t.Fatalf("the row's summary = %q, want 80 runes of the message", m.Text)
+			}
+			if m.Output != canned {
+				t.Fatalf("the row's output = %q, want the answer the model got", m.Output)
+			}
+			if got := callInput(m); got != prompt {
+				t.Fatalf("copying the row takes %q, want the message sent", got)
+			}
+			o := h.callBody(m, 0)
+			want := []BodyPart{{Text: prompt, Lang: "markdown"}, {Text: canned, Fill: FillWell}}
+			if !slices.Equal(o.Parts, want) || o.Body != prompt+"\n\n"+canned {
+				t.Fatalf("the view reads %+v (%q), want the message and the answer", o.Parts, o.Body)
+			}
+		})
 	}
 }
 
