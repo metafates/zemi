@@ -116,7 +116,7 @@ func NewSandbox(originOf func(*glua.LState) Origin, now func() time.Time) (*Sand
 		}
 	}
 
-	global := L.Get(glua.GlobalsIndex).(*glua.LTable)
+	global, _ := L.Get(glua.GlobalsIndex).(*glua.LTable)
 
 	// Strip the unsafe surface: raw-file execution, environment swapping,
 	// freeze bypasses, and the Lua-side module system (require is Go-owned).
@@ -143,15 +143,16 @@ func NewSandbox(originOf func(*glua.LState) Origin, now func() time.Time) (*Sand
 	// The stdlib makes the string module the metatable of every string with
 	// __index pointing at itself, so ("").__index would hand out the real
 	// table; strings get a locked metatable over the frozen proxy below.
-	global.RawGetString("string").(*glua.LTable).RawSetString("__index", glua.LNil)
+	str, _ := global.RawGetString("string").(*glua.LTable)
+	str.RawSetString("__index", glua.LNil)
 	FixStringLib(L)
 
 	// A thread keeps the context it was created under: unless resume rebinds
 	// it, a coroutine made in one request raises "context canceled" in a
 	// later one, and one made at boot ignores cancellation (DESIGN §4).
 	if co, ok := global.RawGetString("coroutine").(*glua.LTable); ok {
-		resume := co.RawGetString("resume").(*glua.LFunction).GFunction
-		wrap := co.RawGetString("wrap").(*glua.LFunction).GFunction
+		resume, _ := co.RawGetString("resume").(*glua.LFunction)
+		wrap, _ := co.RawGetString("wrap").(*glua.LFunction)
 		co.RawSetString("resume", L.NewFunction(func(L *glua.LState) int {
 			th := L.CheckThread(1)
 			// the driver alone resumes a task, with what it waited on (DESIGN §4);
@@ -160,11 +161,11 @@ func NewSandbox(originOf func(*glua.LState) Origin, now func() time.Time) (*Sand
 				L.RaiseError("coroutine.resume: a task's thread resumes only when what it waits on is done")
 			}
 			bindContext(L, th)
-			return resume(L)
+			return resume.GFunction(L)
 		}))
 		co.RawSetString("wrap", L.NewFunction(func(L *glua.LState) int {
-			wrap(L)
-			aux := L.Get(-1).(*glua.LFunction)
+			wrap.GFunction(L)
+			aux, _ := L.Get(-1).(*glua.LFunction)
 			L.Pop(1)
 			// aux reads the thread from the running closure's upvalue, so
 			// this closure carries the same one
@@ -180,11 +181,11 @@ func NewSandbox(originOf func(*glua.LState) Origin, now func() time.Time) (*Sand
 	next := global.RawGetString("next")
 	global.RawSetString("pairs", L.NewFunction(func(L *glua.LState) int {
 		tb := L.CheckTable(1)
-		var real *glua.LTable
+		var actual *glua.LTable
 		if mt, ok := tb.Metatable.(*glua.LTable); ok {
-			real, _ = mt.RawGetString(realKey).(*glua.LTable)
+			actual, _ = mt.RawGetString(realKey).(*glua.LTable)
 		}
-		if real == nil {
+		if actual == nil {
 			L.Push(next)
 			L.Push(tb)
 			L.Push(glua.LNil)
@@ -193,7 +194,7 @@ func NewSandbox(originOf func(*glua.LState) Origin, now func() time.Time) (*Sand
 		// a namespace proxy is empty; its members come from a Go iterator, so
 		// the real table, which raw writes would reach, never does
 		L.Push(L.NewFunction(func(L *glua.LState) int {
-			k, v := real.Next(L.Get(2))
+			k, v := actual.Next(L.Get(2))
 			if k == glua.LNil {
 				L.Push(glua.LNil)
 				return 1
@@ -315,7 +316,7 @@ func (s *Sandbox) makeOsTable() *glua.LTable {
 // gopher-lua has no allocation hook to cap them all.
 // It also gives string.format Lua 5.1's argument checks (checkFormat).
 func FixStringLib(L *glua.LState) {
-	lib := L.GetGlobal(glua.StringLibName).(*glua.LTable)
+	lib, _ := L.GetGlobal(glua.StringLibName).(*glua.LTable)
 	lib.RawSetString("rep", L.NewFunction(func(L *glua.LState) int {
 		s, n := L.CheckString(1), L.CheckInt(2)
 		if n > 0 && len(s) > 0 && n > MaxStringBytes/len(s) {
@@ -611,14 +612,14 @@ func (s *Sandbox) RegisterNamespace(name string, tbl *glua.LTable, call *glua.LF
 	s.deepProtect(tbl, name)
 	proxy := s.protectNamespace(tbl, "namespace "+name, name)
 	if call != nil {
-		mt := proxy.Metatable.(*glua.LTable)
+		mt, _ := proxy.Metatable.(*glua.LTable)
 		mt.RawSetString("__call", call)
 	}
 	parent, err := s.ensureParent(strings.Split(name, "."))
 	if err != nil {
 		return err
 	}
-	members := map[string]glua.LValue{}
+	members := make(map[string]glua.LValue, tbl.Len())
 	tbl.ForEach(func(k, v glua.LValue) {
 		members[k.String()] = v
 	})
@@ -656,10 +657,10 @@ func (s *Sandbox) ensureParent(parts []string) (*glua.LTable, error) {
 		case *glua.LTable:
 			tbl = realTableOf(next)
 		case *glua.LNilType:
-			real := s.L.NewTable()
-			tbl.RawSetString(parts[i], s.protectNamespace(real, "namespace "+joined, joined))
+			actual := s.L.NewTable()
+			tbl.RawSetString(parts[i], s.protectNamespace(actual, "namespace "+joined, joined))
 			s.protected.Add(joined)
-			tbl = real
+			tbl = actual
 		default:
 			return nil, fmt.Errorf("frozen path %q is registered as a non-table", joined)
 		}

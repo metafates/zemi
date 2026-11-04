@@ -17,7 +17,9 @@ import (
 type Class int
 
 const (
-	ClassUI Class = iota
+	// zero is no class, never a real one: ui drains first.
+	_ Class = iota
+	ClassUI
 	ClassAgent
 	ClassIO
 )

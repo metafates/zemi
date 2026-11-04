@@ -54,6 +54,8 @@ type Clock interface {
 
 type wallClock struct{}
 
+var _ Clock = wallClock{}
+
 func (wallClock) Now() time.Time { return time.Now() }
 
 func (wallClock) AfterFunc(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop }
@@ -163,7 +165,7 @@ func (r *Runtime) effective(L *glua.LState) frame {
 			if r.paths.Classify(path) != o {
 				path = top.path // no file of its own: name it by the entry's
 			}
-			return frame{o, path}
+			return frame{origin: o, path: path}
 		}
 	}
 	return top
@@ -298,7 +300,7 @@ func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, erro
 		err := step.Run(ctx, r, gen)
 		r.log.Debug("boot step", "origin", "boot", "name", step.Name, "elapsed", time.Since(started).String())
 		if err != nil {
-			err = &StepError{step.Name, err}
+			err = &StepError{Step: step.Name, Err: err}
 			// no dispatcher will run this generation, so its requests,
 			// queued and future, must fail fast until a reload succeeds
 			r.goHot(gen, err)
@@ -615,11 +617,11 @@ func (r *Runtime) findModule(gen *Generation, L *glua.LState, name string) (stri
 		if !filepath.IsAbs(from) {
 			return "", "", fmt.Errorf("relative require %q: the caller is not a file", name)
 		}
-		cands = []cand{{filepath.Join(filepath.Dir(from), filepath.FromSlash(strings.TrimSuffix(name, ".lua"))), gen.pluginRoot(from)}}
+		cands = []cand{{base: filepath.Join(filepath.Dir(from), filepath.FromSlash(strings.TrimSuffix(name, ".lua"))), root: gen.pluginRoot(from)}}
 	} else {
 		rel := filepath.FromSlash(strings.ReplaceAll(name, ".", "/"))
 		for _, c := range r.runtimepath(gen, L, rel) {
-			cands = append(cands, cand{filepath.Join(c.base, rel), c.root})
+			cands = append(cands, cand{base: filepath.Join(c.base, rel), root: c.root})
 		}
 	}
 	for _, c := range cands {
@@ -706,15 +708,15 @@ func (r *Runtime) runtimepath(gen *Generation, L *glua.LState, rel string) []can
 		}
 	}
 	if own != "" && own == r.requirerRoot(gen, L) {
-		out, own = append(out, cand{pluginCode(own), own}), ""
+		out, own = append(out, cand{base: pluginCode(own), root: own}), ""
 	}
 	for _, c := range r.paths {
 		if c.Origin == OriginUser && c.Prefix != "" {
-			out = append(out, cand{filepath.Join(c.Prefix, "lua"), ""})
+			out = append(out, cand{base: filepath.Join(c.Prefix, "lua")})
 		}
 	}
 	if own != "" {
-		out = append(out, cand{pluginCode(own), own})
+		out = append(out, cand{base: pluginCode(own), root: own})
 	}
 	return out
 }

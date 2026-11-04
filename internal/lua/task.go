@@ -38,6 +38,7 @@ type Waiter func(ctx context.Context) func(L *glua.LState) []glua.LValue
 // gopher-lua makes awkward by killing a thread that returns.
 type taskRun struct {
 	Task
+
 	gen  *Generation
 	th   *glua.LState
 	wait Waiter                             // set by Suspend before its yield
@@ -291,7 +292,7 @@ func Suspending(L *glua.LState, fn *glua.LFunction) *glua.LFunction {
 	L.Push(L.NewFunctionFromProto(suspendingProto))
 	L.Push(fn)
 	L.Call(1, 1)
-	w := L.Get(-1).(*glua.LFunction)
+	w, _ := L.Get(-1).(*glua.LFunction)
 	L.Pop(1)
 	return w
 }

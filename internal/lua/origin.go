@@ -61,7 +61,8 @@ var prefixResolution sync.Map
 
 func resolvePrefix(p string) string {
 	if v, ok := prefixResolution.Load(p); ok {
-		return v.(string)
+		s, _ := v.(string)
+		return s
 	}
 	res := p
 	for dir, rest := p, ""; ; {
