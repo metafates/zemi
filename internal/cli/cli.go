@@ -57,10 +57,9 @@ Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
 var _version string
 
 type options struct {
-	model  string
-	prompt string
-	dir    string // -C
-	trust  *bool  // --trust for this run; nil when not given
+	model string
+	dir   string // -C
+	trust *bool  // --trust for this run; nil when not given
 	// dirs are this run's, resolved once by the root's hook after -C; a
 	// completion resolves its own, since cobra runs no hook there.
 	dirs config.Dirs
@@ -167,7 +166,7 @@ func enterDir(dir string) error {
 
 func newRoot(o *options, launch func(options) int) *cobra.Command {
 	root := &cobra.Command{
-		Use:   "zemi [prompt...]",
+		Use:   "zemi [command]",
 		Short: "zemi - a terminal coding agent",
 		Long: `
     #%@@%#+
@@ -184,13 +183,9 @@ func newRoot(o *options, launch func(options) int) *cobra.Command {
       --==-
 @zemi a terminal coding agent
 
-With no command zemi opens the TUI; a prompt is sent as the first message,
-or run when it names a command (zemi "/review HEAD~1").`,
-		Example: `  zemi "fix the failing test"
-  zemi "/review HEAD~1"
-  zemi -- plugins are not loading      after --, it is all prompt`,
+With no command zemi opens the TUI.`,
 		Version:       versionString(),
-		Args:          o.finish,
+		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE:          func(*cobra.Command, []string) error { return status(launch(*o)) },
@@ -312,22 +307,6 @@ func completeEntries(c *cobra.Command, args []string, _ string) ([]cobra.Complet
 		}
 	}
 	return out, cobra.ShellCompDirectiveNoFileComp
-}
-
-// finish checks a turn's arguments and joins them into the prompt. A lone
-// word that is a near miss of a command is refused: sent, it would open the
-// TUI and pay for a model call on a typo.
-func (o *options) finish(c *cobra.Command, args []string) error {
-	if !c.HasParent() && len(args) == 1 && c.ArgsLenAtDash() < 0 {
-		if s := c.SuggestionsFor(args[0]); len(s) > 0 {
-			return fmt.Errorf("%q is not a command; did you mean %s? (a one-word prompt: zemi -- %s)", args[0], s[0], args[0])
-		}
-		if args[0] == "version" {
-			return errors.New("\"version\" is not a command; did you mean --version?")
-		}
-	}
-	o.prompt = strings.TrimSpace(strings.Join(args, " "))
-	return nil
 }
 
 // polish adds cobra's own commands and flags, in zemi's words.
@@ -938,9 +917,6 @@ func (o *options) readStdin(stdin *os.File) error {
 		return nil
 	}
 	msg := "stdin is piped; the TUI does not read it"
-	if o.prompt == "" {
-		msg += " - give the prompt as an argument"
-	}
 	return errors.New(msg)
 }
 
@@ -1025,14 +1001,4 @@ func stopSignals() []os.Signal {
 		sigs = append(sigs, syscall.SIGHUP)
 	}
 	return sigs
-}
-
-// sendPrompt sends a command-line prompt once no MCP server is starting,
-// since its one send builds the tool set, unless ctx ends the wait. The
-// prompt held at boot goes as the turn it claimed.
-func sendPrompt(ctx context.Context, h *hostapi.Host, prompt string) error {
-	if h.WaitMCP(ctx); ctx.Err() != nil {
-		return ctx.Err()
-	}
-	return h.SendHeld(prompt)
 }

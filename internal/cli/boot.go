@@ -68,12 +68,6 @@ func launch(o options) int {
 	app := ui.NewApp(host, log)
 	host.SetUIHooks(app)
 	trust.ask = app.AskTrust
-	// The command line's prompt shows as the first message from the first
-	// frame and goes as the first turn once boot ends: the splash never shows
-	// over it. One that names a command (SendPrompt's) is no message to show.
-	if o.prompt != "" && !strings.HasPrefix(o.prompt, "/") {
-		host.HoldPrompt(o.prompt)
-	}
 
 	steps := hostSteps(host, trust, app)
 	p := tea.NewProgram(app)
@@ -133,11 +127,6 @@ func launch(o options) int {
 		host.KeepPicks.Store(true)
 		// here, not in app.ready: once per process, after -m, never on a reload
 		host.OfferModel()
-		if o.prompt != "" {
-			if err := sendPrompt(ctx, host, o.prompt); err != nil {
-				app.Notify(slog.LevelError, "Could not send", err.Error())
-			}
-		}
 	}()
 
 	// Closing the terminal sends SIGHUP, which ends the process before the

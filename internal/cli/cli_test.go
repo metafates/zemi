@@ -92,11 +92,8 @@ func TestCLI(t *testing.T) {
 		want           *options
 	}{
 		{name: "tui", want: &options{}},
-		{name: "prompt words join", args: []string{"-m", "a/b", "fix", "the", "test"}, want: &options{model: "a/b", prompt: "fix the test"}},
-		{name: "flags after the prompt", args: []string{"hi", "-m", "x", "there"}, want: &options{model: "x", prompt: "hi there"}},
-		{name: "dash dash keeps a dashed prompt", args: []string{"--", "-v", "means", "verbose?"}, want: &options{prompt: "-v means verbose?"}},
-		{name: "dash dash keeps a command name", args: []string{"--", "plugin", "x"}, want: &options{prompt: "plugin x"}},
-		{name: "one-word typo", args: []string{"helth"}, code: 2, stderr: "did you mean health"},
+		{name: "one-word typo", args: []string{"helth"}, code: 2, stderr: "unknown command"},
+		{name: "a lone word is no command", args: []string{"fix the test"}, code: 2, stderr: `unknown command "fix the test" for "zemi"`},
 		{name: "continue with resume", args: []string{"-c", "-r", "s1"}, code: 2, stderr: "unknown shorthand flag: 'c'"},
 		{name: "print flag is gone", args: []string{"-p", "hi"}, code: 2, stderr: "unknown shorthand flag: 'p'"},
 		{name: "trust false", args: []string{"--trust=false"}, want: &options{trust: new(false)}},
@@ -131,8 +128,8 @@ func TestCLI(t *testing.T) {
 		{name: "the delete took", args: []string{"plugin", "list"}, stdout: "rub", notStdout: "zzq"},
 		{name: "completion script", args: []string{"completion", "fish"}, stdout: "complete -c zemi"},
 		{name: "complete a plugin name", args: []string{"__complete", "plugin", "enable", ""}, stdout: "rub\n"},
-		{name: "-C a missing dir", args: []string{"-C", "nope", "fix", "it"}, code: 1, stderr: "zemi: -C nope: no such file or directory"},
-		{name: "-C a dir", args: []string{"-C", dir, "fix", "it"}, want: &options{prompt: "fix it", dir: dir}},
+		{name: "-C a missing dir", args: []string{"-C", "nope", "health"}, code: 1, stderr: "zemi: health: -C nope: no such file or directory"},
+		{name: "-C a dir", args: []string{"-C", dir}, want: &options{dir: dir}},
 	} {
 		if err := os.Chdir(base); err != nil {
 			t.Fatal(err)
@@ -175,13 +172,10 @@ func TestCLI(t *testing.T) {
 func TestReadStdin(t *testing.T) {
 	for _, c := range []struct {
 		name, stdin string
-		prompt      string
 		null        bool // null reads /dev/null, a character device
 		err         string
-		notErr      string
 	}{
-		{name: "a pipe is refused", stdin: "x", err: "stdin is piped; the TUI does not read it - give the prompt as an argument"},
-		{name: "a pipe with the prompt given names no move", stdin: "x", prompt: "say hi", err: "stdin is piped; the TUI does not read it", notErr: "give the prompt"},
+		{name: "a pipe is refused", stdin: "x", err: "stdin is piped; the TUI does not read it"},
 		{name: "/dev/null is taken", null: true},
 	} {
 		r, w, err := os.Pipe()
@@ -198,12 +192,11 @@ func TestReadStdin(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		o := options{prompt: c.prompt}
+		o := options{}
 		err = o.readStdin(r)
 		r.Close()
-		errText := fmt.Sprint(err)
-		if !strings.Contains(errText, c.err) || c.notErr != "" && strings.Contains(errText, c.notErr) || o.prompt != c.prompt {
-			t.Errorf("%s: prompt %q, err %v", c.name, o.prompt, err)
+		if !strings.Contains(fmt.Sprint(err), c.err) {
+			t.Errorf("%s: err %v", c.name, err)
 		}
 	}
 }

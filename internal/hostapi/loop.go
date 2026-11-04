@@ -193,7 +193,7 @@ func (h *Host) fireLoop(l *Loop) {
 		// a command gets the note as its attachment
 		err = h.SendPrompt(l.Prompt + note)
 	} else {
-		err = h.sendClaimed(scope, note, nil)
+		err = h.sendClaimed(scope, note)
 	}
 	if err != nil {
 		// the stop names the cause only: the advice is written for a turn

@@ -269,8 +269,8 @@ Contracts that make this safe:
   once, and the run's report arrives as a message when it ends. An
   interrupt of the turn hands its runs off the same way, so the wait
   stops while the work it waited on goes on. Only the
-  user's own line raises that signal (`Host.AgentSendUser`: the composer,
-  or a command-line prompt), only when it joined a running turn - one that
+  user's own line raises that signal (`Host.AgentSendUser`: the composer),
+  only when it joined a running turn - one that
   starts a turn leaves its calls waiting - and never a report, a plugin
   send or a loop; it is spent once the queue is read at a step boundary or
   taken back for editing, so a later call waits as usual.
@@ -512,8 +512,7 @@ pull is the update, and the daily sweep runs it for every marketplace.
 plugin, else the local plugin; a symlink loses the
 link only; `zemi plugin delete` asks first, and needs `--yes` off a
 terminal). `zemi plugin` runs without the TUI or trust, and without the
-Lua boot but for `test`; a prompt whose first word names a command goes
-after `--`. A plugin may carry a manifest, `.zemi/plugin.json` in its code
+Lua boot but for `test`. A plugin may carry a manifest, `.zemi/plugin.json` in its code
 dir:
 `{ "version": "1.2.0", "description": "...", "uses": ["model", "http"] }`,
 every field optional, which is what a list shows in place of the

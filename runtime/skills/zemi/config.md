@@ -91,7 +91,7 @@ Language servers (gopls, pyright, typescript, clangd, rust-analyzer, luals - the
 
 ## Command line
 
-`zemi [flags] [prompt]` opens the TUI; the prompt is sent as the first message, or run when it names a command. A message prompt is on the chat from the first frame, thinking while zemi boots, and goes as the first turn once boot is done; esc takes it back to the composer. It takes `-m provider/model` and `--trust`; `-C <dir>` runs any command as if started in dir. The TUI needs a terminal on stdin and stdout.
+`zemi [flags]` opens the TUI. It takes `-m provider/model` and `--trust`; `-C <dir>` runs any command as if started in dir. The TUI needs a terminal on stdin and stdout.
 `zemi health` prints the checks (exits 1 when one errors); `zemi db <sql>` runs one read-only query against the store (`db.md`); `zemi projects` lists every project zemi keeps state for, the path from column 36 (`zemi -C "$(zemi projects | fzf | cut -c36-)"` opens a picked one); `zemi models` lists the ids `-m` takes. `projects`, `plugin`, `health` and `db` take `--json`: one object per line (DESIGN §8 has the fields). `/btw` prints its answer, and `/goal make check is clean` runs until the goal is met. `zemi plugin ...` manages plugins from a shell (`plugins.md`), and `zemi completion <shell>` prints a completion script.
 
 ## Commands and input

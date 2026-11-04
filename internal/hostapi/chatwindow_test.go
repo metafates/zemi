@@ -32,11 +32,6 @@ func TestHeadCut(t *testing.T) {
 	}
 }
 
-// TestDropHeldRowAfterTheTrimShedsIt: the held row's slot is its landing
-// index minus the head cut. Once the trim sheds the row itself, no index is
-// the hold's to remove - a re-sent same-text message at the stale slot
-// survives.
-
 // TestAlignTrimStartsOnATurn: the window's head never opens on an
 // assistant row - a bound landing mid-turn sheds the rest of that turn,
 // so the chat's oldest visible row is a question, not a bare answer.
@@ -78,32 +73,6 @@ func TestAlignTrimStartsOnATurn(t *testing.T) {
 	})
 }
 
-func TestDropHeldRowAfterTheTrimShedsIt(t *testing.T) {
-	h, _ := newTestHost(t)
-	const prompt = "deploy the staging build"
-	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: prompt})
-	held := &heldPrompt{base: 0, text: prompt}
-	// the window churns past its bound: the held row sheds
-	for i := range _chatWindowRows + 5 {
-		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: fmt.Sprintf("filler %d", i)})
-	}
-	// the user re-sends the same prompt, then churns it to the slot base names
-	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: prompt})
-	for i := range _chatWindowRows - 1 {
-		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: fmt.Sprintf("late %d", i)})
-	}
-	h.dropHeldRow(held)
-	for _, m := range h.Session().Transcript {
-		if m.Text == prompt {
-			return // the resent message survived
-		}
-	}
-	t.Fatal("the resent message died to the held prompt's stale base")
-}
-
-// TestLiveAppendTrims: a row appended mid-turn (the plan ask's row, through
-// appendAfterLive) trims through the same helper as the settled path - the
-// window holds the bound and the cut moves with it.
 func TestLiveAppendTrims(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHost(t)
