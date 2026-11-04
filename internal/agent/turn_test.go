@@ -353,7 +353,11 @@ func TestRetryDropsPendingCall(t *testing.T) {
 	if err := r.Send(t.Context(), "hi"); err != nil {
 		t.Fatalf("the retried turn failed on a call the retry never made: %v", err)
 	}
-	waitDone(t, r.Hooks.(*recHooks))
+	hooks, ok := r.Hooks.(*recHooks)
+	if !ok {
+		t.Fatalf("hooks = %T, want *recHooks", r.Hooks)
+	}
+	waitDone(t, hooks)
 }
 
 // TestCutOffToolCallGetsResult: a reply cut off with a tool call in it
@@ -711,11 +715,11 @@ func TestStripImages(t *testing.T) {
 	if tp, ok := history[0].Content[1].(fantasy.TextPart); !ok || !strings.Contains(tp.Text, "shot.png omitted") {
 		t.Fatalf("file part = %#v", history[0].Content[1])
 	}
-	if res := history[1].Content[0].(fantasy.ToolResultPart); res.Output.GetType() != fantasy.ToolResultContentTypeError {
-		t.Fatalf("media result = %#v", res.Output)
+	if res, ok := history[1].Content[0].(fantasy.ToolResultPart); !ok || res.Output.GetType() != fantasy.ToolResultContentTypeError {
+		t.Fatalf("media result = %#v", history[1].Content[0])
 	}
-	if res := history[1].Content[1].(fantasy.ToolResultPart); res.Output.GetType() != fantasy.ToolResultContentTypeText {
-		t.Fatalf("text result changed: %#v", res.Output)
+	if res, ok := history[1].Content[1].(fantasy.ToolResultPart); !ok || res.Output.GetType() != fantasy.ToolResultContentTypeText {
+		t.Fatalf("text result changed: %#v", history[1].Content[1])
 	}
 }
 
@@ -832,7 +836,11 @@ func TestOpenAIResponses(t *testing.T) {
 			if err := r.Send(t.Context(), text); err != nil {
 				t.Fatal(err)
 			}
-			waitDone(t, r.Hooks.(*recHooks))
+			hooks, ok := r.Hooks.(*recHooks)
+			if !ok {
+				t.Fatalf("hooks = %T, want *recHooks", r.Hooks)
+			}
+			waitDone(t, hooks)
 			history = nil // a resumed session reads the store
 			for _, s := range stored {
 				var msg fantasy.Message
@@ -970,7 +978,10 @@ func TestCacheBreakpoints(t *testing.T) {
 // five, which the provider hard-errors on.
 func TestCacheMarksExactlyFour(t *testing.T) {
 	view := UserMessage("0+1|hello\n2+2|more")
-	part := view.Content[0].(fantasy.TextPart)
+	part, ok := view.Content[0].(fantasy.TextPart)
+	if !ok {
+		t.Fatalf("content = %T, want a text part", view.Content[0])
+	}
 	part.ProviderOptions = WithCacheControl(part.ProviderOptions)
 	view.Content[0] = part
 	m := &mockModel{steps: [][]fantasy.StreamPart{callStep("{}"), textParts("done")}}

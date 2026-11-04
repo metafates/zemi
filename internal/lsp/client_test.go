@@ -262,23 +262,23 @@ func TestSaveAfterLoad(t *testing.T) {
 // one document to the server.
 func TestTouchSymlinkSpellings(t *testing.T) {
 	t.Parallel()
-	real, link := t.TempDir(), filepath.Join(t.TempDir(), "link")
-	if err := os.Symlink(real, link); err != nil {
+	realDir, link := t.TempDir(), filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(realDir, link); err != nil {
 		t.Skip(err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	c := start(t, ctx, real)
+	c := start(t, ctx, realDir)
 	for _, step := range []struct{ path, text string }{
 		{filepath.Join(link, "a.txt"), "BROKEN"},
-		{filepath.Join(real, "a.txt"), "fixed"},
+		{filepath.Join(realDir, "a.txt"), "fixed"},
 	} {
 		os.WriteFile(step.path, []byte(step.text), 0o644)
 		if diags, err := c.Touch(ctx, step.path, "plaintext"); err != nil || len(diags) != strings.Count(step.text, "BROKEN") {
 			t.Fatalf("%s: diags %+v, err %v", step.path, diags, err)
 		}
 	}
-	if got, want := c.URI(filepath.Join(real, "a.txt")), lsp.DocumentURI(filepath.Join(link, "a.txt")); got != want {
+	if got, want := c.URI(filepath.Join(realDir, "a.txt")), lsp.DocumentURI(filepath.Join(link, "a.txt")); got != want {
 		t.Fatalf("queries must name the opened document: %s, want %s", got, want)
 	}
 }

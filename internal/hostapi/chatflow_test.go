@@ -85,7 +85,7 @@ func TestViewGrowsOnlyAtItsEnd(t *testing.T) {
 	}
 	// the parts before the tail are byte-identical, mark included
 	for i := range 2 {
-		a, b := one.Content[i].(fantasy.TextPart), two.Content[i].(fantasy.TextPart)
+		a, b := textPart(t, one.Content, i), textPart(t, two.Content, i)
 		if a.Text != b.Text {
 			t.Fatalf("part %d moved between views:\n%q\n%q", i, a.Text, b.Text)
 		}
@@ -94,11 +94,11 @@ func TestViewGrowsOnlyAtItsEnd(t *testing.T) {
 		t.Fatal("the stable block lost its mark")
 	}
 	// the tail grew, unbuilt message lines as their own heads, the view closed
-	if got := two.Content[2].(fantasy.TextPart).Text; !strings.HasSuffix(got, "10+1|user: row 10\n11+1|user: row 11\n</chat>") {
+	if got := textPart(t, two.Content, 2).Text; !strings.HasSuffix(got, "10+1|user: row 10\n11+1|user: row 11\n</chat>") {
 		t.Fatalf("the tail block = %q", got)
 	}
-	if !strings.HasPrefix(one.Content[0].(fantasy.TextPart).Text, "<chat>\n0+1|line 0 text\n") {
-		t.Fatalf("the view does not open with the first line: %q", one.Content[0].(fantasy.TextPart).Text)
+	if !strings.HasPrefix(textPart(t, one.Content, 0).Text, "<chat>\n0+1|line 0 text\n") {
+		t.Fatalf("the view does not open with the first line: %q", textPart(t, one.Content, 0).Text)
 	}
 	// the empty log skips the view entirely
 	h2, _ := newTestHostDB(t)

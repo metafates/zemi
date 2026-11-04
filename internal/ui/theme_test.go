@@ -84,7 +84,11 @@ func TestWhorl(t *testing.T) {
 	if ansi256(pal.AddBg) == ansi256(pal.DelBg) {
 		t.Error("an added and a removed row are one color at 256 colors")
 	}
-	if e := _xterm[ansi256(pal.Danger).(ansi.IndexedColor)]; math.Hypot(e[1], e[2]) < 1e-3 {
+	danger, ok := ansi256(pal.Danger).(ansi.IndexedColor)
+	if !ok {
+		t.Fatalf("danger is %T at 256 colors, want an indexed color", ansi256(pal.Danger))
+	}
+	if e := _xterm[danger]; math.Hypot(e[1], e[2]) < 1e-3 {
 		t.Error("danger is a grey at 256 colors")
 	}
 	for _, p := range chrome {

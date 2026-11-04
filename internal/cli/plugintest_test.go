@@ -281,8 +281,8 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 			var out strings.Builder
 			code := testPluginsWithin(ctx, timeout, args, &out, &out)
 			got := regexp.MustCompile(`\d+\.\d\ds\)`).ReplaceAllString(out.String(), "(T))")
-			if real, err := filepath.EvalSymlinks(dir); err == nil {
-				got = strings.ReplaceAll(got, real, "<plugin>")
+			if realPath, err := filepath.EvalSymlinks(dir); err == nil {
+				got = strings.ReplaceAll(got, realPath, "<plugin>")
 			}
 			if got = strings.ReplaceAll(got, dir, "<plugin>"); code != c.code || got != c.want {
 				t.Errorf("exit %d, want %d; output:\n%s\nwant:\n%s", code, c.code, got, c.want)

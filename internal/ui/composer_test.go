@@ -844,7 +844,11 @@ func TestCompletionScan(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("no rescan on reopen")
 	}
-	app.onFilesScanned(cmd().(filesScannedMsg))
+	scanned, ok := cmd().(filesScannedMsg)
+	if !ok {
+		t.Fatal("rescan did not return filesScannedMsg")
+	}
+	app.onFilesScanned(scanned)
 	app.onFilesScanned(msg)
 	if !slices.Contains(app.completion.files, "new.go") {
 		t.Fatalf("rescan missed new.go: %v", app.completion.files)

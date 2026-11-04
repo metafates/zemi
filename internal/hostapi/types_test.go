@@ -255,7 +255,15 @@ func bootedNamespaces(t *testing.T, other bool) map[string][]string {
 		t.Fatal(err)
 	}
 	defer L.Close()
-	L.GetGlobal("zemi").(*glua.LTable).RawGetString("workflow").(*glua.LTable).ForEach(func(k, _ glua.LValue) {
+	ns, ok := L.GetGlobal("zemi").(*glua.LTable)
+	if !ok {
+		t.Fatal("zemi is not a table")
+	}
+	wf, ok := ns.RawGetString("workflow").(*glua.LTable)
+	if !ok {
+		t.Fatal("zemi.workflow is not a table")
+	}
+	wf.ForEach(func(k, _ glua.LValue) {
 		out["zemi.workflow"] = append(out["zemi.workflow"], k.String())
 	})
 	return out

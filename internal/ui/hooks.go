@@ -80,8 +80,8 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		rows := hostapi.WrapSegs(path, width)
 		// the root is resolved and a linked worktree maps to its main checkout
 		cwd := tp.cwd
-		if real, err := filepath.EvalSymlinks(cwd); err == nil {
-			cwd = real
+		if realCwd, err := filepath.EvalSymlinks(cwd); err == nil {
+			cwd = realCwd
 		}
 		switch rel, in := perm.Under(tp.root, cwd); {
 		case !in:

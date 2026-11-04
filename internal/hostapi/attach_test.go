@@ -657,7 +657,7 @@ func TestImageAttachment(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "shot.png"), png, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if msg := h.composeUserMessage("what is wrong in @shot.png", false); len(msg.Content) != 1 || !strings.Contains(msg.Content[0].(fantasy.TextPart).Text, "<image path=\"shot.png\">\nomitted") {
+	if msg := h.composeUserMessage("what is wrong in @shot.png", false); len(msg.Content) != 1 || !strings.Contains(textPart(t, msg.Content, 0).Text, "<image path=\"shot.png\">\nomitted") {
 		t.Fatalf("text-only model: %#v", msg.Content)
 	}
 	msg := h.composeUserMessage("what is wrong in @shot.png", true)

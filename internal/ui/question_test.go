@@ -226,10 +226,13 @@ func TestQuestionBatch(t *testing.T) {
 			app, _ := bootAgentApp(t, 70, 20)
 			done := askAsync(t, app, qs...)
 			for _, k := range c.keys {
-				if msg, ok := k.(tea.KeyPressMsg); ok {
-					app.Update(msg)
-				} else {
-					pressKeys(app, k.(string))
+				switch k := k.(type) {
+				case tea.KeyPressMsg:
+					app.Update(k)
+				case string:
+					pressKeys(app, k)
+				default:
+					t.Fatalf("a key is neither a key press nor a name: %T", k)
 				}
 			}
 			if r := awaitAnswer(t, app, done); r.ok != c.want.ok || fmt.Sprint(r.answers) != fmt.Sprint(c.want.answers) {

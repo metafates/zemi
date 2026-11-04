@@ -55,6 +55,23 @@ func wordAt(text string, line, char int) string {
 	return ""
 }
 
+// hit is one place a word occurs: the document, the line, and its span in it.
+type hit struct {
+	uri            string
+	line, from, to int
+}
+
+// object is the hit as JSON-RPC spells a location: a document and a range.
+func (h hit) object() map[string]any { return map[string]any{"uri": h.uri, "range": h.span()} }
+
+// span is the hit's range within its line.
+func (h hit) span() map[string]any {
+	return map[string]any{
+		"start": map[string]any{"line": h.line, "character": h.from},
+		"end":   map[string]any{"line": h.line, "character": h.to},
+	}
+}
+
 // Serve answers one client until it exits or in closes.
 func Serve(in io.Reader, out io.Writer) {
 	r := bufio.NewReader(in)
@@ -146,14 +163,12 @@ func Serve(in io.Reader, out io.Writer) {
 			uri := m.Params.TextDocument.URI
 			text := texts[uri]
 			word := wordAt(text, m.Params.Position.Line, m.Params.Position.Character)
-			hits := func(uri, text string) []map[string]any {
-				var out []map[string]any
+			hits := func(uri, text string) []hit {
+				var out []hit
 				for i, line := range strings.Split(text, "\n") {
 					for _, m := range wordRe.FindAllStringIndex(line, -1) {
 						if line[m[0]:m[1]] == word {
-							out = append(out, map[string]any{"uri": uri, "range": map[string]any{
-								"start": map[string]any{"line": i, "character": m[0]}, "end": map[string]any{"line": i, "character": m[1]},
-							}})
+							out = append(out, hit{uri: uri, line: i, from: m[0], to: m[1]})
 						}
 					}
 				}
@@ -163,16 +178,18 @@ func Serve(in io.Reader, out io.Writer) {
 			switch m.Method {
 			case "textDocument/definition", "textDocument/implementation":
 				// the definition is the first "func WORD" line, if any
+				lines := strings.Split(text, "\n")
 				for _, h := range hits(uri, text) {
-					l := h["range"].(map[string]any)["start"].(map[string]any)["line"].(int)
-					if strings.HasPrefix(strings.Split(text, "\n")[l], "func "+word) {
-						result = []any{h}
+					if strings.HasPrefix(lines[h.line], "func "+word) {
+						result = []any{h.object()}
 					}
 				}
 			case "textDocument/references":
 				var all []map[string]any
 				for _, u := range slices.Sorted(maps.Keys(texts)) {
-					all = append(all, hits(u, texts[u])...)
+					for _, h := range hits(u, texts[u]) {
+						all = append(all, h.object())
+					}
 				}
 				result = all
 			case "textDocument/rename":
@@ -180,7 +197,7 @@ func Serve(in io.Reader, out io.Writer) {
 				for u, t := range texts {
 					var edits []any
 					for _, h := range hits(u, t) {
-						edits = append(edits, map[string]any{"range": h["range"], "newText": m.Params.NewName})
+						edits = append(edits, map[string]any{"range": h.span(), "newText": m.Params.NewName})
 					}
 					if len(edits) > 0 {
 						changes[u] = edits

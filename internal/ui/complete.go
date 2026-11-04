@@ -201,11 +201,11 @@ func (a *App) closeQuotedWord() {
 	if w == "" {
 		return
 	}
-	real, err := a.host.ResolveWord(w)
+	realPath, err := a.host.ResolveWord(w)
 	if err != nil {
 		return
 	}
-	if _, err := os.Stat(real.String()); err != nil {
+	if _, err := os.Stat(realPath.String()); err != nil {
 		return
 	}
 	c.insertFits(string(q))

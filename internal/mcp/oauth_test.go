@@ -256,7 +256,11 @@ func TestOAuthPreRegisteredClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	port := ln.Addr().(*net.TCPAddr).Port
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok {
+		t.Fatalf("listen address = %T, want *net.TCPAddr", ln.Addr())
+	}
+	port := addr.Port
 	ln.Close()
 	auth = &Auth{Name: "fake", ServerURL: srv.URL + "/mcp", Path: filepath.Join(t.TempDir(), "b.json"), ClientID: "mine", CallbackPort: port}
 	if err := auth.Authorize(t.Context(), visit); err != nil {

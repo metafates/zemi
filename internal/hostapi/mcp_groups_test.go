@@ -362,8 +362,15 @@ func TestMCPToggleLua(t *testing.T) {
 	}
 	byName := map[string]map[string]any{}
 	for _, row := range rows {
-		m := row.(map[string]any)
-		byName[m["name"].(string)] = m
+		m, ok := row.(map[string]any)
+		if !ok {
+			t.Fatalf("zemi.mcp.list() row = %#v, want an object", row)
+		}
+		name, ok := m["name"].(string)
+		if !ok {
+			t.Fatalf("row name = %#v, want a string", m["name"])
+		}
+		byName[name] = m
 	}
 	if g := byName["jira"]; g["group"] != "work" || g["enabled"] != false {
 		t.Fatalf("jira = %v, want group work, disabled", g)

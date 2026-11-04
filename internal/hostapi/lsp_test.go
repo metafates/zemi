@@ -109,7 +109,7 @@ func TestLSPConfig(t *testing.T) {
 	if !slices.Equal(defs[0].Args, []string{"-rpc", "1", "true"}) || !maps.Equal(defs[0].Env, map[string]string{"A": "x", "PORT": "8080", "V": "false"}) {
 		t.Fatalf("scalars not read as strings: args = %q env = %q", defs[0].Args, defs[0].Env)
 	}
-	if cfg, _ := defs[0].Config.(map[string]any); cfg["gopls"].(map[string]any)["staticcheck"] != true || defs[0].Init.(map[string]any)["x"] != float64(1) {
+	if at(t, defs[0].Config, "gopls", "staticcheck") != true || at(t, defs[0].Init, "x") != float64(1) {
 		t.Fatalf("settings = %+v init = %+v", defs[0].Config, defs[0].Init)
 	}
 	if d, ok := h.lspFor("main.go"); !ok || d.Command != "gopls-wrapper" {
@@ -159,7 +159,11 @@ func TestLSPBuiltins(t *testing.T) {
 		for _, d := range h.lspDefs("") {
 			rust = rust || d.Name == "rust-analyzer"
 			if d.Name == "typescript" {
-				got = d.Init.(map[string]any)["tsserver"].(map[string]any)["path"].(string)
+				path, ok := at(t, d.Init, "tsserver", "path").(string)
+				if !ok {
+					t.Fatalf("%s: the tsserver path = %v", c.name, at(t, d.Init, "tsserver", "path"))
+				}
+				got = path
 			}
 		}
 		if rust != c.trusted {

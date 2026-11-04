@@ -278,7 +278,8 @@ func copyPlugin(src, dst string) error {
 			if err != nil {
 				return err
 			}
-			if real, err := filepath.EvalSymlinks(p); err != nil || filepath.IsAbs(target) || !inside(real) || !inside(filepath.Join(filepath.Dir(p), target)) {
+			realPath, err := filepath.EvalSymlinks(p)
+			if err != nil || filepath.IsAbs(target) || !inside(realPath) || !inside(filepath.Join(filepath.Dir(p), target)) {
 				return nil
 			}
 			return os.Symlink(target, to)

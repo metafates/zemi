@@ -222,8 +222,13 @@ func TestFromGoRefusals(t *testing.T) {
 		assertFromGoRaises(t, L, c.v, c.want)
 	}
 	leaf := map[string]any{"v": "leaf"}
-	tb, ok := FromGo(L, map[string]any{"x": leaf, "y": leaf}).(*glua.LTable)
-	if !ok || tb.RawGetString("y").(*glua.LTable).RawGetString("v") != glua.LString("leaf") {
+	got := FromGo(L, map[string]any{"x": leaf, "y": leaf})
+	tb, ok := got.(*glua.LTable)
+	if !ok {
+		t.Fatalf("want a table, got %T", got)
+	}
+	y, ok := tb.RawGetString("y").(*glua.LTable)
+	if !ok || y.RawGetString("v") != glua.LString("leaf") {
 		t.Fatal("an acyclic shared reference must marshal")
 	}
 }

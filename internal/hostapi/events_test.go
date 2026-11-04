@@ -111,7 +111,10 @@ func TestHostEmitsAreCatalogued(t *testing.T) {
 				continue
 			}
 			for _, spec := range g.Specs {
-				vs := spec.(*ast.ValueSpec)
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					t.Fatalf("const spec = %T, want a value spec", spec)
+				}
 				for i, n := range vs.Names {
 					if i >= len(vs.Values) {
 						continue

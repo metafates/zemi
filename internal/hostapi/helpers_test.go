@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/fantasy"
+
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/runtime"
@@ -160,4 +162,37 @@ func newWindow(t *testing.T, stateHome, projectDir string) (*Host, *replyStubMod
 		t.Fatalf("Boot: %v", err)
 	}
 	return h, m
+}
+
+// at walks the object keys of v, failing the test where one is missing.
+func at(t *testing.T, v any, keys ...string) any {
+	t.Helper()
+	for _, k := range keys {
+		obj, ok := v.(map[string]any)
+		if !ok {
+			t.Fatalf("%s: %T is not an object", k, v)
+		}
+		v = obj[k]
+	}
+	return v
+}
+
+// textPart is part i of a message's content, which these views write as text.
+func textPart(t *testing.T, parts []fantasy.MessagePart, i int) fantasy.TextPart {
+	t.Helper()
+	p, ok := parts[i].(fantasy.TextPart)
+	if !ok {
+		t.Fatalf("part %d is %T, want text", i, parts[i])
+	}
+	return p
+}
+
+// fakeHooks is the fake UI the host under test reports to.
+func fakeHooks(t *testing.T, h *Host) *fakeUI {
+	t.Helper()
+	ui, ok := h.hooks().(*fakeUI)
+	if !ok {
+		t.Fatalf("hooks = %T, want the fake UI", h.hooks())
+	}
+	return ui
 }

@@ -134,11 +134,11 @@ func TestCloseJoinsTheGoroutinesItStarted(t *testing.T) {
 			if joined != c.joined {
 				t.Fatalf("the goroutine was joined after Close = %v, want %v", joined, c.joined)
 			}
-			min := 20 * time.Millisecond
+			minWait := 20 * time.Millisecond
 			if c.wedge {
-				min = _closeWait // gave up at the cap, not before
+				minWait = _closeWait // gave up at the cap, not before
 			}
-			if waited < min {
+			if waited < minWait {
 				t.Fatalf("Close returned after %s, before the goroutine settled", waited)
 			}
 		})

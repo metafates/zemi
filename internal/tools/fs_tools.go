@@ -1384,8 +1384,8 @@ func anchorsText(re *syntax.Regexp) bool {
 // (negations, anchoring, directory-only lines) would get closer.
 func walk(ctx context.Context, root string, fn func(rel string) error) error {
 	// WalkDir does not follow a symlinked root, and would visit nothing
-	if real, err := filepath.EvalSymlinks(root); err == nil {
-		root = real
+	if realRoot, err := filepath.EvalSymlinks(root); err == nil {
+		root = realRoot
 	}
 	// the handler below drops errors so an unreadable subdirectory is skipped,
 	// and a missing root would read as no matches

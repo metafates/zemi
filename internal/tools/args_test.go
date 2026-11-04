@@ -30,13 +30,13 @@ func TestArgsOf(t *testing.T) {
 		got  any
 		want any
 	}{
-		{"description", props["name"].(map[string]any)["description"], "the name"},
-		{"type", props["name"].(map[string]any)["type"], "string"},
+		{"description", at(t, props, "name", "description"), "the name"},
+		{"type", at(t, props, "name", "type"), "string"},
 		{"required", required, []string{"name"}},
-		{"enum", props["kind"].(map[string]any)["enum"], _questionTypes},
-		{"slice", props["tags"].(map[string]any)["items"].(map[string]any)["type"], "string"},
-		{"nested city", props["nested"].(map[string]any)["properties"].(map[string]any)["city"].(map[string]any)["description"], "where"},
-		{"nested required", props["nested"].(map[string]any)["required"], []string{"city"}},
+		{"enum", at(t, props, "kind", "enum"), _questionTypes},
+		{"slice", at(t, props, "tags", "items", "type"), "string"},
+		{"nested city", at(t, props, "nested", "properties", "city", "description"), "where"},
+		{"nested required", at(t, props, "nested", "required"), []string{"city"}},
 	} {
 		if !reflect.DeepEqual(c.got, c.want) {
 			t.Errorf("%s = %v, want %v", c.name, c.got, c.want)
@@ -54,4 +54,17 @@ func TestArgsOf(t *testing.T) {
 	if args.Count != 60000 || !args.Disable || args.Nested.City != "y" || len(args.Tags) != 1 {
 		t.Fatalf("args = %+v", args)
 	}
+}
+
+// at walks the object keys of v, failing the test where one is missing.
+func at(t *testing.T, v any, keys ...string) any {
+	t.Helper()
+	for _, k := range keys {
+		obj, ok := v.(map[string]any)
+		if !ok {
+			t.Fatalf("%s: %T is not an object", k, v)
+		}
+		v = obj[k]
+	}
+	return v
 }

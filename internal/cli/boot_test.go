@@ -56,18 +56,18 @@ func TestConfigFingerprintFollowsSymlinks(t *testing.T) {
 		{"dir linked below a tree", "lua/vendor", "lua/vendor/x.lua", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			real, cfg := t.TempDir(), filepath.Join(t.TempDir(), "zemi")
-			writeFile(t, filepath.Join(real, "init.lua"), "-- one")
-			writeFile(t, filepath.Join(real, c.edit), "-- one")
+			dir, cfg := t.TempDir(), filepath.Join(t.TempDir(), "zemi")
+			writeFile(t, filepath.Join(dir, "init.lua"), "-- one")
+			writeFile(t, filepath.Join(dir, c.edit), "-- one")
 			if err := os.MkdirAll(filepath.Dir(filepath.Join(cfg, c.link)), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Symlink(filepath.Join(real, c.link), filepath.Join(cfg, c.link)); err != nil {
+			if err := os.Symlink(filepath.Join(dir, c.link), filepath.Join(cfg, c.link)); err != nil {
 				t.Fatal(err)
 			}
 			roots := append([]string{cfg}, config.Dirs{ConfigHome: cfg}.UserTrees()...)
 			base := configFingerprint("", roots...)
-			writeFile(t, filepath.Join(real, c.edit), "-- two!")
+			writeFile(t, filepath.Join(dir, c.edit), "-- two!")
 			if got := configFingerprint("", roots...) != base; got != c.noticed {
 				t.Fatalf("edit to %s noticed = %v, want %v", c.edit, got, c.noticed)
 			}

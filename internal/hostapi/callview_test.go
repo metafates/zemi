@@ -17,7 +17,7 @@ import (
 func TestCallView(t *testing.T) {
 	t.Parallel()
 	h, _ := newLoopHost(t)
-	ui := h.hooks().(*fakeUI)
+	ui := fakeHooks(t, h)
 	h.AppendChat(ChatMessage{Role: "assistant", Kind: RowTool, Tool: "shell", Text: "go test ./...", Label: "run the tests", Status: CallErr, Output: "FAIL\nmain_test.go"})
 	h.AppendChat(ChatMessage{Role: "assistant", Kind: RowTool, Tool: "edit", Text: "main.go", Status: CallOK, Diff: "-old\n+new"})
 	h.AppendChat(ChatMessage{Role: "assistant", Kind: RowTool, Tool: "read", Text: "main.go", Status: CallOK, Output: "1\tpackage main"})
@@ -253,7 +253,7 @@ func fieldOf(o Overlay, name string) string {
 func TestCallWatcherSuperseded(t *testing.T) {
 	t.Parallel()
 	h, _ := newLoopHost(t)
-	ui := h.hooks().(*fakeUI)
+	ui := fakeHooks(t, h)
 	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{
 		{Name: "shell", Input: "sleep 9", Status: CallRun},
 		{Name: "read", Input: "a.go", Status: CallRun},
@@ -283,7 +283,7 @@ func TestCallWatcherSuperseded(t *testing.T) {
 func TestCallViewFollowsItsCall(t *testing.T) {
 	t.Parallel()
 	h, _ := newLoopHost(t)
-	ui := h.hooks().(*fakeUI)
+	ui := fakeHooks(t, h)
 	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{
 		{ID: "call_1", Name: "shell", Input: "make build", Status: CallRun},
 		{ID: "call_2", Name: "read", Input: "a.go", Status: CallRun},
@@ -315,7 +315,7 @@ func TestCallViewFollowsItsCall(t *testing.T) {
 func TestCallViewWaitingHasNoClock(t *testing.T) {
 	t.Parallel()
 	h, _ := newLoopHost(t)
-	ui := h.hooks().(*fakeUI)
+	ui := fakeHooks(t, h)
 	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{
 		{ID: "call_1", Name: "edit", Input: "a.go", Status: CallWait},
 	}})

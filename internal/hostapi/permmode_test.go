@@ -40,7 +40,7 @@ func TestPermAsk(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			ui := h.hooks().(*fakeUI)
+			ui := fakeHooks(t, h)
 			if len(ui.asked) != 1 || ui.asked[0].Subject != "fs.write" || ui.asked[0].Owner != c.owner {
 				t.Fatalf("the overlay saw %+v, want one fs.write ask from %s", ui.asked, c.owner)
 			}

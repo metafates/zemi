@@ -1203,7 +1203,11 @@ func (r *Registry) resolve(id ModelID) (fantasy.LanguageModel, error) {
 // says nothing would otherwise hold the caller until they give up. Client.Timeout
 // stays zero, so a long stream is never cut; a stalled one is idleModel's job.
 var ModelHTTP = sync.OnceValue(func() *http.Client {
-	t := http.DefaultTransport.(*http.Transport).Clone()
+	t, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		panic("agent: http.DefaultTransport is not an *http.Transport")
+	}
+	t = t.Clone()
 	t.ResponseHeaderTimeout = 2 * time.Minute
 	return &http.Client{Transport: t}
 })

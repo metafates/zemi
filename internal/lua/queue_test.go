@@ -395,7 +395,11 @@ func TestQueueForceReloadReplays(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read genmark: %v", err)
 		}
-		return vals[0].(int64)
+		mark, ok := vals[0].(int64)
+		if !ok {
+			t.Fatalf("genmark = %T, want int64", vals[0])
+		}
+		return mark
 	}
 	if boots != 1 {
 		t.Fatalf("boot steps ran %d times, want 1", boots)

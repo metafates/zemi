@@ -25,6 +25,8 @@ linters:
     - errname
     - revive
     - sloglint
+    - forcetypeassert
+    - predeclared
   settings:
     govet:
       enable-all: true
@@ -70,6 +72,8 @@ linters:
       rules:
         - name: redundant-import-alias
         - name: import-alias-naming
+        - name: indent-error-flow
+        - name: superfluous-else
         - name: context-as-argument
           arguments: [{ allowTypesBefore: "*testing.T" }]
     sloglint:

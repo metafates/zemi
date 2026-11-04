@@ -98,7 +98,12 @@ func TestHTTPStreamHeldOpen(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Write([]byte("event: message\ndata: " + string(resp) + "\n\n"))
-		w.(http.Flusher).Flush()
+		f, ok := w.(http.Flusher)
+		if !ok {
+			t.Errorf("the test server's writer %T cannot flush", w)
+			return
+		}
+		f.Flush()
 		select {
 		case <-release:
 		case <-r.Context().Done():
@@ -333,7 +338,11 @@ func TestStdioReaderPanic(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("the connection outlived a reader panic")
 	}
-	if state := c.t.(*stdioTransport).cmd.ProcessState; state == nil || !strings.Contains(c.Err().Error(), "reader panic") {
+	tr, ok := c.t.(*stdioTransport)
+	if !ok {
+		t.Fatalf("transport = %T, want *stdioTransport", c.t)
+	}
+	if state := tr.cmd.ProcessState; state == nil || !strings.Contains(c.Err().Error(), "reader panic") {
 		t.Fatalf("err %v, server state %v", c.Err(), state)
 	}
 }

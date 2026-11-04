@@ -247,9 +247,9 @@ func TestAnchoredBoxBottomBorder(t *testing.T) {
 			if !s.Line || s.HL != hostapi.ChromeRule || s.Fill != hostapi.FillPanel || s.Fade != 0 {
 				t.Fatalf("%s: the box's bottom border is %+v:\n%s", anchor, s, frame)
 			}
-			for _, rune := range s.Text {
-				if armsOf(rune) == 0 {
-					t.Fatalf("%s: %q cuts the box's bottom border:\n%s", anchor, rune, frame)
+			for _, ch := range s.Text {
+				if armsOf(ch) == 0 {
+					t.Fatalf("%s: %q cuts the box's bottom border:\n%s", anchor, ch, frame)
 				}
 			}
 		}

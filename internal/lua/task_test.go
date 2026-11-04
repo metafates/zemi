@@ -137,7 +137,11 @@ func TestTask(t *testing.T) {
 			if res.err != nil {
 				got = res.err.Error()
 			} else if len(res.vals) > 0 {
-				got = res.vals[0].(string)
+				s, ok := res.vals[0].(string)
+				if !ok {
+					t.Fatalf("result = %T, want a string", res.vals[0])
+				}
+				got = s
 			}
 			if (c.want == "") != (got == "") || !strings.Contains(got, c.want) {
 				t.Fatalf("got %q, want %q", got, c.want)

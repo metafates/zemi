@@ -1021,8 +1021,8 @@ func TestWorkflowToolInput(t *testing.T) {
 	if src, err := h.approveRerun(id); err != nil || src != "-- Count to two\nreturn 3" || len(ui.asked) != n+1 || ui.asked[n].Preview != src {
 		t.Fatalf("the user's rerun = %q, %v; asked %+v", src, err, ui.asked[n:])
 	}
-	enum := fmt.Sprint(h.workflowTool(h.PipelineFor()).Info().Parameters["action"].(map[string]any)["enum"])
-	if enum != "[status list wait pause resume stop rerun]" {
+	params := h.workflowTool(h.PipelineFor()).Info().Parameters
+	if enum := fmt.Sprint(at(t, params, "action", "enum")); enum != "[status list wait pause resume stop rerun]" {
 		t.Fatalf("the TUI schema offers %s", enum)
 	}
 }
