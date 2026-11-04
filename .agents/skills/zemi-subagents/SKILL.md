@@ -105,7 +105,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   turn is gone is still logged as the chat's work row (§10.5) and toasted
   (`notifyReport`). A run's notice and its `/agents` row are named by the run's label
   (`agentRun.label`: the model's description, or the definition's name when it wrote none),
-  the row's desc keeping the definition. `/agents` lists the live session's runs and,
+  the row's desc keeping the definition and the model it sends on (`agentRun.model`, resolved
+  once its runner is built). `/agents` lists the live session's runs and,
   under Running and Workflows, the live runs and
   workflows of every other session (`agentRunItems`, the desc ending in that session's title,
   `fromSession`): they block `/reset`, so their stop must be reachable. Every run, agent and job

@@ -572,7 +572,7 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 	if err := h.DB.CreateSession("other", "", "Other work", ""); err != nil {
 		t.Fatal(err)
 	}
-	run := &agentRun{id: "agent-9", agent: "explore", description: "look", parent: "other", status: "running", started: time.Now(), cancel: func() {}}
+	run := &agentRun{id: "agent-9", agent: "explore", description: "look", parent: "other", model: "p/m", status: "running", started: time.Now(), cancel: func() {}}
 	if err := h.tasks.add(run); err != nil {
 		t.Fatal(err)
 	}
@@ -586,7 +586,7 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 	rows := dumpItems(h.agentRunItems())
 	// the row is named by the run's label and its desc keeps the definition;
 	// enter opens its preview (the facts and the task), v its transcript
-	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "text:look") || !strings.Contains(rows, "explore  from Other work") || !strings.Contains(rows, "keys:[desc:view its transcript key:v run:agents view agent-9 list danger:true desc:stop key:s run:agents stop agent-9]") || !strings.Contains(rows, "fields:[status running]") || !strings.Contains(rows, "0 tool calls") {
+	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "text:look") || !strings.Contains(rows, "explore   p/m  from Other work") || !strings.Contains(rows, "keys:[desc:view its transcript key:v run:agents view agent-9 list danger:true desc:stop key:s run:agents stop agent-9]") || !strings.Contains(rows, "fields:[model p/m] [status running]") || !strings.Contains(rows, "0 tool calls") {
 		t.Fatalf("run of another session not listed:\n%s", rows)
 	}
 	if strings.Contains(rows, "scan part1") || !strings.Contains(rows, "  from Other work id:0000000f mark:wait run:workflows view 0000000f section:Workflows") {
@@ -633,8 +633,10 @@ func TestAgentShowOpensPreview(t *testing.T) {
 	if len(o.Keys) != 1 || o.Keys[0].Key != "v" || o.Keys[0].Run != "agents view "+run.id+" show" {
 		t.Fatalf("keys %+v", o.Keys)
 	}
-	if o.Empty != "run the tests" {
-		t.Fatalf("pending %q, want the call's label", o.Empty)
+	// a running run's preview is its task, with no line of what it is doing
+	// under it: the row the run is on reads in the transcript alone
+	if o.Empty != "" {
+		t.Fatalf("the preview carries a state line %q", o.Empty)
 	}
 	if len(o.Parts) == 0 || o.Parts[0].Text != "look" {
 		t.Fatalf("parts %+v", o.Parts)
