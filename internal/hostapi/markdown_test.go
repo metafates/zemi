@@ -203,11 +203,11 @@ func TestMarkdownTableWidth(t *testing.T) {
 // survive the cut, and continuations hang past a gutter.
 func TestWrapSegs(t *testing.T) {
 	for _, c := range []struct {
-		name string
-		line []Segment
-		w    int
-		want string // rows joined by |, trailing spaces kept
-		copy string // what a selection copies when it is not the line
+		name   string
+		line   []Segment
+		w      int
+		want   string // rows joined by |, trailing spaces kept
+		copied string // what a selection copies when it is not the line
 	}{
 		{"short line passes through", []Segment{{Text: "hi"}}, 10, "hi", ""},
 		{"word wrap", []Segment{{Text: "hello world foo"}}, 11, "hello |world foo", ""},
@@ -234,7 +234,7 @@ func TestWrapSegs(t *testing.T) {
 		if last := rows[len(rows)-1]; last[len(last)-1].HL != c.line[len(c.line)-1].HL {
 			t.Errorf("%s: style lost: %+v", c.name, rows)
 		}
-		if got := copyText(rows); got != cmp.Or(c.copy, plainText(c.line)) {
+		if got := copyText(rows); got != cmp.Or(c.copied, plainText(c.line)) {
 			t.Errorf("%s: copies %q", c.name, got)
 		}
 	}

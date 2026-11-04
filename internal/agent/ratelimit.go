@@ -62,7 +62,7 @@ type paceState struct {
 
 type bucket struct {
 	perSec float64
-	cap    float64
+	limit  float64
 	tokens float64
 	last   time.Time
 }
@@ -87,11 +87,11 @@ func (l *rateLimiter) freshState() *paceState {
 
 // newBucket makes a bucket of allow per window, full to start.
 func newBucket(allow int, window time.Duration) bucket {
-	return bucket{perSec: float64(allow) / window.Seconds(), cap: float64(allow), tokens: float64(allow), last: time.Now()}
+	return bucket{perSec: float64(allow) / window.Seconds(), limit: float64(allow), tokens: float64(allow), last: time.Now()}
 }
 
 func (b *bucket) refill(now time.Time) {
-	b.tokens = min(b.cap, b.tokens+now.Sub(b.last).Seconds()*b.perSec)
+	b.tokens = min(b.limit, b.tokens+now.Sub(b.last).Seconds()*b.perSec)
 	b.last = now
 }
 

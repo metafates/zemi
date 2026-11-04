@@ -289,6 +289,7 @@ func TestPluginsStep(t *testing.T) {
 			var out strings.Builder
 			r.SetPrintHook(func(line string) { fmt.Fprintf(&out, "%s\n", line) })
 			h := NewHost(r, log, config.NewStore(), dirs)
+			t.Cleanup(h.Close)
 			for k, v := range c.seed {
 				if err := h.GlobalDB.SetKV(k, v); err != nil {
 					t.Fatal(err)
@@ -407,6 +408,7 @@ func TestClaudeSkillNameCollisions(t *testing.T) {
 		{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin},
 	}})
 	h := NewHost(r, log, config.NewStore(), dirs)
+	t.Cleanup(h.Close)
 	if err := r.Boot(t.Context(), []lua.BootStep{
 		h.NamespacesStep(), h.PluginsStep(), h.SkillsUserHooksStep(), h.MarkdownCommandsStep(),
 	}); err != nil {
@@ -679,7 +681,7 @@ func TestPluginCapVocabulary(t *testing.T) {
 	}
 	for _, c := range []struct {
 		subject string
-		cap     string
+		want    string
 	}{
 		{"lua.job.start", "job"},
 		{"lua.agent.send", "agent"},
@@ -688,8 +690,8 @@ func TestPluginCapVocabulary(t *testing.T) {
 		{"lua.fs.read", ""},  // a read is not declarable
 		{"zemi.env.get", ""}, // nor is the plugin's own env
 	} {
-		if got := pluginCap(c.subject); got != c.cap {
-			t.Errorf("pluginCap(%q) = %q, want %q", c.subject, got, c.cap)
+		if got := pluginCap(c.subject); got != c.want {
+			t.Errorf("pluginCap(%q) = %q, want %q", c.subject, got, c.want)
 		}
 	}
 	// every word the manifest may declare is one a subject maps to, or one

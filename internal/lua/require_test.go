@@ -10,7 +10,7 @@ import (
 
 	glua "github.com/yuin/gopher-lua"
 
-	pluginpkg "github.com/metafates/zemi/internal/plugin"
+	"github.com/metafates/zemi/internal/plugin"
 )
 
 // newRequireRuntime builds a runtime whose runtimepath covers a user config
@@ -25,18 +25,18 @@ func newRequireRuntime(t *testing.T) (*Runtime, string, string) {
 		return p
 	}
 	cfg := resolve(t.TempDir())
-	plugin := resolve(t.TempDir())
-	r := NewRuntime(RuntimeOptions{
+	pluginDir := resolve(t.TempDir())
+	r := newRuntime(t, RuntimeOptions{
 		PathClass: PathClasses{
 			{Prefix: cfg, Origin: OriginUser},
-			{Prefix: plugin, Origin: OriginPlugin},
+			{Prefix: pluginDir, Origin: OriginPlugin},
 		},
 		RuntimeFS: fstest.MapFS{},
 	})
 	if err := r.Boot(t.Context(), nil); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
-	return r, cfg, plugin
+	return r, cfg, pluginDir
 }
 
 func writeFile(t *testing.T, path, src string) {
@@ -100,13 +100,13 @@ func TestRequireCycleDetection(t *testing.T) {
 // a function that runs later), shares the instance with the dotted name,
 // and cannot reach another origin's tree.
 func TestRequireRelative(t *testing.T) {
-	r, cfg, plugin := newRequireRuntime(t)
+	r, cfg, pluginDir := newRequireRuntime(t)
 	writeFile(t, filepath.Join(cfg, "lua", "app", "init.lua"), `return { util = require("./util") }`)
 	writeFile(t, filepath.Join(cfg, "lua", "app", "util.lua"), `return { v = 1 }`)
 	writeFile(t, filepath.Join(cfg, "lua", "app", "lazy.lua"), `return { get = function() return require("../late") end }`)
 	writeFile(t, filepath.Join(cfg, "lua", "late.lua"), `return { v = 2 }`)
-	writeFile(t, filepath.Join(plugin, "lua", "pmod.lua"), `return {}`)
-	toPlugin, err := filepath.Rel(filepath.Join(cfg, "lua"), filepath.Join(plugin, "lua", "pmod"))
+	writeFile(t, filepath.Join(pluginDir, "lua", "pmod.lua"), `return {}`)
+	toPlugin, err := filepath.Rel(filepath.Join(cfg, "lua"), filepath.Join(pluginDir, "lua", "pmod"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestRequireProjectModules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := NewRuntime(RuntimeOptions{PathClass: PathClasses{{Prefix: proj, Origin: OriginProject}}, RuntimeFS: fstest.MapFS{}})
+	r := newRuntime(t, RuntimeOptions{PathClass: PathClasses{{Prefix: proj, Origin: OriginProject}}, RuntimeFS: fstest.MapFS{}})
 	if err := r.Boot(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
@@ -203,9 +203,9 @@ func TestClassifyPrefixCreatedLater(t *testing.T) {
 // plugin and a user callback it calls runs as user, a module runs under its
 // own file's class, and a forged loadstring name launders nothing.
 func TestOriginFollowsCode(t *testing.T) {
-	r, cfg, plugin := newRequireRuntime(t)
-	dir := filepath.Join(plugin, "local", "omod")
-	writeFile(t, filepath.Join(dir, pluginpkg.CodeDir, "lua", "omod.lua"), `_origin()
+	r, cfg, pluginDir := newRequireRuntime(t)
+	dir := filepath.Join(pluginDir, "local", "omod")
+	writeFile(t, filepath.Join(dir, plugin.CodeDir, "lua", "omod.lua"), `_origin()
 		return { setup = function(f) _origin() f()
 			local _, forged = pcall(loadstring, "_origin()", "@user:/x") forged() end }`)
 	r.rfs = fstest.MapFS{"lua/zemi/util.lua": {Data: []byte(`_origin() return { call = function(f) f() end }`)}}

@@ -114,8 +114,8 @@ const surfaceSpan = 0.13
 // floors are the WCAG contrast each text role is clamped to on bg, panel,
 // band and well, the surfaces text draws on.
 var floors = [...]struct {
-	role string
-	min  float64
+	role  string
+	floor float64
 }{
 	{"fg", 7},
 	{"dim", 4.5},
@@ -183,7 +183,7 @@ func derive(p *Palette) {
 	on := []colorful.Color{col(p.Bg), col(p.Panel), col(p.Band), col(p.Well)}
 	for _, f := range floors {
 		dst := p.role(f.role)
-		*dst = clampContrast(col(*dst), on, f.min)
+		*dst = clampContrast(col(*dst), on, f.floor)
 	}
 }
 

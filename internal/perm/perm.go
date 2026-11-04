@@ -103,7 +103,7 @@ func RealPath(p string) string {
 		p = wd + sep + p
 	}
 	vol := filepath.VolumeName(p)
-	real, rest := vol+sep, p[len(vol):]
+	resolved, rest := vol+sep, p[len(vol):]
 	hops := 0
 	for rest != "" {
 		var c string
@@ -112,13 +112,13 @@ func RealPath(p string) string {
 		case "", ".":
 			continue
 		case "..":
-			real = filepath.Dir(real)
+			resolved = filepath.Dir(resolved)
 			continue
 		}
-		next := filepath.Join(real, c)
+		next := filepath.Join(resolved, c)
 		fi, err := os.Lstat(next)
 		if err != nil || fi.Mode()&os.ModeSymlink == 0 {
-			real = next
+			resolved = next
 			continue
 		}
 		link, err := os.Readlink(next)
@@ -128,11 +128,11 @@ func RealPath(p string) string {
 		link = filepath.FromSlash(link)
 		if filepath.IsAbs(link) {
 			v := filepath.VolumeName(link)
-			real, link = v+sep, link[len(v):]
+			resolved, link = v+sep, link[len(v):]
 		}
 		rest = link + sep + rest
 	}
-	return real
+	return resolved
 }
 
 // Path is an absolute path resolved as the kernel resolves it, what the

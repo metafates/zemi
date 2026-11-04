@@ -193,8 +193,8 @@ func (h *Host) zemiLua(path string) (lspDef, bool) {
 	if strings.ToLower(filepath.Ext(path)) != ".lua" {
 		return lspDef{}, false
 	}
-	real := perm.RealPath(path) // as pluginsRoot is
-	root, label := h.localPluginDir(real), "plugin "+h.PluginOf(real)
+	resolved := perm.RealPath(path) // as pluginsRoot is
+	root, label := h.localPluginDir(resolved), "plugin "+h.PluginOf(resolved)
 	if root == "" {
 		if h.Dirs.ConfigHome == "" || !h.inRoots(path, h.Dirs.ConfigHome) {
 			return lspDef{}, false

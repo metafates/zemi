@@ -564,8 +564,8 @@ func realTableOf(tb *glua.LTable) *glua.LTable {
 	if !ok {
 		return tb
 	}
-	if real, ok := mt.RawGetString(realKey).(*glua.LTable); ok {
-		return real
+	if actual, ok := mt.RawGetString(realKey).(*glua.LTable); ok {
+		return actual
 	}
 	idx, ok := mt.RawGetString("__index").(*glua.LTable)
 	if !ok || idx == tb {

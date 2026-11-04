@@ -105,9 +105,9 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 	var refused []string // "path: why", which the user hears too
 	seen := set.Set[string]{}
 	// the model's own attachment cap, when its catalog entry names one
-	max := 0
+	maxAttach := 0
 	if m, ok := h.modelSpec(h.liveModelID()); ok {
-		max = m.MaxAttachments
+		maxAttach = m.MaxAttachments
 	}
 	// what follows the marker is host-composed from model output (agent
 	// reports), and an @ there must not attach anything
@@ -208,9 +208,9 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 		}
 		// the model's own cap, when its catalog entry names one: past it the
 		// reference is prose the model can still read by path
-		if max > 0 && len(seen) > max {
+		if maxAttach > 0 && len(seen) > maxAttach {
 			f.Close()
-			note(fmt.Sprintf("the model takes %d attachments and this is past them", max))
+			note(fmt.Sprintf("the model takes %d attachments and this is past them", maxAttach))
 			continue
 		}
 		if fi.Size() > limit { // a huge file would be read whole first

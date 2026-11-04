@@ -559,8 +559,8 @@ func (h *Host) deliverFired(L *glua.LState, fired []config.WatchFired) {
 	}
 }
 
-func (h *Host) callWatch(L *glua.LState, rec watchRec, old, new any) error {
+func (h *Host) callWatch(L *glua.LState, rec watchRec, prev, next any) error {
 	_, err := h.callFn(L, luaCaller{gen: rec.gen, origin: rec.origin, path: rec.src}, rec.fn, 0,
-		lua.FromGo(L, new), lua.FromGo(L, old))
+		lua.FromGo(L, next), lua.FromGo(L, prev))
 	return err
 }
