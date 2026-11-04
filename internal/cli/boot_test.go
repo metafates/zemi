@@ -13,7 +13,7 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
-	zemiruntime "github.com/metafates/zemi/runtime"
+	"github.com/metafates/zemi/runtime"
 )
 
 func TestMain(m *testing.M) {
@@ -178,9 +178,9 @@ func TestMainCommandArgs(t *testing.T) {
 // the builtin skill (internal/hostapi covers the rest of the surface).
 func TestSkillsCoverBuiltinCommands(t *testing.T) {
 	var text strings.Builder
-	_ = fs.WalkDir(zemiruntime.Skills, "skills", func(path string, d fs.DirEntry, err error) error {
+	_ = fs.WalkDir(runtime.Skills, "skills", func(path string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
-			data, _ := fs.ReadFile(zemiruntime.Skills, path)
+			data, _ := fs.ReadFile(runtime.Skills, path)
 			text.Write(data)
 		}
 		return err

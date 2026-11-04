@@ -3,7 +3,6 @@ package classify
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -190,11 +189,11 @@ func (m *fakeModel) GenerateObject(_ context.Context, call fantasy.ObjectCall) (
 }
 
 func (m *fakeModel) Stream(context.Context, fantasy.Call) (fantasy.StreamResponse, error) {
-	return nil, fmt.Errorf("no stream")
+	return nil, errors.New("no stream")
 }
 
 func (m *fakeModel) StreamObject(context.Context, fantasy.ObjectCall) (fantasy.ObjectStreamResponse, error) {
-	return nil, fmt.Errorf("no stream")
+	return nil, errors.New("no stream")
 }
 
 func (m *fakeModel) Provider() string { return "fake" }

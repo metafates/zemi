@@ -39,7 +39,7 @@ import (
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 	"github.com/metafates/zemi/internal/ui"
-	zemiruntime "github.com/metafates/zemi/runtime"
+	"github.com/metafates/zemi/runtime"
 )
 
 // launch opens the TUI.
@@ -202,7 +202,7 @@ func newHost(dirs config.Dirs, log *slog.Logger, o options) (*hostapi.Host, *tru
 	rt := lua.NewRuntime(lua.RuntimeOptions{
 		Log:       log,
 		PathClass: pathClasses(dirs),
-		RuntimeFS: zemiruntime.FS,
+		RuntimeFS: runtime.FS,
 	})
 	host := hostapi.NewHost(rt, log, config.NewStore(), dirs)
 	catalog := agent.LoadCatalog(dirs.DataHome, os.Getenv)

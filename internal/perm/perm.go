@@ -76,9 +76,9 @@ func Under(root, path string) (string, bool) {
 // InPad reports path inside pad, both resolved, so a symlink in the pad
 // cannot lead out.
 func InPad(pad, path string) bool {
-	real := CanonPath(path)
-	_, ok := Under(CanonPath(pad), real)
-	return ok && real != ""
+	resolved := CanonPath(path)
+	_, ok := Under(CanonPath(pad), resolved)
+	return ok && resolved != ""
 }
 
 // RealPath makes p absolute and resolves it one component at a time, so

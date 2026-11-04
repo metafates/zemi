@@ -175,10 +175,10 @@ func frontmatter(data []byte) (front, error) {
 }
 
 // ReadRegular reads the file at path when it is a regular file of at most
-// max bytes, checked before the read: a symlink reads outside the trees
+// limit bytes, checked before the read: a symlink reads outside the trees
 // skill and config files come from, and a FIFO blocks the reader. The error
 // names the path.
-func ReadRegular(path string, max int64) ([]byte, error) {
+func ReadRegular(path string, limit int64) ([]byte, error) {
 	fi, err := os.Lstat(path)
 	if err != nil {
 		return nil, err
@@ -189,8 +189,8 @@ func ReadRegular(path string, max int64) ([]byte, error) {
 	if !fi.Mode().IsRegular() {
 		return nil, fmt.Errorf("%s: not a regular file", path)
 	}
-	if fi.Size() > max {
-		return nil, fmt.Errorf("%s: exceeds %d bytes", path, max)
+	if fi.Size() > limit {
+		return nil, fmt.Errorf("%s: exceeds %d bytes", path, limit)
 	}
 	return os.ReadFile(path)
 }

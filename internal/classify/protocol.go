@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -189,7 +190,7 @@ func (a protocolAnswer) answer(q Question) (Answer, error) {
 			return Answer{}, fmt.Errorf("want a score answer, got type %q", a.Type)
 		}
 		if a.Score == nil {
-			return Answer{}, fmt.Errorf("the score answer carries no level")
+			return Answer{}, errors.New("the score answer carries no level")
 		}
 		if err := q.checkScore(*a.Score); err != nil {
 			return Answer{}, err

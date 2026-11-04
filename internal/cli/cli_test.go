@@ -23,7 +23,7 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/store"
-	zemiruntime "github.com/metafates/zemi/runtime"
+	"github.com/metafates/zemi/runtime"
 )
 
 // TestCLI runs command lines through execute with a launch that records
@@ -345,7 +345,7 @@ func newTrustGate(t *testing.T) (*trustGate, *hostapi.Host, *lua.Runtime) {
 	project := t.TempDir()
 	writeFile(t, filepath.Join(project, ".agents", "commands", "x.md"), "---\ndescription: x\n---\nhello")
 	log := slog.New(slog.DiscardHandler)
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS})
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: runtime.FS})
 	dirs := config.Dirs{ProjectDir: project, StateHome: t.TempDir()}
 	h := hostapi.NewHost(r, log, config.NewStore(), dirs)
 	return &trustGate{h: h, dirs: dirs}, h, r

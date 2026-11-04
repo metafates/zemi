@@ -152,16 +152,16 @@ func (r Report) Sequence() string {
 	return b.String()
 }
 
-// encode makes text a single-line base64 value within max decoded bytes:
+// encode makes text a single-line base64 value within limit decoded bytes:
 // control characters and escapes collapse away (a terminal discards a report
 // whose decoded text carries one), then the text truncates at a rune edge.
-func encode(text string, max int) (string, bool) {
+func encode(text string, limit int) (string, bool) {
 	text = sanitize.Line(text)
 	if text == "" {
 		return "", false
 	}
-	if len(text) > max {
-		text = text[:max]
+	if len(text) > limit {
+		text = text[:limit]
 		for { // a rune the cut split in half: drop bytes until the tail decodes
 			r, size := utf8.DecodeLastRuneInString(text)
 			if r != utf8.RuneError || size > 1 {

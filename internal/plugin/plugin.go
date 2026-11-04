@@ -1236,7 +1236,7 @@ func InstallFromMarketplace(ctx context.Context, d config.Dirs, mkt, entry strin
 	if err := recordInstall(d, name, mkt, e, kindLinkKind(kind), rand.Text(), uses, manifest); err != nil {
 		return Plugin{}, err
 	}
-	p := load(ctx, target, false, true)
+	p := load(ctx, target, false /* local */, true /* enabled */)
 	p.Name, p.Dir = name, filepath.Join(d.PluginsRoot(), DirInstalled, name)
 	// the entry's scalars are the fallback for a source with no manifest of
 	// its own; the row carries them, load read the tree
