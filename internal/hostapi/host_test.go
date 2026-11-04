@@ -217,6 +217,7 @@ func TestReloadConfig(t *testing.T) {
 			log := slog.New(slog.DiscardHandler)
 			r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 			h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+			t.Cleanup(h.Close)
 			h.SetUIHooks(&fakeUI{})
 			var reloads atomic.Int32
 			var mouse any
@@ -791,6 +792,7 @@ func TestStoreKeyedOnRepo(t *testing.T) {
 	host := func(dir string) *Host {
 		log := slog.New(slog.DiscardHandler)
 		h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{StateHome: state, ProjectDir: dir})
+		t.Cleanup(h.Close)
 		t.Cleanup(func() { h.DB.Close(); h.GlobalDB.Close() })
 		return h
 	}

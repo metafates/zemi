@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/goleak"
+
 	"github.com/metafates/zemi/internal/lsp"
 	"github.com/metafates/zemi/internal/lsp/lsptest"
 )
@@ -28,7 +30,7 @@ func TestMain(m *testing.M) {
 		serveBlocking(os.Stdin, os.Stdout)
 		os.Exit(0)
 	}
-	m.Run()
+	goleak.VerifyTestMain(m)
 }
 
 // serveBlocking is a single-threaded server: as the message after

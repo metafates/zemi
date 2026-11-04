@@ -28,6 +28,7 @@ func newTestApp(t *testing.T, projectDir string) *App {
 	log := slog.New(slog.DiscardHandler)
 	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	host := hostapi.NewHost(rt, log, config.NewStore(), config.Dirs{ProjectDir: projectDir})
+	t.Cleanup(host.Close)
 	app := NewApp(host, log)
 	host.SetUIHooks(app)
 	return app

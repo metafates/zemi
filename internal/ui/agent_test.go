@@ -111,6 +111,7 @@ func bootAgentAppIn(t testing.TB, w, h int, clock lua.Clock, cfg, project string
 	}
 	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: runtime.FS, Clock: clock})
 	host := hostapi.NewHost(rt, log, settings, config.Dirs{ConfigHome: cfg, DataHome: data, StateHome: state, ProjectDir: project})
+	t.Cleanup(host.Close)
 	app := NewApp(host, log)
 	host.SetUIHooks(app)
 	app.CaptureHooks()
@@ -951,6 +952,7 @@ func TestPermissionBoxFits(t *testing.T) {
 					t.Fatalf("missing %q:\n%s", want, frame)
 				}
 			}
+			app.answerPerm(false, tools.ByNobody) // the box the render left open
 		})
 	}
 }
@@ -1540,6 +1542,7 @@ func TestTrustAnswers(t *testing.T) {
 			if app.trust == nil || len(done) != 0 {
 				t.Errorf("%s answered the prompt", c.name)
 			}
+			app.answerTrust("later") // the case leaves the box open: let its asker go
 			continue
 		}
 		if got := <-done; got != c.want {
@@ -1887,15 +1890,24 @@ func TestNoopKeysBumpNothing(t *testing.T) {
 	if app.frameGen != gen+1 {
 		t.Fatalf("a move under the box did not bump the frame: %d of %d", app.frameGen, gen)
 	}
+	// the clock this test pinned reads the box, so put it back first
+	app.now = func() time.Time { return time.UnixMilli(500) }
+	app.answerTrust("later")
+	if got := <-done; got != "later" {
+		t.Fatalf("the box answered %q, want later", got)
+	}
 }
 
 // TestPromptWaitsOnFullQueue: a blocking prompt posted while the hook queue
 // is full waits for room; dropped, its caller would wait forever.
 func TestPromptWaitsOnFullQueue(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 20)
+	// the host's close runs outside the bubble: leave it a queue from here
+	outside := make(chan tea.Msg, 1)
 	synctest.Test(t, func(t *testing.T) {
 		// a queue made in the bubble, so Wait sees the ask blocked on it
 		app.testQueue = make(chan tea.Msg, 1)
+		defer func() { app.testQueue = outside }()
 		app.do(func() {})
 		done := make(chan string, 1)
 		go func() { done <- app.AskTrust("/proj", "/proj", "") }()

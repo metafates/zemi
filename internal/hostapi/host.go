@@ -616,6 +616,10 @@ type Host struct {
 	test *PluginTest
 	// goes counts the host goroutines in flight, which Close joins
 	goes goes
+	// closed ends the overlay tickers, which otherwise tick until the thing
+	// they watch stops moving; a closed host runs no service
+	closed    chan struct{}
+	closeOnce sync.Once
 	// cutMu orders a reset's wipe against a detached run's writes, so a run
 	// never stores what it read from rows the wipe removed.
 	cutMu    sync.Mutex
@@ -761,6 +765,117 @@ type Host struct {
 	// projectSkills is a trusted project's skills, found when the decision
 	// is set, which every reload does
 	projectSkills atomic.Pointer[[]skill.Skill]
+}
+
+// NewHost wires the registries and opens the stores (best effort:
+// failures surface at the namespaces boot step).
+func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs config.Dirs) *Host {
+	h := &Host{
+		RT:        rt,
+		Log:       log,
+		Settings:  settings,
+		Dirs:      dirs,
+		Stderr:    os.Stderr,
+		Keymaps:   &KeymapRegistry{},
+		Commands:  &CommandRegistry{},
+		Events:    &EventRegistry{},
+		session:   &Session{CWD: dirs.ProjectDir},
+		watches:   &watchReg{},
+		hookReg:   &hookReg{},
+		Providers: &agent.Registry{},
+		agents:    newAgentHost(rt.Clock()),
+		luaTools:  &toolReg{},
+		stops:     &stopReg{},
+		jobs:      &tools.Jobs{},
+		skillsReg: &skillReg{},
+		mcp:       &mcpReg{},
+		tasks:     newTaskReg(settings),
+		lsp:       &lspReg{},
+		closed:    make(chan struct{}),
+
+		luaCeiling:      10 * time.Second,
+		toolPostCeiling: lua.VetoDeadline,
+	}
+	if dirs.StateHome != "" {
+		// the rate limiters share their buckets with every other zemi
+		// process of the user, so parallel windows pace one quota
+		h.Providers.PaceDir = filepath.Join(dirs.StateHome, "pace")
+	}
+	h.Builtin.Store(&agent.Catalog{})
+	h.Keymaps.owner, h.Commands.owner, h.Events.owner, h.luaTools.owner, h.watches.owner = h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf
+	h.jobs.OnChange = func() {
+		h.refresh()
+		h.watchJobs()
+	}
+	settings.SetChoices("agent.effort", append(slices.Clone(agent.Efforts), ""))
+	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)
+	h.project = sync.OnceValue(func() string { return perm.TildePath(h.trustRoot()) })
+	h.repoRoot = sync.OnceValue(h.Dirs.RepoRoot)
+	h.pluginsRoot = sync.OnceValue(func() string {
+		root := dirs.PluginsRoot()
+		// RealPath, not EvalSymlinks: the memo may run before the root exists
+		// (a first-run tree, a test), and a raw memo would then never match
+		// the resolved paths chunks record
+		if r := perm.RealPath(root); r != "" {
+			return r
+		}
+		return root
+	})
+	h.gitStatus = sync.OnceValue(func() string { return h.gitStatusSection(dirs.ProjectDir) })
+	if dirs.StateHome != "" {
+		// keyed on the repository, not the launch directory: a subdirectory
+		// and a worktree are the same project, with the same sessions
+		h.GlobalDB, h.DB, h.initErr = store.OpenForDirs(dirs.StateHome, h.trustRoot())
+	}
+	if h.DB != nil {
+		// the window names itself in its log rows, so a restart tells its rows
+		// from the ones an older boot wrote
+		h.origin = originID()
+		h.DB.Origin = h.origin
+		h.chat = newChatLog(context.Background(), h)
+		// the window opens on the log's tail: the chat that never ends has
+		// no resume, only more of itself. The tail is read with slack so
+		// its head can sit on a turn start, not an answer's shed remains.
+		if rows, err := h.DB.LogTail(chatWindowRows * 3); err == nil {
+			h.session.Transcript = alignTrim(logRows(rows))
+			h.stampReset(h.session.Transcript)
+			h.markDeadTail()
+		}
+		h.loadGoal()
+		// the meter rides the stored context of the latest step: a resume
+		// shows it before the first new turn bills its own
+		if s, err := h.DB.GetSession(store.MainSessionID); err == nil {
+			h.agents.mu.Lock()
+			h.agents.lastIn = s.LastIn
+			h.agents.mu.Unlock()
+		}
+	}
+	h.picked, h.pluginKeys = map[config.Key]any{}, map[config.Key]Gen{}
+	if h.GlobalDB != nil {
+		h.loadPicks()
+	}
+	h.hostActions = map[string]func(h *Host, args string) error{
+		"zemi.ui.help":    func(h *Host, _ string) error { return h.OpenHelp() },
+		"zemi.model.pick": func(h *Host, _ string) error { return h.OpenModelPicker(defaultRole) },
+		"zemi.reload":     nil, // Go-reserved; never dispatched here
+	}
+	for _, a := range scrollActions {
+		h.hostActions["zemi.ui.scroll."+string(a)] = func(h *Host, _ string) error { h.scroll(a); return nil }
+	}
+	// insert takes the text after the action's name
+	for _, op := range []ComposerOp{ComposerSubmit, ComposerInsert, ComposerHistoryPrev, ComposerHistoryNext, ComposerPaste, ComposerEditor} {
+		h.hostActions["zemi.composer."+string(op)] = func(h *Host, args string) error {
+			if ui := h.hooks(); ui != nil {
+				ui.ComposerEdit(op, args, 0)
+			}
+			return nil
+		}
+	}
+	h.recentStale.Store(true)
+	h.splashStale.Store(true)
+	h.instrStale.Store(true)
+	h.trEpoch.Store(1) // 0 means "an agent run's transcript; do not cache"
+	return h
 }
 
 // SetProjectTrusted records the trust decision and rescans the project's
@@ -923,116 +1038,6 @@ func (h *Host) markDanglingTail() {
 	}
 	// the turn died without a release: the item it took up goes back to pending
 	h.GoSafe("settle todos", h.settleTodos)
-}
-
-// NewHost wires the registries and opens the stores (best effort:
-// failures surface at the namespaces boot step).
-func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs config.Dirs) *Host {
-	h := &Host{
-		RT:        rt,
-		Log:       log,
-		Settings:  settings,
-		Dirs:      dirs,
-		Stderr:    os.Stderr,
-		Keymaps:   &KeymapRegistry{},
-		Commands:  &CommandRegistry{},
-		Events:    &EventRegistry{},
-		session:   &Session{CWD: dirs.ProjectDir},
-		watches:   &watchReg{},
-		hookReg:   &hookReg{},
-		Providers: &agent.Registry{},
-		agents:    newAgentHost(rt.Clock()),
-		luaTools:  &toolReg{},
-		stops:     &stopReg{},
-		jobs:      &tools.Jobs{},
-		skillsReg: &skillReg{},
-		mcp:       &mcpReg{},
-		tasks:     newTaskReg(settings),
-		lsp:       &lspReg{},
-
-		luaCeiling:      10 * time.Second,
-		toolPostCeiling: lua.VetoDeadline,
-	}
-	if dirs.StateHome != "" {
-		// the rate limiters share their buckets with every other zemi
-		// process of the user, so parallel windows pace one quota
-		h.Providers.PaceDir = filepath.Join(dirs.StateHome, "pace")
-	}
-	h.Builtin.Store(&agent.Catalog{})
-	h.Keymaps.owner, h.Commands.owner, h.Events.owner, h.luaTools.owner, h.watches.owner = h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf, h.PluginOf
-	h.jobs.OnChange = func() {
-		h.refresh()
-		h.watchJobs()
-	}
-	settings.SetChoices("agent.effort", append(slices.Clone(agent.Efforts), ""))
-	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)
-	h.project = sync.OnceValue(func() string { return perm.TildePath(h.trustRoot()) })
-	h.repoRoot = sync.OnceValue(h.Dirs.RepoRoot)
-	h.pluginsRoot = sync.OnceValue(func() string {
-		root := dirs.PluginsRoot()
-		// RealPath, not EvalSymlinks: the memo may run before the root exists
-		// (a first-run tree, a test), and a raw memo would then never match
-		// the resolved paths chunks record
-		if r := perm.RealPath(root); r != "" {
-			return r
-		}
-		return root
-	})
-	h.gitStatus = sync.OnceValue(func() string { return h.gitStatusSection(dirs.ProjectDir) })
-	if dirs.StateHome != "" {
-		// keyed on the repository, not the launch directory: a subdirectory
-		// and a worktree are the same project, with the same sessions
-		h.GlobalDB, h.DB, h.initErr = store.OpenForDirs(dirs.StateHome, h.trustRoot())
-	}
-	if h.DB != nil {
-		// the window names itself in its log rows, so a restart tells its rows
-		// from the ones an older boot wrote
-		h.origin = originID()
-		h.DB.Origin = h.origin
-		h.chat = newChatLog(context.Background(), h)
-		// the window opens on the log's tail: the chat that never ends has
-		// no resume, only more of itself. The tail is read with slack so
-		// its head can sit on a turn start, not an answer's shed remains.
-		if rows, err := h.DB.LogTail(chatWindowRows * 3); err == nil {
-			h.session.Transcript = alignTrim(logRows(rows))
-			h.stampReset(h.session.Transcript)
-			h.markDeadTail()
-		}
-		h.loadGoal()
-		// the meter rides the stored context of the latest step: a resume
-		// shows it before the first new turn bills its own
-		if s, err := h.DB.GetSession(store.MainSessionID); err == nil {
-			h.agents.mu.Lock()
-			h.agents.lastIn = s.LastIn
-			h.agents.mu.Unlock()
-		}
-	}
-	h.picked, h.pluginKeys = map[config.Key]any{}, map[config.Key]Gen{}
-	if h.GlobalDB != nil {
-		h.loadPicks()
-	}
-	h.hostActions = map[string]func(h *Host, args string) error{
-		"zemi.ui.help":    func(h *Host, _ string) error { return h.OpenHelp() },
-		"zemi.model.pick": func(h *Host, _ string) error { return h.OpenModelPicker(defaultRole) },
-		"zemi.reload":     nil, // Go-reserved; never dispatched here
-	}
-	for _, a := range scrollActions {
-		h.hostActions["zemi.ui.scroll."+string(a)] = func(h *Host, _ string) error { h.scroll(a); return nil }
-	}
-	// insert takes the text after the action's name
-	for _, op := range []ComposerOp{ComposerSubmit, ComposerInsert, ComposerHistoryPrev, ComposerHistoryNext, ComposerPaste, ComposerEditor} {
-		h.hostActions["zemi.composer."+string(op)] = func(h *Host, args string) error {
-			if ui := h.hooks(); ui != nil {
-				ui.ComposerEdit(op, args, 0)
-			}
-			return nil
-		}
-	}
-	h.recentStale.Store(true)
-	h.splashStale.Store(true)
-	h.instrStale.Store(true)
-	h.trEpoch.Store(1) // 0 means "an agent run's transcript; do not cache"
-	return h
 }
 
 // TempDir is a directory for the host's own scratch files (the editor's
@@ -2249,6 +2254,7 @@ func (h *Host) PurgeGeneration() {
 // jobs, requests, servers) and the stores, so it holds no file or goroutine:
 // it joins the goroutines GoSafe started, waiting closeWait for the last.
 func (h *Host) Close() {
+	h.closeOnce.Do(func() { close(h.closed) })
 	// under the agents lock: a live turn's armQueueDrain rewrites resumeStop
 	ag := h.agents
 	ag.mu.Lock()

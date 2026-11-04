@@ -335,6 +335,7 @@ func bootHeadless(o options, inert bool, stderr io.Writer) (*hostapi.Host, func(
 	trust.ask = headlessTrust()
 	done := func() {
 		proc.KillAll()
+		h.Close() // the run's stores and runtime end with it
 		closeLog()
 	}
 	steps := hostSteps(h, trust, nil)
@@ -378,7 +379,9 @@ func coreSteps(h *hostapi.Host, cmds []*hostapi.Command) []lua.BootStep {
 // bootSteps is the boot order (DESIGN §5): trust is what runs before the
 // plugins and config what runs after them, where init.lua does. A plugin
 // test runs no trust and its test file as the config.
-func bootSteps(h *hostapi.Host, cmds []*hostapi.Command, trust []lua.BootStep, plugins lua.BootStep, config []lua.BootStep, reflect bool) []lua.BootStep {
+func bootSteps(h *hostapi.Host, cmds []*hostapi.Command, trust []lua.BootStep,
+	plugins lua.BootStep, config []lua.BootStep, reflect bool,
+) []lua.BootStep {
 	return slices.Concat(
 		coreSteps(h, cmds),
 		trust, []lua.BootStep{plugins}, config,

@@ -47,6 +47,7 @@ func newTestHostSkillsNoBoot(t *testing.T) (*Host, *lua.Runtime) {
 		StateHome:  state,
 		ProjectDir: proj,
 	})
+	t.Cleanup(h.Close)
 	h.ReleaseBuilder() // tests stub the model and boot no config
 	return h, r
 }
@@ -369,6 +370,7 @@ func TestSymlinkedSkillsDir(t *testing.T) {
 		classes = append(classes, lua.PathClass{Prefix: dir, Origin: lua.OriginUser})
 	}
 	h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes}), log, config.NewStore(), dirs)
+	t.Cleanup(h.Close)
 	writeSkill(t, h.userSkillsDir(), "demo", "demo skill", "return {}")
 	if !h.inRoots(filepath.Join(h.userSkillsDir(), "demo", "SKILL.md"), h.Dirs.UserTrees()...) {
 		t.Error("a symlinked skills dir is outside the user trees")

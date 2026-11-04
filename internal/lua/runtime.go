@@ -274,6 +274,9 @@ func (r *Runtime) retire() {
 func (r *Runtime) boot(ctx context.Context, steps []BootStep) (*Generation, error) {
 	r.booting.Store(true)
 	defer r.booting.Store(false)
+	// a boot replaces the live generation: the one it replaces must end, or
+	// its dispatcher and LState outlive it (DESIGN §4)
+	r.retire()
 	prefixResolution.Clear()
 	sb, err := NewSandbox(r.CurrentOrigin, r.clock.Now)
 	if err != nil {
@@ -384,6 +387,14 @@ func (r *Runtime) ExecuteChunk(ctx context.Context, src, rel string, origin Orig
 	return err
 }
 
+// SyntaxErr is a parse error of src, the file rel, as rel:line: message.
+func SyntaxErr(rel, src string, pe *parse.Error) error {
+	if pe.Pos.Line == parse.EOF {
+		return fmt.Errorf("%s:%d: %s at end of file", rel, strings.Count(strings.TrimRight(src, "\n"), "\n")+1, pe.Message)
+	}
+	return fmt.Errorf("%s:%d: %s near '%s'", rel, pe.Pos.Line, pe.Message, pe.Token)
+}
+
 // sandboxOf is the sandbox of L's generation; a request that outlived its
 // generation (ForceReload retired it mid-run) gets ErrReloaded.
 func (r *Runtime) sandboxOf(L *glua.LState) (*Sandbox, error) {
@@ -427,14 +438,6 @@ func chunkErr(rel, src string, origin Origin, err error) error {
 		msg += "\n" + untag(api.StackTrace)
 	}
 	return errors.New(msg)
-}
-
-// SyntaxErr is a parse error of src, the file rel, as rel:line: message.
-func SyntaxErr(rel, src string, pe *parse.Error) error {
-	if pe.Pos.Line == parse.EOF {
-		return fmt.Errorf("%s:%d: %s at end of file", rel, strings.Count(strings.TrimRight(src, "\n"), "\n")+1, pe.Message)
-	}
-	return fmt.Errorf("%s:%d: %s near '%s'", rel, pe.Pos.Line, pe.Message, pe.Token)
 }
 
 // usefulTrace reports a traceback with a Lua frame other than the main

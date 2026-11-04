@@ -22,6 +22,7 @@ func notifyApp(t *testing.T) (*App, *hostapi.Host) {
 	t.Helper()
 	log := slog.New(slog.DiscardHandler)
 	host := hostapi.NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{})
+	t.Cleanup(host.Close)
 	return NewApp(host, log), host
 }
 
@@ -518,4 +519,5 @@ func TestToastNotCopied(t *testing.T) {
 	if !strings.Contains(got, "command") {
 		t.Fatalf("the drag copied nothing of the box: %q", got)
 	}
+	app.answerPerm(false, tools.ByNobody) // the box the drag read
 }

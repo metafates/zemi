@@ -179,9 +179,16 @@ func (h *Host) tickOverlay(every time.Duration, name string, claim, more func() 
 		return
 	}
 	h.GoSafe(name, func() {
-		for range time.Tick(every) {
-			if !more() {
+		t := time.NewTicker(every)
+		defer t.Stop()
+		for {
+			select {
+			case <-h.closed:
 				return
+			case <-t.C:
+				if !more() {
+					return
+				}
 			}
 		}
 	})

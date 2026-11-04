@@ -571,6 +571,7 @@ func TestAgentDefs(t *testing.T) {
 
 	log := slog.New(slog.DiscardHandler)
 	h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{ConfigHome: cfg, ProjectDir: proj})
+	t.Cleanup(h.Close)
 	get := func() map[string]AgentDef {
 		out := map[string]AgentDef{}
 		for _, d := range h.agentDefs() {

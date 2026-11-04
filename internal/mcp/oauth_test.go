@@ -36,6 +36,13 @@ func (noKeychain) Delete(string, string) error        { return keyring.ErrNotFou
 
 func init() { keyring.Chain = noKeychain{} }
 
+// dropIdleConns: the flow's browser and token calls share the process-wide
+// transport, whose idle connection would otherwise outlive the test.
+func dropIdleConns(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() { http.DefaultClient.CloseIdleConnections() })
+}
+
 // TestOAuthSignIn drives the whole flow against a fake server: the 401
 // points at resource metadata, zemi registers, the "browser" follows the
 // authorization redirect to the callback, PKCE and resource are checked at
@@ -113,6 +120,7 @@ func TestOAuthSignIn(t *testing.T) {
 	})
 	srv = httptest.NewServer(mux)
 	defer srv.Close()
+	dropIdleConns(t)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
@@ -230,8 +238,15 @@ func TestOAuthPreRegisteredClient(t *testing.T) {
 	})
 	srv = httptest.NewServer(mux)
 	defer srv.Close()
+	dropIdleConns(t)
 
-	visit := func(u string) { go func() { _, _ = http.Get(u) }() }
+	visit := func(u string) {
+		go func() {
+			if resp, err := http.Get(u); err == nil {
+				resp.Body.Close()
+			}
+		}()
+	}
 	auth := &Auth{Name: "fake", ServerURL: srv.URL + "/mcp", Path: filepath.Join(t.TempDir(), "a.json")}
 	err := auth.Authorize(t.Context(), visit)
 	if err == nil || !strings.Contains(err.Error(), "dynamic client registration") {

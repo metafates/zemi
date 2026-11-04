@@ -5,6 +5,8 @@ import (
 	"os"
 	"testing"
 
+	"go.uber.org/goleak"
+
 	"github.com/metafates/zemi/internal/lsp/lsptest"
 )
 
@@ -18,5 +20,6 @@ func TestMain(m *testing.M) {
 	// parallel host boots saturate the kernel past four, and the veto and
 	// turn ceilings measure wall time however loaded the machine is
 	flag.Set("test.parallel", "4")
-	m.Run()
+	// regexp2's lexer clock sleeps out its last idle second on its own
+	goleak.VerifyTestMain(m, goleak.IgnoreAnyFunction("github.com/dlclark/regexp2/v2.runClock"))
 }

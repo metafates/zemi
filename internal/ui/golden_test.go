@@ -61,6 +61,7 @@ end, { desc = "notify on rebound ctrl+t" })
 	}
 	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: runtime.FS})
 	host := hostapi.NewHost(rt, log, settings, dirs)
+	t.Cleanup(host.Close)
 	app := NewApp(host, log)
 	host.SetUIHooks(app)
 
@@ -109,6 +110,14 @@ func (a *App) renderSync(tb testing.TB) {
 func (a *App) CaptureHooks() {
 	if a.testQueue == nil {
 		a.testQueue = make(chan tea.Msg, 64)
+	}
+}
+
+// stopWork ends the background worker a fake program started: a real one
+// runs for the life of the app.
+func (a *App) stopWork() {
+	if a.work != nil {
+		close(a.work)
 	}
 }
 

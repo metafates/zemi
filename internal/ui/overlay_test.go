@@ -288,6 +288,7 @@ func TestTopChromeTakesInput(t *testing.T) {
 func pressWhileLuaBusy(t *testing.T, app *App, keys ...tea.KeyPressMsg) (release func()) {
 	t.Helper()
 	app.program = tea.NewProgram(nil)
+	t.Cleanup(app.stopWork) // a fake program's worker ends with the test
 	busy, hold := make(chan struct{}), make(chan struct{})
 	go app.host.RT.Do(t.Context(), lua.ClassUI, 0, 0, "test", func(*glua.LState) ([]any, error) {
 		close(busy)

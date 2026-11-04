@@ -304,6 +304,7 @@ func newLoopHost(t *testing.T) (*Host, *fakeClock) {
 	clock := &fakeClock{now: testEpoch}
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, Clock: clock})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{StateHome: t.TempDir(), ProjectDir: t.TempDir()})
+	t.Cleanup(h.Close)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}

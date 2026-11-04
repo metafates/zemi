@@ -152,10 +152,10 @@ func newWindow(t *testing.T, stateHome, projectDir string) (*Host, *replyStubMod
 		DataHome:   t.TempDir(),
 		ProjectDir: projectDir,
 	})
+	t.Cleanup(h.Close)
 	h.ReleaseBuilder()
 	h.SetUIHooks(&fakeUI{})
 	m := replyStub(t, h, "ok")
-	t.Cleanup(h.Close)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}

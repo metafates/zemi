@@ -66,6 +66,7 @@ func TestProjectsCommand(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), dirs)
+	t.Cleanup(h.Close)
 	ui := &pluginsUI{opened: make(chan Overlay, 4), notes: make(chan string, 4)}
 	h.SetUIHooks(ui)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep()}); err != nil {

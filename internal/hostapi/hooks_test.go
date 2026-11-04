@@ -62,6 +62,7 @@ func claudeFixHostFiles(t *testing.T, hooksJSON, mcpJSON string, extra map[strin
 		{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin},
 	}})
 	h := NewHost(r, log, config.NewStore(), dirs)
+	t.Cleanup(h.Close)
 	if err := r.Boot(t.Context(), []lua.BootStep{
 		h.NamespacesStep(), h.PluginsStep(), h.SkillsUserHooksStep(), h.MarkdownCommandsStep(),
 	}); err != nil {
@@ -105,6 +106,7 @@ func TestClaudeSideYieldsToZemiManifest(t *testing.T) {
 		{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin},
 	}})
 	h := NewHost(r, log, config.NewStore(), dirs)
+	t.Cleanup(h.Close)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.PluginsStep()}); err != nil {
 		t.Fatal(err)
 	}

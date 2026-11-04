@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"go.uber.org/goleak"
+
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
@@ -17,7 +19,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	m.Run()
+	goleak.VerifyTestMain(m)
 }
 
 // TestLockInstance: one zemi opens a project - a second taker on the same
@@ -155,6 +157,7 @@ func commandHost(t *testing.T) *hostapi.Host {
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := hostapi.NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+	t.Cleanup(h.Close)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(mainCommands(func() {}, func() {})...)}); err != nil {
 		t.Fatal(err)
 	}

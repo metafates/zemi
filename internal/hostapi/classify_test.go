@@ -43,6 +43,9 @@ func newEndpoint(t *testing.T, reply func(body string) string) *fakeEndpoint {
 		_, _ = io.WriteString(w, reply(string(raw)))
 	}))
 	t.Cleanup(f.srv.Close)
+	// the models ride one process-wide client, whose idle connection to this
+	// server would otherwise outlive the test
+	t.Cleanup(func() { agent.ModelHTTP().CloseIdleConnections() })
 	return f
 }
 

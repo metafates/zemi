@@ -53,11 +53,10 @@ func TestTask(t *testing.T) {
 				})))
 				return g.SB.RegisterNamespace("zemi.t", tb, nil)
 			}}}
-			r := NewRuntime(RuntimeOptions{})
+			r := newRuntime(t, RuntimeOptions{})
 			if err := r.Boot(t.Context(), steps); err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { close(r.current().stop) })
 
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()

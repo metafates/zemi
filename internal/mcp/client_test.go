@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/goleak"
+
 	"github.com/metafates/zemi/internal/mcp/mcptest"
 )
 
@@ -27,7 +29,7 @@ func TestMain(m *testing.M) {
 		mcptest.ServeStdio(os.Stdin, os.Stdout)
 		os.Exit(0)
 	}
-	m.Run()
+	goleak.VerifyTestMain(m)
 }
 
 func TestClient(t *testing.T) {

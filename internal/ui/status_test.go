@@ -23,6 +23,7 @@ func statusApp(t *testing.T) (*App, *hostapi.Host) {
 	t.Helper()
 	log := slog.New(slog.DiscardHandler)
 	host := hostapi.NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{})
+	t.Cleanup(host.Close)
 	return NewApp(host, log), host
 }
 

@@ -25,6 +25,7 @@ func TestUsagePriced(t *testing.T) {
 	} {
 		r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 		h := NewHost(r, log, config.NewStore(), config.Dirs{})
+		t.Cleanup(h.Close)
 		if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 			t.Fatal(err)
 		}

@@ -4,6 +4,8 @@ import (
 	"flag"
 	"testing"
 	"time"
+
+	"go.uber.org/goleak"
 )
 
 func TestMain(m *testing.M) {
@@ -12,5 +14,6 @@ func TestMain(m *testing.M) {
 	// stay inside the 1s HardCeiling however loaded the machine is; past
 	// two the boots cost more than they overlap
 	flag.Set("test.parallel", "2")
-	m.Run()
+	// regexp2's lexer clock sleeps out its last idle second on its own
+	goleak.VerifyTestMain(m, goleak.IgnoreAnyFunction("github.com/dlclark/regexp2/v2.runClock"))
 }

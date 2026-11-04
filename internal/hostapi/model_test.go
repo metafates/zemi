@@ -133,8 +133,12 @@ func TestModelTargetPick(t *testing.T) {
 		return []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}
 	}
 	start := func() {
+		if h != nil {
+			h.Close() // a restart ends the zemi it replaces
+		}
 		r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
 		h = NewHost(r, log, config.NewStore(), dirs)
+		t.Cleanup(h.Close)
 		h.SetUIHooks(&fakeUI{})
 		if err := r.Boot(t.Context(), steps()); err != nil {
 			t.Fatal(err)
@@ -348,6 +352,7 @@ func TestInertBoot(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: project, DataHome: data})
+	t.Cleanup(h.Close)
 	h.Inert = true
 	h.modelFn = func() (fantasy.LanguageModel, error) {
 		t.Error("an inert boot called a model")

@@ -46,6 +46,7 @@ func TestMarkdownStreamStitch(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+	t.Cleanup(h.Close)
 	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
@@ -56,6 +57,7 @@ func TestMarkdownStreamStitch(t *testing.T) {
 	// comparison pins the stitched path against a whole-text render
 	r2 := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h2 := NewHost(r2, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+	t.Cleanup(h2.Close)
 	if err := r2.Boot(t.Context(), []lua.BootStep{h2.NamespacesStep()}); err != nil {
 		t.Fatal(err)
 	}
@@ -100,6 +102,7 @@ func BenchmarkMarkdownStream(b *testing.B) {
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: b.TempDir()})
+	b.Cleanup(h.Close)
 	if err := r.Boot(b.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 		b.Fatal(err)
 	}

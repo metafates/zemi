@@ -234,6 +234,7 @@ func bootedNamespaces(t *testing.T, other bool) map[string][]string {
 	log := slog.New(slog.DiscardHandler)
 	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: runtime.FS})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
+	t.Cleanup(h.Close)
 	var out map[string][]string
 	capture := lua.BootStep{Name: "capture", Run: func(_ context.Context, _ *lua.Runtime, g *lua.Generation) error {
 		out = g.SB.NamespaceMembers()

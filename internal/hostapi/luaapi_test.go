@@ -385,6 +385,7 @@ func TestReloadBrokenInit(t *testing.T) {
 			dir, log := t.TempDir(), slog.New(slog.DiscardHandler)
 			r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
 			h := NewHost(r, log, config.NewStore(), config.Dirs{ConfigHome: dir, ProjectDir: t.TempDir()})
+			t.Cleanup(h.Close)
 			initLua := filepath.Join(dir, "init.lua")
 			load := lua.LoadFileStep("init", initLua, lua.OriginUser)
 			steps := []lua.BootStep{h.NamespacesStep(), {Name: "init", Run: func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {

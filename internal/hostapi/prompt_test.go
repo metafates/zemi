@@ -385,6 +385,7 @@ func TestPromptSameAcrossProjects(t *testing.T) {
 		log := slog.New(slog.DiscardHandler)
 		r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
 		h := NewHost(r, log, config.NewStore(), config.Dirs{ConfigHome: cfg, DataHome: data, StateHome: state, ProjectDir: t.TempDir()})
+		t.Cleanup(h.Close)
 		if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
 			t.Fatal(err)
 		}

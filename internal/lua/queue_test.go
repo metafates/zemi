@@ -17,11 +17,18 @@ import (
 
 func newTestRuntime(t *testing.T) *Runtime {
 	t.Helper()
-	r := NewRuntime(RuntimeOptions{})
+	r := newRuntime(t, RuntimeOptions{})
 	if err := r.Boot(t.Context(), nil); err != nil {
 		t.Fatalf("Boot: %v", err)
 	}
-	// a synctest bubble does not end while the dispatcher waits for requests
+	return r
+}
+
+// newRuntime is a runtime the test stops, whatever boot steps it runs: a
+// synctest bubble does not end while the dispatcher waits for requests.
+func newRuntime(t *testing.T, opts RuntimeOptions) *Runtime {
+	t.Helper()
+	r := NewRuntime(opts)
 	t.Cleanup(func() {
 		if g := r.current(); g != nil {
 			close(g.stop)
@@ -149,7 +156,7 @@ func TestQueueCancellationPreempts(t *testing.T) {
 // request resumes instead of failing as canceled, and one made at boot,
 // with no context, is still preempted by the request resuming it.
 func TestCoroutineRunsUnderResumingRequest(t *testing.T) {
-	r := NewRuntime(RuntimeOptions{})
+	r := newRuntime(t, RuntimeOptions{})
 	var spin glua.LValue
 	boot := BootStep{Name: "spin", Run: func(_ context.Context, _ *Runtime, g *Generation) error {
 		err := g.L.DoString(`return coroutine.create(function() while true do end end)`)
@@ -195,12 +202,10 @@ func TestCoroutineRunsUnderResumingRequest(t *testing.T) {
 func TestQueueWatchdogAbandonHot(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var logs bytes.Buffer
-		r := NewRuntime(RuntimeOptions{Log: slog.New(slog.NewTextHandler(&logs, nil))})
+		r := newRuntime(t, RuntimeOptions{Log: slog.New(slog.NewTextHandler(&logs, nil))})
 		if err := r.Boot(t.Context(), nil); err != nil {
 			t.Fatalf("Boot: %v", err)
 		}
-		// a synctest bubble does not end while the dispatcher waits for requests
-		t.Cleanup(func() { close(r.current().stop) })
 		release := make(chan struct{})
 		defer close(release)
 
@@ -365,7 +370,7 @@ func TestChunkAfterReload(t *testing.T) {
 // TestQueueForceReloadReplays verifies that a reload boots a fresh
 // generation and replays the boot steps on it.
 func TestQueueForceReloadReplays(t *testing.T) {
-	r := NewRuntime(RuntimeOptions{})
+	r := newRuntime(t, RuntimeOptions{})
 
 	var boots int
 	var purgeCount int
@@ -458,7 +463,7 @@ func TestQueueHotAnswersQueued(t *testing.T) {
 // sandbox fails its request and wedges the runtime, so a tampered surface
 // never serves later calls.
 func TestQueueIntegrityGoesHot(t *testing.T) {
-	r := NewRuntime(RuntimeOptions{})
+	r := newRuntime(t, RuntimeOptions{})
 	var ns *glua.LTable
 	step := BootStep{Name: "ns", Run: func(ctx context.Context, rt *Runtime, g *Generation) error {
 		ns = g.L.NewTable()
@@ -489,7 +494,7 @@ func TestQueueIntegrityGoesHot(t *testing.T) {
 // instead of silently shadowing it, and a result that cannot be marshaled
 // is rendered rather than failing a chunk that already ran.
 func TestEval(t *testing.T) {
-	r := NewRuntime(RuntimeOptions{})
+	r := newRuntime(t, RuntimeOptions{})
 	step := BootStep{Name: "ns", Run: func(ctx context.Context, rt *Runtime, g *Generation) error {
 		tbl := g.L.NewTable()
 		tbl.RawSetString("fn", g.L.NewFunction(func(*glua.LState) int { return 0 }))
@@ -548,7 +553,7 @@ func TestRaiseEscapingRequestUnwinds(t *testing.T) {
 
 // TestQueueDoBeforeBoot fails fast instead of panicking.
 func TestQueueDoBeforeBoot(t *testing.T) {
-	r := NewRuntime(RuntimeOptions{})
+	r := newRuntime(t, RuntimeOptions{})
 	_, err := r.Do(t.Context(), ClassUI, 0, 0, "test",
 		func(L *glua.LState) ([]any, error) { return nil, nil })
 	if err == nil || err.Error() != "zemi: lua runtime not booted" {
@@ -560,7 +565,7 @@ func TestQueueDoBeforeBoot(t *testing.T) {
 // (a slow plugin, the trust prompt) waits for it, so two boots never push
 // origin frames onto the one shared stack at once.
 func TestReloadWaitsForBoot(t *testing.T) {
-	r := NewRuntime(RuntimeOptions{})
+	r := newRuntime(t, RuntimeOptions{})
 	started, release := make(chan struct{}), make(chan struct{})
 	booted := make(chan error, 1)
 	slow := BootStep{Name: "slow", Run: func(context.Context, *Runtime, *Generation) error {
@@ -589,7 +594,7 @@ func TestReloadWaitsForBoot(t *testing.T) {
 // TestQueueDoAfterFailedBoot: a boot step that fails leaves a generation
 // with no dispatcher, so requests fail fast until a reload succeeds.
 func TestQueueDoAfterFailedBoot(t *testing.T) {
-	r := NewRuntime(RuntimeOptions{})
+	r := newRuntime(t, RuntimeOptions{})
 	fail := BootStep{Name: "fail", Run: func(context.Context, *Runtime, *Generation) error { return errors.New("bad config") }}
 	if err := r.Boot(t.Context(), []BootStep{fail}); err == nil {
 		t.Fatal("boot with a failing step succeeded")
@@ -632,7 +637,7 @@ func TestReloadWindowReportsReloaded(t *testing.T) {
 	if !errors.Is(during, ErrReloaded) {
 		t.Fatalf("during the purge: %v, want ErrReloaded", during)
 	}
-	if _, err := NewRuntime(RuntimeOptions{}).Do(t.Context(), ClassUI, 0, 0, "test", noop); errors.Is(err, ErrReloaded) {
+	if _, err := newRuntime(t, RuntimeOptions{}).Do(t.Context(), ClassUI, 0, 0, "test", noop); errors.Is(err, ErrReloaded) {
 		t.Fatalf("a runtime that never booted reports a reload: %v", err)
 	}
 }

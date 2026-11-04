@@ -504,7 +504,11 @@ var _ transport = (*httpTransport)(nil)
 // renewing marks the handshake renew runs, whose sends must not renew again.
 type renewing struct{}
 
-var httpClient = &http.Client{}
+// httpConn is the transport the streams dial with, so closing a client drops
+// its idle connections instead of parking them in the process-wide pool.
+var httpConn = &http.Transport{}
+
+var httpClient = &http.Client{Transport: httpConn}
 
 // send POSTs one message. The reply is JSON or an SSE stream whose events
 // are messages; both are routed through handle before send returns.
@@ -705,6 +709,7 @@ func (t *httpTransport) close() error {
 	for b := range streams {
 		_ = b.Close()
 	}
+	httpConn.CloseIdleConnections()
 	return nil
 }
 
