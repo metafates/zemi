@@ -363,8 +363,9 @@ func logRowsFor(rows []store.LogEntry, browse bool) []ChatMessage {
 			}
 			tr = append(tr, ChatMessage{
 				Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: tools.ToolName(name),
-				Text: toolSummary(name, row.Text), Label: toolLabel(row.Text), Status: cmp.Or(status, CallOK),
-				Diff: diff, Run: run, Job: job, Output: out, Seq: row.Seq,
+				Text: toolSummary(name, row.Text), Label: toolLabel(row.Text), Prompt: steerPrompt(name, row.Text),
+				Status: cmp.Or(status, CallOK),
+				Diff:   diff, Run: run, Job: job, Output: out, Seq: row.Seq,
 			})
 		case store.KindWork:
 			var meta struct {
@@ -563,8 +564,9 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				rm := meta[p.ToolCallID]
 				tr = append(tr, ChatMessage{
 					Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: tools.ToolName(p.ToolName),
-					Text: toolSummary(p.ToolName, p.Input), Label: toolLabel(p.Input), Status: cmp.Or(rm.Status, CallOK),
-					Diff: tc.Diff, Run: cmp.Or(tc.Run, rm.Run), Job: rm.Job, Detail: tc.Detail,
+					Text: toolSummary(p.ToolName, p.Input), Label: toolLabel(p.Input), Prompt: steerPrompt(p.ToolName, p.Input),
+					Status: cmp.Or(rm.Status, CallOK),
+					Diff:   tc.Diff, Run: cmp.Or(tc.Run, rm.Run), Job: rm.Job, Detail: tc.Detail,
 				})
 			case fantasy.ToolResultPart:
 				if i, ok := toolRow[p.ToolCallID]; ok && p.Output != nil {
