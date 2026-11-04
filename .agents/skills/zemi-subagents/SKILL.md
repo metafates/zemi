@@ -8,7 +8,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
 ## Subagents, workflows, agent runs, the Lua tool, MCP, LSP
 
 - **Subagents** (subagent.go) are fresh `agent.Runner`s over `PipelineFor()` (same permission
-  gate; an ask carries the agent's name in `Request.Agent`). Definitions: builtin `explore`, `general` and `plan` (a read-only architect a planning agent delegates drafting to), plus `agents/*.md` (user over builtin over plugin over a trusted
+  gate; an ask carries the agent's name in `Request.Agent`). Definitions: builtin `explore` and `general`,
+  plus `agents/*.md` (user over builtin over plugin over a trusted
   repo's `.agents`; a file's `read_only: true` makes a read-only agent like `explore`).
   They never get `agent`, `workflow`, `todos`, `question`,
   `plan` or `lua` (nesting depth 1: only the live turn forks). A run is a child session (`parent_id`) named by the run's id;
@@ -32,7 +33,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   ended and one the tool asked for with `background`, so only the live turn
   starts one; its task says what it is, so it does not ask for another.
 - **Workflows** (workflow.go, DESIGN §6.3) are Lua scripts (model-written via the `workflow`
-  tool, saved under `workflows/`, builtin in `runtime/workflows/` - `review`, `research`,
+  tool, saved under `workflows/`, builtin in `runtime/workflows/` - `review`,
   `hunt`, `brainstorm` - a plugin's after both). `/workflows` heads with a `New workflow` fill row and
   `new <what it should do>` sends the line with a prompt pointing at the New workflow steps
   in `workflows.md`, as `/agents new` and `/plugin new` do. They

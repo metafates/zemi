@@ -1026,7 +1026,7 @@ sessions of their own (`parent_id` set), and those rows are what
 `/agents` and a run's transcript read.
 
 A side turn is a subagent, a named
-definition (builtin `explore`, `general` and `plan`, plus `agents/*.md`
+definition (builtin `explore` and `general`, plus `agents/*.md`
 under the config home, an enabled plugin and a trusted repo's `.agents`,
 whose `read_only: true` makes a read-only agent like `explore`) run as a
 runner over the same tool pipeline, in a child session recorded with

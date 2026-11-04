@@ -103,16 +103,6 @@ var _builtinAgents = []AgentDef{
 		System: "Carry the task through: change, verify with the narrowest test or build that covers the change, report. Do only what the task asks; do not commit, push or change git state unless it says to.",
 		Source: lua.OriginBuiltin,
 	},
-	{
-		// a read-only architect persona whose report is a concrete plan draft
-		// the caller presents with its plan tool.
-		Name:        "plan",
-		Description: "Read-only: explores the code and drafts an implementation plan with a Critical Files section, for a large or unclear change.",
-		Tools:       _readOnlyTools,
-		ReadOnly:    true,
-		System:      "Read the code the change touches and the patterns it should reuse; never guess what a read would answer. Then report a plan someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most, then the open questions only the user can answer.",
-		Source:      lua.OriginBuiltin,
-	},
 }
 
 const _maxAgentFileBytes = 1 << 20

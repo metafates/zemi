@@ -1826,8 +1826,8 @@ func TestSavedWorkflows(t *testing.T) {
 	if i < 0 || list[i].Description != "Review the diff from three angles" || list[i].Source != lua.OriginUser {
 		t.Fatalf("workflows = %+v", list)
 	}
-	if !slices.ContainsFunc(list, func(w Workflow) bool { return w.Name == "research" && w.Source == lua.OriginBuiltin }) {
-		t.Fatalf("workflows = %+v, want the builtin research beside it", list)
+	if !slices.ContainsFunc(list, func(w Workflow) bool { return w.Name == "hunt" && w.Source == lua.OriginBuiltin }) {
+		t.Fatalf("workflows = %+v, want the builtin hunt beside it", list)
 	}
 	if _, err := h.workflowSource("nope"); err == nil || !strings.Contains(err.Error(), "have review") {
 		t.Fatalf("missing workflow err = %v", err)

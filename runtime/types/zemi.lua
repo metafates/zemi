@@ -1410,7 +1410,7 @@ function zemi.workflow.run(spec, on_done) end
 
 --- Workflow scripts only. Runs a subagent and waits for its report.
 --- ```lua
---- local plan, err = zemi.workflow.agent("Plan the change to x.go", { agent = "plan" })
+--- local plan, err = zemi.workflow.agent("Plan the change to x.go")
 --- ```
 ---@param prompt string Everything the agent needs: it does not see the conversation.
 ---@param opts? zemi.WorkflowAgentOpts

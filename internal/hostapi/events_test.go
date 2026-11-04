@@ -206,7 +206,6 @@ func TestBuiltinWorkflows(t *testing.T) {
 	echoAgents(h)
 	for _, c := range []struct{ name, args, want string }{
 		{"review", "", "Verify these review findings"},
-		{"research", "what is a whorl", "Answer the question below"},
 		{"hunt", "the spinner never stops", "Decide the cause of this failure"},
 		{"brainstorm", "fewer roundtrips", "Turn this brainstorm into the worth-try list"},
 	} {
