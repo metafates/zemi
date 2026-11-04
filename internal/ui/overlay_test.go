@@ -1557,38 +1557,55 @@ func TestOverlayFilterKeepsSize(t *testing.T) {
 // so an open picker costs the same at 10 items and 10000.
 func TestOverlayRowsBuiltOnce(t *testing.T) {
 	t.Parallel()
+	app, st := overlayList(t)
+	// draw paints the box at w and reports whether it rebuilt the list rows.
+	draw := func(w int) bool {
+		before := st.rows
+		app.overlayBox(st, w, 20, true)
+		return before == nil || &before[0] != &st.rows[0]
+	}
+	if !draw(80) {
+		t.Fatal("the first frame built no rows")
+	}
+	if draw(80) {
+		t.Fatal("a frame that moved nothing built the rows again")
+	}
+	st.selected = 30
+	if !draw(80) {
+		t.Fatal("a move built no rows")
+	}
+	st.set("item 4")
+	if !draw(80) {
+		t.Fatal("a filter built no rows")
+	}
+	if got := hostapi.SegsText(st.rows[0]); !strings.Contains(got, "item 04") {
+		t.Errorf("filtered list starts with %q", got)
+	}
+}
+
+// TestOverlayResizeBuildsRows: a width change rebuilds rows laid out for the
+// one before it, though nothing else moved.
+func TestOverlayResizeBuildsRows(t *testing.T) {
+	t.Parallel()
+	app, st := overlayList(t)
+	app.overlayBox(st, 80, 20, true)
+	before := st.rows
+	app.overlayBox(st, 60, 20, true)
+	if &before[0] == &st.rows[0] {
+		t.Fatal("a resize kept the rows laid out for the old width")
+	}
+}
+
+// overlayList is an open picker over 50 items, and its state.
+func overlayList(t *testing.T) (*App, *overlayState) {
+	t.Helper()
 	app, _ := bootAgentApp(t, 80, 20)
 	var items []hostapi.OverlayItem
 	for i := range 50 {
 		items = append(items, hostapi.OverlayItem{Text: fmt.Sprintf("item %02d", i)})
 	}
 	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: items})
-	st := &app.overlays[0]
-	for _, c := range []struct {
-		name  string
-		step  func()
-		built bool
-	}{
-		{"first frame", func() {}, true},
-		{"same frame", func() {}, false},
-		{"move", func() { st.selected = 30 }, true},
-		{"filter", func() { st.set("item 4") }, true},
-		{"resize", func() {}, true},
-	} {
-		c.step()
-		before := st.rows
-		w := 80
-		if c.name == "resize" {
-			w = 60
-		}
-		app.overlayBox(st, w, 20, true)
-		if built := before == nil || &before[0] != &st.rows[0]; built != c.built {
-			t.Errorf("%s: rows built %v, want %v", c.name, built, c.built)
-		}
-	}
-	if got := hostapi.SegsText(st.rows[0]); !strings.Contains(got, "item 04") {
-		t.Errorf("filtered list starts with %q", got)
-	}
+	return app, &app.overlays[0]
 }
 
 // TestOverlayClosesOnOutsideClick: a click beside a menu closes it, a click

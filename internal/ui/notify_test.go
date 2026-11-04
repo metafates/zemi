@@ -25,79 +25,143 @@ func notifyApp(t *testing.T) (*App, *hostapi.Host) {
 	return NewApp(host, log), host
 }
 
-// TestNotifyWhenAway: a finished turn notifies in the ui.notify style only
-// while the terminal reports zemi unfocused, once the agent reads idle; a
-// loop's run ends quietly, and the loop's end notifies.
+// notifyFrame runs one frame and returns the bytes it sent as a desktop
+// notification, "" for none; the program-status report rides the same batch.
+func notifyFrame(app *App) string {
+	_, cmd := app.Update(frameTickMsg{})
+	app.wakeTick() // the tick in the batch returns at the next frame boundary
+	for _, m := range runCmd(cmd) {
+		if raw, ok := m.(tea.RawMsg); ok {
+			if s := fmt.Sprint(raw.Msg); !strings.Contains(s, "\x1b]7501;") {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+// notifyStyled is a bare zemi whose ui.notify style is style.
+func notifyStyled(t *testing.T, style string) (*App, *hostapi.Host) {
+	t.Helper()
+	app, host := notifyApp(t)
+	if _, err := host.Settings.SetQuiet("ui.notify", style); err != nil {
+		t.Fatal(err)
+	}
+	return app, host
+}
+
+// notifyAwayApp is a bare zemi whose terminal is unfocused and whose
+// ui.notify style is style.
+func notifyAwayApp(t *testing.T, style string) (*App, *hostapi.Host) {
+	t.Helper()
+	app, host := notifyStyled(t, style)
+	app.Update(tea.BlurMsg{})
+	return app, host
+}
+
+// TestNotifyWhenAway: a finished turn notifies in the ui.notify style, its
+// words following how the turn ended and what the reply said.
 func TestNotifyWhenAway(t *testing.T) {
 	t.Parallel()
-	app, host := notifyApp(t)
-	frame := func() string {
-		_, cmd := app.Update(frameTickMsg{})
-		app.wakeTick() // the tick in the batch returns at the next frame boundary
-		for _, m := range runCmd(cmd) {
-			if raw, ok := m.(tea.RawMsg); ok {
-				if s := fmt.Sprint(raw.Msg); !strings.Contains(s, "\x1b]7501;") { // the status report rides the same batch
-					return s
-				}
-			}
-		}
-		return ""
-	}
 	for _, c := range []struct {
-		name, style string
-		focus       tea.Msg
-		chain       bool                // the agent still reads active on the first frame
-		loop        bool                // a loop run began the chain
-		looped      bool                // a loop was on, and is no more
-		support     bool                // the terminal answered the OSC 7501 feature query
-		done        turnDoneMsg         // how the turn ended
-		seed        func(*hostapi.Host) // chat rows the turn left behind
-		want        string              // the raw bytes sent, "" for no notification
+		name    string
+		style   string
+		support bool        // the terminal answered the OSC 7501 feature query
+		done    turnDoneMsg // how the turn ended
+		reply   string      // the chat row the turn left behind
+		want    string      // the raw bytes sent, "" for no notification
 	}{
-		{"focused", "osc", nil, false, false, false, false, turnDoneMsg{}, nil, ""},
-		{"away", "osc", tea.BlurMsg{}, false, false, false, false, turnDoneMsg{}, nil, "\x1b]9;zemi finished\x07"},
-		{"away with support", "osc", tea.BlurMsg{}, false, false, false, true, turnDoneMsg{}, nil, ""},
-		{"away as a chain goes on", "osc", nil, true, false, false, false, turnDoneMsg{}, nil, "\x1b]9;zemi finished\x07"},
-		{"away after a loop's run", "osc", nil, false, true, false, false, turnDoneMsg{}, nil, ""},
-		{"away as the loop ends", "osc", nil, false, true, true, false, turnDoneMsg{}, nil, "\x1b]9;zemi: the loop ended\x07"},
-		{"away as the loop ends with support", "osc", nil, false, true, true, true, turnDoneMsg{}, nil, ""},
-		{"away with a failing turn", "osc", tea.BlurMsg{}, false, false, false, false, turnDoneMsg{err: "provider refused\n\tand again"}, nil, "\x1b]9;zemi failed: provider refused and again\x07"},
-		{"away with a failing turn and support", "osc", tea.BlurMsg{}, false, false, false, true, turnDoneMsg{err: "provider refused"}, nil, ""},
-		{"away with a long failure", "osc", tea.BlurMsg{}, false, false, false, false, turnDoneMsg{err: strings.Repeat("x", 300)}, nil, "\x1b]9;zemi failed: " + strings.Repeat("x", 79) + "…\x07"},
-		{"away with a reply", "osc", tea.BlurMsg{}, false, false, false, false, turnDoneMsg{}, func(h *hostapi.Host) {
-			h.AppendChat(hostapi.ChatMessage{Role: "assistant", Text: "all 9 tests pass"})
-		}, "\x1b]9;zemi finished: all 9 tests pass\x07"},
-		{"away with a long reply", "osc", tea.BlurMsg{}, false, false, false, false, turnDoneMsg{}, func(h *hostapi.Host) {
-			h.AppendChat(hostapi.ChatMessage{Role: "assistant", Text: strings.Repeat("x", 300)})
-		}, "\x1b]9;zemi finished: " + strings.Repeat("x", 199) + "…\x07"},
-		{"away with a headed reply", "osc", tea.BlurMsg{}, false, false, false, false, turnDoneMsg{}, func(h *hostapi.Host) {
-			h.AppendChat(hostapi.ChatMessage{Role: "assistant", Text: "# Deploy notes\nall green"})
-		}, "\x1b]9;zemi finished: Deploy notes all green\x07"},
-		{"away with a bell", "bell", nil, false, false, false, false, turnDoneMsg{}, nil, "\a"},
-		{"back", "osc", tea.FocusMsg{}, false, false, false, false, turnDoneMsg{}, nil, ""},
+		{"away", "osc", false, turnDoneMsg{}, "", "\x1b]9;zemi finished\x07"},
+		{"away with support", "osc", true, turnDoneMsg{}, "", ""},
+		{"away with a failing turn", "osc", false, turnDoneMsg{err: "provider refused\n\tand again"}, "", "\x1b]9;zemi failed: provider refused and again\x07"},
+		{"away with a failing turn and support", "osc", true, turnDoneMsg{err: "provider refused"}, "", ""},
+		{"away with a long failure", "osc", false, turnDoneMsg{err: strings.Repeat("x", 300)}, "", "\x1b]9;zemi failed: " + strings.Repeat("x", 79) + "…\x07"},
+		{"away with a reply", "osc", false, turnDoneMsg{}, "all 9 tests pass", "\x1b]9;zemi finished: all 9 tests pass\x07"},
+		{"away with a long reply", "osc", false, turnDoneMsg{}, strings.Repeat("x", 300), "\x1b]9;zemi finished: " + strings.Repeat("x", 199) + "…\x07"},
+		{"away with a headed reply", "osc", false, turnDoneMsg{}, "# Deploy notes\nall green", "\x1b]9;zemi finished: Deploy notes all green\x07"},
+		{"away with a bell", "bell", false, turnDoneMsg{}, "", "\a"},
 	} {
-		if _, err := host.Settings.SetQuiet("ui.notify", c.style); err != nil {
-			t.Fatal(err)
-		}
-		app.statusSupport = c.support
-		if c.focus != nil {
-			app.Update(c.focus)
-		}
-		app.Update(c.done)
-		if c.chain {
-			host.SeedStream(hostapi.StreamSnapshot{Active: true})
-			if got := frame(); got != "" {
-				t.Errorf("%s: sent %q while the agent is active", c.name, got)
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			app, host := notifyAwayApp(t, c.style)
+			app.statusSupport = c.support
+			app.Update(c.done)
+			host.SeedStream(hostapi.StreamSnapshot{})
+			if c.reply != "" {
+				host.AppendChat(hostapi.ChatMessage{Role: "assistant", Text: c.reply})
 			}
-		}
-		host.SeedStream(hostapi.StreamSnapshot{ByLoop: c.loop})
-		app.looping = c.looped
-		if c.seed != nil {
-			c.seed(host)
-		}
-		if got := frame(); got != c.want {
-			t.Errorf("%s: sent %q, want %q", c.name, got, c.want)
-		}
+			if got := notifyFrame(app); got != c.want {
+				t.Errorf("sent %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// TestNotifyWaitsForAChain: a turn's end lands on the frame that reads the
+// agent idle, so a chain of turns notifies once, as its last turn ends.
+func TestNotifyWaitsForAChain(t *testing.T) {
+	t.Parallel()
+	app, host := notifyAwayApp(t, "osc")
+	app.Update(turnDoneMsg{})
+	host.SeedStream(hostapi.StreamSnapshot{Active: true})
+	if got := notifyFrame(app); got != "" {
+		t.Errorf("sent %q while the agent is active", got)
+	}
+	host.SeedStream(hostapi.StreamSnapshot{})
+	if got, want := notifyFrame(app), "\x1b]9;zemi finished\x07"; got != want {
+		t.Errorf("sent %q, want %q", got, want)
+	}
+}
+
+// TestNotifyFocused: a focused terminal needs no alert.
+func TestNotifyFocused(t *testing.T) {
+	t.Parallel()
+	app, host := notifyStyled(t, "osc")
+	app.Update(turnDoneMsg{})
+	host.SeedStream(hostapi.StreamSnapshot{})
+	if got := notifyFrame(app); got != "" {
+		t.Errorf("a focused terminal got %q", got)
+	}
+}
+
+// TestNotifyBack: a turn that ends away sends nothing once the window is
+// focused again.
+func TestNotifyBack(t *testing.T) {
+	t.Parallel()
+	app, host := notifyAwayApp(t, "osc")
+	app.Update(tea.FocusMsg{})
+	app.Update(turnDoneMsg{})
+	host.SeedStream(hostapi.StreamSnapshot{})
+	if got := notifyFrame(app); got != "" {
+		t.Errorf("a focused terminal got %q", got)
+	}
+}
+
+// TestNotifyAsTheLoopEnds: a loop's runs end quietly; the loop's end
+// notifies, unless the terminal already carries the status record.
+func TestNotifyAsTheLoopEnds(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name    string
+		looped  bool // a loop was on, and is no more
+		support bool // the terminal answered the OSC 7501 feature query
+		want    string
+	}{
+		{"away after a loop's run", false, false, ""},
+		{"away as the loop ends", true, false, "\x1b]9;zemi: the loop ended\x07"},
+		{"away as the loop ends with support", true, true, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			app, host := notifyAwayApp(t, "osc")
+			app.statusSupport = c.support
+			app.Update(turnDoneMsg{})
+			host.SeedStream(hostapi.StreamSnapshot{ByLoop: true})
+			app.looping = c.looped
+			if got := notifyFrame(app); got != c.want {
+				t.Errorf("sent %q, want %q", got, c.want)
+			}
+		})
 	}
 }
 
@@ -306,41 +370,80 @@ func TestRecapWhenIdle(t *testing.T) {
 }
 
 // TestStopWording keeps its own file; the next test starts here.
-// TestWindowTitle: the tab title asks with ? and marks how a turn ended
-// while the window was away, until it is focused again; a running turn
-// leaves the title alone — the program status reports it.
+// TestWindowTitle: the tab title marks how a turn ended while the window was
+// away, until it is focused again.
 func TestWindowTitle(t *testing.T) {
 	t.Parallel()
-	running := func(app *App) { app.turnActive = true }
 	for _, c := range []struct {
 		name string
-		set  func(*App)
 		msgs []tea.Msg
 		at   time.Duration
 		want string
 	}{
-		{"idle", nil, nil, 0, "zemi"},
-		{"running", running, nil, 0, "zemi"},
-		{"running 200 ms on", running, nil, 200 * time.Millisecond, "zemi"},
-		{"asking", func(app *App) { running(app); app.permAsk = &permAskPrompt{} }, nil, 0, "? zemi"},
-		{"asking trust", func(app *App) { app.trust = &trustPrompt{root: "/proj"} }, nil, 0, "? zemi"},
-		{"done away", nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{}, frameTickMsg{}}, 0, "✓ zemi"},
-		{"failed away", nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{err: "x"}, frameTickMsg{}}, 0, "✗ zemi"},
-		{"seen once focused", nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{}, frameTickMsg{}, tea.FocusMsg{}}, 0, "zemi"},
-		{"done here", nil, []tea.Msg{turnDoneMsg{}, frameTickMsg{}}, 0, "zemi"},
-		{"cancelled away", nil, []tea.Msg{tea.BlurMsg{}, turnDoneMsg{stopped: true}, frameTickMsg{}}, 0, "zemi"},
+		{"idle", nil, 0, "zemi"},
+		{"done away", []tea.Msg{tea.BlurMsg{}, turnDoneMsg{}, frameTickMsg{}}, 0, "✓ zemi"},
+		{"failed away", []tea.Msg{tea.BlurMsg{}, turnDoneMsg{err: "x"}, frameTickMsg{}}, 0, "✗ zemi"},
+		{"seen once focused", []tea.Msg{tea.BlurMsg{}, turnDoneMsg{}, frameTickMsg{}, tea.FocusMsg{}}, 0, "zemi"},
+		{"done here", []tea.Msg{turnDoneMsg{}, frameTickMsg{}}, 0, "zemi"},
+		{"cancelled away", []tea.Msg{tea.BlurMsg{}, turnDoneMsg{stopped: true}, frameTickMsg{}}, 0, "zemi"},
 	} {
-		app, _ := notifyApp(t)
-		app.now = func() time.Time { return time.UnixMilli(1_000_000).Add(c.at) }
-		for _, m := range c.msgs {
-			app.Update(m)
-		}
-		if c.set != nil {
-			c.set(app)
-		}
-		if got := app.windowTitle(); got != c.want {
-			t.Errorf("%s: %q, want %q", c.name, got, c.want)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			app, _ := notifyApp(t)
+			app.now = func() time.Time { return time.UnixMilli(1_000_000).Add(c.at) }
+			for _, m := range c.msgs {
+				app.Update(m)
+			}
+			if got := app.windowTitle(); got != c.want {
+				t.Errorf("%q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// TestWindowTitleWhileRunning: a running turn leaves the title alone — the
+// program status reports it.
+func TestWindowTitleWhileRunning(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name string
+		at   time.Duration
+	}{
+		{"running", 0},
+		{"running 200 ms on", 200 * time.Millisecond},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			app, _ := notifyApp(t)
+			app.now = func() time.Time { return time.UnixMilli(1_000_000).Add(c.at) }
+			app.turnActive = true
+			if got := app.windowTitle(); got != "zemi" {
+				t.Errorf("%q, want zemi", got)
+			}
+		})
+	}
+}
+
+// TestWindowTitleAsks: a permission ask waiting on the user makes the title
+// ask.
+func TestWindowTitleAsks(t *testing.T) {
+	t.Parallel()
+	app, _ := notifyApp(t)
+	app.turnActive = true
+	app.permAsk = &permAskPrompt{}
+	if got := app.windowTitle(); got != "? zemi" {
+		t.Errorf("%q, want ? zemi", got)
+	}
+}
+
+// TestWindowTitleAsksTrust: so does the trust prompt, which waits before any
+// turn.
+func TestWindowTitleAsksTrust(t *testing.T) {
+	t.Parallel()
+	app, _ := notifyApp(t)
+	app.trust = &trustPrompt{root: "/proj"}
+	if got := app.windowTitle(); got != "? zemi" {
+		t.Errorf("%q, want ? zemi", got)
 	}
 }
 
