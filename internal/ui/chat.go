@@ -634,6 +634,7 @@ type chatFolds struct {
 	steps    map[int64]bool  // a step's calls, opened under its counted row
 	unfolded map[int64]bool  // a run drawn whole, under its digest
 	whole    map[int64]bool  // a rail or a notice burst shown whole
+	prompts  map[int64]bool  // a long user prompt shown whole
 	runs     map[int64]int64 // the run a digest folds: its key to its last row's
 	ident    string          // the transcript these folds belong to
 	calls    int             // the live calls the last render drew
@@ -678,7 +679,8 @@ func viewID(st *hostapi.ScreenState) string {
 // chatWidget is the chat region: the transcript, the live turn and the todos.
 func chatWidget(h *hostapi.Host) *widget {
 	f := &chatFolds{
-		steps: map[int64]bool{}, unfolded: map[int64]bool{}, whole: map[int64]bool{}, runs: map[int64]int64{},
+		steps: map[int64]bool{}, unfolded: map[int64]bool{}, whole: map[int64]bool{},
+		prompts: map[int64]bool{}, runs: map[int64]int64{},
 		md: map[string][][]hostapi.Segment{}, hl: map[string][]hostapi.Segment{},
 	}
 	return &widget{
@@ -708,7 +710,7 @@ func (f *chatFolds) reset(st *hostapi.ScreenState) {
 		view = st.View.ID
 	}
 	if ident := fmt.Sprintf("%d|%s", st.TranscriptEpoch, view); ident != f.ident {
-		f.steps, f.unfolded, f.whole, f.runs = map[int64]bool{}, map[int64]bool{}, map[int64]bool{}, map[int64]int64{}
+		f.steps, f.unfolded, f.whole, f.prompts, f.runs = map[int64]bool{}, map[int64]bool{}, map[int64]bool{}, map[int64]bool{}, map[int64]int64{}
 		f.ident, f.ver = ident, f.ver+1
 	}
 	if n := len(st.Agent.Tools); n < f.calls {
@@ -736,6 +738,8 @@ func (f *chatFolds) toggle(kind string, key int64) {
 		set = f.unfolded
 	case "more":
 		set = f.whole
+	case "prompt":
+		set = f.prompts
 	default:
 		return
 	}
@@ -868,33 +872,55 @@ func (b *chatBuilder) highlight(text, lang string) []hostapi.Segment {
 // user draws the user's own words: the bar on every row, in the accent for a
 // message that went and dim for one still waiting its turn. A sent message's
 // rows are sticky: the chat pins its first row while the turn's rows fill the
-// view.
-func (b *chatBuilder) user(text string, waiting bool) {
+// view. A prompt past the composer's own paste threshold folds to its head,
+// which its key opens and folds back: a click, the cursor's l, h and enter.
+func (b *chatBuilder) user(text string, waiting bool, key int64) {
 	barHL, textHL, pin := "UserMsg", "Normal", hostapi.PinTurn
 	if waiting {
 		barHL, textHL, pin = "Queued", "Dim", hostapi.PinNone
 	}
 	wrapped := hostapi.WrapText(text, b.width-2)
-	// a user row past the composer's own paste threshold folds: the model read
-	// every line, the chat shows the head and names the way to the rest
+	// a prompt the model read whole, the chat showing its head and naming the
+	// way to the rest; only a prompt that folds carries the click
+	click, open := "", false
+	if len(wrapped) > 10 && key != 0 {
+		click = "prompt:" + strconv.FormatInt(key, 10)
+		open = b.folds.prompts[key]
+	}
 	draw := len(wrapped)
-	if draw > 10 {
+	if draw > 10 && !open {
 		draw = 9
 	}
 	for i := range draw {
 		row := []hostapi.Segment{{Text: "▌ ", HL: barHL, NoCopy: true, NoHover: true, Pin: pin, Fill: hostapi.FillPanel}}
 		for _, sg := range wrapped[i] {
-			sg.HL = textHL
-			sg.Fill = hostapi.FillPanel
+			sg.HL, sg.Fill = textHL, hostapi.FillPanel
+			sg.Click = click
+			// the head row lights as its pin does, the body under it stays quiet
+			sg.NoHover = i > 0
 			row = append(row, sg)
 		}
 		b.push(row)
 	}
-	if len(wrapped) > draw {
-		b.push([]hostapi.Segment{
-			{Text: "▌ ", HL: barHL, NoCopy: true, NoHover: true, Pin: pin, Fill: hostapi.FillPanel},
-			{Text: "… +" + strconv.Itoa(len(wrapped)-draw) + " lines", HL: "Dim", NoCopy: true, Fill: hostapi.FillPanel},
-		})
+	switch {
+	case len(wrapped) > draw:
+		// the glyph says what the click and the cursor's keys do: ▸ opens the
+		// hidden lines, ▾ folds them back
+		text := "… +" + strconv.Itoa(len(wrapped)-draw) + " lines"
+		if click != "" {
+			text = "▸ +" + strconv.Itoa(len(wrapped)-draw) + " lines"
+		}
+		b.push(b.userFold(barHL, pin, text, click))
+	case open: // drawn whole: the row that folds it back
+		b.push(b.userFold(barHL, pin, "▾ collapse", click))
+	}
+}
+
+// userFold is the row under a folded prompt: the bar, and what its click does.
+func (b *chatBuilder) userFold(barHL string, pin hostapi.Pin, text, click string) []hostapi.Segment {
+	return []hostapi.Segment{
+		{Text: "▌ ", HL: barHL, NoCopy: true, NoHover: true, Pin: pin, Fill: hostapi.FillPanel},
+		{Text: text, HL: "Dim", NoCopy: true, NoHover: true, Fill: hostapi.FillPanel, Click: click},
 	}
 }
 
@@ -1536,7 +1562,7 @@ func (b *chatBuilder) unit(tr []entry, first, last int, mode runMode) {
 	case m.role == fantasy.MessageRoleUser:
 		// plain text: what the user typed is not markdown
 		b.gap(_blockUser)
-		b.user(m.text, false)
+		b.user(m.text, false, keyOf(b.st.TranscriptCut, first+1))
 	default:
 		b.gap(_blockText)
 		b.markdown(m.text)
@@ -1829,7 +1855,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		// typed, folding past the paste threshold like any user row
 		for _, q := range queued {
 			b.gap(_blockQueued)
-			b.user(q, true)
+			b.user(q, true, 0)
 		}
 	}
 	// what will change this conversation later sits between it and the todos

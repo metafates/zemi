@@ -145,7 +145,7 @@ func TestChatCursorBandsItsOwnRows(t *testing.T) {
 }
 
 // TestChatCursorRemembersItsMessage: tab away and back re-selects the
-// message the cursor held, even after the view scrolled away from it.
+// message the cursor held, while the reader still sees it.
 func TestChatCursorRemembersItsMessage(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 14)
@@ -156,14 +156,14 @@ func TestChatCursorRemembersItsMessage(t *testing.T) {
 	press(t, app, tab)
 	held := app.chatSel
 	for range 3 {
-		app.Update(tea.KeyPressMsg{Code: 'k'})
+		press(t, app, tea.KeyPressMsg{Code: 'k'})
 		if app.chatSel == held {
 			t.Fatal("k did not move the cursor; the memo case would be vacuous")
 		}
 		held = app.chatSel
 	}
 	press(t, app, tab) // away
-	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome, Mod: tea.ModCtrl})
+	app.Frame()
 	press(t, app, tab) // back
 	if app.chatSel != held {
 		t.Fatalf("tab twice: sel %d, want the held %d", app.chatSel, held)
@@ -171,6 +171,119 @@ func TestChatCursorRemembersItsMessage(t *testing.T) {
 	st := aScroll(app)
 	if from, _ := unitRows(st.lines, app.chatSel); from < 0 {
 		t.Fatalf("the restored message %d drew no rows", app.chatSel)
+	}
+}
+
+// TestChatCursorForgetsAnOffScreenMessage: a memo the view scrolled away from
+// is dropped, so tab takes the message the drawn view is at and a second tab
+// re-selects that one, never the old place.
+func TestChatCursorForgetsAnOffScreenMessage(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 80, 14)
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame()
+	tab := tea.KeyPressMsg{Code: tea.KeyTab}
+	press(t, app, tab)
+	held := app.chatSel
+	press(t, app, tab) // away
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome, Mod: tea.ModCtrl})
+	press(t, app, tab) // back over a view that no longer holds the memo
+	st := aScroll(app)
+	bottom := min(st.top+st.viewH, len(st.lines)) - 1 - st.viewH/10
+	want := 0
+	for i := bottom; i >= st.top && want == 0; i-- {
+		want = rowAnchor(st.lines[i])
+	}
+	if app.chatSel != want || app.chatSel == held {
+		t.Fatalf("tab: sel %d, want %d (the view's own message), not the memo's %d", app.chatSel, want, held)
+	}
+	press(t, app, tab) // away
+	press(t, app, tab) // back: the pick is the memo now
+	if app.chatSel != want {
+		t.Fatalf("tab twice: sel %d, want the picked %d", app.chatSel, want)
+	}
+}
+
+// TestChatCursorPages: ctrl+u and ctrl+d walk the cursor a view up and down
+// with the view following it, the way the bare composer scrolls on them.
+func TestChatCursorPages(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 80, 14)
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyTab})
+	units := app.chatUnits()
+	tail := len(units) - 1
+	press(t, app, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
+	up := slices.Index(units, app.chatSel-1)
+	if up < 0 || up >= tail {
+		t.Fatalf("ctrl+u: sel %d at unit %d, want a message above the tail %d", app.chatSel, up, tail)
+	}
+	if tail-up < 2 {
+		t.Fatalf("ctrl+u moved %d unit(s), want a view's worth", tail-up)
+	}
+	press(t, app, tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+	if down := slices.Index(units, app.chatSel-1); down <= up {
+		t.Fatalf("ctrl+d: unit %d, want one below %d", down, up)
+	}
+	app.Frame()
+	if st := aScroll(app); st.bandAt != app.chatSel {
+		t.Fatalf("ctrl+d: the band is on %d, not on the cursor's %d", st.bandAt, app.chatSel)
+	}
+}
+
+// TestChatCursorFoldsALongPrompt: a prompt past the paste threshold draws its
+// head under a fold row whose glyph says the state; l opens it whole, h folds
+// it back and a click on the row toggles it the same way.
+func TestChatCursorFoldsALongPrompt(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 80, 30)
+	host.AppendMessage("user", strings.Repeat("a line of the prompt\n", 20)+"the end")
+	app.renderSync(t)
+	app.Frame()
+	rows := func() []string { return chatRows(t, app, 78) }
+	prompt := func() int {
+		n := 0
+		for _, r := range rows() {
+			if strings.HasPrefix(r, "▌ ") {
+				n++
+			}
+		}
+		return n
+	}
+	folded := func(glyph string) bool {
+		return slices.ContainsFunc(rows(), func(r string) bool { return strings.HasPrefix(r, "▌ "+glyph) })
+	}
+	foldKey := func(key tea.KeyPressMsg) {
+		press(t, app, key)
+		app.renderSync(t) // the toggle's rows land in the cache the cursor reads
+		app.Frame()
+	}
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyTab}) // the prompt is the only message
+	if !folded("▸") || folded("▾") {
+		t.Fatalf("the long prompt draws unfolded:\n%s", strings.Join(rows(), "\n"))
+	}
+	if n := prompt(); n > 10 {
+		t.Fatalf("the folded prompt drew %d rows, want its head", n)
+	}
+	head := prompt()
+	foldKey(tea.KeyPressMsg{Code: 'l'})
+	if !folded("▾") || folded("▸") {
+		t.Fatalf("l did not open the prompt:\n%s", strings.Join(rows(), "\n"))
+	}
+	if n := prompt(); n <= head+1 {
+		t.Fatalf("the opened prompt drew %d rows, want its whole text over the foot", n)
+	}
+	foldKey(tea.KeyPressMsg{Code: 'h'})
+	if !folded("▸") {
+		t.Fatalf("h did not fold the prompt back:\n%s", strings.Join(rows(), "\n"))
+	}
+	x, y := findCell(t, app, "▸ +")
+	clickAt(app, x, y)
+	if !folded("▾") {
+		t.Fatalf("a click on the fold row did not open the prompt:\n%s", strings.Join(rows(), "\n"))
 	}
 }
 

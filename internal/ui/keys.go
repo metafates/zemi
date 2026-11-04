@@ -31,12 +31,12 @@ var _goKeys = [][2]string{
 	{"ctrl+z", "undo in the composer"},
 	{"ctrl+a/e", "line start, line end"},
 	{"alt+left, alt+right", "move by word"},
-	{"ctrl+d/u", "scroll the chat half a view"},
+	{"ctrl+d/u", "scroll the chat half a view; on its cursor, walk a view"},
 	{"ctrl+w", "delete the word before the cursor"},
 	{"delete", "forward delete"},
 	{"/", "command palette"},
 	{"@", "attach files, dirs and skills"},
-	{"tab", "focus the chat; j, k walk it, enter, space, l, h fold its runs, y copies, e opens the editor"},
+	{"tab", "focus the chat; j, k walk it, enter, space, l, h fold its runs and long prompts, y copies, e opens the editor"},
 	{"ctrl+space", "reopen the @ or / popup at the word"},
 }
 

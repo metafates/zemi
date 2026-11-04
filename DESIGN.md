@@ -2203,7 +2203,10 @@ view; a reset's wipe drops the row with the chat.
   blank row between them; a burst past four keeps its three newest, the older
   ones behind one dim `… N earlier` row a click opens and folds back, and a
   printed run keeps them all, so a fleet of agents reporting at once never
-  takes the chat over; an error row is a block of its own. The
+  takes the chat over; an error row is a block of its own. A prompt past the
+  composer's paste threshold draws its head and a dim `▸ +N lines` row whose
+  click, `l` or `enter` opens it whole and whose `h` folds it back; a prompt
+  still waiting its turn folds to its head alone, no click to it. The
   live turn and a printed run draw the whole rail, one
   row per step, a continuous bar in column 0, every row's own state mark in
   column 2 and its text from column 4
@@ -2322,14 +2325,19 @@ view; a reset's wipe drops the row with the chat.
   shows, not on a row number, so a resize, an expanded thought or a new
   turn leaves the same content in view.
   `tab` on a bare composer gives the chat the keys: a cursor walks its
-  messages (`j`, `k`, the arrows, `g`/`G`, `home`/`end`; a run of activity
+  messages (`j`, `k`, the arrows, `g`/`G`, `home`/`end`, and `ctrl+d`/`ctrl+u`
+  a view at a time, the view following it where the pair scrolls on the
+  composer; a run of activity
   rows or a burst of notices is one step, the live turn's own run none),
   bands the selected message the way a picked list row is banded and keeps
   it in view, `y` copies it, `e` opens it in the editor to copy from (what
   is saved there is discarded), `enter` and `space` toggle the selected
-  run's rail, `l` opens it, `h` folds it back, and `tab`/`esc` return to
+  run's rail or unfold a long prompt, `l` opens it, `h` folds it back, and
+  `tab`/`esc` return to
   the composer holding the message the cursor had, so the next `tab`
-  re-selects it; any other key is ignored, and keymaps wait.
+  re-selects it while the reader still sees it: a message the view has
+  scrolled away from is forgotten and `tab` takes the one at the view's
+  bottom row, a screen-tenth up; any other key is ignored, and keymaps wait.
   Commands are slash commands: `/quit`, `/help`, `/model`,
   `/reset` (wipe the chat's log, every summary and the view, vacuum the
   store so the text is gone from disk, and start the log over at seq 0;
@@ -2380,7 +2388,9 @@ view; a reset's wipe drops the row with the chat.
   running agents `/agents`, running jobs `/jobs`. The chat widget marks a
   digest (`turn:<first
   index>`, opens or folds the run under it), a rail's or a notice burst's fold
-  row (`more:<first index>`, shows what it hides and folds it back), a step row
+  row (`more:<first index>`, shows what it hides and folds it back), a long
+  prompt's head and its fold row (`prompt:<index>`, shows it whole and folds
+  it back), a step row
   (`step:<idx>`, opens its calls), a call's or a thought's row (`call:<idx>`,
   opens a view of that row alone), an agent tool
   row (`agent:<run id>`, from the row's `run` field, opens that run's
