@@ -53,7 +53,7 @@ func runTodos(ctx context.Context, p *Pipeline, in todosArgs) (fantasy.ToolRespo
 		// One open item reworded in place — same length, every other content
 		// standing — is a rename, not a drop; an explicit cancel is the
 		// write's own accounting.
-		vanished := []string{}
+		var vanished []string
 		if old, err := p.TodosRead(); err == nil {
 			var missing []string
 			for _, td := range old {

@@ -241,7 +241,7 @@ func (h *Host) builderRow() HealthRow {
 	unbuilt := h.chat.tree.health.unbuilt.Load()
 	failed := h.chat.tree.health.failed.Load()
 	queued := h.chat.tree.health.queued.Load()
-	parts := []string{}
+	var parts []string
 	if unbuilt > 0 {
 		parts = append(parts, fmt.Sprintf("%d lines not summarized yet", unbuilt))
 	}

@@ -1664,7 +1664,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		// carry the leading gap its real predecessor asks for, so any run of
 		// them concatenates in order, half built included.
 		type unitSpan struct{ first, last int }
-		units := []unitSpan{}
+		var units []unitSpan
 		for i := 0; i < len(tr); {
 			first, last := i, i
 			for last+1 < len(tr) && (activity(tr[first]) && activity(tr[last+1]) || notice(tr[first]) && notice(tr[last+1])) {

@@ -457,7 +457,7 @@ func (h *Host) marketplaceItemsOf(name string) []OverlayItem {
 	// entries section by their manifest category, the order the manifest
 	// names them in; no categories at all keeps one Plugins section
 	grouped := slices.ContainsFunc(m.Entries, func(e plugin.MarketplaceEntry) bool { return e.Category != "" })
-	order := []string{}
+	var order []string
 	groups := map[string][]plugin.MarketplaceEntry{}
 	for _, e := range m.Entries {
 		cat := e.Category
