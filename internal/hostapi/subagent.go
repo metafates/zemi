@@ -800,6 +800,8 @@ type subagentHooks struct {
 	base       int             // run.calls before this send: a continuation's row counts its own
 }
 
+var _ agent.StreamHooks = (*subagentHooks)(nil)
+
 func (s *subagentHooks) report(line string) {
 	if s.progress != nil {
 		s.progress(line)

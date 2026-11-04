@@ -28,7 +28,8 @@ func codecOpts(L *glua.LState) *glua.LTable {
 	if L.Get(2).Type() == glua.LTNil {
 		return nil
 	}
-	return L.Get(2).(*glua.LTable)
+	tb, _ := L.Get(2).(*glua.LTable)
+	return tb
 }
 
 // checkOpts rejects an option name the call does not speak: a typo would

@@ -201,7 +201,11 @@ func (a *Auth) Authorize(ctx context.Context, open func(authURL string)) error {
 		return err
 	}
 	defer ln.Close()
-	redirect := fmt.Sprintf("http://localhost:%d/callback", ln.Addr().(*net.TCPAddr).Port)
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok {
+		return errors.New("the sign-in callback did not bind a local TCP port")
+	}
+	redirect := fmt.Sprintf("http://localhost:%d/callback", addr.Port)
 
 	t := &Token{ServerURL: a.ServerURL, RedirectURI: redirect, AuthURL: m.authURL, TokenURL: m.tokenURL, Resource: m.resource}
 	t.ClientID, t.ClientSecret = a.ClientID, a.ClientSecret

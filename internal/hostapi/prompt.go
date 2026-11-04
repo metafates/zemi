@@ -388,7 +388,8 @@ func (h *Host) instructionEdits() string {
 			continue
 		}
 		mt := fi.ModTime()
-		if t, ok := seen.Load(perm.CanonPath(p)); !ok || !t.(time.Time).Equal(mt) {
+		loaded, _ := seen.Load(perm.CanonPath(p))
+		if last, ok := loaded.(time.Time); !ok || !last.Equal(mt) {
 			data, err := os.ReadFile(p)
 			if err != nil {
 				continue

@@ -53,6 +53,8 @@ type StreamHooks interface {
 // turns and no hook call site guards for nil.
 type noopHooks struct{}
 
+var _ StreamHooks = noopHooks{}
+
 func (noopHooks) TextDelta(string)                                                    {}
 func (noopHooks) ReasoningDelta(string)                                               {}
 func (noopHooks) ToolCallPending(string, string)                                      {}

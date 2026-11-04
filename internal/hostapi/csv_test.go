@@ -21,10 +21,10 @@ func TestCSVRoundTrip(t *testing.T) {
 		{"a newline quotes", [][]string{{"one", "two\nlines"}}, "one,\"two\nlines\"\n"},
 		{"an empty field", [][]string{{"", "x", ""}}, ",x,\n"},
 	} {
-		if got := csvEncodeOpts(c.rows, ',', false); got != c.want {
+		if got := csvEncodeOpts(c.rows, ',', false /* useCRLF */); got != c.want {
 			t.Errorf("%s: encode = %q, want %q", c.name, got, c.want)
 		}
-		back, err := csvDecodeOpts(c.want, ',', 0, false, true)
+		back, err := csvDecodeOpts(c.want, ',', 0, false /* trimLeadingSpace */, true /* lazyQuotes */)
 		if err != nil {
 			t.Errorf("%s: decode: %v", c.name, err)
 			continue
@@ -58,7 +58,7 @@ func TestCSVDecodeEdges(t *testing.T) {
 		{"a quote beside text reads as text", "ab\"c\n", [][]string{{`ab"c`}}},
 		{"an unterminated quote reads to the end", "\"never closed\n", [][]string{{"never closed\n"}}},
 	} {
-		got, err := csvDecodeOpts(c.in, ',', 0, false, true)
+		got, err := csvDecodeOpts(c.in, ',', 0, false /* trimLeadingSpace */, true /* lazyQuotes */)
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
@@ -79,25 +79,25 @@ func TestCSVDecodeEdges(t *testing.T) {
 // semicolon report round-trips, a comment line separates nothing, and a
 // crlf writer pairs with a crlf read.
 func TestCSVOptions(t *testing.T) {
-	text := csvEncodeOpts([][]string{{"name", "age"}, {"ada", "36"}}, ';', true)
+	text := csvEncodeOpts([][]string{{"name", "age"}, {"ada", "36"}}, ';', true /* useCRLF */)
 	if text != "name;age\r\nada;36\r\n" {
 		t.Fatalf("encode = %q", text)
 	}
-	rows, err := csvDecodeOpts(text, ';', 0, false, true)
+	rows, err := csvDecodeOpts(text, ';', 0, false /* trimLeadingSpace */, true /* lazyQuotes */)
 	if err != nil || len(rows) != 2 || rows[1][1] != "36" {
 		t.Fatalf("decode = %v, %v", rows, err)
 	}
 	// a comment line separates nothing and leading spaces stay when asked
-	rows, err = csvDecodeOpts("# a note\nname; 36\n", ';', '#', false, true)
+	rows, err = csvDecodeOpts("# a note\nname; 36\n", ';', '#', false /* trimLeadingSpace */, true /* lazyQuotes */)
 	if err != nil || len(rows) != 1 || rows[0][1] != " 36" {
 		t.Fatalf("commented decode = %v, %v", rows, err)
 	}
-	rows, err = csvDecodeOpts("name;36\n", ';', 0, true, true)
+	rows, err = csvDecodeOpts("name;36\n", ';', 0, true /* trimLeadingSpace */, true /* lazyQuotes */)
 	if err != nil || rows[0][1] != "36" {
 		t.Fatalf("trimmed decode = %v, %v", rows, err)
 	}
 	// strict quotes turn the lenient read into an error
-	if _, err = csvDecodeOpts("ab\"c\n", ',', 0, false, false); err == nil {
+	if _, err = csvDecodeOpts("ab\"c\n", ',', 0, false /* trimLeadingSpace */, false /* lazyQuotes */); err == nil {
 		t.Error("a bare quote decoded with lazy quotes off")
 	}
 }

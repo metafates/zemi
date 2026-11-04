@@ -395,6 +395,8 @@ type stdioTransport struct {
 	stdin io.WriteCloser
 }
 
+var _ transport = (*stdioTransport)(nil)
+
 // startStdio sets c.t before the reader starts: handle answers server
 // requests through it.
 func startStdio(cfg Config, c *Client) error {
@@ -467,6 +469,8 @@ type httpTransport struct {
 	streams set.Set[io.Closer] // SSE bodies draining off the request path
 	renewMu sync.Mutex         // one new session at a time
 }
+
+var _ transport = (*httpTransport)(nil)
 
 // renewing marks the handshake renew runs, whose sends must not renew again.
 type renewing struct{}

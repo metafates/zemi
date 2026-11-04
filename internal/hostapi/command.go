@@ -184,7 +184,7 @@ func (h *Host) CompleteCommand(ctx context.Context, name, lead, line string) []C
 			}
 			return nil
 		}
-		cands = res[0].([]CompletionItem)
+		cands, _ = res[0].([]CompletionItem)
 	}
 	// lead narrows and ranks here, before the cap: the one hit may sit past it
 	labels := make([]string, len(cands))

@@ -450,7 +450,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 			defer f.Close()
 			return io.ReadAll(f)
 		}
-		b, err := read(resolve(L, "read", false, false))
+		b, err := read(resolve(L, "read", false /* write */, false /* link */))
 		if err != nil {
 			return luaResult(L, err)
 		}
@@ -459,7 +459,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("write", L.NewFunction(func(L *glua.LState) int {
-		path := resolve(L, "write", true, false)
+		path := resolve(L, "write", true /* write */, false /* link */)
 		data := []byte(L.CheckString(2))
 		// the model's own script writes on a write call's terms; user and
 		// plugin code keeps writing raw, as its own code does
@@ -470,7 +470,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		f, err := resolve(L, "list", false, false).Open(os.O_RDONLY, 0)
+		f, err := resolve(L, "list", false /* write */, false /* link */).Open(os.O_RDONLY, 0)
 		if err != nil {
 			return luaResult(L, err)
 		}
@@ -493,7 +493,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	tb.RawSetString("stat", L.NewFunction(func(L *glua.LState) int {
 		// NOTE: by name, so a directory swapped after the check shows the
 		// metadata of what it leads to; nothing is opened
-		fi, err := os.Lstat(resolve(L, "stat", false, true).String())
+		fi, err := os.Lstat(resolve(L, "stat", false /* write */, true /* link */).String())
 		if err != nil {
 			return luaResult(L, err)
 		}
@@ -502,18 +502,18 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("exists", L.NewFunction(func(L *glua.LState) int {
-		_, err := os.Lstat(resolve(L, "exists", false, true).String())
+		_, err := os.Lstat(resolve(L, "exists", false /* write */, true /* link */).String())
 		L.Push(glua.LBool(err == nil))
 		return 1
 	}))
 
 	tb.RawSetString("mkdir", L.NewFunction(func(L *glua.LState) int {
-		return luaResult(L, resolve(L, "mkdir", true, false).MkdirAll())
+		return luaResult(L, resolve(L, "mkdir", true /* write */, false /* link */).MkdirAll())
 	}))
 
 	// remove deletes one file or empty directory (never a tree).
 	tb.RawSetString("remove", L.NewFunction(func(L *glua.LState) int {
-		return luaResult(L, resolve(L, "remove", true, true).Remove())
+		return luaResult(L, resolve(L, "remove", true /* write */, true /* link */).Remove())
 	}))
 
 	// data_dir(name) is where config code keeps its files; nothing is created.

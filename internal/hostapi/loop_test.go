@@ -64,10 +64,10 @@ func TestLoop(t *testing.T) {
 			{runs: 1, next: 5 * time.Minute, held: true},
 			{do: func(h *Host) {
 				if err := h.SetLoop("5m check b"); err != nil {
-					panic(err)
+					t.Fatal(err)
 				}
 				if got := h.LoopEndedWhy(); got != "" {
-					panic("the replaced loop kept the old why: " + got)
+					t.Fatalf("the replaced loop kept the old why: %s", got)
 				}
 				waitFor(t, func() error {
 					if h.RT.Clock().(*fakeClock).armed() == 0 {
@@ -83,7 +83,7 @@ func TestLoop(t *testing.T) {
 			{runs: 1, next: 5 * time.Minute},
 			{do: func(h *Host) {
 				if err := h.AgentSend(agent.AttachMarker + "\nhang"); err != nil {
-					panic(err)
+					t.Fatal(err)
 				}
 			}, runs: 1, next: 5 * time.Minute, held: true},
 			{do: func(h *Host) { h.AgentCancel() }, runs: 1},
@@ -99,7 +99,7 @@ func TestLoop(t *testing.T) {
 				h.agents.mu.Lock()
 				defer h.agents.mu.Unlock()
 				if h.agents.goalRuns != 7 {
-					panic(fmt.Sprintf("a loop run reset the goal's count to %d", h.agents.goalRuns))
+					t.Fatalf("a loop run reset the goal's count to %d", h.agents.goalRuns)
 				}
 			}, runs: 2, next: 10 * time.Minute},
 		}},
@@ -107,7 +107,7 @@ func TestLoop(t *testing.T) {
 			{runs: 1, next: 5 * time.Minute},
 			{do: func(h *Host) {
 				if err := h.AgentSend("hang"); err != nil {
-					panic(err)
+					t.Fatal(err)
 				}
 			}, after: 5 * time.Minute, runs: 1, next: 5 * time.Minute, held: true},
 			{do: func(h *Host) { h.AgentCancel(); waitIdle(t, h) }, after: loopRetry, runs: 2, next: 5*time.Minute + loopRetry + 5*time.Minute},

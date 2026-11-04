@@ -27,6 +27,8 @@ func (h *Host) streamHooks() agent.StreamHooks {
 
 type streamAdapter struct{ h *Host }
 
+var _ agent.StreamHooks = (*streamAdapter)(nil)
+
 func (s *streamAdapter) TextDelta(text string) {
 	ag := s.h.agents
 	ag.mu.Lock()
