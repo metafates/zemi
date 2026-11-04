@@ -163,14 +163,15 @@ func encode(text string, max int) (string, bool) {
 	if len(text) > max {
 		text = text[:max]
 		for { // a rune the cut split in half: drop bytes until the tail decodes
-			if r, size := utf8.DecodeLastRuneInString(text); r != utf8.RuneError || size > 1 {
+			r, size := utf8.DecodeLastRuneInString(text)
+			if r != utf8.RuneError || size > 1 {
 				break
-			} else if size == len(text) {
+			}
+			if size == len(text) {
 				text = ""
 				break
-			} else {
-				text = text[:len(text)-size]
 			}
+			text = text[:len(text)-size]
 		}
 		text = strings.TrimRight(text, " ")
 	}

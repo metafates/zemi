@@ -1533,11 +1533,11 @@ func (a *App) overlayBoxDrawn(st *overlayState, w, h int, top bool) [][]hostapi.
 		if d := st.keyDesc(st.keyArmed); d != "" {
 			// the typed confirm's arm completes the command the user typed:
 			// no press happened yet, so the footer never says "again"
+			hint := "again to "
 			if st.keyArmedPreset {
-				foot = armedHint(footW, st.keyArmed, d, "to ")
-			} else {
-				foot = armedHint(footW, st.keyArmed, d, "again to ")
+				hint = "to "
 			}
+			foot = armedHint(footW, st.keyArmed, d, hint)
 			// a danger confirm's consequences live in the row's view: the arm
 			// is exactly when they should stay one key away
 			if sel != nil && hasView(sel.row) {

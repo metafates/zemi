@@ -78,13 +78,12 @@ func (h *Host) classifyAsk(L *glua.LState) int {
 			if onDone != nil {
 				// the same table wait() answers, delivered as a task, so a
 				// handler that cannot suspend still acts on the answer
-				var out, errArg any
+				var errArg any
+				out := any(classifyResultMap(h, id, res))
 				if askErr != nil {
 					errArg = askErr.Error()
 				} else if stubbed != nil {
 					out = stubbed
-				} else {
-					out = classifyResultMap(h, id, res)
 				}
 				h.callLuaAsync("zemi.classify on_done", at, onDone, out, errArg)
 			}
