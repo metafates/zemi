@@ -21,7 +21,7 @@ import (
 	"github.com/metafates/zemi/internal/lsp"
 )
 
-var wordRe = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
+var _wordRe = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 
 // canon is the URI a document lives under: its resolved path, the way
 // servers that canonicalize their URIs key them; the client may open a file
@@ -47,7 +47,7 @@ func wordAt(text string, line, char int) string {
 	if line >= len(lines) {
 		return ""
 	}
-	for _, m := range wordRe.FindAllStringIndex(lines[line], -1) {
+	for _, m := range _wordRe.FindAllStringIndex(lines[line], -1) {
 		if m[0] <= char && char <= m[1] {
 			return lines[line][m[0]:m[1]]
 		}
@@ -166,7 +166,7 @@ func Serve(in io.Reader, out io.Writer) {
 			hits := func(uri, text string) []hit {
 				var out []hit
 				for i, line := range strings.Split(text, "\n") {
-					for _, m := range wordRe.FindAllStringIndex(line, -1) {
+					for _, m := range _wordRe.FindAllStringIndex(line, -1) {
 						if line[m[0]:m[1]] == word {
 							out = append(out, hit{uri: uri, line: i, from: m[0], to: m[1]})
 						}

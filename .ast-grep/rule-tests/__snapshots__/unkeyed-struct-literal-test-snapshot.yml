@@ -1,0 +1,16 @@
+id: unkeyed-struct-literal-test
+snapshots:
+  "package p\nfunc f() T { return T{1, 2, 3, 4} }\n":
+    labels:
+    - source: T{1, 2, 3, 4}
+      style: primary
+      start: 30
+      end: 43
+    - source: T
+      style: secondary
+      start: 30
+      end: 31
+    - source: "{1, 2, 3, 4}"
+      style: secondary
+      start: 31
+      end: 43

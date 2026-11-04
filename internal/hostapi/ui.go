@@ -427,6 +427,8 @@ type BodyPart struct {
 // fieldList is a row's view fields from name, value pairs.
 func fieldList(kv ...string) []Field {
 	if len(kv)%2 != 0 {
+		// a call-site bug in the row's own literal; there is no caller to return to
+		// ast-grep-ignore: no-panic
 		panic("fieldList: a name without a value")
 	}
 	out := make([]Field, 0, len(kv)/2)

@@ -1,0 +1,25 @@
+id: unexported-global-underscore
+valid:
+  - |
+    package p
+    var _x = 1
+    const _y = 2
+  - |
+    package p
+    func f() { var local = 1; _ = local }
+  - |
+    package p
+    var _errBad = errors.New("bad")
+invalid:
+  - |
+    package p
+    var x = 1
+  - |
+    package p
+    const y = 2
+  - |
+    package p
+    var (
+      ok = 1
+      bad = 2
+    )

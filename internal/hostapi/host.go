@@ -335,7 +335,7 @@ func ProjectMark(root string) string {
 	if root == "" {
 		return ""
 	}
-	var h uint32 = 2166136261
+	h := uint32(2166136261)
 	for i := range len(root) {
 		h = (h ^ uint32(root[i])) * 16777619
 	}

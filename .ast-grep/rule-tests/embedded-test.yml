@@ -1,0 +1,15 @@
+id: embedded-in-exported-struct
+valid:
+  - |
+    package p
+    type T struct { Name string }
+  - |
+    package p
+    type t struct { inner }
+invalid:
+  - |
+    package p
+    type T struct { inner }
+  - |
+    package p
+    type T struct { io.Reader }

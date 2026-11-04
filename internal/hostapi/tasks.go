@@ -944,7 +944,7 @@ func (h *Host) work(run, who, agent, status, body string) {
 	// flush, and everything that parks behind it waits with it
 	if ag.workHeld || ag.unflushed && (ag.textBuf != "" || ag.reasonBuf != "" || len(ag.tools) > 0) {
 		ag.workHeld = true
-		ag.pendingWork = append(ag.pendingWork, workNote{run, who, agent, status, text})
+		ag.pendingWork = append(ag.pendingWork, workNote{run: run, who: who, agent: agent, status: status, text: text})
 		ag.mu.Unlock()
 		return
 	}

@@ -1,0 +1,20 @@
+id: local-var-short-decl
+language: Go
+severity: error
+message: "a local set to a value uses := (uber-go: Local Variable Declarations)"
+rule:
+  all:
+    - kind: var_spec
+    - inside:
+        stopBy: neighbor
+        kind: var_declaration
+    - inside:
+        stopBy: end
+        kind: block
+    - has:
+        field: value
+        kind: expression_list
+    - not:
+        has:
+          field: type
+          regex: ^(any|interface\{\})$

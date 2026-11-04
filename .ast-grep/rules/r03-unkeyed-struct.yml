@@ -1,0 +1,22 @@
+id: unkeyed-struct-literal
+language: Go
+severity: error
+message: "name the fields of a struct literal with three or more fields (uber-go: Use Field Names to Initialize Structs)"
+ignores:
+  - "**/*_test.go"
+  - "**/testdata/**"
+rule:
+  all:
+    - kind: composite_literal
+    - has:
+        field: type
+        kind: type_identifier
+    - has:
+        field: body
+        regex: '\{[^{}()\[\]]*(,[^{}()\[\]]*){2}'
+    - not:
+        has:
+          field: body
+          has:
+            stopBy: end
+            kind: keyed_element

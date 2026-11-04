@@ -1,0 +1,12 @@
+id: no-panic
+valid:
+  - |
+    package p
+    func init() { panic("setup") }
+  - |
+    package p
+    var client = func() *X { panic("unreachable") }()
+invalid:
+  - |
+    package p
+    func f() { panic("boom") }

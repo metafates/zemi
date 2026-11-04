@@ -1,0 +1,9 @@
+id: avoid-init
+language: Go
+severity: warning
+message: "avoid init(); run the setup from main or a helper (uber-go: Avoid init())"
+rule:
+  kind: function_declaration
+  has:
+    field: name
+    regex: ^init$

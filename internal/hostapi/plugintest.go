@@ -436,8 +436,7 @@ func (t *PluginTest) own[T any](L *glua.LState, driver, kind, name string, all [
 		}
 	}
 	raisef(L, "test.%s: %s is not a %s of plugin %s; it registered %s", driver, name, kind, t.plugin, cmp.Or(strings.Join(names, ", "), "none"))
-	var zero T
-	return zero
+	return *new(T) // never reached: raisef raises
 }
 
 // command is the plugin's Lua command name, which driver runs.

@@ -259,7 +259,7 @@ func family(name string) (noun, bool) {
 	if !ok {
 		return noun{}, false
 	}
-	return noun{"called", server + " tool", server + " tools"}, true
+	return noun{verb: "called", one: server + " tool", many: server + " tools"}, true
 }
 
 // oneName is the name of a run of calls that holds exactly one, "?" for none:

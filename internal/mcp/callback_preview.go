@@ -61,6 +61,8 @@ func main() {
 		println("open a browser at " + ok + " and " + fail)
 	}
 	if err := http.Serve(ln, nil); err != nil {
+		// an eyeball tool run by hand; a dead listener is nothing to recover into
+		// ast-grep-ignore: no-panic
 		panic(err)
 	}
 }

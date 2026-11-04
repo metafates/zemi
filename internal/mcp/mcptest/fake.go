@@ -56,7 +56,7 @@ func Respond(line []byte) []byte {
 		case "shot":
 			resp["result"] = map[string]any{"content": []any{
 				map[string]any{"type": "text", "text": "the screen"},
-				map[string]any{"type": "image", "mimeType": "image/png", "data": onePixelPNG},
+				map[string]any{"type": "image", "mimeType": "image/png", "data": _onePixelPNG},
 			}}
 		case "fail":
 			resp["result"] = map[string]any{"content": []any{map[string]any{"type": "text", "text": "boom"}}, "isError": true}
@@ -70,11 +70,11 @@ func Respond(line []byte) []byte {
 	return b
 }
 
-// onePixelPNG is a 1x1 transparent png, base64 as the wire carries it.
-const onePixelPNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+// _onePixelPNG is a 1x1 transparent png, base64 as the wire carries it.
+const _onePixelPNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 
-// authToken is the bearer the Auth gate hands out.
-const authToken = "fake-token"
+// _authToken is the bearer the Auth gate hands out.
+const _authToken = "fake-token"
 
 // Auth is the fake's sign-in gate: it answers 401 until a bearer token its
 // own OAuth flow handed out arrives. Base is the server's own URL, set once
@@ -93,7 +93,7 @@ func (a *Auth) Handler() http.Handler {
 	mcp := Handler()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer "+authToken {
+		if r.Header.Get("Authorization") != "Bearer "+_authToken {
 			w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+a.base()+`/.well-known/oauth-protected-resource/mcp"`)
 			http.Error(w, "sign in", http.StatusUnauthorized)
 			return
@@ -130,7 +130,7 @@ func (a *Auth) Handler() http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.MarshalWrite(w, map[string]any{"access_token": authToken, "expires_in": 3600}, json.Deterministic(true))
+		_ = json.MarshalWrite(w, map[string]any{"access_token": _authToken, "expires_in": 3600}, json.Deterministic(true))
 	})
 	return mux
 }

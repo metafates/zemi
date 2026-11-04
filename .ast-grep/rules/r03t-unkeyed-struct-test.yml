@@ -1,0 +1,21 @@
+id: unkeyed-struct-literal-test
+language: Go
+severity: error
+message: "name the fields of a test-table struct literal with four or more fields (the guide allows three)"
+files:
+  - "**/*_test.go"
+rule:
+  all:
+    - kind: composite_literal
+    - has:
+        field: type
+        kind: type_identifier
+    - has:
+        field: body
+        regex: '\{[^{}()\[\]]*(,[^{}()\[\]]*){3}'
+    - not:
+        has:
+          field: body
+          has:
+            stopBy: end
+            kind: keyed_element

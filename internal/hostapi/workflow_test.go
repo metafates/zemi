@@ -524,7 +524,7 @@ func TestWorkflowControl(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			c.drive(ctl{t, h, m, f, ticks})
+			c.drive(ctl{t: t, h: h, m: m, f: f, ticks: ticks})
 			<-ended
 			got := f.result
 			if f.err != nil {

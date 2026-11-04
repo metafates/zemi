@@ -341,6 +341,8 @@ func (s *Store) SetChoices[T ~string](path Key, choices []T) {
 	defer s.mu.Unlock()
 	def, ok := s.schema[path]
 	if !ok {
+		// a caller bug, not a runtime condition: the config write may be half-done
+		// ast-grep-ignore: no-panic
 		panic("config: SetChoices on a key outside the schema: " + path)
 	}
 	def.Choices = nil

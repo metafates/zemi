@@ -1,0 +1,38 @@
+id: embedded-in-exported-struct
+snapshots:
+  "package p\ntype T struct { inner }\n":
+    labels:
+    - source: inner
+      style: primary
+      start: 26
+      end: 31
+    - source: T
+      style: secondary
+      start: 15
+      end: 16
+    - source: T struct { inner }
+      style: secondary
+      start: 15
+      end: 33
+    - source: struct { inner }
+      style: secondary
+      start: 17
+      end: 33
+  "package p\ntype T struct { io.Reader }\n":
+    labels:
+    - source: io.Reader
+      style: primary
+      start: 26
+      end: 35
+    - source: T
+      style: secondary
+      start: 15
+      end: 16
+    - source: T struct { io.Reader }
+      style: secondary
+      start: 15
+      end: 37
+    - source: struct { io.Reader }
+      style: secondary
+      start: 17
+      end: 37

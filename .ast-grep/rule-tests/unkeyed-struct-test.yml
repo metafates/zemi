@@ -1,0 +1,15 @@
+id: unkeyed-struct-literal
+valid:
+  - |
+    package p
+    func f() T { return T{A: 1, B: 2, C: 3} }
+  - |
+    package p
+    var xs = []int{1, 2, 3}
+  - |
+    package p
+    func f() T { return T{1, 2} }
+invalid:
+  - |
+    package p
+    func f() T { return T{1, 2, 3} }

@@ -1,0 +1,12 @@
+id: local-var-short-decl
+valid:
+  - |
+    package p
+    func f() { x := T{}; _ = x }
+  - |
+    package p
+    func f() { var v any = g(); _ = v }
+invalid:
+  - |
+    package p
+    func f() { var x T = g(); _ = x }

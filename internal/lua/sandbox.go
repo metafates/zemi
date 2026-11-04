@@ -633,7 +633,7 @@ func (s *Sandbox) RegisterNamespace(name string, tbl *glua.LTable, call *glua.LF
 // namespaces hang under a zemi root table, so chunk environments (whose
 // __index is the frozen surface) resolve `zemi.ui` as ordinary table reads.
 func (s *Sandbox) LookupPath(name string) glua.LValue {
-	var v glua.LValue = s.frozen
+	v := glua.LValue(s.frozen)
 	for p := range strings.SplitSeq(name, ".") {
 		tb, ok := v.(*glua.LTable)
 		if !ok {

@@ -1,0 +1,9 @@
+id: avoid-init
+valid:
+  - |
+    package p
+    func setup() {}
+invalid:
+  - |
+    package p
+    func init() { useThing() }

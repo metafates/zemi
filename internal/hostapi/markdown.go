@@ -696,13 +696,13 @@ func DiffRows(d string, width int) [][]Segment {
 		// after a hunk "---" is a removed "-- " line
 		case hunks == 0 && (strings.HasPrefix(l, "--- ") || strings.HasPrefix(l, "+++ ")):
 		case l[0] == '+':
-			lines = append(lines, line{'+', n, l[1:]})
+			lines = append(lines, line{kind: '+', num: n, text: l[1:]})
 			n += min(n, 1)
 		case l[0] == '-':
-			lines = append(lines, line{'-', o, l[1:]})
+			lines = append(lines, line{kind: '-', num: o, text: l[1:]})
 			o += min(o, 1)
 		case l[0] == ' ':
-			lines = append(lines, line{' ', n, l[1:]})
+			lines = append(lines, line{kind: ' ', num: n, text: l[1:]})
 			o, n = o+min(o, 1), n+min(n, 1)
 		default:
 			// each file's hunks count from one

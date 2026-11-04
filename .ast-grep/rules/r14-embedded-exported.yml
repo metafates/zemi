@@ -1,0 +1,20 @@
+id: embedded-in-exported-struct
+language: Go
+severity: error
+message: "avoid embedding a type in an exported struct (uber-go: Avoid Embedding Types in Public Structs)"
+rule:
+  all:
+    - kind: field_declaration
+    - not:
+        has:
+          field: name
+          kind: field_identifier
+    - inside:
+        stopBy: end
+        kind: struct_type
+        inside:
+          stopBy: end
+          kind: type_spec
+          has:
+            field: name
+            regex: ^[A-Z]

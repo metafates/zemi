@@ -1,0 +1,22 @@
+id: no-panic
+language: Go
+severity: error
+message: "don't panic outside program initialization; return an error (uber-go: Don't Panic)"
+ignores:
+  - "**/*_test.go"
+  - "**/main.go"
+  - "**/testdata/**"
+rule:
+  all:
+    - pattern: panic($$$)
+    - not:
+        inside:
+          stopBy: end
+          kind: var_declaration
+    - not:
+        inside:
+          stopBy: end
+          kind: function_declaration
+          has:
+            field: name
+            regex: ^init$

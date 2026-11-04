@@ -1,0 +1,20 @@
+id: local-var-short-decl
+snapshots:
+  "package p\nfunc f() { var x T = g(); _ = x }\n":
+    labels:
+    - source: x T = g()
+      style: primary
+      start: 25
+      end: 34
+    - source: var x T = g()
+      style: secondary
+      start: 21
+      end: 34
+    - source: "{ var x T = g(); _ = x }"
+      style: secondary
+      start: 19
+      end: 43
+    - source: g()
+      style: secondary
+      start: 31
+      end: 34

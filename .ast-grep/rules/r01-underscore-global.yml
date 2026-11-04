@@ -1,0 +1,24 @@
+id: unexported-global-underscore
+language: Go
+severity: error
+message: "unexported top-level var/const needs a _ prefix (uber-go: Prefix Unexported Globals with _)"
+rule:
+  any:
+    - kind: var_spec
+    - kind: const_spec
+  all:
+    - has:
+        field: name
+        regex: ^[a-z]
+    - not:
+        any:
+          - inside:
+              stopBy: end
+              kind: block
+          - has:
+              field: name
+              regex: ^(_|err)
+          # a parse error (the grammar lags new Go) hoists a local to top level
+          - inside:
+              stopBy: end
+              kind: ERROR

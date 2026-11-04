@@ -1,0 +1,12 @@
+id: avoid-init
+snapshots:
+  "package p\nfunc init() { useThing() }\n":
+    labels:
+    - source: func init() { useThing() }
+      style: primary
+      start: 10
+      end: 36
+    - source: init
+      style: secondary
+      start: 15
+      end: 19
