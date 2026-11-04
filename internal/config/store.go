@@ -243,21 +243,28 @@ func (s *Store) Builtin(path Key) bool {
 	return s.schema[path].builtin
 }
 
-// Get looks up a dotted path over the merged values.
+// Get looks up a dotted path over the merged values. A list comes back a
+// copy, so a caller sorting or trimming it leaves the store's own alone.
 func (s *Store) Get(path Key) (any, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	v, ok := s.values[path]
+	list, isList := v.([]string)
+	if isList {
+		return slices.Clone(list), ok
+	}
 	return v, ok
 }
 
 // Str reads a string schema key; Bool and Int read the other two kinds, Int
 // truncating a fraction. Every schema key holds its default until someone
 // sets it, so only a key outside the schema reads as the zero value.
-func (s *Store) Str(path Key) string    { return s.value[string](path) }
-func (s *Store) Bool(path Key) bool     { return s.value[bool](path) }
-func (s *Store) Int(path Key) int       { return int(s.value[float64](path)) }
-func (s *Store) List(path Key) []string { return s.value[[]string](path) }
+func (s *Store) Str(path Key) string { return s.value[string](path) }
+func (s *Store) Bool(path Key) bool  { return s.value[bool](path) }
+func (s *Store) Int(path Key) int    { return int(s.value[float64](path)) }
+func (s *Store) List(path Key) []string {
+	return slices.Clone(s.value[[]string](path))
+}
 
 // Duration reads a duration key: "" is the schema default, 0 is off. A stale
 // stored value of another kind (a bool, from before the key held a duration)
@@ -442,7 +449,7 @@ func checkKind(def Setting, val any) (any, error) {
 func stringList(val any) ([]string, bool) {
 	switch v := val.(type) {
 	case []string:
-		return v, true
+		return slices.Clone(v), true
 	case []any:
 		out := make([]string, len(v))
 		for i, it := range v {
