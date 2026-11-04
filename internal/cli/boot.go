@@ -190,7 +190,7 @@ func launch(o options) int {
 	}
 	// the parting discovery tip; the terminal is the TUI's no longer
 	if host.Settings.Bool(config.KeyUITips) {
-		fmt.Println(ui.Tip(os.Stdout))
+		fmt.Println("\n" + ui.Tip(os.Stdout) + "\n")
 	}
 	return 0
 }

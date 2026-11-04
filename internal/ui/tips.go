@@ -21,6 +21,7 @@ var _tips = []tip{
 	{"/goal ", "keeps working until a condition holds"},
 	{"/review", "has several agents review your changes"},
 	{"alt+o", "browses the chat's whole memory, however old"},
+	{"/config", "you can disable tips with ui.tips set to false"},
 }
 
 // Tip is one discovery tip styled in the whorl chrome: a tip chip, the key as
