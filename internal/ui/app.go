@@ -179,7 +179,7 @@ type App struct {
 	pending       map[string]renderKey // widget id -> the render in flight
 	renderSeq     int64                // counts render dispatches, so the latest one wins
 	frameGen      int64
-	rises         map[string]*pillFade // statusline pills easing their appear and disappear
+	rises         map[string]*pillFade // statusline pills and the splash easing their appear and disappear
 	spun          bool                 // the last frame drew a spinner, so the tick keeps stepping it
 	timeStr       string
 	turnActive    bool             // what onFrame last saw of the agent
@@ -997,7 +997,7 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 		)
 		return
 	}
-	c := &widgetCache{lines: a.statusFaded(msg), width: msg.width, height: msg.height, gen: msg.gen, seq: msg.seq, partial: msg.more}
+	c := &widgetCache{lines: a.widgetFaded(msg), width: msg.width, height: msg.height, gen: msg.gen, seq: msg.seq, partial: msg.more}
 	old := a.caches[msg.id]
 	if old != nil {
 		c.wrapW, c.lineRows, c.spare, c.wrapN = old.wrapW, old.lineRows, old.spare, old.wrapN
@@ -1022,12 +1022,27 @@ type pillFade struct {
 	lines [][]hostapi.Segment
 }
 
-// statusFaded is a statusline pill's lines settled through its appear and
-// disappear: a pill that starts drawing rises out of the surface, one that
-// stops keeps drawing what it drew, sinking back in, until the ramp ends.
-func (a *App) statusFaded(msg widgetRender) [][]hostapi.Segment {
+// widgetFaded is a widget's lines settled through its fade: a statusline
+// pill's appear and disappear, the splash knot's one rise on its first draw.
+func (a *App) widgetFaded(msg widgetRender) [][]hostapi.Segment {
 	w := a.widgetByID(msg.id)
-	if w == nil || (w.region != _regionStatusLeft && w.region != _regionStatusRight) {
+	if w == nil {
+		return msg.lines
+	}
+	if w.id == "splash" {
+		f := a.rises[msg.id]
+		if f == nil {
+			f = &pillFade{Fade: anim.New(_riseDuration)}
+			f.Set(true, a.now())
+			a.rises[msg.id] = f
+			a.wakeTick()
+		}
+		if alpha := f.Alpha(a.now()); alpha < 1 {
+			return sunkCopy(msg.lines, 1-alpha)
+		}
+		return msg.lines
+	}
+	if w.region != _regionStatusLeft && w.region != _regionStatusRight {
 		return msg.lines
 	}
 	f := a.rises[msg.id]
@@ -1100,6 +1115,17 @@ func (a *App) settleBars() bool {
 		}
 	}
 	return done
+}
+
+// settleSplash marks the splash's boot rise settled: a test's pinned clock
+// would freeze the knot mid-ramp. Reports whether it settled one.
+func (a *App) settleSplash() bool {
+	f, ok := a.rises["splash"]
+	if !ok || !f.Rising(a.now()) {
+		return false
+	}
+	f.Jump(true)
+	return true
 }
 
 // sunkCopy is rows with every segment sunk toward the surface it sits on.

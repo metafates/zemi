@@ -93,9 +93,9 @@ func (a *App) renderSync(tb testing.TB) {
 	a.settlePills()
 	gen := a.frameGen
 	a.renderShown(tb, gen)
-	// a pinned clock freezes a bar's boot rise mid-ramp: settle the bars the
-	// first paint set rising, then redraw
-	if a.settleBars() {
+	// a pinned clock freezes a bar's or the splash's boot rise mid-ramp:
+	// settle what the first paint set rising, then redraw
+	if a.settleBars() || a.settleSplash() {
 		a.renderShown(tb, gen)
 	}
 }
