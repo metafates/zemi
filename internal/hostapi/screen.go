@@ -36,7 +36,6 @@ type ScreenState struct {
 	Trusted   bool
 	Trustable bool
 	InitError string
-	ModelHint string
 	Model     string
 	Effort    string
 
@@ -65,10 +64,8 @@ type ScreenState struct {
 
 	// filled on first read: a widget that never reads them does not pay for
 	// them, and the ones that read disk do it once per render at most
-	todos        func() []store.Todo
-	projects     func() []ProjectRef
-	instructions func() ([]string, bool)
-	logRows      func() int
+	todos   func() []store.Todo
+	logRows func() int
 }
 
 // RunView is an agent run shown in the chat's place.
@@ -145,37 +142,12 @@ type BusyItem struct {
 	Cancellable bool
 }
 
-// ProjectRef is one recent project the splash offers.
-type ProjectRef struct {
-	Path string // tilde-spelled, as the row reads
-	Root string
-	Ago  string
-}
-
 // Todos is the session's list, empty while an agent run is shown.
 func (s *ScreenState) Todos() []store.Todo {
 	if s.todos == nil {
 		return nil
 	}
 	return s.todos()
-}
-
-// Projects is the recent projects the splash offers, nil when the splash has
-// nothing to offer or the session is past its first message.
-func (s *ScreenState) Projects() []ProjectRef {
-	if s.projects == nil {
-		return nil
-	}
-	return s.projects()
-}
-
-// Instructions is the project's instruction files, and false where project
-// files cannot load (untrusted, or $HOME and /, which are nobody's project).
-func (s *ScreenState) Instructions() ([]string, bool) {
-	if s.instructions == nil {
-		return nil, false
-	}
-	return s.instructions()
 }
 
 // LogRows is how many log rows the chat window's head cut off.
@@ -213,7 +185,7 @@ func (h *Host) ScreenState(width, height int, state UIState) *ScreenState {
 		Editing: state.Editing, Waiting: state.Waiting,
 
 		Version: h.Version, CWD: perm.TildePath(sess.CWD),
-		Trusted: h.ProjectTrusted(), InitError: h.InitError(), ModelHint: h.NoModelHint(),
+		Trusted: h.ProjectTrusted(), InitError: h.InitError(),
 		Model: stream.Model, Effort: h.Effort(stream.Model), AgentActive: stream.Active,
 
 		Transcript: transcript, TranscriptCount: len(transcript),
@@ -254,21 +226,6 @@ func (h *Host) ScreenState(width, height int, state UIState) *ScreenState {
 			return nil
 		}
 		return h.todoSnapshot()
-	}
-	st.instructions = func() ([]string, bool) {
-		files := h.instructionsCached()
-		return files, files != nil
-	}
-	st.projects = func() []ProjectRef {
-		ps := h.splashProjects()
-		if len(sess.Transcript) > 0 || len(ps) == 0 {
-			return nil
-		}
-		out := make([]ProjectRef, 0, len(ps))
-		for _, p := range ps {
-			out = append(out, ProjectRef{Path: sanitize.String(perm.TildePath(p.Root)), Root: p.Root, Ago: ago(p.Used)})
-		}
-		return out
 	}
 	st.logRows = func() int {
 		if run != nil {

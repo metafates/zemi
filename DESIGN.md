@@ -357,11 +357,7 @@ habit means untrusted until the next start (a reload does not ask again); up and
 move the cursor, enter picks it, a click answers a row. `--trust` or `--trust=false`
 decides one run without saving; a boot with no UI yet and nothing saved is
 untrusted and says so on stderr. The home directory and `/` are never
-asked about or saved (their prompt says it applies to this run only), and
-the TUI does not ask at start in a directory outside a repository where the
-splash, its first screen with no prompt argument and no resume, offers other projects (`Host.OffersProjects`): the user may be there
-only to pick one, so it runs untrusted as after Later and the statusline
-keeps `/trust`.
+asked about or saved (their prompt says it applies to this run only).
 `/projects` lists every root zemi keeps state for, switches to one by
 restarting zemi there (trust, origins and stores are bound at
 start, so one process runs one project), forgets another
@@ -2400,9 +2396,7 @@ view; a reset's wipe drops the row with the chat.
   preview, whose `v` shows the transcript and whose ctrl+j/k step along the
   rail around the row, as every rail action's view steps), a workflow row
   (`workflow:<run id>`, its view, stepping the same way) and the job a
-  call handed off to (`job:<id>`, its output); the splash's rows switch to a
-  project, and its tip's keys run their command or fill the composer (a `fill
-  <text>` click id, which the chat's `runClick` puts there). The stuck
+  call handed off to (`job:<id>`, its output). The stuck
   and errors pills are Go's own, since they report a broken
   Lua layer; a click on
   errors opens `/errors`, on stuck reloads. A drag selects inside the pane

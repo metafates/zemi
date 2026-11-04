@@ -2,8 +2,6 @@ package hostapi
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -155,33 +153,5 @@ func TestConvertSegments(t *testing.T) {
 				t.Fatalf("got %q, want %q", got, c.want)
 			}
 		})
-	}
-}
-
-// TestInstructionsCached: the screen state reads the instruction files once,
-// not per frame, and again after a trust change.
-func TestInstructionsCached(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHostSkills(t)
-	h.SetProjectTrusted(true)
-	_ = r
-	for _, c := range []struct {
-		name string
-		do   func()
-		want string
-	}{
-		{"first render", func() {}, ""},
-		{"a file written since is not reread", func() {
-			if err := os.WriteFile(filepath.Join(h.Dirs.ProjectDir, "AGENTS.md"), []byte("x"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-		}, ""},
-		{"a trust change reads again", func() { h.SetProjectTrusted(true) }, "AGENTS.md"},
-	} {
-		c.do()
-		files, _ := h.ScreenState(20, 1, UIState{}).Instructions()
-		if got := strings.Join(files, ","); got != c.want {
-			t.Fatalf("%s: instructions %q, want %q", c.name, got, c.want)
-		}
 	}
 }

@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
-
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -79,14 +77,6 @@ func segsCells(segs []hostapi.Segment) int { return hostapi.SegsWidth(segs) }
 // after a space and never inside a word short enough to drop whole.
 func clipText(text string, room int) string {
 	return hostapi.SegsText(ellipsizeSegs([]hostapi.Segment{{Text: text}}, room))
-}
-
-// tailText cuts a path wider than w cells to its tail, where its name is.
-func tailText(path string, w int) string {
-	if ansi.StringWidth(path) <= w || w <= 1 {
-		return path
-	}
-	return hostapi.SegsText(tailSegs([]hostapi.Segment{{Text: path}}, w))
 }
 
 // running is the work running besides this turn as one string, nil when

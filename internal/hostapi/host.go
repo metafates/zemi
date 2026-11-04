@@ -690,13 +690,6 @@ type Host struct {
 	composerCursor int
 
 	recentStale atomic.Bool
-	splashMu    sync.Mutex // guards splash, splashProjects' cache
-	splash      []Project
-	splashStale atomic.Bool
-
-	instrMu    sync.Mutex // guards instr, instructionsCached's cache
-	instr      []string
-	instrStale atomic.Bool
 
 	mcp   *mcpReg  // MCP servers and their tools
 	tasks *taskReg // subagent runs
@@ -873,8 +866,6 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		}
 	}
 	h.recentStale.Store(true)
-	h.splashStale.Store(true)
-	h.instrStale.Store(true)
 	h.trEpoch.Store(1) // 0 means "an agent run's transcript; do not cache"
 	return h
 }
@@ -891,7 +882,6 @@ func (h *Host) SetProjectTrusted(ok bool) {
 		found = h.discoverProjectSkills()
 	}
 	h.projectSkills.Store(&found)
-	h.instrStale.Store(true)
 }
 
 // TrustUnsaved reports a trust root no decision is saved for: the home
@@ -1814,35 +1804,6 @@ type UIState struct {
 	Waiting        Waiting // while a prompt holds the turn
 }
 
-// instructionsCached is ctx.instructions: the project's instruction files,
-// repo-relative, nil where project files cannot load (untrusted, or $HOME and
-// /, which are nobody's project). Cached, since the splash renders every
-// frame while a job runs: rebuilt after a reload, a trust change and a
-// session close.
-// NOTE: a file written outside zemi waits for one of those.
-func (h *Host) instructionsCached() []string {
-	h.instrMu.Lock()
-	defer h.instrMu.Unlock()
-	if !h.instrStale.Swap(false) {
-		return slices.Clone(h.instr)
-	}
-	h.instr = nil
-	if root := h.repoRoot(); h.ProjectTrusted() && !TrustUnsaved(root) {
-		h.instr = []string{}
-		mine := filepath.Join(h.Dirs.ConfigHome, "AGENTS.md")
-		for _, p := range h.instructionFiles() {
-			if p == mine {
-				continue
-			}
-			if rel, err := filepath.Rel(root, p); err == nil {
-				p = rel
-			}
-			h.instr = append(h.instr, p)
-		}
-	}
-	return slices.Clone(h.instr)
-}
-
 // usageTable is the session token tally for widgets (DESIGN §8): totals
 // across all turns of this session. priced says the conversation's model
 // declares prices, however the tally gathered it: the statusline's cost
@@ -2243,7 +2204,6 @@ func (h *Host) PurgeGeneration() {
 	h.stops.purge()
 	h.mcp.park()
 	h.lsp.forget()
-	h.instrStale.Store(true)
 	// An overlay left open would keep drawing with callbacks that are now
 	// dropped (staleOverlay), which reads as a frozen picker.
 	if ui := h.hooks(); ui != nil {

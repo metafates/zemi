@@ -2,15 +2,11 @@ package ui
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-
-	"github.com/metafates/zemi/internal/store"
 )
 
 // TestSplashTakesBootWork: the pending row of a boot's MCP starts is drawn in
@@ -63,49 +59,5 @@ func TestSplashTakesBootWork(t *testing.T) {
 				t.Fatalf("the logo moved back to %d,%d from %d,%d", nx, ny, x, y)
 			}
 		})
-	}
-}
-
-// TestSplashProjects: with another project known the splash lists it where
-// recent sessions go, and a click on its path switches there.
-func TestSplashProjects(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 100, 30)
-	root := t.TempDir()
-	g, p, err := store.OpenForDirs(host.Dirs.StateHome, root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	g.Close()
-	p.Close()
-	app.frameGen++
-	app.renderSync(t)
-	// a long path keeps its tail
-	x, y := findCell(t, app, root[len(root)-20:])
-	if seg := dropCells(app.lastRows[y], x)[0]; seg.Click != "projects switch "+root || seg.Widget != app.widgetByID("splash") {
-		t.Fatalf("the path's segment: %+v", seg)
-	}
-}
-
-// TestSplashWidePath: a project path of wide characters keeps its tail: the
-// cut counts cells, not runes, so the name at the path's end is what is left.
-func TestSplashWidePath(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 100, 30)
-	const name = "プロジェクトのディレクトリ"
-	root := filepath.Join(t.TempDir(), name)
-	if err := os.MkdirAll(root, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	g, p, err := store.OpenForDirs(host.Dirs.StateHome, root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	g.Close()
-	p.Close()
-	app.frameGen++
-	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, name) {
-		t.Fatalf("the path's name is cut away:\n%s", frame)
 	}
 }

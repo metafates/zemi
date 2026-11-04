@@ -122,7 +122,7 @@ the highest first (`fitClusters`), so what lasts sits outermost and never moves.
   rendered for another size. `Host.ScreenState` builds a frame's
   `todos`, `projects`, `instructions` and log row count on first read: keep new
   expensive fields lazy, and cache one that reads disk or the
-  store (`instructionsCached`, `recentSessions`, `splashProjects`). A widget's rows are wrapped once per
+  store (`recentSessions`). A widget's rows are wrapped once per
   width and cached, and the chat keeps its settled rows until the state they were
   built from moves (`chatFolds.settledKey`, `internal/ui/chat.go`: the log's epoch, cut
   and edit, its row count, the width, the rail's view, the folds' version, the run on
