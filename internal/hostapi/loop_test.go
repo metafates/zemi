@@ -17,202 +17,278 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
-// TestLoop drives /loop on a fake clock: each step runs its action, moves
-// the clock and waits for what fired; then it checks how many runs the
-// model saw, whether the loop is still on and when it fires next.
-func TestLoop(t *testing.T) {
-	type step struct {
-		do    func(h *Host)
-		after time.Duration
-		runs  int
-		next  time.Duration // from the start; 0 once the loop stopped
-		held  bool          // a turn is left running
+// loopTest drives one /loop on a fake clock: the model answers every run
+// with reply, and each step moves the clock and checks what the loop did.
+type loopTest struct {
+	t     *testing.T
+	h     *Host
+	clock *fakeClock
+	runs  atomic.Int32
+	start time.Time
+}
+
+// newLoopTest starts a loop on args whose runs answer reply: "fail" fails
+// the run, "hang" waits for an interrupt.
+func newLoopTest(t *testing.T, args, reply string) *loopTest {
+	t.Helper()
+	h, clock := newLoopHost(t)
+	lt := &loopTest{t: t, h: h, clock: clock}
+	h.modelFn = func() (fantasy.LanguageModel, error) {
+		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
+			switch {
+			case strings.HasSuffix(last, "hang"):
+				return nil
+			case !strings.Contains(last, "\n<loop>\nRun "):
+				return textParts("ok")
+			}
+			lt.runs.Add(1)
+			switch reply {
+			case "fail":
+				return []fantasy.StreamPart{{Type: fantasy.StreamPartTypeError, Error: errors.New("boom")}}
+			case "hang":
+				return nil
+			default:
+				return textParts(reply)
+			}
+		}}, nil
 	}
-	for _, c := range []struct {
-		name    string
-		args    string
-		reply   string // every loop run's reply; "fail" fails it, "hang" waits for an interrupt
-		steps   []step
-		notices []string
-		ended   string // what LoopEndedWhy reads once the loop stopped
-	}{
-		{name: "fixed runs now and on its interval", args: "5m check the deploy", reply: "rolling", steps: []step{
-			{runs: 1, next: 5 * time.Minute}, {after: 5 * time.Minute, runs: 2, next: 10 * time.Minute}, {after: 5 * time.Minute, runs: 3, next: 15 * time.Minute},
-		}, notices: []string{"loop  Run 1: check the deploy", "loop  Run 2: check the deploy", "loop  Run 3: check the deploy"}},
-		{name: "the model paces it", args: "check it", reply: "waiting\n`next: 7m`", steps: []step{
-			{runs: 1, next: 7 * time.Minute}, {after: 6 * time.Minute, runs: 1, next: 7 * time.Minute}, {after: time.Minute, runs: 2, next: 14 * time.Minute},
-		}},
-		{name: "a paced run with no next line falls back", args: "check it", reply: "hm", steps: []step{{runs: 1, next: loopFallback}}},
-		{name: "a paced delay past an hour is an hour", args: "check it", reply: "next: 2h", steps: []step{{runs: 1, next: time.Hour}}},
-		{
-			name: "next: done ends it", args: "check it", reply: "all good\nnext: done", steps: []step{{runs: 1}},
-			notices: []string{"loop  Run 1: check it", "Loop done after 1 run"},
-			ended:   "Loop done after 1 run",
-		},
-		{
-			name: "a failed run stops it", args: "5m check it", reply: "fail", steps: []step{{runs: 1}},
-			notices: []string{"loop  Run 1: check it", "Loop stopped: boom (1 run)"},
-			ended:   "Loop stopped: boom (1 run)",
-		},
-		{
-			name: "an interrupted run stops it", args: "5m check it", reply: "hang", steps: []step{{runs: 1, next: 5 * time.Minute, held: true}, {do: func(h *Host) {
-				h.AgentCancel()
-			}, runs: 1}}, notices: []string{"loop  Run 1: check it", "Loop stopped: interrupted (1 run)"},
-			ended: "Loop stopped: interrupted (1 run)",
-		},
-		{name: "an interrupt stops the loop that replaced the run's", args: "5m check a", reply: "hang", steps: []step{
-			{runs: 1, next: 5 * time.Minute, held: true},
-			{do: func(h *Host) {
-				if err := h.SetLoop("5m check b"); err != nil {
-					t.Fatal(err)
-				}
-				if got := h.LoopEndedWhy(); got != "" {
-					t.Fatalf("the replaced loop kept the old why: %s", got)
-				}
-				waitFor(t, func() error {
-					if h.RT.Clock().(*fakeClock).armed() == 0 {
-						return errors.New("b has not tried to run")
-					}
-					return nil
-				})
-				h.AgentCancel()
-				waitIdle(t, h)
-			}, runs: 1},
-		}, notices: []string{"loop  Run 1: check a", "Loop stopped: interrupted (0 runs)"}},
-		{name: "an interrupted turn nobody typed stops it", args: "5m check it", reply: "ok", steps: []step{
-			{runs: 1, next: 5 * time.Minute},
-			{do: func(h *Host) {
-				if err := h.AgentSend(agent.AttachMarker + "\nhang"); err != nil {
-					t.Fatal(err)
-				}
-			}, runs: 1, next: 5 * time.Minute, held: true},
-			{do: func(h *Host) { h.AgentCancel() }, runs: 1},
-		}, notices: []string{"loop  Run 1: check it", "Loop stopped: interrupted (1 run)"}},
-		{name: "a run leaves the goal's count of turns", args: "5m check it", reply: "ok", steps: []step{
-			{runs: 1, next: 5 * time.Minute},
-			{do: func(h *Host) {
-				h.agents.mu.Lock()
-				h.agents.goalRuns = 7
-				h.agents.mu.Unlock()
-			}, after: 5 * time.Minute, runs: 2, next: 10 * time.Minute},
-			{do: func(h *Host) {
-				h.agents.mu.Lock()
-				defer h.agents.mu.Unlock()
-				if h.agents.goalRuns != 7 {
-					t.Fatalf("a loop run reset the goal's count to %d", h.agents.goalRuns)
-				}
-			}, runs: 2, next: 10 * time.Minute},
-		}},
-		{name: "a busy agent delays a run, keeping its time", args: "5m check it", reply: "ok", steps: []step{
-			{runs: 1, next: 5 * time.Minute},
-			{do: func(h *Host) {
-				if err := h.AgentSend("hang"); err != nil {
-					t.Fatal(err)
-				}
-			}, after: 5 * time.Minute, runs: 1, next: 5 * time.Minute, held: true},
-			{do: func(h *Host) { h.AgentCancel(); waitIdle(t, h) }, after: loopRetry, runs: 2, next: 5*time.Minute + loopRetry + 5*time.Minute},
-		}},
-		{name: "it expires", args: "1d check it", reply: "ok", steps: []step{
-			{runs: 1, next: 24 * time.Hour}, {after: 24 * time.Hour, runs: 2, next: 48 * time.Hour}, {after: 24 * time.Hour, runs: 3, next: 72 * time.Hour}, {after: 24 * time.Hour, runs: 3},
-		}, notices: []string{"loop  Run 1: check it", "loop  Run 2: check it", "loop  Run 3: check it", "Loop stopped after 72h (3 runs)"}},
-		{name: "a command runs with the note attached", args: "5m /note it", reply: "ok", steps: []step{{runs: 1, next: 5 * time.Minute}}},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-			h, clock := newLoopHost(t)
-			var runs atomic.Int32
-			h.modelFn = func() (fantasy.LanguageModel, error) {
-				return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
-					switch {
-					case strings.HasSuffix(last, "hang"):
-						return nil
-					case !strings.Contains(last, "\n<loop>\nRun "):
-						return textParts("ok")
-					}
-					runs.Add(1)
-					switch c.reply {
-					case "fail":
-						return []fantasy.StreamPart{{Type: fantasy.StreamPartTypeError, Error: errors.New("boom")}}
-					case "hang":
-						return nil
-					default:
-						return textParts(c.reply)
-					}
-				}}, nil
+	if _, err := h.Commands.Add(&Command{Name: "note", NArgs: NArgsAny, Desc: "d", Origin: lua.OriginUser, GoFn: func(h *Host, args string, confirm bool) error {
+		return h.AgentSend("/note" + args)
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	lt.start = clock.Now()
+	if err := h.SetLoop(args); err != nil {
+		t.Fatal(err)
+	}
+	return lt
+}
+
+// step is what one move of the clock must show: the runs the model saw,
+// whether a turn is held, and when the loop fires next (0 once it stopped).
+type step struct {
+	after time.Duration
+	runs  int
+	next  time.Duration
+	held  bool
+}
+
+// advance fires the timers due within s.after, moves the clock past them and
+// checks s.
+func (lt *loopTest) advance(s step) {
+	lt.t.Helper()
+	until := lt.clock.Now().Add(s.after)
+	for f, ok := lt.clock.due(until); ok; f, ok = lt.clock.due(until) {
+		f()
+		// the fire armed the next timer or stopped the loop
+		waitFor(lt.t, func() error {
+			if _, on := lt.h.Loop(); on && lt.clock.armed() == 0 {
+				return errors.New("the fire has not run")
 			}
-			if _, err := h.Commands.Add(&Command{Name: "note", NArgs: NArgsAny, Desc: "d", Origin: lua.OriginUser, GoFn: func(h *Host, args string, confirm bool) error {
-				return h.AgentSend("/note" + args)
-			}}); err != nil {
-				t.Fatal(err)
-			}
-			start := clock.Now()
-			if err := h.SetLoop(c.args); err != nil {
-				t.Fatal(err)
-			}
-			for i, s := range c.steps {
-				if s.do != nil {
-					s.do(h)
-				}
-				until := clock.Now().Add(s.after)
-				for f, ok := clock.due(until); ok; f, ok = clock.due(until) {
-					f()
-					// the fire armed the next timer or stopped the loop
-					waitFor(t, func() error {
-						if _, on := h.Loop(); on && clock.armed() == 0 {
-							return errors.New("the fire has not run")
-						}
-						return nil
-					})
-				}
-				clock.set(until)
-				waitFor(t, func() error {
-					if n := int(runs.Load()); n != s.runs || h.AgentActive() != s.held {
-						return fmt.Errorf("step %d: %d runs, active %v", i, n, h.AgentActive())
-					}
-					return nil
-				})
-				l, on := h.Loop()
-				if on != (s.next > 0) {
-					// the interrupt's stop runs beside waitIdle's release: wait
-					// for the settled loop, never assert the moving state
-					waitForWithin(t, 10*time.Second, func() error {
-						l, on = h.Loop()
-						if on != (s.next > 0) {
-							return fmt.Errorf("loop on %v, want %v", on, s.next > 0)
-						}
-						return nil
-					})
-				}
-				if on {
-					if next := l.Next.Sub(start); next != s.next {
-						t.Fatalf("step %d: loop next at +%s; want +%s", i, next, s.next)
-					}
-				}
-			}
-			if c.notices != nil {
-				waitFor(t, func() error {
-					var notices []string
-					for _, m := range h.Session().Transcript {
-						if m.Kind == RowNotice && (strings.HasPrefix(m.Text, "loop  Run ") || strings.HasPrefix(m.Text, "Loop ")) {
-							notices = append(notices, m.Text)
-						}
-					}
-					if !slices.Equal(notices, c.notices) {
-						return fmt.Errorf("notices = %q, want %q", notices, c.notices)
-					}
-					return nil
-				})
-			}
-			if c.ended != "" {
-				waitFor(t, func() error {
-					if got := h.LoopEndedWhy(); got != c.ended {
-						return fmt.Errorf("loop ended why = %q, want %q", got, c.ended)
-					}
-					return nil
-				})
-			}
+			return nil
 		})
 	}
+	lt.clock.set(until)
+	waitFor(lt.t, func() error {
+		if n := int(lt.runs.Load()); n != s.runs || lt.h.AgentActive() != s.held {
+			return fmt.Errorf("%d runs, active %v", n, lt.h.AgentActive())
+		}
+		return nil
+	})
+	l, on := lt.h.Loop()
+	if on != (s.next > 0) {
+		// the interrupt's stop runs beside waitIdle's release: wait for the
+		// settled loop, never assert the moving state
+		waitForWithin(lt.t, 10*time.Second, func() error {
+			l, on = lt.h.Loop()
+			if on != (s.next > 0) {
+				return fmt.Errorf("loop on %v, want %v", on, s.next > 0)
+			}
+			return nil
+		})
+	}
+	if on {
+		if next := l.Next.Sub(lt.start); next != s.next {
+			lt.t.Fatalf("loop next at +%s; want +%s", next, s.next)
+		}
+	}
+}
+
+// wantNotices asserts the loop's rows in the transcript, in order.
+func (lt *loopTest) wantNotices(want ...string) {
+	lt.t.Helper()
+	waitFor(lt.t, func() error {
+		var notices []string
+		for _, m := range lt.h.Session().Transcript {
+			if m.Kind == RowNotice && (strings.HasPrefix(m.Text, "loop  Run ") || strings.HasPrefix(m.Text, "Loop ")) {
+				notices = append(notices, m.Text)
+			}
+		}
+		if !slices.Equal(notices, want) {
+			return fmt.Errorf("notices = %q, want %q", notices, want)
+		}
+		return nil
+	})
+}
+
+// wantEnded asserts the why the loop stopped with.
+func (lt *loopTest) wantEnded(want string) {
+	lt.t.Helper()
+	waitFor(lt.t, func() error {
+		if got := lt.h.LoopEndedWhy(); got != want {
+			return fmt.Errorf("loop ended why = %q, want %q", got, want)
+		}
+		return nil
+	})
+}
+
+// TestLoopFixed: a fixed interval runs now and again on its interval.
+func TestLoopFixed(t *testing.T) {
+	t.Parallel()
+	lt := newLoopTest(t, "5m check the deploy", "rolling")
+	lt.advance(step{runs: 1, next: 5 * time.Minute})
+	lt.advance(step{after: 5 * time.Minute, runs: 2, next: 10 * time.Minute})
+	lt.advance(step{after: 5 * time.Minute, runs: 3, next: 15 * time.Minute})
+	lt.wantNotices("loop  Run 1: check the deploy", "loop  Run 2: check the deploy", "loop  Run 3: check the deploy")
+}
+
+// TestLoopPaced: the model's next line paces the loop.
+func TestLoopPaced(t *testing.T) {
+	t.Parallel()
+	lt := newLoopTest(t, "check it", "waiting\n`next: 7m`")
+	lt.advance(step{runs: 1, next: 7 * time.Minute})
+	lt.advance(step{after: 6 * time.Minute, runs: 1, next: 7 * time.Minute})
+	lt.advance(step{after: time.Minute, runs: 2, next: 14 * time.Minute})
+}
+
+// TestLoopPacedFallback: a paced run with no next line falls back.
+func TestLoopPacedFallback(t *testing.T) {
+	t.Parallel()
+	lt := newLoopTest(t, "check it", "hm")
+	lt.advance(step{runs: 1, next: loopFallback})
+}
+
+// TestLoopPacedDelayCap: a paced delay past an hour is an hour.
+func TestLoopPacedDelayCap(t *testing.T) {
+	t.Parallel()
+	lt := newLoopTest(t, "check it", "next: 2h")
+	lt.advance(step{runs: 1, next: time.Hour})
+}
+
+// TestLoopDone: next: done ends it.
+func TestLoopDone(t *testing.T) {
+	t.Parallel()
+	lt := newLoopTest(t, "check it", "all good\nnext: done")
+	lt.advance(step{runs: 1})
+	lt.wantNotices("loop  Run 1: check it", "Loop done after 1 run")
+	lt.wantEnded("Loop done after 1 run")
+}
+
+// TestLoopFailed: a failed run stops it.
+func TestLoopFailed(t *testing.T) {
+	t.Parallel()
+	lt := newLoopTest(t, "5m check it", "fail")
+	lt.advance(step{runs: 1})
+	lt.wantNotices("loop  Run 1: check it", "Loop stopped: boom (1 run)")
+	lt.wantEnded("Loop stopped: boom (1 run)")
+}
+
+// TestLoopInterrupted: an interrupted run stops it.
+func TestLoopInterrupted(t *testing.T) {
+	t.Parallel()
+	lt := newLoopTest(t, "5m check it", "hang")
+	lt.advance(step{runs: 1, next: 5 * time.Minute, held: true})
+	lt.h.AgentCancel()
+	lt.advance(step{runs: 1})
+	lt.wantNotices("loop  Run 1: check it", "Loop stopped: interrupted (1 run)")
+	lt.wantEnded("Loop stopped: interrupted (1 run)")
+}
+
+// TestLoopReplacedInterrupted: an interrupt stops the loop that replaced the
+// run's.
+func TestLoopReplacedInterrupted(t *testing.T) {
+	t.Parallel()
+	lt := newLoopTest(t, "5m check a", "hang")
+	lt.advance(step{runs: 1, next: 5 * time.Minute, held: true})
+	if err := lt.h.SetLoop("5m check b"); err != nil {
+		t.Fatal(err)
+	}
+	if got := lt.h.LoopEndedWhy(); got != "" {
+		t.Fatalf("the replaced loop kept the old why: %s", got)
+	}
+	waitFor(t, func() error {
+		if lt.clock.armed() == 0 {
+			return errors.New("b has not tried to run")
+		}
+		return nil
+	})
+	lt.h.AgentCancel()
+	waitIdle(t, lt.h)
+	lt.advance(step{runs: 1})
+	lt.wantNotices("loop  Run 1: check a", "Loop stopped: interrupted (0 runs)")
+}
+
+// TestLoopInterruptedTurn: a turn nobody typed into, interrupted, stops it.
+func TestLoopInterruptedTurn(t *testing.T) {
+	t.Parallel()
+	lt := newLoopTest(t, "5m check it", "ok")
+	lt.advance(step{runs: 1, next: 5 * time.Minute})
+	if err := lt.h.AgentSend(agent.AttachMarker + "\nhang"); err != nil {
+		t.Fatal(err)
+	}
+	lt.advance(step{runs: 1, next: 5 * time.Minute, held: true})
+	lt.h.AgentCancel()
+	lt.advance(step{runs: 1})
+	lt.wantNotices("loop  Run 1: check it", "Loop stopped: interrupted (1 run)")
+}
+
+// TestLoopKeepsGoalRuns: a loop run leaves the goal's count of turns alone.
+func TestLoopKeepsGoalRuns(t *testing.T) {
+	t.Parallel()
+	lt := newLoopTest(t, "5m check it", "ok")
+	lt.advance(step{runs: 1, next: 5 * time.Minute})
+	lt.h.agents.mu.Lock()
+	lt.h.agents.goalRuns = 7
+	lt.h.agents.mu.Unlock()
+	lt.advance(step{after: 5 * time.Minute, runs: 2, next: 10 * time.Minute})
+	lt.h.agents.mu.Lock()
+	goalRuns := lt.h.agents.goalRuns
+	lt.h.agents.mu.Unlock()
+	if goalRuns != 7 {
+		t.Fatalf("a loop run reset the goal's count to %d", goalRuns)
+	}
+}
+
+// TestLoopBusyAgent: a busy agent delays a run, keeping its time.
+func TestLoopBusyAgent(t *testing.T) {
+	t.Parallel()
+	lt := newLoopTest(t, "5m check it", "ok")
+	lt.advance(step{runs: 1, next: 5 * time.Minute})
+	if err := lt.h.AgentSend("hang"); err != nil {
+		t.Fatal(err)
+	}
+	lt.advance(step{after: 5 * time.Minute, runs: 1, next: 5 * time.Minute, held: true})
+	lt.h.AgentCancel()
+	waitIdle(t, lt.h)
+	lt.advance(step{after: loopRetry, runs: 2, next: 5*time.Minute + loopRetry + 5*time.Minute})
+}
+
+// TestLoopExpires: a day's loop stops after 72 hours.
+func TestLoopExpires(t *testing.T) {
+	t.Parallel()
+	lt := newLoopTest(t, "1d check it", "ok")
+	lt.advance(step{runs: 1, next: 24 * time.Hour})
+	lt.advance(step{after: 24 * time.Hour, runs: 2, next: 48 * time.Hour})
+	lt.advance(step{after: 24 * time.Hour, runs: 3, next: 72 * time.Hour})
+	lt.advance(step{after: 24 * time.Hour, runs: 3})
+	lt.wantNotices("loop  Run 1: check it", "loop  Run 2: check it", "loop  Run 3: check it", "Loop stopped after 72h (3 runs)")
+}
+
+// TestLoopCommand: a command runs with the note attached.
+func TestLoopCommand(t *testing.T) {
+	t.Parallel()
+	lt := newLoopTest(t, "5m /note it", "ok")
+	lt.advance(step{runs: 1, next: 5 * time.Minute})
 }
 
 // armed counts the timers waiting on the clock.

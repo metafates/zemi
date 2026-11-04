@@ -485,47 +485,10 @@ func TestRecipes(t *testing.T) {
 		return sys + ctx
 	}
 
-	for _, c := range []struct {
-		name         string
-		do           func()
-		prompt, tool []string
-		call, input  string // a tool the model runs, and what its result says
-		out          string
-	}{
-		{name: "untrusted project is inert", do: func() { h.SetProjectTrusted(false) }},
-		{name: "trusted lists it, a taken name is dropped", do: func() { h.SetProjectTrusted(true) }, prompt: []string{"rig"}, tool: []string{"rig"}},
-		{name: "written mid-session loads, the prompt stays", do: func() { writeSkill(t, dir, "late", "recipe late", "") }, prompt: []string{"rig"}, tool: late},
-		{name: "a reload's trust step keeps the pin", do: func() { h.SetProjectTrusted(true) }, prompt: []string{"rig"}, tool: late},
-		{name: "a prompt drop pins again", do: func() { h.agents.mu.Lock(); h.agents.dropPin(); h.agents.mu.Unlock() }, prompt: late, tool: late},
-		{name: "a secret is redacted", prompt: late, tool: written, call: "write", input: tok, out: "redacted lines [6]"},
-		{name: "any file there is scrubbed, whatever its name", prompt: late, tool: written, call: "write", input: strings.Replace(tok, "SKILL.md", "skill.md", 1), out: "redacted lines [6]"},
-		{name: "the redacted file is not stale", prompt: late, tool: written, call: "edit", input: string(edit), out: "tok saved"},
-		{name: "a name the directory does not have", prompt: late, tool: written, call: "write", input: md("bad", "other", "x"), out: "will not load: bad: frontmatter name"},
-		{name: "a name a user skill has", prompt: late, tool: written, call: "write", input: md("ship", "ship", "x"), out: "another skill is named ship"},
-		{name: "a session that fetched says so", do: func() { h.recordToolCall(store.MainSessionID, StreamTool{ID: "c1", Name: "fetch"}, true) }, prompt: late, tool: written, call: "write", input: md("bad", "other", "y"), out: "will not load"},
-		{name: "only a recipe is deleted", do: func() {
-			if h.skillsCommand("delete ship", false) == nil || h.skillsCommand("delete lint", false) == nil {
-				t.Error("deleted a skill that is no recipe")
-			}
-		}, prompt: late, tool: written},
-		{name: "delete removes it and pins again", do: func() {
-			if err := h.skillsCommand("delete late --yes", false); err != nil {
-				t.Error(err)
-			}
-		}, prompt: []string{"rig", "tok"}, tool: []string{"rig", "tok"}},
-	} {
-		if c.do != nil {
-			c.do()
-		}
-		if c.call != "" {
-			ui.asked = nil
-			all := tools.All(h.PipelineFor())
-			i := slices.IndexFunc(all, func(a fantasy.AgentTool) bool { return a.Info().Name == c.call })
-			resp, err := all[i].Run(t.Context(), fantasy.ToolCall{ID: "t", Name: c.call, Input: c.input})
-			if err != nil || resp.IsError || !strings.Contains(resp.Content, c.out) {
-				t.Errorf("%s: %v %q, want %q", c.name, err, resp.Content, c.out)
-			}
-		}
+	// check asserts the pinned prompt, the /skills rows and the skill tool
+	// index all name want, and nothing else from the recipes dir.
+	check := func(t *testing.T, wantPrompt, wantTool []string) {
+		t.Helper()
 		var prompt, tool, items []string
 		for line := range strings.Lines(pinned()) {
 			if name, _, ok := strings.Cut(strings.TrimPrefix(line, "- "), ": recipe "); ok {
@@ -546,10 +509,83 @@ func TestRecipes(t *testing.T) {
 		slices.Sort(prompt)
 		slices.Sort(tool)
 		slices.Sort(items)
-		if !slices.Equal(prompt, c.prompt) || !slices.Equal(items, c.tool) || !slices.Equal(tool, c.tool) {
-			t.Errorf("%s: prompt %v, /skills %v, tool %v", c.name, prompt, items, tool)
+		if !slices.Equal(prompt, wantPrompt) || !slices.Equal(items, wantTool) || !slices.Equal(tool, wantTool) {
+			t.Errorf("prompt %v, /skills %v, tool %v", prompt, items, tool)
 		}
 	}
+	// call runs a tool the model would, asserting its result says want.
+	call := func(t *testing.T, name, input, want string) {
+		t.Helper()
+		ui.asked = nil
+		all := tools.All(h.PipelineFor())
+		i := slices.IndexFunc(all, func(a fantasy.AgentTool) bool { return a.Info().Name == name })
+		resp, err := all[i].Run(t.Context(), fantasy.ToolCall{ID: "t", Name: name, Input: input})
+		if err != nil || resp.IsError || !strings.Contains(resp.Content, want) {
+			t.Errorf("%v %q, want %q", err, resp.Content, want)
+		}
+	}
+
+	// the steps build on each other in this order: each sees what the ones
+	// before it did
+	t.Run("untrusted project is inert", func(t *testing.T) {
+		h.SetProjectTrusted(false)
+		check(t, nil, nil)
+	})
+	t.Run("trusted lists it, a taken name is dropped", func(t *testing.T) {
+		h.SetProjectTrusted(true)
+		check(t, []string{"rig"}, []string{"rig"})
+	})
+	t.Run("written mid-session loads, the prompt stays", func(t *testing.T) {
+		writeSkill(t, dir, "late", "recipe late", "")
+		check(t, []string{"rig"}, late)
+	})
+	t.Run("a reload's trust step keeps the pin", func(t *testing.T) {
+		h.SetProjectTrusted(true)
+		check(t, []string{"rig"}, late)
+	})
+	t.Run("a prompt drop pins again", func(t *testing.T) {
+		h.agents.mu.Lock()
+		h.agents.dropPin()
+		h.agents.mu.Unlock()
+		check(t, late, late)
+	})
+	t.Run("a secret is redacted", func(t *testing.T) {
+		call(t, "write", tok, "redacted lines [6]")
+		check(t, late, written)
+	})
+	t.Run("any file there is scrubbed, whatever its name", func(t *testing.T) {
+		call(t, "write", strings.Replace(tok, "SKILL.md", "skill.md", 1), "redacted lines [6]")
+		check(t, late, written)
+	})
+	t.Run("the redacted file is not stale", func(t *testing.T) {
+		call(t, "edit", string(edit), "tok saved")
+		check(t, late, written)
+	})
+	t.Run("a name the directory does not have", func(t *testing.T) {
+		call(t, "write", md("bad", "other", "x"), "will not load: bad: frontmatter name")
+		check(t, late, written)
+	})
+	t.Run("a name a user skill has", func(t *testing.T) {
+		call(t, "write", md("ship", "ship", "x"), "another skill is named ship")
+		check(t, late, written)
+	})
+	t.Run("a session that fetched says so", func(t *testing.T) {
+		h.recordToolCall(store.MainSessionID, StreamTool{ID: "c1", Name: "fetch"}, true)
+		call(t, "write", md("bad", "other", "y"), "will not load")
+		check(t, late, written)
+	})
+	t.Run("only a recipe is deleted", func(t *testing.T) {
+		if h.skillsCommand("delete ship", false) == nil || h.skillsCommand("delete lint", false) == nil {
+			t.Error("deleted a skill that is no recipe")
+		}
+		check(t, late, written)
+	})
+	t.Run("delete removes it and pins again", func(t *testing.T) {
+		if err := h.skillsCommand("delete late --yes", false); err != nil {
+			t.Error(err)
+		}
+		check(t, []string{"rig", "tok"}, []string{"rig", "tok"})
+	})
 	if data, _ := os.ReadFile(filepath.Join(dir, "tok", "SKILL.md")); !strings.Contains(string(data), "step 1") || !strings.Contains(string(data), "realms/local") || strings.Contains(string(data), "ghp_") {
 		t.Errorf("tok on disk: %s", data)
 	}
