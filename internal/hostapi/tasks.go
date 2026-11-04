@@ -115,7 +115,8 @@ type agentRun struct {
 	parent                 string         // the session that started the run
 	workflow, phase        string         // the flow that started it, "" for none
 	schema                 map[string]any // the report must be a JSON object matching it
-	// the model reference it started on
+	// the model the run sends on, resolved from its definition once the runner
+	// is built
 	// NOTE: "" for a run loadRun rebuilt, which continues on its definition's
 	// model: sessions keep no model column.
 	model  string
@@ -440,24 +441,6 @@ func (run *agentRun) answer() string {
 	run.mu.Lock()
 	defer run.mu.Unlock()
 	return run.lastText("")
-}
-
-// pending is the one line a running run's preview shows while its answer is
-// still pending: "thinking" while a reasoning block is open, else the last
-// transcript row's label (its tool, when the model wrote none), else what a
-// run that has not reached its first step says.
-func (run *agentRun) pending() string {
-	run.mu.Lock()
-	defer run.mu.Unlock()
-	if !run.thinkAt.IsZero() {
-		return "thinking"
-	}
-	if n := len(run.tr); n > 0 {
-		if s := cmp.Or(run.tr[n-1].Label, string(run.tr[n-1].Tool)); s != "" {
-			return clipLine(s, 80)
-		}
-	}
-	return "(no answer yet)"
 }
 
 // errText is what a failed or stopped run ended with, "" for any other.
@@ -1263,11 +1246,11 @@ const _sectionRunning = "Running"
 // stored ones this process does not hold included; enter opens the run's
 // preview, the same view a workflow's agent gets, and v its transcript.
 // A row is named by the run's label and carries the definition it ran in its
-// desc, next to the status, the clock and the calls.
+// desc, next to its model, the status, the clock and the calls.
 func (h *Host) agentRunItems() []OverlayItem {
 	sid := h.AgentSessionID()
 	var running, flows, earlier []OverlayItem
-	row := func(id string, status RunStatus, label string, took time.Duration, desc string, calls int, run *agentRun) {
+	row := func(id string, status RunStatus, label string, took time.Duration, def string, calls int, run *agentRun) {
 		item := OverlayItem{
 			ID:   id,
 			Text: label,
@@ -1275,13 +1258,17 @@ func (h *Host) agentRunItems() []OverlayItem {
 		}
 		if run != nil {
 			tokens, cost := run.usage()
+			desc := def
+			if run.model != "" {
+				desc += "   " + run.model
+			}
 			item.Desc = statusCol(string(status)) + "  " + fmtDuration(took) +
-				fmt.Sprintf("  %d tool %s", calls, Plural(calls, "call", "calls")) + "  " + desc
-			item.Fields, item.Detail, item.Parts, item.Empty = h.agentView(agentRow{id: id, def: run.agent, status: status, calls: calls, tokens: tokens, cost: cost, took: took}, run)
+				fmt.Sprintf("  %d tool %s", calls, Plural(calls, "call", "calls")) + "  " + desc + h.fromSession(run.parent)
+			item.Fields, item.Detail, item.Parts = h.agentView(agentRow{id: id, def: run.agent, status: status, calls: calls, tokens: tokens, cost: cost, took: took}, run)
 		} else {
 			// a stored row holds what its session row says; its transcript loads on demand
-			item.Desc = statusCol(string(status)) + "  " + fmtDuration(took) + "  " + desc
-			item.Fields = fieldList("status", string(status), "time", fmtDuration(took), "agent", desc, "run", id)
+			item.Desc = statusCol(string(status)) + "  " + fmtDuration(took) + "  " + def
+			item.Fields = fieldList("status", string(status), "time", fmtDuration(took), "agent", def, "run", id)
 		}
 		item.Keys = []ItemKey{{Key: "v", Desc: "view its transcript", Run: "agents view " + id + " list"}}
 		item.Section = "Earlier in this session"
@@ -1310,7 +1297,7 @@ func (h *Host) agentRunItems() []OverlayItem {
 	// still writes files and blocks /reset, so it is listed, named by that session
 	for _, run := range slices.DeleteFunc(h.tasks.runList(), func(x *agentRun) bool { return x.parent == sid || x.workflow != "" || !x.isRunning() }) {
 		status, calls, took, _ := run.state()
-		row(run.id, status, run.label(), took, run.agent+h.fromSession(run.parent), calls, run)
+		row(run.id, status, run.label(), took, run.agent, calls, run)
 	}
 	if h.DB != nil && sid != "" {
 		children, _ := h.DB.ChildSessions(sid)

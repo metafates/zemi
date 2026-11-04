@@ -2005,67 +2005,53 @@ func TestAgentView(t *testing.T) {
 	run := func(status RunStatus, tr ...ChatMessage) *agentRun {
 		return &agentRun{id: "agent-1", agent: "explore", model: "m", status: status, tr: tr}
 	}
-	thinking := func(r *agentRun) *agentRun {
-		r.thinkAt = time.Now()
-		return r
-	}
 	for _, c := range []struct {
 		name        string
 		row         agentRow
 		run         *agentRun
+		wantPrefix  string // the facts table leads with this
 		wantFields  string
 		wantDetail  string
 		wantNoParts bool
-		wantPending string
 	}{
 		{
 			"a queued one is its facts alone",
 			agentRow{def: "explore", status: "queued"},
 			nil,
-			"[run ]", "", true, "",
+			"[status", "[run ]", "", true,
 		},
 		{
-			"a running one is its task, pending its first step",
+			"a live one leads with the model it sends on",
 			agentRow{def: "explore", status: RunRunning},
 			run(RunRunning, ChatMessage{Role: "user", Text: "look around"}),
-			"", "look around", false, "(no answer yet)",
+			"[model m] [status running", "", "look around", false,
 		},
 		{
-			"a thinking one says so",
+			"a run with no model says nothing of one",
 			agentRow{def: "explore", status: RunRunning},
-			thinking(run(RunRunning, ChatMessage{Role: "user", Text: "look around"})),
-			"", "look around", false, "thinking",
-		},
-		{
-			"a running one names the call it is on",
-			agentRow{def: "explore", status: RunRunning},
-			run(RunRunning, ChatMessage{Role: "user", Text: "look"}, ChatMessage{Kind: RowTool, Tool: "shell", Label: "run the tests"}),
-			"", "look", false, "run the tests",
-		},
-		{
-			"an unlabeled call names its tool",
-			agentRow{def: "explore", status: RunRunning},
-			run(RunRunning, ChatMessage{Role: "user", Text: "look"}, ChatMessage{Kind: RowTool, Tool: "read"}),
-			"", "look", false, "read",
+			&agentRun{id: "agent-1", agent: "explore", status: RunRunning, tr: []ChatMessage{{Role: "user", Text: "look around"}}},
+			"[status running", "", "look around", false,
 		},
 		{
 			"a done one answers",
 			agentRow{def: "explore", status: RunDone},
 			run(RunDone, ChatMessage{Role: "user", Text: "look around"}, ChatMessage{Role: "assistant", Text: "two files changed"}),
-			"", "look around\n\ntwo files changed", false, "",
+			"[model m] [status done", "", "look around\n\ntwo files changed", false,
 		},
 		{
 			"a failed one carries its error",
 			agentRow{def: "explore", status: RunFailed},
 			run(RunFailed, ChatMessage{Role: "user", Text: "look"}, ChatMessage{Kind: RowError, Text: "the provider failed"}),
-			"[error the provider failed]", "look", false, "",
+			"[model m] [status failed", "[error the provider failed]", "look", false,
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			fields, detail, parts, pending := h.agentView(c.row, c.run)
-			if extra := dumpFields(fields); c.wantFields == "" && !strings.HasPrefix(extra, "[status") {
-				t.Fatalf("fields %s, want the facts table", extra)
-			} else if c.wantFields != "" && !strings.Contains(extra, c.wantFields) {
+			fields, detail, parts := h.agentView(c.row, c.run)
+			extra := dumpFields(fields)
+			if !strings.HasPrefix(extra, c.wantPrefix) {
+				t.Fatalf("fields %s, want a table led by %s", extra, c.wantPrefix)
+			}
+			if c.wantFields != "" && !strings.Contains(extra, c.wantFields) {
 				t.Fatalf("fields %s, want %s", extra, c.wantFields)
 			}
 			if detail != c.wantDetail {
@@ -2076,9 +2062,6 @@ func TestAgentView(t *testing.T) {
 			}
 			if len(parts) > 0 && parts[0].Fill != FillCanvas {
 				t.Fatalf("the task sits on %v, want the canvas", parts[0].Fill)
-			}
-			if pending != c.wantPending {
-				t.Fatalf("pending %q, want %q", pending, c.wantPending)
 			}
 		})
 	}

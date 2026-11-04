@@ -544,6 +544,7 @@ func (h *Host) subagentSetup(run *agentRun, def AgentDef, prompt string) (*runSe
 		runner.History = []fantasy.Message{msg}
 	}
 	run.forkBase = len(runner.History) // the run's own messages start past the view
+	run.model = modelID
 	h.capRun(runner, modelID)
 	return &runSetup{
 		runner: runner, pipe: pipe, modelID: modelID, loaded: loaded, prompt: prompt,
@@ -2016,10 +2017,10 @@ func (h *Host) showAgent(id string) error {
 func (h *Host) agentShowOverlay(run *agentRun) Overlay {
 	status, calls, took, _ := run.state()
 	tokens, cost := run.usage()
-	fields, detail, parts, pending := h.agentView(agentRow{id: run.id, def: run.agent, status: status, calls: calls, tokens: tokens, cost: cost, took: took}, run)
+	fields, detail, parts := h.agentView(agentRow{id: run.id, def: run.agent, status: status, calls: calls, tokens: tokens, cost: cost, took: took}, run)
 	o := Overlay{
 		ID: "agent:" + run.id, Title: run.label(), Origin: lua.OriginBuiltin, Wide: true,
-		Mark: RunMarks[string(status)], Fields: fields, Body: detail, Parts: parts, Empty: pending,
+		Mark: RunMarks[string(status)], Fields: fields, Body: detail, Parts: parts,
 		Keys: []OverlayKey{{Key: "v", Desc: "view its transcript", Run: "agents view " + run.id + " show"}},
 	}
 	o.Prev, o.Next = h.railStep(run.id)

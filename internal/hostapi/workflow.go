@@ -726,7 +726,7 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 		desc = clipRunes(first, 40)
 	}
 	schema := callSchema(L, opts)
-	a := &flowAgent{def: def.Name, description: desc, phase: cmp.Or(phase, r.f.phase)}
+	a := &flowAgent{def: def.Name, description: desc, phase: cmp.Or(phase, r.f.phase), model: def.Model}
 	key := agentKey(def.Name, model, schema, string(prompt))
 	// an identical call an earlier run finished answers at once and starts
 	// nothing, so it does not count toward the cap
@@ -922,6 +922,7 @@ func (r *wfRun) finish(t *wfTask, val glua.LValue, err error) {
 type agentRow struct {
 	call                        int // its index in the run's agents
 	id, def, description, phase string
+	model                       string // the definition's model reference, "" for the agents role
 	status                      RunStatus
 	reused                      bool // answered from an earlier run's journal
 	calls                       int
