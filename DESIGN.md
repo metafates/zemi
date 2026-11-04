@@ -2607,8 +2607,8 @@ merges of children already
 gone, so a race wastes one cheap call and nothing else. A failed build
 retries at the next log row - no timer loop, the failure parks until fresh
 rows land. The exception is a rate-limited one (`429`) or an empty one that
-parked: either arms a cooldown (`buildCoolBase`, doubling per consecutive
-round up to `buildCoolCap`) that holds dispatch and retries the failed
+parked: either arms a cooldown (the builder's `coolBase`, doubling per
+consecutive round up to `buildCoolCap`) that holds dispatch and retries the failed
 builds when the timer fires, since both are the provider's mood and pass
 with the clock, while a quiet session must heal without a next message; a
 success resets the doubling. An empty
@@ -2621,7 +2621,7 @@ turn inside the reasoning channel, `finish_reason: stop`, no content)
 leaves its exact reply parts in `compaction-dumps.jsonl` beside the store,
 one row per empty call, and the park error names the finish reason and the
 token spend, so the provider's mood is on record without a rerun. A builder
-call keeps fewer provider retries than a turn (`buildMaxRetries`): a
+call keeps fewer provider retries than a turn (its `maxRetries`): a
 rate-limited round should fail into the cooldown, not have 8 slots each
 burn a full retry pass. The view self-heals.
 

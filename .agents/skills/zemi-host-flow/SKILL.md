@@ -251,7 +251,7 @@ applied one. A store made before goose only gains its version table: the baselin
   Up to 8 calls at once (`buildSlots`), each build up to 5 tries in one conversation with
   the shortest fitting line kept; a failed build retries at the next message, no timer -
   except a rate-limited one, or an empty one that parked: either arms a doubling cooldown
-  (`buildCoolBase` to `buildCoolCap`) that retries without fresh rows (both are the
+  (the builder's `coolBase` to `buildCoolCap`) that retries without fresh rows (both are the
   provider's mood, and it passes with the clock). A rate limit leaves no /errors entry: a
   rate limit is a wait, not a failure - `/health`'s builder row carries it. An empty reply
   earns one corrected retry in its conversation - the thinking handed back, else the miss
