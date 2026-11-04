@@ -188,6 +188,10 @@ func launch(o options) int {
 		closeLog()      // an exec runs no defers
 		return fail(relaunch(dir))
 	}
+	// the parting discovery tip; the terminal is the TUI's no longer
+	if host.Settings.Bool(config.KeyUITips) {
+		fmt.Printf("tip: %s\n", ui.Tip(time.Now()))
+	}
 	return 0
 }
 
