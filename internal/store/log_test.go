@@ -48,6 +48,9 @@ func TestLogSeqDense(t *testing.T) {
 	if err := db.ResetLog(); err != nil {
 		t.Fatal(err)
 	}
+	if n, err := db.LogCount(); err != nil || n != 0 {
+		t.Fatalf("count of a wiped log = %d, %v", n, err)
+	}
 	for range 2 {
 		if _, err := db.AppendLog("user", "back", "", "", ""); err != nil {
 			t.Fatal(err)

@@ -134,10 +134,12 @@ func (s *DB) LogAt(seq int64) (LogEntry, error) {
 	return one(s.db.QueryRow(`SELECT `+_logCols+` FROM log WHERE seq = ?`, seq), scanLog)
 }
 
-// LogCount is how many rows the log holds.
+// LogCount is how many rows the log holds. An append takes max+1 and only a
+// reset deletes rows, so the seqs stay dense and the count is the max: one
+// seek down the index, where COUNT(*) walks the table.
 func (s *DB) LogCount() (int64, error) {
 	var n int64
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM log`).Scan(&n)
+	err := s.db.QueryRow(`SELECT COALESCE(MAX(seq), -1) + 1 FROM log`).Scan(&n)
 	return n, err
 }
 
