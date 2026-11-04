@@ -1019,7 +1019,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	// the title says where a yes runs, so the badge gets what it leaves, a
 	// third of the box at least
 	title, bw := permTitle(req), min(w-4, maxW)
-	joined := strings.Join(slices.DeleteFunc(badge, func(s string) bool { return s == "" }), "  ")
+	joined := strings.Join(slices.DeleteFunc(badge, func(s string) bool { return s == "" }), "   ")
 	who := ansi.Truncate(joined, max(bw-ansi.StringWidth(title)-7, bw/3), "…")
 	return promptBox(title, who, body, w, h, maxW, &pa.size)
 }
@@ -1195,7 +1195,7 @@ func hintSlot(p hintPair) int {
 	}
 }
 
-// hint is the one footer row every box draws: "enter pick  esc deny",
+// hint is the one footer row every box draws: "enter pick   esc deny",
 // the pairs in slot order. Past w cells the middle pairs give way,
 // scrolling and copy first, then the screen's state keys last first, and a
 // row's own key only once no state key is left; enter and esc never do.
@@ -1212,7 +1212,7 @@ func hint(w int, pairs ...hintPair) []hostapi.Segment {
 			case p == _scrollGap:
 				continue
 			case len(out) > 0:
-				out = append(out, hostapi.Segment{Text: "  ", HL: hostapi.ChromeHint})
+				out = append(out, hostapi.Segment{Text: "   ", HL: hostapi.ChromeHint})
 			}
 			out = append(out, hostapi.Segment{Text: p.key, HL: hostapi.ChromeHintKey})
 			if p.verb != "" {

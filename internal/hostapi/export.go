@@ -411,7 +411,7 @@ func (h *Host) OpenUsage() error {
 		if whole > 0 {
 			n = int(min(max(part*int64(w)/whole, min(part, 1)), int64(w))) // anything at all gets a cell
 		}
-		return []Segment{{Text: strings.Repeat("█", n), HL: hl, NoCopy: true}, {Text: strings.Repeat("░", w-n) + "  ", HL: ChromeRule, NoCopy: true}}
+		return []Segment{{Text: strings.Repeat("█", n), HL: hl, NoCopy: true}, {Text: strings.Repeat("░", w-n) + "   ", HL: ChromeRule, NoCopy: true}}
 	}
 	if s.CtxWindow > 0 && s.LastIn > 0 { // a resumed session has no estimate before its first turn
 		pct := contextPct(s.LastIn, s.CtxWindow)
@@ -427,10 +427,10 @@ func (h *Host) OpenUsage() error {
 		}
 		section("Context")
 		rows = append(rows, append(append([]Segment{text("", "  ")}, bar(s.LastIn, s.CtxWindow, 32, hl)...),
-			text(ChromeValue, fmtTokens(s.LastIn)), text(ChromeHint, fmt.Sprintf(" of %s  %s", fmtTokens(s.CtxWindow), pctText))))
+			text(ChromeValue, fmtTokens(s.LastIn)), text(ChromeHint, fmt.Sprintf(" of %s   %s", fmtTokens(s.CtxWindow), pctText))))
 	}
 	if parts, total := h.promptBreakdown(); total > 0 {
-		section("Prompt", text(ChromeValue, "  "+fmtTokens(total)), text(ChromeHint, " sent with every request"))
+		section("Prompt", text(ChromeValue, "   "+fmtTokens(total)), text(ChromeHint, " sent with every request"))
 		parts = slices.Clone(parts)
 		slices.SortStableFunc(parts, func(a, b promptPart) int { return cmp.Compare(b.chars, a.chars) })
 		sum := 0
@@ -449,9 +449,9 @@ func (h *Host) OpenUsage() error {
 	// the view's own size: what the eternal chat keeps the next turn reading
 	if b, lines, levels, unbuilt := h.viewStats(); lines > 0 {
 		section("View", text(ChromeHint, " the chat the model reads"))
-		detail := fmt.Sprintf("  %s  %s  %s", fmtBytes(int64(b)), pluralCount(lines, "line", "lines"), pluralCount(levels, "level", "levels"))
+		detail := fmt.Sprintf("  %s   %s   %s", fmtBytes(int64(b)), pluralCount(lines, "line", "lines"), pluralCount(levels, "level", "levels"))
 		if unbuilt > 0 {
-			detail += "  " + pluralCount(unbuilt, "line", "lines") + " unbuilt"
+			detail += "   " + pluralCount(unbuilt, "line", "lines") + " unbuilt"
 		}
 		rows = append(rows, []Segment{text(ChromeValue, detail)})
 	}

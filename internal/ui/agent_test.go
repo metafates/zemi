@@ -414,7 +414,7 @@ func TestReplyReadoutBehindANotice(t *testing.T) {
 			readouts = append(readouts, row)
 		}
 	}
-	if len(readouts) != 1 || !strings.Contains(readouts[0], "1.5s  200 out") {
+	if len(readouts) != 1 || !strings.Contains(readouts[0], "1.5s   200 out") {
 		t.Fatalf("the reply's readout is %q, want one row naming 1.5s and 200 out", readouts)
 	}
 }
@@ -578,8 +578,8 @@ func TestChatFoldOpensItsRun(t *testing.T) {
 		}
 		return out
 	}
-	const digest = "▸ 1 command: make  thought 6.4s"
-	const openDigest = "▾ 1 command: make  thought 6.4s"
+	const digest = "▸ 1 command: make   thought 6.4s"
+	const openDigest = "▾ 1 command: make   thought 6.4s"
 	closed := rows()
 	if !slices.Contains(closed, digest) || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
 		t.Fatalf("the settled turn does not fold into its digest:\n%s", strings.Join(closed, "\n"))
@@ -903,7 +903,7 @@ func TestPermissionBoxFits(t *testing.T) {
 		{
 			"one hidden line shows", 80, 24,
 			hostapi.PermRequest{Subject: "tool.shell", Arg: "cat > notes.txt <<EOT\nfirst line\nsecond line\nEOT"},
-			[]string{"EOT ", "enter pick  esc deny"},
+			[]string{"EOT ", "enter pick   esc deny"},
 		},
 		{
 			"a long path shows", 70, 30,
@@ -2082,7 +2082,7 @@ func TestWorkingRowRetry(t *testing.T) {
 	for _, c := range []struct {
 		in   time.Duration
 		want string
-	}{{0, ` esc interrupt  retrying now  elapsed 0m 20s ┐`}, {4 * time.Second, ` esc interrupt  next try in \ds  elapsed 0m 20s ┐`}} {
+	}{{0, ` esc interrupt   retrying now   elapsed 0m 20s ┐`}, {4 * time.Second, ` esc interrupt   next try in \ds   elapsed 0m 20s ┐`}} {
 		host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Retrying: true, RetryIn: c.in, Retries: 1})
 		app.renderSync(t)
 		if frame := ansi.Strip(app.Frame()); !regexp.MustCompile(c.want).MatchString(frame) {
@@ -2107,8 +2107,8 @@ func TestWorkingRowRetryNarrow(t *testing.T) {
 		why  string
 		want string
 	}{
-		{"short reason fits whole", "rate limited by the provider", "next try in 45s  rate limited by the provider"},
-		{"a long reason narrows", "network: the connection dropped mid-reply", "next try in 45s  network: the connection"},
+		{"short reason fits whole", "rate limited by the provider", "next try in 45s   rate limited by the provider"},
+		{"a long reason narrows", "network: the connection dropped mid-reply", "next try in 45s   network: the connection"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			app, host := bootAgentApp(t, 60, 16)
@@ -2184,10 +2184,10 @@ func TestWorkingRowMascot(t *testing.T) {
 	short := row(500)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 605 * time.Second})
 	r := row(500)
-	if at := strings.Index(r, " esc interrupt  10m 05s"); at <= len(r)/2 {
+	if at := strings.Index(r, " esc interrupt   10m 05s"); at <= len(r)/2 {
 		t.Fatalf("the status does not end the rule: %q", r)
 	}
-	if !strings.HasSuffix(short, "esc interrupt  0m 05s ") || !strings.HasSuffix(r, "esc interrupt  10m 05s ") {
+	if !strings.HasSuffix(short, "esc interrupt   0m 05s ") || !strings.HasSuffix(r, "esc interrupt   10m 05s ") {
 		t.Fatalf("the block does not end the rule as the clock reads: %q then %q", short, r)
 	}
 	// the open prompt says what answers it, so the rule shrinks to the snail
@@ -2607,8 +2607,8 @@ func TestToolRows(t *testing.T) {
 		"│   ⎿ cat > n.txt <<EOT first line EOT", "│ ✗ run printf a printf b", "│   ⎿ make again",
 		"│ ■ write b.go", "│   ⎿ denied by you", "│   ⎿ approved, saved to /data/plans/s1.md", "│   ⎿ changes requested: use go",
 		"│ ■ ask name", "│   ⎿ Name?", "│     dismissed by you",
-		"│ ✓ ask auth method", "│   ⎿ Which auth method?  OAuth", "│ ✓ ask branch cleanup", "│     Yes, delete them",
-		"│ ✓ ask store, cache size", "│   ⎿ Which store?  sqlite", "│     note: only for now", "│     How large may the cache grow?  not answered",
+		"│ ✓ ask auth method", "│   ⎿ Which auth method?   OAuth", "│ ✓ ask branch cleanup", "│     Yes, delete them",
+		"│ ✓ ask store, cache size", "│   ⎿ Which store?   sqlite", "│     note: only for now", "│     How large may the cache grow?   not answered",
 	} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q:\n%s", want, frame)
@@ -2822,7 +2822,7 @@ func TestTodosMeterFillsTheFraction(t *testing.T) {
 	for _, l := range lines {
 		r := strings.TrimRight(hostapi.SegsText(l), " ")
 		if strings.HasPrefix(r, "Todos ") {
-			if !strings.Contains(r, "1/6  ━━━━━━") {
+			if !strings.Contains(r, "1/6   ━━━━━━") {
 				t.Fatalf("the meter read emptier than the count: %q", r)
 			}
 			return
@@ -2846,7 +2846,7 @@ func TestTodosMeterWithinTheWindow(t *testing.T) {
 		if !strings.HasPrefix(r, "Todos ") {
 			continue
 		}
-		if !strings.Contains(r, "1/3  ━━━━━━") {
+		if !strings.Contains(r, "1/3   ━━━━━━") {
 			t.Fatalf("three items must draw six cells, two per item: %q", r)
 		}
 		// an item's both cells take its hue: the done pair, the live pair,

@@ -188,7 +188,7 @@ func TestChatCursorFoldsTheRun(t *testing.T) {
 	app.Frame()
 	press(t, app, tea.KeyPressMsg{Code: tea.KeyTab}) // lands on the run's digest, the unit above the reply
 	rows := func() []string { return chatRows(t, app, 138) }
-	const digest = "1 command: make  thought 6.4s"
+	const digest = "1 command: make   thought 6.4s"
 	if got := rows(); !slices.Contains(got, "▸ "+digest) {
 		t.Fatalf("the cursor is not on the folded run:\n%s", strings.Join(got, "\n"))
 	}

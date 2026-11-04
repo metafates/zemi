@@ -145,7 +145,7 @@ func TestAgentToolRunsSubagent(t *testing.T) {
 	if !strings.HasPrefix(reply, "parent saw: [run "+runID+"]\n\nsub report for: look around") {
 		t.Fatalf("reply = %q", reply)
 	}
-	if !strings.HasPrefix(detail, "explore  0 tool calls") {
+	if !strings.HasPrefix(detail, "explore   0 tool calls") {
 		t.Fatalf("detail = %q", detail)
 	}
 	list, err := h.DB.ChildSessions(store.MainSessionID)

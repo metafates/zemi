@@ -29,7 +29,7 @@ func flowWord(v flowView) string {
 func flowFields(f *flowRun, v flowView) []string {
 	usage := fmtTokens(v.tokens) + " tok"
 	if v.cost > 0 {
-		usage += "  " + fmtCost(v.cost)
+		usage += "   " + fmtCost(v.cost)
 	}
 	script := ""
 	if f.script != "" {
@@ -38,7 +38,7 @@ func flowFields(f *flowRun, v flowView) []string {
 		script = filepath.Base(f.script)
 	}
 	fields := []string{
-		"status", flowWord(v), "agents", fmt.Sprintf("%d/%d done  %d running  %d at once", v.done, len(v.agents), v.running, v.limit),
+		"status", flowWord(v), "agents", fmt.Sprintf("%d/%d done   %d running   %d at once", v.done, len(v.agents), v.running, v.limit),
 		"usage", usage, "time", fmtDuration(v.took), "run", f.id, "script", script,
 	}
 	if f.err != nil {
@@ -52,9 +52,9 @@ func flowFields(f *flowRun, v flowView) []string {
 // flowDesc is a run's row desc in /workflows and /agents: the padded status
 // and the id, then what grows, the cost last since it appears late.
 func flowDesc(f *flowRun, v flowView) string {
-	desc := fmt.Sprintf("%s  %s  %d/%d agents  %s", statusCol(flowWord(v)), f.id, v.done, len(v.agents), fmtDuration(v.took))
+	desc := fmt.Sprintf("%s   %s   %d/%d agents   %s", statusCol(flowWord(v)), f.id, v.done, len(v.agents), fmtDuration(v.took))
 	if v.cost > 0 {
-		desc += "  " + fmtCost(v.cost)
+		desc += "   " + fmtCost(v.cost)
 	}
 	return desc
 }
@@ -105,7 +105,7 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 	var items []OverlayItem
 	names, by := f.phases(v.agents)
 	for _, p := range names {
-		section := fmt.Sprintf("%s  %d/%d", p, ended(by[p]), len(by[p]))
+		section := fmt.Sprintf("%s   %d/%d", p, ended(by[p]), len(by[p]))
 		for _, a := range by[p] {
 			items = append(items, h.flowAgentItem(f, a, section))
 		}
@@ -154,9 +154,9 @@ func (h *Host) flowOverlay(f *flowRun) Overlay {
 // row with nothing to read (queued, reused, stored) sets the facts alone; a
 // failed one carries its error as a field.
 func (h *Host) agentView(a agentRow, run *agentRun) (fields []Field, detail string, parts []BodyPart) {
-	usage := fmt.Sprintf("%d %s  %s tok", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens))
+	usage := fmt.Sprintf("%d %s   %s tok", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens))
 	if a.cost > 0 {
-		usage += "  " + fmtCost(a.cost)
+		usage += "   " + fmtCost(a.cost)
 	}
 	fields = fieldList("status", string(a.status), "time", fmtDuration(a.took), "agent", a.def, "usage", usage, "run", a.id)
 	if run == nil {
@@ -196,15 +196,15 @@ func (h *Host) flowAgentItem(f *flowRun, a agentRow, section string) OverlayItem
 	if run != nil && run.model != "" {
 		model = run.model
 	}
-	desc := word + "  " + a.def
+	desc := word + "   " + a.def
 	if a.reused {
-		desc = word + "  reused"
+		desc = word + "   reused"
 	}
 	if model != "" {
 		desc += "   " + model
 	}
 	if a.status != RunQueued {
-		desc += fmt.Sprintf("  %d %s  %s tok  %s", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens), fmtDuration(a.took))
+		desc += fmt.Sprintf("   %d %s   %s tok   %s", a.calls, Plural(a.calls, "call", "calls"), fmtTokens(a.tokens), fmtDuration(a.took))
 	}
 	fields, detail, parts := h.agentView(a, run)
 	item := OverlayItem{

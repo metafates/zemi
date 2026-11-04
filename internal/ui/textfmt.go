@@ -135,7 +135,7 @@ func pendingLine(st *hostapi.ScreenState) []hostapi.Segment {
 	row := []hostapi.Segment{{Text: bg.Glyph + " ", HL: bg.HL, NoCopy: true, NoHover: true}}
 	for i, part := range parts {
 		if i > 0 {
-			row = append(row, hostapi.Segment{Text: "  ", HL: "Dim", NoCopy: true, NoHover: true})
+			row = append(row, hostapi.Segment{Text: "   ", HL: "Dim", NoCopy: true, NoHover: true})
 		}
 		row = append(row, hostapi.Segment{Text: part, HL: "Dim", Effect: "shimmer"})
 	}

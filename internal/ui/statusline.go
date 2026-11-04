@@ -80,7 +80,7 @@ func statusCwd(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 		if p == "" {
 			return [][]hostapi.Segment{pointAt("untrusted", "/trust", "")}, false
 		}
-		line = append(line[:1], hostapi.Segment{Text: "  ", HL: "Dim"})
+		line = append(line[:1], hostapi.Segment{Text: "   ", HL: "Dim"})
 		line = append(line, pointAt("untrusted", "/trust", "")...)
 	}
 	return [][]hostapi.Segment{line}, false
@@ -118,7 +118,7 @@ func statusAgents(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	}
 	line := pointAt("⧗ "+strconv.Itoa(n), plural(word, n), word+"s")
 	if flows > 0 && agents > 0 {
-		line = append(line, hostapi.Segment{Text: "  ", HL: "Dim"})
+		line = append(line, hostapi.Segment{Text: "   ", HL: "Dim"})
 		line = append(line, pointAt(strconv.Itoa(agents), plural("agent", agents), "agents")...)
 	}
 	return [][]hostapi.Segment{line}, false
@@ -215,7 +215,7 @@ func statusHints(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	}
 	return [][]hostapi.Segment{{
 		{Text: "/", HL: "SplashKey", Click: "help"},
-		{Text: " commands  ", HL: "Dim", Click: "help"},
+		{Text: " commands   ", HL: "Dim", Click: "help"},
 		{Text: "@", HL: "SplashKey"},
 		{Text: " files, dirs and skills", HL: "Dim"},
 	}}, false

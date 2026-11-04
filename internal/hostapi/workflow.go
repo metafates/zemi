@@ -1026,13 +1026,13 @@ func (f *flowRun) summary() string {
 		if v.lastLog != "" {
 			parts = append(parts, clipRunes(v.lastLog, 60))
 		}
-		return strings.Join(parts, "  ")
+		return strings.Join(parts, "   ")
 	}
 	parts = append(parts, fmt.Sprintf("%d %s", len(v.agents), Plural(len(v.agents), "agent", "agents")))
 	if v.cost > 0 {
 		parts = append(parts, fmtCost(v.cost))
 	}
-	return strings.Join(append(parts, fmtDuration(v.took)), "  ")
+	return strings.Join(append(parts, fmtDuration(v.took)), "   ")
 }
 
 // phases groups rows by phase in the order reached; a row with none goes
@@ -1487,7 +1487,7 @@ func (t *workflowTool) list() string {
 		}
 		line := fmt.Sprintf("%s %s: %s", f.id, clipRunes(f.description, 60), flowWord(v))
 		if s := f.summary(); s != "" {
-			line += "  " + s
+			line += "   " + s
 		}
 		lines = append(lines, line)
 	}
@@ -1780,7 +1780,7 @@ func (f *flowRun) report() (string, bool) {
 		return msg + fails + log, false
 	}
 	if f.script != "" {
-		where += "  " + f.script
+		where += "   " + f.script
 	}
 	body := cmp.Or(strings.TrimSpace(f.result), "(the workflow returned nothing)")
 	if n := f.reused(); n > 0 {

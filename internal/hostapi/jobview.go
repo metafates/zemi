@@ -109,7 +109,7 @@ func (h *Host) jobsOverlay() Overlay {
 		item := OverlayItem{
 			ID:      j.ID,
 			Text:    j.Name,
-			Desc:    statusCol(j.Status()) + "  " + fmtDuration(j.Elapsed()) + "  " + j.ID,
+			Desc:    statusCol(j.Status()) + "   " + fmtDuration(j.Elapsed()) + "   " + j.ID,
 			Mark:    j.Mark(),
 			Section: section,
 			Run:     "jobs view " + j.ID, Verb: VerbOpen,

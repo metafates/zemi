@@ -1906,7 +1906,7 @@ view; a reset's wipe drops the row with the chat.
   never moves with agent state, so no turn adds or removes a row.
   The statusline is two clusters on the bar; a cluster's widgets are ordered by
   `priority` ascending from each side's outer edge, the right one from the
-  right edge, Go joins the ones that draw two spaces apart,
+  right edge, Go joins the ones that draw three spaces apart,
   overflow drops the highest priority first; the
   shipped left widgets also show an armed quit (`QuitArmed`), a
   pending key sequence (`KeySeq`) and the rows below a scrolled chat

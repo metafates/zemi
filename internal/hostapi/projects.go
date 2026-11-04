@@ -442,7 +442,7 @@ func (h *Host) projectItems(cached map[string]projectStats) (items []OverlayItem
 		}
 		desc := fmt.Sprintf("%-24s", fmt.Sprintf("%-9s%s", h.trustWord(p), sessions))
 		if !p.Used.IsZero() {
-			desc += "  " + ago(p.Used)
+			desc += "   " + ago(p.Used)
 		}
 		item := OverlayItem{Glyph: ProjectMark(p.Root), Text: sanitize.String(perm.TildePath(p.Root)), Tail: true, Desc: strings.TrimRight(desc, " "), Fields: h.projectFields(p)}
 		switch {

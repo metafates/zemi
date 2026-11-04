@@ -98,11 +98,11 @@ func TestReplyStatsShed(t *testing.T) {
 	host.AppendMessage("user", "go")
 	appendReply(host, "done", hostapi.TurnStat{Out: 100, ElapsedMS: 1500, Model: "anthropic/claude-sonnet-4-5"})
 	wide := strings.Join(chatRows(t, app, 80), "\n")
-	if !strings.Contains(wide, "anthropic/claude-sonnet-4-5  1.5s  100 out") {
+	if !strings.Contains(wide, "anthropic/claude-sonnet-4-5   1.5s   100 out") {
 		t.Fatalf("the wide readout does not lead with the model:\n%s", wide)
 	}
 	narrow := strings.Join(chatRows(t, app, 40), "\n")
-	if strings.Contains(narrow, "anthropic") || !strings.Contains(narrow, "1.5s  100 out") {
+	if strings.Contains(narrow, "anthropic") || !strings.Contains(narrow, "1.5s   100 out") {
 		t.Fatalf("the narrow readout kept the model or lost the turn:\n%s", narrow)
 	}
 }

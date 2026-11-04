@@ -120,7 +120,7 @@ func (lt *loopTest) wantNotices(want ...string) {
 	waitFor(lt.t, func() error {
 		var notices []string
 		for _, m := range lt.h.Session().Transcript {
-			if m.Kind == RowNotice && (strings.HasPrefix(m.Text, "loop  Run ") || strings.HasPrefix(m.Text, "Loop ")) {
+			if m.Kind == RowNotice && (strings.HasPrefix(m.Text, "loop   Run ") || strings.HasPrefix(m.Text, "Loop ")) {
 				notices = append(notices, m.Text)
 			}
 		}
@@ -149,7 +149,7 @@ func TestLoopFixed(t *testing.T) {
 	lt.advance(step{runs: 1, next: 5 * time.Minute})
 	lt.advance(step{after: 5 * time.Minute, runs: 2, next: 10 * time.Minute})
 	lt.advance(step{after: 5 * time.Minute, runs: 3, next: 15 * time.Minute})
-	lt.wantNotices("loop  Run 1: check the deploy", "loop  Run 2: check the deploy", "loop  Run 3: check the deploy")
+	lt.wantNotices("loop   Run 1: check the deploy", "loop   Run 2: check the deploy", "loop   Run 3: check the deploy")
 }
 
 // TestLoopPaced: the model's next line paces the loop.
@@ -180,7 +180,7 @@ func TestLoopDone(t *testing.T) {
 	t.Parallel()
 	lt := newLoopTest(t, "check it", "all good\nnext: done")
 	lt.advance(step{runs: 1})
-	lt.wantNotices("loop  Run 1: check it", "Loop done after 1 run")
+	lt.wantNotices("loop   Run 1: check it", "Loop done after 1 run")
 	lt.wantEnded("Loop done after 1 run")
 }
 
@@ -189,7 +189,7 @@ func TestLoopFailed(t *testing.T) {
 	t.Parallel()
 	lt := newLoopTest(t, "5m check it", "fail")
 	lt.advance(step{runs: 1})
-	lt.wantNotices("loop  Run 1: check it", "Loop stopped: boom (1 run)")
+	lt.wantNotices("loop   Run 1: check it", "Loop stopped: boom (1 run)")
 	lt.wantEnded("Loop stopped: boom (1 run)")
 }
 
@@ -200,7 +200,7 @@ func TestLoopInterrupted(t *testing.T) {
 	lt.advance(step{runs: 1, next: 5 * time.Minute, held: true})
 	lt.h.AgentCancel()
 	lt.advance(step{runs: 1})
-	lt.wantNotices("loop  Run 1: check it", "Loop stopped: interrupted (1 run)")
+	lt.wantNotices("loop   Run 1: check it", "Loop stopped: interrupted (1 run)")
 	lt.wantEnded("Loop stopped: interrupted (1 run)")
 }
 
@@ -225,7 +225,7 @@ func TestLoopReplacedInterrupted(t *testing.T) {
 	lt.h.AgentCancel()
 	waitIdle(t, lt.h)
 	lt.advance(step{runs: 1})
-	lt.wantNotices("loop  Run 1: check a", "Loop stopped: interrupted (0 runs)")
+	lt.wantNotices("loop   Run 1: check a", "Loop stopped: interrupted (0 runs)")
 }
 
 // TestLoopInterruptedTurn: a turn nobody typed into, interrupted, stops it.
@@ -239,7 +239,7 @@ func TestLoopInterruptedTurn(t *testing.T) {
 	lt.advance(step{runs: 1, next: 5 * time.Minute, held: true})
 	lt.h.AgentCancel()
 	lt.advance(step{runs: 1})
-	lt.wantNotices("loop  Run 1: check it", "Loop stopped: interrupted (1 run)")
+	lt.wantNotices("loop   Run 1: check it", "Loop stopped: interrupted (1 run)")
 }
 
 // TestLoopKeepsGoalRuns: a loop run leaves the goal's count of turns alone.
@@ -281,7 +281,7 @@ func TestLoopExpires(t *testing.T) {
 	lt.advance(step{after: 24 * time.Hour, runs: 2, next: 48 * time.Hour})
 	lt.advance(step{after: 24 * time.Hour, runs: 3, next: 72 * time.Hour})
 	lt.advance(step{after: 24 * time.Hour, runs: 3})
-	lt.wantNotices("loop  Run 1: check it", "loop  Run 2: check it", "loop  Run 3: check it", "Loop stopped after 72h (3 runs)")
+	lt.wantNotices("loop   Run 1: check it", "loop   Run 2: check it", "loop   Run 3: check it", "Loop stopped after 72h (3 runs)")
 }
 
 // TestLoopCommand: a command runs with the note attached.
