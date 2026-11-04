@@ -58,6 +58,9 @@ Anything in the prefix that varies per request busts the provider cache for the 
 - gopher-lua: once `pcall` catches an error, closures made before it stop sharing locals with their maker. Share state through a table.
 - Lua's `os.clock` is wall time on the runtime's `lua.Clock`, not CPU time.
 - Builds fill the disk: a worktree's builds add to the Go build cache and a binary is 100 MB. Check `df` between rounds of parallel workers and delete scratch binaries.
+- ast-grep's Go grammar lags the toolchain: a generic method's body parses as top-level statements
+  (local `var` reads as a global), and 13 files carry ERROR regions — spot-check a new rule against
+  `internal/hostapi/plugintest.go` and `internal/config/store.go` before trusting its hit count.
 
 ## Testing patterns
 

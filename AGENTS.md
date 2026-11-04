@@ -94,11 +94,12 @@ A Makefile wraps the plain Go toolchain (module `github.com/metafates/zemi`, Go 
 `make check` is what a change has to pass:
 
 ```
-make check              # gofmt, stylua, shellcheck, go vet (host and windows), make luals, make lint, then go test - fast failures first, tests last, all must be clean
+make check              # gofmt, stylua, shellcheck, astgrep, go vet (host and windows), make luals, make lint, then go test - fast failures first, tests last, all must be clean
 make luals              # lua-language-server over runtime/; prints a skip line without the binary
                         # not on PATH? make check LUALS=/path/to/lua-language-server
 make stylua             # stylua --check over runtime/ and testdata/ (stylua.toml: tabs); a skip line without the binary
 make shellcheck         # shellcheck over tracked scripts with a sh shebang; a skip line without the binary
+make astgrep            # ast-grep over the Go files (.ast-grep/rules: the Uber guide's rules no linter covers, each message names its section; the guide is vendored at .ast-grep/uber-go.md); its test cases run first, a rule with no case rots; a skip line without the binary
 make lint               # golangci-lint run (.golangci.yml: curated linters and the gofumpt, goimports, gci formatters); a skip line without the binary
 make build / make run   # go build -o bin/zemi . / run the TUI against your real ~/.config/zemi
 make site               # serve the one-page site in docs/ at localhost:1314
@@ -129,3 +130,8 @@ its types; host flow, the CLI, boot and trust, config, turns and the chat's buil
 MCP and LSP; the TUI. Their triggers are in the skills index in your context - load the matching
 one before changing that area. `zemi-dev-lessons` and `zemi-tui-test` hold the traps and how to
 drive the binary.
+
+Go style follows the Uber Go Style Guide, vendored at `.ast-grep/uber-go.md`: what golangci-lint
+can decide lives in `.golangci.yml`, the rest in `.ast-grep/rules` (run by `make astgrep`). A rule
+finding cites its guide section; one site opts out with `// ast-grep-ignore: <rule-id>` on the
+line above and a why.

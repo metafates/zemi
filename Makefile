@@ -1,11 +1,12 @@
 GO_FILES = $(shell git ls-files -co --exclude-standard '*.go')
 
-.PHONY: all build run site first-run mcp-auth test race flake cover vet lint fmt golden luals stylua gofmt shellcheck check install clean
+.PHONY: all build run site first-run mcp-auth test race flake cover vet lint fmt golden luals stylua gofmt shellcheck astgrep check install clean
 
 LUALS ?= lua-language-server
 STYLUA ?= stylua
 GOLANGCI ?= golangci-lint
 SHELLCHECK ?= shellcheck
+ASTGREP ?= ast-grep
 
 all: check build
 
@@ -110,8 +111,14 @@ shellcheck:
 gofmt:
 	@out=$$(gofmt -l $(GO_FILES)); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 
+# the Uber guide's rules no linter covers (sgconfig.yml, .ast-grep/rules);
+# its test cases run first, a rule with no case rots; skipped without the binary
+astgrep:
+	@if command -v $(ASTGREP) >/dev/null; then $(ASTGREP) test && $(ASTGREP) scan $(GO_FILES); \
+	else echo "astgrep: $(ASTGREP) not installed, skipped (ASTGREP=/path/to/ast-grep to point at one)"; fi
+
 # the quick failures first, the tests last
-check: gofmt stylua shellcheck vet luals lint test
+check: gofmt stylua shellcheck astgrep vet luals lint test
 
 install:
 	go install .
