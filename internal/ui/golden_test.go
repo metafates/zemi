@@ -89,6 +89,8 @@ end, { desc = "notify on rebound ctrl+t" })
 // renderSync renders every visible widget synchronously on the caller's
 // goroutine (the frame loop is not running in tests) and fills the caches.
 func (a *App) renderSync(tb testing.TB) {
+	// the frame draws settled: a pinned clock would freeze a pill's fade
+	a.settlePills()
 	gen := a.frameGen
 	for _, w := range a.shownWidgets() {
 		for more := true; more; {

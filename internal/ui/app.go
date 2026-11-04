@@ -44,6 +44,8 @@ const (
 	_progressInterval = 2 * time.Second
 	_idleInterval     = 250 * time.Millisecond // the tick with nothing moving on its own; a bump wakes it
 	_frameMS          = 50                     // the frame clock: spinner, eyes and shimmer step once per tick
+	_riseDuration     = 160 * time.Millisecond // how long a statusline pill's appear or disappear takes
+	_riseTick         = 16 * time.Millisecond  // the tick while one runs, so the ramp reads smooth
 	_doneLinger       = 3 * time.Second        // how long the mascot's eyes say how a turn ended
 	// NOTE: 64 waiting hooks is the burst bound; past it dispatch drops a message, await waits.
 	_hookQueueSize = 64
@@ -175,7 +177,8 @@ type App struct {
 	pending       map[string]renderKey // widget id -> the render in flight
 	renderSeq     int64                // counts render dispatches, so the latest one wins
 	frameGen      int64
-	spun          bool // the last frame drew a spinner, so the tick keeps stepping it
+	rises         map[string]*pillFade // statusline pills easing their appear and disappear
+	spun          bool                 // the last frame drew a spinner, so the tick keeps stepping it
 	timeStr       string
 	turnActive    bool             // what onFrame last saw of the agent
 	turnDone      *turnDoneMsg     // the last turn's end, waiting for a frame that reads the agent idle
@@ -272,6 +275,7 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 		wake:     make(chan struct{}, 1),
 		prefixes: map[string]string{},
 		fadeKeys: map[float64]string{},
+		rises:    map[string]*pillFade{},
 		scrolls:  map[region]*scrollState{},
 		lastSel:  map[string]string{},
 		widgets:  shippedWidgets(host),
@@ -706,8 +710,18 @@ func (a *App) wakeTick() {
 }
 
 // frameTickCmd ticks on the last frame boundary within d, or the next one
-// after a wake: frame() then advances by exactly one per tick.
+// after a wake: frame() then advances by exactly one per tick. A tick faster
+// than the frame clock (a rise) re-renders only and keeps no grid.
 func (a *App) frameTickCmd(d time.Duration) tea.Cmd {
+	if d < _frameInterval {
+		return func() tea.Msg {
+			select {
+			case <-a.wake:
+			case <-time.After(d):
+			}
+			return frameTickMsg{}
+		}
+	}
 	at := time.Now().Add(d).Truncate(_frameInterval)
 	return func() tea.Msg {
 		select {
@@ -729,13 +743,16 @@ func (a *App) frameWork(turnRunning bool) bool {
 }
 
 func (a *App) frameAwake(st hostapi.UIState) bool {
-	return a.frameWork(a.turnActive) || st.Ended != "" || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 || a.spun
+	return a.frameWork(a.turnActive) || st.Ended != "" || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 || a.spun || a.statusRising()
 }
 
 // tickInterval is idleInterval unless something on screen moves by itself:
 // a turn's readouts, a shown run's clock, a spinner, a toast's or the done
-// frame's expiry. Everything else bumps.
+// frame's expiry, a statusline widget's rise. Everything else bumps.
 func (a *App) tickInterval() time.Duration {
+	if a.statusRising() {
+		return _riseTick
+	}
 	if a.frameAwake(a.lastState) {
 		return _frameInterval
 	}
@@ -753,7 +770,7 @@ func (a *App) onFrame() tea.Cmd {
 	// While a turn, a shown run or a busy job runs every tick re-renders, so
 	// the eyes and the elapsed time step even when no stream event arrives.
 	active := a.host.AgentActive()
-	if a.frameWork(active) {
+	if a.frameWork(active) || a.statusRising() {
 		a.frameGen++
 	}
 	a.turnActive = active
@@ -978,7 +995,7 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 		)
 		return
 	}
-	c := &widgetCache{lines: msg.lines, width: msg.width, height: msg.height, gen: msg.gen, seq: msg.seq, partial: msg.more}
+	c := &widgetCache{lines: a.statusFaded(msg), width: msg.width, height: msg.height, gen: msg.gen, seq: msg.seq, partial: msg.more}
 	old := a.caches[msg.id]
 	if old != nil {
 		c.wrapW, c.lineRows, c.spare, c.wrapN = old.wrapW, old.lineRows, old.spare, old.wrapN
@@ -995,6 +1012,107 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 	a.caches[msg.id] = c
 	a.frameDirty = true // the new lines join the next View though the generation stood still
 }
+
+// pillFade is one statusline pill's place in its appear or disappear: shown
+// says what its last render drew, from the alpha the flip started from, and
+// lines what a disappearing pill keeps drawing while it sinks.
+type pillFade struct {
+	shown bool
+	at    time.Time
+	from  float64
+	lines [][]hostapi.Segment
+}
+
+// pillAlpha is a pill's current alpha, its last flip's from easing toward
+// shown 1 or hidden 0 over _riseDuration.
+func pillAlpha(f *pillFade, now time.Time) float64 {
+	target := 0.0
+	if f.shown {
+		target = 1
+	}
+	p := float64(now.Sub(f.at)) / float64(_riseDuration)
+	if p >= 1 {
+		return target
+	}
+	return f.from + (target-f.from)*smoothstep(max(0, p))
+}
+
+// statusFaded is a statusline pill's lines settled through its appear and
+// disappear: a pill that starts drawing rises out of the surface, one that
+// stops keeps drawing what it drew, sinking back in, until the ramp ends.
+func (a *App) statusFaded(msg widgetRender) [][]hostapi.Segment {
+	w := a.widgetByID(msg.id)
+	if w == nil || (w.region != _regionStatusLeft && w.region != _regionStatusRight) {
+		return msg.lines
+	}
+	f := a.rises[msg.id]
+	shown := len(msg.lines) > 0
+	if f == nil {
+		f = &pillFade{}
+		a.rises[msg.id] = f
+	}
+	if f.shown != shown {
+		if shown {
+			f.lines = msg.lines
+		}
+		f.from = pillAlpha(f, a.now())
+		f.shown = shown
+		f.at = a.now()
+		a.wakeTick()
+	} else if shown {
+		f.lines = msg.lines
+	}
+	switch alpha := pillAlpha(f, a.now()); {
+	case f.shown && alpha >= 1:
+		return msg.lines
+	case f.shown:
+		return sunkCopy(msg.lines, 1-alpha)
+	case alpha <= 0:
+		return nil
+	default:
+		return sunkCopy(f.lines, 1-alpha)
+	}
+}
+
+// statusRising reports whether a pill's appear or disappear is still on, so
+// the tick keeps redrawing until the ramp is done.
+func (a *App) statusRising() bool {
+	now := a.now()
+	for _, f := range a.rises {
+		if d := now.Sub(f.at); d >= 0 && d < _riseDuration {
+			return true
+		}
+	}
+	return false
+}
+
+// settlePills marks every statusline pill settled shown: a test's pinned
+// clock would freeze a pill's first fade mid-ramp.
+func (a *App) settlePills() {
+	for _, w := range a.widgets {
+		if w.region == _regionStatusLeft || w.region == _regionStatusRight {
+			if a.rises[w.id] == nil {
+				a.rises[w.id] = &pillFade{shown: true, at: a.now().Add(-_riseDuration), from: 1}
+			}
+		}
+	}
+}
+
+// sunkCopy is rows with every segment sunk toward the surface it sits on.
+func sunkCopy(rows [][]hostapi.Segment, fade float64) [][]hostapi.Segment {
+	out := make([][]hostapi.Segment, len(rows))
+	for i, row := range rows {
+		out[i] = make([]hostapi.Segment, len(row))
+		for j, s := range row {
+			s.Fade = max(s.Fade, fade)
+			out[i][j] = s
+		}
+	}
+	return out
+}
+
+// smoothstep is the pill fades' easing.
+func smoothstep(p float64) float64 { return p * p * (3 - 2*p) }
 
 // widgetRegion is the region a widget draws in.
 func (a *App) widgetRegion(id string) (region, bool) {

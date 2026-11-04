@@ -123,6 +123,9 @@ func bootAgentAppIn(t testing.TB, w, h int, clock lua.Clock, cfg, project string
 	app.Update(tea.WindowSizeMsg{Width: w, Height: h})
 	app.timeStr = "12:34"
 	app.now = func() time.Time { return time.UnixMilli(500) }
+	// a test's clock is pinned, so a pill fade would freeze mid-ramp: the
+	// boot's frames are settled ones, statusline pills start settled shown
+	app.settlePills()
 	return app, host
 }
 

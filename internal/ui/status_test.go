@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/fantasy"
@@ -163,5 +164,67 @@ func TestPlanStatus(t *testing.T) {
 		if got := planStatus(c.plan); got != c.want {
 			t.Errorf("planStatus(%q) = %q, want %q", c.plan, got, c.want)
 		}
+	}
+}
+
+// TestStatusRise: a statusline pill rises out of the surface when it starts
+// drawing and sinks back in when it stops, each over _riseDuration on its
+// own clock, and the ramps keep the tick awake while they run.
+func TestStatusRise(t *testing.T) {
+	_, host := statusApp(t)
+	app := &App{
+		host:    host,
+		widgets: statuslineWidgets(),
+		rises:   map[string]*pillFade{},
+		caches:  map[string]*widgetCache{},
+		now:     func() time.Time { return time.UnixMilli(500) },
+	}
+	const id = "statusline.goal"
+	lines := [][]hostapi.Segment{{{Text: "flag", HL: "Dim"}}}
+
+	// appear: the first draw starts the rise
+	app.onWidgetRendered(widgetRender{id: id, lines: lines, gen: 1, seq: 1, width: 80, height: 14})
+	if got := app.caches[id].lines[0][0].Fade; got != 1 {
+		t.Fatalf("the pill's first draw drew at fade %v, want fully sunk", got)
+	}
+	if !app.statusRising() || app.tickInterval() != _riseTick {
+		t.Fatal("the rise did not keep the tick awake")
+	}
+	app.now = func() time.Time { return time.UnixMilli(500 + _riseDuration.Milliseconds()/2) }
+	app.onWidgetRendered(widgetRender{id: id, lines: lines, gen: 2, seq: 2, width: 80, height: 14})
+	if got := app.caches[id].lines[0][0].Fade; got < 0.4 || got > 0.6 {
+		t.Fatalf("mid-rise fade %v, want about half", got)
+	}
+	app.now = func() time.Time { return time.UnixMilli(1500) }
+	app.onWidgetRendered(widgetRender{id: id, lines: lines, gen: 3, seq: 3, width: 80, height: 14})
+	if got := app.caches[id].lines[0][0].Fade; got != 0 {
+		t.Fatalf("the settled pill kept a fade of %v", got)
+	}
+	if app.statusRising() || app.tickInterval() != _idleInterval {
+		t.Fatal("the finished rise kept the tick awake")
+	}
+
+	// disappear: an empty draw keeps the last lines, sinking back in from
+	// full brightness
+	app.now = func() time.Time { return time.UnixMilli(2000) }
+	app.onWidgetRendered(widgetRender{id: id, gen: 4, seq: 4, width: 80, height: 14})
+	if got := app.caches[id].lines[0][0].Fade; got != 0 {
+		t.Fatalf("the vanishing pill drew at fade %v, want fully bright", got)
+	}
+	app.now = func() time.Time { return time.UnixMilli(2000 + _riseDuration.Milliseconds()/2) }
+	app.onWidgetRendered(widgetRender{id: id, gen: 5, seq: 5, width: 80, height: 14})
+	if got := app.caches[id].lines[0][0].Fade; got < 0.4 || got > 0.6 {
+		t.Fatalf("mid-fall fade %v, want about half", got)
+	}
+	if !app.statusRising() {
+		t.Fatal("the fall did not keep the tick awake")
+	}
+	app.now = func() time.Time { return time.UnixMilli(3000) }
+	app.onWidgetRendered(widgetRender{id: id, gen: 6, seq: 6, width: 80, height: 14})
+	if len(app.caches[id].lines) != 0 {
+		t.Fatalf("the fallen pill kept %d lines", len(app.caches[id].lines))
+	}
+	if app.statusRising() || app.tickInterval() != _idleInterval {
+		t.Fatal("the finished fall kept the tick awake")
 	}
 }
