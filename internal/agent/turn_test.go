@@ -687,7 +687,7 @@ func TestRegistryConcurrentReload(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		for i := range 100 {
-			_ = r.Register(Spec{ID: fmt.Sprint("p", i%3), Kind: KindOpenAI}, "k", false)
+			_ = r.Register(Spec{ID: "p" + strconv.Itoa(i%3), Kind: KindOpenAI}, "k", false)
 		}
 	})
 	for range 100 {
@@ -760,6 +760,7 @@ func TestProviderHeadersRideRequests(t *testing.T) {
 // promptRec keeps the prompt of the last model call.
 type promptRec struct {
 	fantasy.LanguageModel
+
 	prompt fantasy.Prompt
 }
 

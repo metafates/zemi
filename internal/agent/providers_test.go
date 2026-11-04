@@ -153,6 +153,7 @@ func TestCallOptionsBody(t *testing.T) {
 // generateStub answers Generate with a fixed usage.
 type generateStub struct {
 	fantasy.LanguageModel
+
 	usage fantasy.Usage
 }
 
@@ -409,7 +410,7 @@ func TestRegistryBuiltin(t *testing.T) {
 		t.Fatalf("user add under a missing builtin still waits for its key: %v", r.Missing())
 	}
 	r.DropBuiltin()
-	ids := []string{}
+	var ids []string
 	for _, s := range r.List() {
 		ids = append(ids, s.ID)
 	}

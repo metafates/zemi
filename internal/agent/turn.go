@@ -243,6 +243,7 @@ func NewRunner(model fantasy.LanguageModel, tools []fantasy.AgentTool, system st
 // arguments end when a serial call ahead of it still runs.
 type runningTool struct {
 	fantasy.AgentTool
+
 	r *Runner
 }
 
@@ -255,6 +256,7 @@ func (t runningTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 // only a *ProviderError, nil when a network failure caused the retry.
 type LastErr struct {
 	fantasy.LanguageModel
+
 	Err error
 }
 
@@ -526,7 +528,7 @@ func (r *Runner) Snapshot() []fantasy.Message {
 func (r *Runner) SetHistory(h []fantasy.Message) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.History = h
+	r.History = slices.Clone(h)
 }
 
 // Len is the conversation's message count.
@@ -762,6 +764,7 @@ func (r *Runner) signed(msgs []fantasy.Message, active []string, record bool) []
 	}
 	names := active
 	if names == nil {
+		names = make([]string, 0, len(r.tools))
 		for _, t := range r.tools {
 			names = append(names, t.Info().Name)
 		}

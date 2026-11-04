@@ -225,6 +225,7 @@ func (l *rateLimiter) hold429(retryAfterMs, retryAfter, retryAfterMsUp, retryAft
 // tokens charge the completion budget as they arrive.
 type rateModel struct {
 	fantasy.LanguageModel
+
 	limiter *rateLimiter
 }
 

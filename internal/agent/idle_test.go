@@ -13,6 +13,7 @@ import (
 // streamStub streams whatever stream does with the context it is given.
 type streamStub struct {
 	fantasy.LanguageModel
+
 	stream func(ctx context.Context, yield func(fantasy.StreamPart) bool)
 }
 

@@ -1289,6 +1289,7 @@ var errModelIdle = fmt.Errorf("the model sent nothing for %s", modelIdleTimeout)
 // calls, so this never covers a build or a test run.
 type idleModel struct {
 	fantasy.LanguageModel
+
 	idle     time.Duration
 	provider string
 	kind     Kind
