@@ -8,6 +8,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/metafates/zemi/internal/anim"
 	"github.com/metafates/zemi/internal/hostapi"
 )
 
@@ -433,6 +434,7 @@ type viewport struct {
 	top, rows, viewH int
 	follow           bool
 	pins             [][]hostapi.Segment // drawn in place of the first rows shown
+	barFade          float64             // how sunk the scrollbar draws, 0 settled
 }
 
 func (v *viewport) clamp() {
@@ -483,7 +485,7 @@ func barText(width int) int {
 func (v *viewport) window(lines [][]hostapi.Segment, width, fade int) [][]hostapi.Segment {
 	v.rows = len(lines)
 	v.clamp()
-	bar := scrollbar{h: v.viewH, top: v.top, total: v.rows, width: width}
+	bar := scrollbar{h: v.viewH, top: v.top, total: v.rows, width: width, fade: v.barFade}
 	out := make([][]hostapi.Segment, 0, max(min(v.viewH, len(lines)), 0))
 	for i := range v.viewH {
 		j := v.top + i
@@ -604,6 +606,13 @@ type scrollState struct {
 	// re-render's fresh slice can never sit at the old one's address.
 	band, bandSrc [][]hostapi.Segment
 	bandAt, bandW int
+	// the scrollbar's fade: bar eases its appear (a bar that goes is Jumped
+	// off, it has nothing to sink while gone), barSeen says the region has
+	// painted once, since the first paint settles whatever is there (a boot
+	// with a full transcript draws the bar whole, and a test's pinned clock
+	// would freeze a ramp); window reads the sink from viewport.barFade
+	bar     anim.Fade
+	barSeen bool
 }
 
 // pinKey names a pinned row's copy: the row by its first segment, which the
@@ -692,6 +701,20 @@ func (a *App) paintScrolled(n *node, r uv.Rectangle) [][]hostapi.Segment {
 		}
 		draw = st.band
 	}
+	// the scrollbar fades in when it appears: the stamp must read the same
+	// values window() builds its bar from
+	on := (scrollbar{h: st.viewH, total: st.rows, width: w - 1}).on()
+	switch {
+	case !st.barSeen:
+		st.barSeen = true
+		st.bar.Jump(on)
+	case on && !st.bar.Shown():
+		st.bar.Set(true, a.now())
+		a.wakeTick()
+	case !on:
+		st.bar.Jump(false)
+	}
+	st.barFade = 1 - st.bar.Alpha(a.now())
 	rows := st.window(draw, w-1, n.Fade) // the bar keeps the region's last column
 	// the scrollbar keeps its own ground: the banded message runs to it and no
 	// further, so the bar reads the same over a picked row as over any other
@@ -1010,7 +1033,10 @@ func pinCopy(row []hostapi.Segment, more bool, width int) []hostapi.Segment {
 // shows and where. It is decoration, so it never copies, and it draws
 // nothing while everything fits. width is the text beside it, under 7
 // cells too narrow for one.
-type scrollbar struct{ h, top, total, width int }
+type scrollbar struct {
+	h, top, total, width int
+	fade                 float64 // how sunk the bar draws while its appear ramps
+}
 
 func (b scrollbar) on() bool { return b.h >= 2 && b.total > b.h && b.width >= 7 }
 
@@ -1033,7 +1059,7 @@ func (b scrollbar) row(row []hostapi.Segment, i int) []hostapi.Segment {
 	}
 	out := make([]hostapi.Segment, len(row), len(row)+1)
 	copy(out, row)
-	return append(out, hostapi.Segment{Text: mark, HL: hl, NoCopy: true, Bar: true, Fill: fill})
+	return append(out, hostapi.Segment{Text: mark, HL: hl, NoCopy: true, Bar: true, Fill: fill, Fade: b.fade})
 }
 
 // reanchor puts the viewport back on the content it was showing after the
@@ -1087,7 +1113,7 @@ func anchoredAt(lines [][]hostapi.Segment, i int, want []string) bool {
 func (a *App) scrollOf(n *node) *scrollState {
 	st := a.scrolls[n.Region]
 	if st == nil {
-		st = &scrollState{follow: true}
+		st = &scrollState{follow: true, bar: anim.Fade{Dur: _riseDuration}}
 		a.scrolls[n.Region] = st
 	}
 	return st

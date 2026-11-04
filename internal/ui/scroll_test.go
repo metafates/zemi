@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/fantasy"
@@ -1038,5 +1039,34 @@ func TestScrollPendingEdge(t *testing.T) {
 	app.applyScroll(hostapi.ScrollBottom, _regionChat)
 	if st, frame := rows("c", 70); !st.follow || !strings.Contains(frame, "c row 70") {
 		t.Fatalf("a bottom follows the tail: follow %v\n%s", st.follow, frame)
+	}
+}
+
+// TestScrollBarRises: the chat's scrollbar fades in when content first
+// overflows the view; a bar present at a region's first paint draws settled.
+func TestScrollBarRises(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 100, 14)
+	host.AppendMessage("user", "short")
+	appendReply(host, "a short reply", hostapi.TurnStat{})
+	app.renderSync(t)
+	app.Frame()
+	st := app.scrolls[_regionChat]
+	if st == nil || st.bar.Shown() || st.barFade != 1 {
+		t.Fatalf("a fitting transcript left the bar shown=%v fade=%v, want hidden and settled", st.bar.Shown(), st.barFade)
+	}
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame()
+	if !st.bar.Shown() || st.barFade != 1 {
+		t.Fatalf("the appearing bar drew at fade %v, want fully sunk", st.barFade)
+	}
+	if !app.fadesRising() || app.tickInterval() != _riseTick {
+		t.Fatal("the bar's rise did not keep the tick awake")
+	}
+	app.now = func() time.Time { return time.UnixMilli(500 + _riseDuration.Milliseconds()) }
+	app.Frame()
+	if got := app.scrolls[_regionChat].barFade; got != 0 {
+		t.Fatalf("the settled bar kept a fade of %v", got)
 	}
 }
