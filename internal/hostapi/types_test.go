@@ -249,7 +249,10 @@ func bootedNamespaces(t *testing.T, other bool) map[string][]string {
 	if !other {
 		return out
 	}
-	L := (&wfRun{h: h}).open(nil)
+	L, err := (&wfRun{h: h}).open(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer L.Close()
 	L.GetGlobal("zemi").(*glua.LTable).RawGetString("workflow").(*glua.LTable).ForEach(func(k, _ glua.LValue) {
 		out["zemi.workflow"] = append(out["zemi.workflow"], k.String())

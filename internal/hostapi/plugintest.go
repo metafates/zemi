@@ -114,7 +114,11 @@ func (t *PluginTest) Step() lua.BootStep {
 		if err := g.L.CallByParam(glua.P{Fn: asserts, NRet: 1, Protect: true}, rel); err != nil {
 			return err
 		}
-		g.L.Get(-1).(*glua.LTable).ForEach(tb.RawSet)
+		suite, ok := g.L.Get(-1).(*glua.LTable)
+		if !ok {
+			return errors.New("zemi.test.assert returned no table")
+		}
+		suite.ForEach(tb.RawSet)
 		g.L.Pop(1)
 		for name, fn := range map[string]glua.LGFunction{
 			"run": t.runCmd, "keys": t.keys, "tool": t.tool,
@@ -122,7 +126,7 @@ func (t *PluginTest) Step() lua.BootStep {
 		} {
 			tb.RawSetString(name, lua.Suspending(g.L, g.L.NewFunction(func(L *glua.LState) int {
 				if t.h.RT.Booting() {
-					raise(L, "test.%s: drivers run inside a case: test(\"name\", function() ... end)", name)
+					raisef(L, "test.%s: drivers run inside a case: test(\"name\", function() ... end)", name)
 				}
 				return fn(L)
 			})))
@@ -253,7 +257,7 @@ func (t *PluginTest) settle(ctx context.Context, until time.Time) error {
 func (t *PluginTest) advance(L *glua.LState) int {
 	ms := float64(L.CheckNumber(1))
 	if ms < 0 || math.IsNaN(ms) {
-		raise(L, "test.advance: ms must not be negative")
+		raisef(L, "test.advance: ms must not be negative")
 	}
 	// a Duration holds some 292 years; past that the conversion wraps on amd64
 	ms = min(ms, float64(math.MaxInt64/int64(time.Millisecond)))
@@ -370,9 +374,9 @@ func (e raiseError) Error() string { return string(e) }
 // none is a driver's result with no values.
 func none(*glua.LState) []glua.LValue { return nil }
 
-// raise refuses misuse of a Suspending driver at the case's line: level 3
+// raisef refuses misuse of a Suspending driver at the case's line: level 3
 // passes the driver and its wrapper.
-func raise(L *glua.LState, format string, args ...any) {
+func raisef(L *glua.LState, format string, args ...any) {
 	L.Error(glua.LString(fmt.Sprintf(format, args...)), 3)
 }
 
@@ -470,7 +474,7 @@ func (t *PluginTest) own[T any](L *glua.LState, driver, kind, name string, all [
 			names = append(names, k)
 		}
 	}
-	raise(L, "test.%s: %s is not a %s of plugin %s; it registered %s", driver, name, kind, t.plugin, cmp.Or(strings.Join(names, ", "), "none"))
+	raisef(L, "test.%s: %s is not a %s of plugin %s; it registered %s", driver, name, kind, t.plugin, cmp.Or(strings.Join(names, ", "), "none"))
 	var zero T
 	return zero
 }
@@ -507,7 +511,7 @@ func (t *PluginTest) set(L *glua.LState) int {
 func (t *PluginTest) keys(L *glua.LState) int {
 	seq, err := t.h.keySeq(L.CheckString(1))
 	if err != nil {
-		raise(L, "test.keys: %v", err)
+		raisef(L, "test.keys: %v", err)
 	}
 	b := t.own(L, "keys", "Lua key binding", seq, t.h.Keymaps.List(), func(k *KeyBinding) (string, bool) {
 		c := t.h.Commands.Lookup(k.RHS.Command)
@@ -529,7 +533,7 @@ func (t *PluginTest) tool(L *glua.LState) int {
 	}
 	raw, err := json.Marshal(input, json.Deterministic(true))
 	if err != nil {
-		raise(L, "test.tool: input: %v", err)
+		raisef(L, "test.tool: input: %v", err)
 	}
 	return t.drive(L, "tool", "tool "+name, func(ctx context.Context) (func(*glua.LState) []glua.LValue, error) {
 		pipe := t.h.PipelineFor()
@@ -548,7 +552,7 @@ func (t *PluginTest) emit(L *glua.LState) int {
 	name := L.CheckString(1)
 	ev, _ := luaToGoChecked(L, 2, "test.emit").(map[string]any)
 	if !eventCatalogue.Has(name) {
-		raise(L, "test.emit: %q is not a host event; zemi.event.emit sends user.* events", name)
+		raisef(L, "test.emit: %q is not a host event; zemi.event.emit sends user.* events", name)
 	}
 	tool, _ := ev["tool"].(string)
 	handlers := func(event string) []*EventHandler {
@@ -643,7 +647,7 @@ func itemTexts(o Overlay) []string {
 func (t *PluginTest) answer(L *glua.LState) int {
 	o, ok := t.ui.top()
 	if !ok {
-		raise(L, "test.answer: no overlay is open")
+		raisef(L, "test.answer: no overlay is open")
 	}
 	what, fn, args := "on_close", o.OnClose, []any(nil)
 	var row OverlayItem
@@ -659,7 +663,7 @@ func (t *PluginTest) answer(L *glua.LState) int {
 			for j := range texts {
 				texts[j] = luaLiteral(texts[j])
 			}
-			raise(L, "test.answer: no item %q in %s; it lists %s", string(c), o.ID, strings.Join(texts, ", "))
+			raisef(L, "test.answer: no item %q in %s; it lists %s", string(c), o.ID, strings.Join(texts, ", "))
 		default:
 			row = o.Items[i]
 			args = []any{row.raw}
@@ -667,12 +671,12 @@ func (t *PluginTest) answer(L *glua.LState) int {
 	case glua.LNumber:
 		i := int(c) - 1
 		if o.Input || i < 0 || i >= len(o.Items) {
-			raise(L, "test.answer: %s has no item %d", o.ID, int(c))
+			raisef(L, "test.answer: %s has no item %d", o.ID, int(c))
 		}
 		row = o.Items[i]
 		args = []any{row.raw}
 	default:
-		raise(L, "test.answer: choice must be an item's index or text, the input's text, or nil for esc")
+		raisef(L, "test.answer: choice must be an item's index or text, the input's text, or nil for esc")
 	}
 	if args != nil {
 		what, fn = "on_select", o.OnSelect
@@ -681,7 +685,7 @@ func (t *PluginTest) answer(L *glua.LState) int {
 	if a := L.Get(2); a != glua.LNil && args != nil {
 		i := slices.IndexFunc(row.Keys, func(k ItemKey) bool { return k.ID == a.String() || k.Desc == a.String() })
 		if i < 0 {
-			raise(L, "test.answer: the item has no key %q", a.String())
+			raisef(L, "test.answer: the item has no key %q", a.String())
 		}
 		key = row.Keys[i]
 		args = append(args, key.Raw)
@@ -703,7 +707,7 @@ func (t *PluginTest) answer(L *glua.LState) int {
 	}
 	if fn == nil && args != nil {
 		if row.Run == "" {
-			raise(L, "test.answer: overlay %s has no %s, and the row no run", o.ID, what)
+			raisef(L, "test.answer: overlay %s has no %s, and the row no run", o.ID, what)
 		}
 		name, cmdArgs := SplitCommand(row.Run)
 		c := t.command(L, "answer", name)

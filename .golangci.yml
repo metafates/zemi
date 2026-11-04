@@ -29,6 +29,12 @@ linters:
     govet:
       enable-all: true
       disable: [fieldalignment, shadow]
+      settings:
+        printf:
+          funcs:
+            - Usagef
+            - RaiseScriptf
+            - raisef
     errcheck:
       exclude-functions:
         - (io.Closer).Close

@@ -158,7 +158,7 @@ func opt[T glua.LValue](L *glua.LState, tb *glua.LTable, key string) (T, bool) {
 	v := tb.RawGetString(key)
 	t, ok := v.(T)
 	if !ok && v != glua.LNil {
-		lua.RaiseScript(L, "%s must be a %s, not a %s", key, t.Type(), v.Type())
+		lua.RaiseScriptf(L, "%s must be a %s, not a %s", key, t.Type(), v.Type())
 	}
 	return t, ok
 }
@@ -169,7 +169,7 @@ func arg[T glua.LValue](L *glua.LState, n int, where string) (T, bool) {
 	v := L.Get(n)
 	t, ok := v.(T)
 	if !ok && v != glua.LNil {
-		lua.RaiseScript(L, "%s: the argument must be a %s, not a %s", where, t.Type(), v.Type())
+		lua.RaiseScriptf(L, "%s: the argument must be a %s, not a %s", where, t.Type(), v.Type())
 	}
 	return t, ok
 }

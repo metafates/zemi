@@ -385,7 +385,10 @@ func (f *flowRun) finishedAgents() (done, total int) {
 // agents report and control arrives, and returns the script's value.
 func (h *Host) runScript(ctx context.Context, f *flowRun, spec flowSpec) (string, error) {
 	r := &wfRun{h: h, f: f, ctx: ctx, tasks: map[*glua.LState]*wfTask{}, done: make(chan wfDone, workflowMaxAgents), cache: spec.cache}
-	L := r.open(spec.args)
+	L, err := r.open(spec.args)
+	if err != nil {
+		return "", fmt.Errorf("workflow prelude: %w", err)
+	}
 	defer L.Close()
 	L.SetContext(ctx)
 
@@ -593,7 +596,7 @@ var misnamed = map[string]string{
 
 // open builds the script's own state (DESIGN §4): base, string, table and
 // math, and a zemi table holding only workflow and json.
-func (r *wfRun) open(args any) *glua.LState {
+func (r *wfRun) open(args any) (*glua.LState, error) {
 	L := glua.NewState(glua.Options{SkipOpenLibs: true, CallStackSize: 256})
 	r.L = L
 	for _, lib := range []struct {
@@ -622,12 +625,12 @@ func (r *wfRun) open(args any) *glua.LState {
 	wf.RawSetString("agent", lua.Suspending(L, L.NewFunction(r.luaAgent)))
 	wf.RawSetString("parallel", lua.Suspending(L, L.NewFunction(r.luaParallel)))
 	wf.RawSetString("phase", L.NewFunction(func(L *glua.LState) int {
-		if _, ok := L.Get(1).(glua.LString); !ok {
-			lua.RaiseScript(L, "phase: pass the phase name as a string")
+		name, ok := L.Get(1).(glua.LString)
+		if !ok {
+			lua.RaiseScriptf(L, "phase: pass the phase name as a string")
 		}
-		phase := string(L.Get(1).(glua.LString))
 		r.f.mu.Lock()
-		r.f.phase = phase
+		r.f.phase = string(name)
 		r.f.mu.Unlock()
 		r.f.changed()
 		return 0
@@ -658,9 +661,9 @@ func (r *wfRun) open(args any) *glua.LState {
 			return 0
 		}
 		if to, ok := misnamed[name]; ok {
-			lua.RaiseScript(L, "a workflow script has no %s, write %s", name, to)
+			lua.RaiseScriptf(L, "a workflow script has no %s, write %s", name, to)
 		}
-		lua.RaiseScript(L, "a workflow script has no %s; zemi.workflow has %s", name, strings.Join(wfMembers, ", "))
+		lua.RaiseScriptf(L, "a workflow script has no %s; zemi.workflow has %s", name, strings.Join(wfMembers, ", "))
 		return 0
 	}))
 	L.SetMetatable(wf, wmt)
@@ -671,9 +674,10 @@ func (r *wfRun) open(args any) *glua.LState {
 	zemi.RawSetString("yaml", r.h.yamlNamespace(L))
 	L.SetGlobal("zemi", zemi)
 	if err := L.DoString(workflowPrelude); err != nil {
-		panic(err) // a constant: every workflow test fails first
+		L.Close()
+		return nil, err
 	}
-	return L
+	return L, nil
 }
 
 // agentOpts are the option keys zemi.workflow.agent reads; any other raises.
@@ -689,13 +693,13 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 	t := r.tasks[L]
 	switch {
 	case t == nil:
-		lua.RaiseScript(L, "agent() must run inside the workflow")
+		lua.RaiseScriptf(L, "agent() must run inside the workflow")
 	case lua.InGoCall(L):
-		lua.RaiseScript(L, "agent() cannot wait inside pcall or a library callback such as table.sort; it returns nil, err on failure instead")
+		lua.RaiseScriptf(L, "agent() cannot wait inside pcall or a library callback such as table.sort; it returns nil, err on failure instead")
 	}
 	prompt, ok := arg[glua.LString](L, 1, "agent")
 	if !ok || strings.TrimSpace(string(prompt)) == "" {
-		lua.RaiseScript(L, "agent: prompt is required")
+		lua.RaiseScriptf(L, "agent: prompt is required")
 	}
 	opts, ok := arg[*glua.LTable](L, 2, "agent")
 	if !ok {
@@ -703,16 +707,16 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 	}
 	opts.ForEach(func(k, v glua.LValue) {
 		if key, ok := k.(glua.LString); !ok || !slices.Contains(agentOpts, string(key)) {
-			lua.RaiseScript(L, "agent: unknown option %q; have %s", k, strings.Join(agentOpts, ", "))
+			lua.RaiseScriptf(L, "agent: unknown option %q; have %s", k, strings.Join(agentOpts, ", "))
 		}
 	})
 	name, desc, model, phase := rawString(L, opts, "agent"), rawString(L, opts, "description"), rawString(L, opts, "model"), rawString(L, opts, "phase")
 	def, err := r.h.agentDef(name)
 	if err != nil {
-		lua.RaiseScript(L, "agent: %v", err)
+		lua.RaiseScriptf(L, "agent: %v", err)
 	}
 	if err := r.h.checkModelID(model); err != nil {
-		lua.RaiseScript(L, "agent: %v", err)
+		lua.RaiseScriptf(L, "agent: %v", err)
 	}
 	if model != "" {
 		def.Model = model
@@ -737,7 +741,7 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 		return 1
 	}
 	if r.started >= workflowMaxAgents {
-		lua.RaiseScript(L, "agent: this workflow already started %d agents (the limit)", workflowMaxAgents)
+		lua.RaiseScriptf(L, "agent: this workflow already started %d agents (the limit)", workflowMaxAgents)
 	}
 	r.started++
 	r.f.addAgent(a)
@@ -767,7 +771,7 @@ func callSchema(L *glua.LState, opts *glua.LTable) map[string]any {
 		return !ok
 	})
 	if s["type"] != "object" || props == nil || stray {
-		lua.RaiseScript(L, "agent: schema must be a JSON Schema object with type \"object\" and properties, and required naming only those; it holds a %s", tb.Type())
+		lua.RaiseScriptf(L, "agent: schema must be a JSON Schema object with type \"object\" and properties, and required naming only those; it holds a %s", tb.Type())
 	}
 	return s
 }
@@ -777,22 +781,22 @@ func callSchema(L *glua.LState, opts *glua.LTable) map[string]any {
 func (r *wfRun) luaParallel(L *glua.LState) int {
 	t := r.tasks[L]
 	if t == nil || lua.InGoCall(L) {
-		lua.RaiseScript(L, "parallel() cannot wait inside pcall or a library callback such as table.sort")
+		lua.RaiseScriptf(L, "parallel() cannot wait inside pcall or a library callback such as table.sort")
 	}
 	list, ok := L.Get(1).(*glua.LTable)
 	if !ok {
-		lua.RaiseScript(L, "parallel: pass the branches as one table: parallel({fn, ...})")
+		lua.RaiseScriptf(L, "parallel: pass the branches as one table: parallel({fn, ...})")
 	}
 	n := list.Len()
 	// Every entry becomes a coroutine before the concurrency cap applies,
 	// so refuse a batch larger than the run's whole agent budget.
 	if n > workflowMaxAgents {
-		lua.RaiseScript(L, "parallel: %d branches is more than the %d agents a workflow may start", n, workflowMaxAgents)
+		lua.RaiseScriptf(L, "parallel: %d branches is more than the %d agents a workflow may start", n, workflowMaxAgents)
 	}
 	for i := 1; i <= n; i++ {
 		fn, ok := list.RawGetInt(i).(*glua.LFunction)
 		if !ok {
-			lua.RaiseScript(L, "parallel: item %d is not a function", i)
+			lua.RaiseScriptf(L, "parallel: item %d is not a function", i)
 		}
 		t.kids = append(t.kids, fn)
 	}

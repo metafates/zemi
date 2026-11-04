@@ -306,13 +306,13 @@ func suspended(fn *glua.LFunction) (*glua.LFunction, bool) {
 	return inner, ok && inner.IsG
 }
 
-// RaiseScript raises format attributed to the innermost script frame, so an
+// RaiseScriptf raises format attributed to the innermost script frame, so an
 // error a host call raises reads as the script's line and never as the
 // Suspending wrapper's ("@host:wait:1"). Host machinery - Go frames, the
 // wrapper, unnamed chunks - is skipped; with no script frame (a tail call
 // replaced it) the message raises bare, since a wrapper position would only
 // misattribute it.
-func RaiseScript(L *glua.LState, format string, args ...any) {
+func RaiseScriptf(L *glua.LState, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	for level := 0; ; level++ {
 		dbg, ok := L.GetStack(level)
