@@ -10,6 +10,7 @@ import "time"
 // settled hidden and never animates; New gives the ramp its duration.
 type Fade struct {
 	Dur   time.Duration
+	Delay time.Duration // how long an appear waits before its ramp starts
 	shown bool
 	at    time.Time
 	from  float64
@@ -36,23 +37,24 @@ func (f *Fade) Jump(shown bool) {
 // Alpha is the fade's value at now.
 func (f *Fade) Alpha(now time.Time) float64 {
 	target := 0.0
+	var delay time.Duration
 	if f.shown {
-		target = 1
+		target, delay = 1, f.Delay
 	}
-	p := float64(now.Sub(f.at)) / float64(f.Dur)
+	p := float64(now.Sub(f.at)-delay) / float64(f.Dur)
 	if p >= 1 {
 		return target
 	}
-	if p < 0 {
-		p = 0
+	if p <= 0 {
+		return f.from
 	}
 	return f.from + (target-f.from)*Smoothstep(p)
 }
 
-// Rising reports a ramp in flight at now.
+// Rising reports a ramp in flight at now, an appear's delay included.
 func (f *Fade) Rising(now time.Time) bool {
 	d := now.Sub(f.at)
-	return d >= 0 && d < f.Dur
+	return d >= 0 && d < f.Dur+f.Delay
 }
 
 // Shown is the fade's target.

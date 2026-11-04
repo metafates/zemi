@@ -1120,7 +1120,7 @@ func anchoredAt(lines [][]hostapi.Segment, i int, want []string) bool {
 func (a *App) scrollOf(n *node) *scrollState {
 	st := a.scrolls[n.Region]
 	if st == nil {
-		st = &scrollState{follow: true, bar: anim.Fade{Dur: _riseDuration}}
+		st = &scrollState{follow: true, bar: anim.Fade{Dur: _riseDuration, Delay: _barDelay}}
 		a.scrolls[n.Region] = st
 	}
 	return st

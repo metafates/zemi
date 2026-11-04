@@ -1066,7 +1066,12 @@ func TestScrollBarRises(t *testing.T) {
 	if !app.fadesRising() || app.tickInterval() != _riseTick {
 		t.Fatal("the bar's rise did not keep the tick awake")
 	}
-	app.now = func() time.Time { return time.UnixMilli(500 + _riseDuration.Milliseconds()) }
+	app.now = func() time.Time { return time.UnixMilli(500 + _barDelay.Milliseconds()/2) }
+	app.Frame()
+	if got := app.scrolls[_regionChat].barFade; got != 1 {
+		t.Fatalf("the bar's delay did not hold it sunk at fade %v", got)
+	}
+	app.now = func() time.Time { return time.UnixMilli(500 + _barDelay.Milliseconds() + _riseDuration.Milliseconds()) }
 	app.Frame()
 	if got := app.scrolls[_regionChat].barFade; got != 0 {
 		t.Fatalf("the settled bar kept a fade of %v", got)
@@ -1088,7 +1093,7 @@ func TestScrollBarRisesAtBoot(t *testing.T) {
 	if !app.fadesRising() || app.tickInterval() != _riseTick {
 		t.Fatal("the boot bar's rise did not keep the tick awake")
 	}
-	app.now = func() time.Time { return time.UnixMilli(500 + _riseDuration.Milliseconds()) }
+	app.now = func() time.Time { return time.UnixMilli(500 + _barDelay.Milliseconds() + _riseDuration.Milliseconds()) }
 	app.renderSync(t)
 	app.Frame()
 	if got := app.scrolls[_regionChat].barFade; got != 0 {

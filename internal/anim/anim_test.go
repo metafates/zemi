@@ -29,4 +29,18 @@ func TestFade(t *testing.T) {
 	if f.Alpha(mid) != 1 || f.Rising(mid) || !f.Shown() {
 		t.Fatal("a jumped fade is settled at its target")
 	}
+
+	// a delayed appear holds its start value through the delay, then ramps
+	d := New(100 * time.Millisecond)
+	d.Delay = 60 * time.Millisecond
+	d.Set(true, now)
+	if got := d.Alpha(now.Add(30 * time.Millisecond)); got != 0 || !d.Rising(now.Add(30*time.Millisecond)) {
+		t.Fatalf("the delay did not hold the appear sunk: %v", got)
+	}
+	if got := d.Alpha(now.Add(110 * time.Millisecond)); got < 0.4 || got > 0.6 {
+		t.Fatalf("mid-ramp alpha %v, want about half", got)
+	}
+	if d.Rising(now.Add(160 * time.Millisecond)) {
+		t.Fatal("the delayed ramp did not settle")
+	}
 }

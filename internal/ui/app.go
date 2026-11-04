@@ -46,6 +46,7 @@ const (
 	_idleInterval     = 250 * time.Millisecond // the tick with nothing moving on its own; a bump wakes it
 	_frameMS          = 50                     // the frame clock: spinner, eyes and shimmer step once per tick
 	_riseDuration     = 160 * time.Millisecond // how long a statusline pill's appear or disappear takes
+	_barDelay         = 120 * time.Millisecond // how long the scrollbar's appear waits after a pill's starts
 	_riseTick         = 16 * time.Millisecond  // the tick while one runs, so the ramp reads smooth
 	_doneLinger       = 3 * time.Second        // how long the mascot's eyes say how a turn ended
 	// NOTE: 64 waiting hooks is the burst bound; past it dispatch drops a message, await waits.
