@@ -67,6 +67,7 @@ func TestFadeSparesTheWidgetCache(t *testing.T) {
 		return [][]hostapi.Segment{{{Text: strings.Repeat("word ", 14)}}}, false
 	}})
 	app.screen(t)
+	app.settleBars()
 	before := app.Frame()
 	app.openOverlay(hostapi.Overlay{
 		ID: "pick", Title: "pick", Origin: lua.OriginBuiltin,

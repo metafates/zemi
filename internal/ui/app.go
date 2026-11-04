@@ -1087,6 +1087,20 @@ func (a *App) settlePills() {
 	}
 }
 
+// settleBars marks every boot-stamped scrollbar settled: a test's pinned
+// clock would freeze its rise mid-ramp. Reports whether it settled any.
+func (a *App) settleBars() bool {
+	done := false
+	for _, st := range a.scrolls {
+		if st.barBoot {
+			st.bar.Jump(true)
+			st.barBoot = false
+			done = true
+		}
+	}
+	return done
+}
+
 // sunkCopy is rows with every segment sunk toward the surface it sits on.
 func sunkCopy(rows [][]hostapi.Segment, fade float64) [][]hostapi.Segment {
 	out := make([][]hostapi.Segment, len(rows))

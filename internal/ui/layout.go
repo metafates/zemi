@@ -608,11 +608,12 @@ type scrollState struct {
 	bandAt, bandW int
 	// the scrollbar's fade: bar eases its appear (a bar that goes is Jumped
 	// off, it has nothing to sink while gone), barSeen says the region has
-	// painted once, since the first paint settles whatever is there (a boot
-	// with a full transcript draws the bar whole, and a test's pinned clock
-	// would freeze a ramp); window reads the sink from viewport.barFade
+	// painted once; barBoot marks a rise the first paint stamped (a boot
+	// with a full transcript), which a pinned-clock render settles; window
+	// reads the sink from viewport.barFade
 	bar     anim.Fade
 	barSeen bool
+	barBoot bool
 }
 
 // pinKey names a pinned row's copy: the row by its first segment, which the
@@ -707,7 +708,13 @@ func (a *App) paintScrolled(n *node, r uv.Rectangle) [][]hostapi.Segment {
 	switch {
 	case !st.barSeen:
 		st.barSeen = true
-		st.bar.Jump(on)
+		if on {
+			st.bar.Set(true, a.now())
+			st.barBoot = true
+			a.wakeTick()
+		} else {
+			st.bar.Jump(false)
+		}
 	case on && !st.bar.Shown():
 		st.bar.Set(true, a.now())
 		a.wakeTick()

@@ -143,6 +143,7 @@ func TestChatScrollStaysAnchored(t *testing.T) {
 	fillChat(host)
 	app.renderSync(t)
 	app.Frame()
+	app.settleBars()
 
 	press(t, app, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	top := app.scrolls[_regionChat].top
@@ -710,6 +711,7 @@ func TestChatFade(t *testing.T) {
 	}
 	app.renderSync(t)
 	app.Frame()
+	app.settleBars()
 	st := app.scrolls[_regionChat]
 	// the top six rows and the bottom six, top down
 	fades := func() (top, bottom []float64) {
@@ -1043,7 +1045,7 @@ func TestScrollPendingEdge(t *testing.T) {
 }
 
 // TestScrollBarRises: the chat's scrollbar fades in when content first
-// overflows the view; a bar present at a region's first paint draws settled.
+// overflows the view, at boot and mid-session alike.
 func TestScrollBarRises(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 100, 14)
@@ -1068,5 +1070,28 @@ func TestScrollBarRises(t *testing.T) {
 	app.Frame()
 	if got := app.scrolls[_regionChat].barFade; got != 0 {
 		t.Fatalf("the settled bar kept a fade of %v", got)
+	}
+}
+
+// TestScrollBarRisesAtBoot pins the boot case: a transcript that already
+// overflows at the region's first paint stamps a rise, not a settled bar.
+func TestScrollBarRisesAtBoot(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 100, 14)
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame() // the first compose paints the region and stamps the rise
+	st := app.scrolls[_regionChat]
+	if st == nil || !st.bar.Shown() || st.barFade != 1 {
+		t.Fatalf("the boot bar's first paint drew at fade %v, want the rise's sunk start", st.barFade)
+	}
+	if !app.fadesRising() || app.tickInterval() != _riseTick {
+		t.Fatal("the boot bar's rise did not keep the tick awake")
+	}
+	app.now = func() time.Time { return time.UnixMilli(500 + _riseDuration.Milliseconds()) }
+	app.renderSync(t)
+	app.Frame()
+	if got := app.scrolls[_regionChat].barFade; got != 0 {
+		t.Fatalf("the boot bar stayed sunk at fade %v", got)
 	}
 }

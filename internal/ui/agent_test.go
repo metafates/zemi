@@ -1059,6 +1059,8 @@ func TestGoldenAgentStream(t *testing.T) {
 	app.AgentStream()
 
 	app.renderSync(t)
+	app.Frame() // the first compose stamps the boot bar's rise
+	app.settleBars()
 	golden.RequireEqual(t, app.Frame())
 
 	if !app.host.AgentActive() {

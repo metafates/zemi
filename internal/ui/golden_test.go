@@ -92,6 +92,15 @@ func (a *App) renderSync(tb testing.TB) {
 	// the frame draws settled: a pinned clock would freeze a pill's fade
 	a.settlePills()
 	gen := a.frameGen
+	a.renderShown(tb, gen)
+	// a pinned clock freezes a bar's boot rise mid-ramp: settle the bars the
+	// first paint set rising, then redraw
+	if a.settleBars() {
+		a.renderShown(tb, gen)
+	}
+}
+
+func (a *App) renderShown(tb testing.TB, gen int64) {
 	for _, w := range a.shownWidgets() {
 		for more := true; more; {
 			var lines [][]hostapi.Segment
