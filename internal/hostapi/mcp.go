@@ -320,8 +320,6 @@ func (s *mcpServer) adoptGroup(group string) {
 }
 
 func (h *Host) startMCP(s *mcpServer) {
-	// a send before the server is ready runs without its tools
-	defer h.Busy("Starting "+s.name, nil)()
 	env := append([]string{}, os.Environ()...)
 	env = append(env, "ZEMI_PROJECT_DIR="+h.Dirs.ProjectDir)
 	for k, v := range s.spec.Env {
