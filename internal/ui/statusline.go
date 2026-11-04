@@ -217,7 +217,7 @@ func statusHints(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 		{Text: "/", HL: "SplashKey", Click: "help"},
 		{Text: " commands   ", HL: "Dim", Click: "help"},
 		{Text: "@", HL: "SplashKey"},
-		{Text: " files, dirs and skills", HL: "Dim"},
+		{Text: " attachments", HL: "Dim"},
 	}}, false
 }
 

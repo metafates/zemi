@@ -35,7 +35,7 @@ var _goKeys = [][2]string{
 	{"ctrl+w", "delete the word before the cursor"},
 	{"delete", "forward delete"},
 	{"/", "command palette"},
-	{"@", "attach files, dirs and skills"},
+	{"@", "attachments"},
 	{"tab", "focus the chat; j, k walk it, enter, space, l, h fold its runs and long prompts, y copies, e opens the editor"},
 	{"ctrl+space", "reopen the @ or / popup at the word"},
 }
