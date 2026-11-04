@@ -133,7 +133,10 @@ the highest first (`fitClusters`), so what lasts sits outermost and never moves.
   long chat under a 30 ms budget, latest units first, each render at least a full view topped
   with the prompt the view pins (rendered out of order when the view does not reach it), so a
   loaded machine draws the view whole; a region scrolled up keeps the last
-  whole render until the fill ends (`App.scrolledUp`), so the reader's rows stay put. A turn's `turnScope` context (host.go) covers the model and tools, so
+  whole render until the fill ends (`App.scrolledUp`), so the reader's rows stay put, and a
+  view switch drops the cached transcript (`syncChatScroll`) so the frame it lands on draws the
+  incoming one whole, never the other view's rows and never its scroll state measured against
+  them. A turn's `turnScope` context (host.go) covers the model and tools, so
   a second esc within 2s (`App.arm`, shared with the idle ctrl+c quit) stops all of them;
   a second ctrl+c while "Cancelling" quits. A job the user waits on that is not a turn
   (`/btw`, `/plugin` network work, `/model update`, `/health`, an MCP start,

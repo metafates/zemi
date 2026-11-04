@@ -2141,7 +2141,10 @@ view; a reset's wipe drops the row with the chat.
   than a full view, topped with the prompt it pins even when that prompt
   sits hundreds of rows further back, and a region
   scrolled up keeps the last whole render until the new one is whole, so
-  the reader's rows do not move. `View`
+  the reader's rows do not move. A view switch (`syncChatScroll`) drops the
+  cached transcript instead: the frame the switch lands on draws the
+  incoming view, whole when the reader is off its tail, and the session's
+  parked scroll state is never measured against the other view's rows. `View`
   asks each visible region for its cached widget lines; a generation change
   renders every shown widget again, a resize the ones whose size moved.
   A View with nothing changed behind it returns the frame it has instead of
