@@ -268,6 +268,53 @@ func TestAgentViewKeepsTheSessionPlace(t *testing.T) {
 	}
 }
 
+// TestAgentViewSwitchDrawsOneFrameAndKeepsThePlace: the frame the run's
+// transcript opens on draws that transcript alone, not the session's rows
+// for a tick, and esc draws the session whole on the place the reader left,
+// a place outside the tail the first fill pass would build.
+func TestAgentViewSwitchDrawsOneFrameAndKeepsThePlace(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 100, 30)
+	fillChat(host)
+	app.renderSync(t)
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyHome, Mod: tea.ModCtrl})
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgDown})
+	app.Frame()
+	press(t, app, tea.KeyPressMsg{Code: tea.KeyPgDown})
+	app.Frame()
+	session := app.scrolls[app.scrollDef]
+	if session.follow || session.top == 0 {
+		t.Fatalf("setup: the session did not scroll back (follow %v, top %d)", session.follow, session.top)
+	}
+	top := session.top
+
+	db := testStore(t, host)
+	id := store.ShortID()
+	if err := db.CreateSession(id, store.ShortID(), "run", "explore"); err != nil {
+		t.Fatal(err)
+	}
+	addRunMessage(t, db, id, fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+		fantasy.TextPart{Text: "run line"},
+	}})
+	if err := host.ViewAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	// the frame the view opens on, before a queued render of it has landed
+	if f := app.Frame(); !strings.Contains(f, "run line") || strings.Contains(f, "reply") {
+		t.Fatalf("the run's transcript opened on the session's rows:\n%s", f)
+	}
+	if back := host.LeaveAgentView(); back != "" {
+		t.Fatalf("the leave ran back %q", back)
+	}
+	// the frame esc opens on, likewise
+	app.Frame()
+	if st := app.scrolls[app.scrollDef]; st != session || st.follow || st.top != top {
+		t.Fatalf("esc landed on follow %v top %d, want the left place %d", st.follow, st.top, top)
+	}
+}
+
 // TestAgentViewSendSnapsToTail: sending from a run that is over shows the
 // session at its tail, where the message and its reply land, not at the
 // place the session was left at.

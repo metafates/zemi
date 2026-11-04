@@ -926,12 +926,23 @@ func (a *App) renderMissingWidgets() {
 			continue
 		}
 		a.renderSeq++
-		st := a.host.ScreenState(w.width, w.height, a.uiState())
-		lines, more, err := a.renderWidget(w, st)
-		a.onWidgetRendered(widgetRender{
-			id: w.ID, lines: lines, more: more, width: w.width, height: w.height,
-			gen: a.frameGen, seq: a.renderSeq, err: err,
-		})
+		// a widget that fills over frames draws its first pass, the tail,
+		// unless a reader is off it: their place is found again by matching
+		// rows, so the rows have to be whole before they are painted.
+		// NOTE: the whole fill runs inside this frame, so switching back into
+		// a long transcript pays for it; a cache per view would keep it free
+		anchored := a.scrolledUp(w.ID)
+		for {
+			st := a.host.ScreenState(w.width, w.height, a.uiState())
+			lines, more, err := a.renderWidget(w, st)
+			a.onWidgetRendered(widgetRender{
+				id: w.ID, lines: lines, more: more, width: w.width, height: w.height,
+				gen: a.frameGen, seq: a.renderSeq, err: err,
+			})
+			if !more || !anchored || err != nil {
+				break
+			}
+		}
 	}
 }
 
@@ -1535,17 +1546,16 @@ func (a *App) followStage() {
 	}
 }
 
-// syncChatScroll keeps the chat's scroll state with the view that drew it:
-// the session's place parks while a run's transcript draws in its place, and
-// a transcript starts at its tail. Every way in or out of a run's view ends
-// in a scroll action or a repaint, so those two are the only sync points.
+// syncChatScroll keeps the chat's rows and scroll state with the view that
+// drew them: the session's place parks while a run's transcript draws in its
+// place, a transcript starts at its tail, and the rows cached are always the
+// view on screen's. Every way in or out of a run's view ends in a scroll
+// action or a repaint, so those two are the only sync points.
 func (a *App) syncChatScroll() {
 	v := a.host.ViewedAgent()
 	if v == a.chatView {
 		return
 	}
-	fromSession := a.chatView == ""
-	a.chatView = v
 	chat := _regionNone
 	for _, id := range a.scrollIDs { // last paint's order, so the pick is stable
 		if st := a.scrolls[id]; st != nil && st.region == _regionChat {
@@ -1554,8 +1564,15 @@ func (a *App) syncChatScroll() {
 		}
 	}
 	if chat == _regionNone {
-		return
+		return // no chat region drew yet: the sync waits for the frame that does
 	}
+	fromSession := a.chatView == ""
+	a.chatView = v
+	// the cached rows are the other view's: dropping them draws this one whole
+	// in the frame the switch lands on, as a first frame does, instead of
+	// painting a transcript the reader is not on and anchoring the parked
+	// place against its rows
+	delete(a.caches, "chat")
 	// an edge or a jump parked for the outgoing view must not fire into the
 	// incoming one
 	delete(a.pendingScroll, chat)
