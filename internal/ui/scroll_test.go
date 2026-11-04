@@ -268,6 +268,75 @@ func TestAgentViewKeepsTheSessionPlace(t *testing.T) {
 	}
 }
 
+// TestAgentViewKeepsTheFoldsAndThePlace: a run's rail opened on the session
+// is still open coming back from a run's transcript, so esc lands the reader
+// where the open folds left them and not on the transcript they had shrunk.
+func TestAgentViewKeepsTheFoldsAndThePlace(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 140, 30)
+	fillChat(host)
+	host.AppendMessage("user", "run it")
+	appendReasoning(host, strings.Repeat("plan it word by word ", 8)+"\n\nthen build", hostapi.TurnStat{ThoughtMS: 6000})
+	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "make", Status: "ok", Output: "built\nok"})
+	appendReply(host, "done", hostapi.TurnStat{})
+	app.renderSync(t)
+	app.Frame()
+	// the run's digest is the last turn's, the only one carrying a turn key
+	key := ""
+	for _, row := range app.lastRows {
+		for _, s := range row {
+			if strings.HasPrefix(s.Click, "turn:") {
+				key = s.Click
+			}
+		}
+	}
+	if key == "" {
+		t.Fatal("the settled run drew no digest to open")
+	}
+	clickChat(t, app, key)
+	app.renderSync(t)
+	app.Frame()
+	opened := func() bool {
+		rows := chatRows(t, app, 138)
+		return slices.ContainsFunc(rows, func(r string) bool { return strings.HasPrefix(r, "▾ ") }) &&
+			slices.Contains(rows, "│ ✓ run make")
+	}
+	if !opened() {
+		t.Fatalf("the digest did not open:\n%s", strings.Join(chatRows(t, app, 138), "\n"))
+	}
+	press(t, app, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
+	app.Frame()
+	top := app.scrolls[app.scrollDef].top
+	if top == 0 {
+		t.Fatal("setup: the session did not scroll back off its tail")
+	}
+
+	db := testStore(t, host)
+	id := store.ShortID()
+	if err := db.CreateSession(id, store.ShortID(), "run", "explore"); err != nil {
+		t.Fatal(err)
+	}
+	addRunMessage(t, db, id, fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+		fantasy.TextPart{Text: "run line"},
+	}})
+	if err := host.ViewAgent(id); err != nil {
+		t.Fatal(err)
+	}
+	app.renderSync(t)
+	app.Frame()
+	if back := host.LeaveAgentView(); back != "" {
+		t.Fatalf("the leave ran back %q", back)
+	}
+	app.renderSync(t)
+	app.Frame()
+	if !opened() {
+		t.Fatalf("esc folded the rail the reader left open:\n%s", strings.Join(chatRows(t, app, 138), "\n"))
+	}
+	if st := app.scrolls[app.scrollDef]; st.top != top {
+		t.Fatalf("esc landed on top %d, want the left place %d", st.top, top)
+	}
+}
+
 // TestAgentViewSwitchDrawsOneFrameAndKeepsThePlace: the frame the run's
 // transcript opens on draws that transcript alone, not the session's rows
 // for a tick, and esc draws the session whole on the place the reader left,

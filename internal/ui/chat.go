@@ -6,7 +6,6 @@ package ui
 
 import (
 	"cmp"
-	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -630,14 +629,12 @@ func digest(rows []entry, first, last int, cwd, home string) string {
 // on the update one, so it carries its own lock. Keys are a row's fold
 // identity, which a head trim does not renumber.
 type chatFolds struct {
-	mu       sync.Mutex
-	steps    map[int64]bool  // a step's calls, opened under its counted row
-	unfolded map[int64]bool  // a run drawn whole, under its digest
-	whole    map[int64]bool  // a rail or a notice burst shown whole
-	prompts  map[int64]bool  // a long user prompt shown whole
-	runs     map[int64]int64 // the run a digest folds: its key to its last row's
-	ident    string          // the transcript these folds belong to
-	calls    int             // the live calls the last render drew
+	mu      sync.Mutex
+	foldSet                      // the folds of the view on screen
+	views   map[string]viewFolds // each view's folds, the session's under ""
+	epoch   int64                // the transcript these folds belong to
+	view    string               // the view foldSet draws
+	calls   int                  // the live calls the last render drew
 	// md and hl memoize the costly rows by text and width: a marked-down reply
 	// and a highlighted command cost far more than the rows around them, and
 	// a frame rebuilds every settled row it is handed back.
@@ -654,6 +651,32 @@ type chatFolds struct {
 	fillUnit    int
 	built       map[int][][]hostapi.Segment
 	ver         int // the folds' version: any change draws the rows again
+}
+
+// foldSet is one view's folds: the session's chat and a run's transcript
+// number their rows apart, so each keeps its own and a view switch hands it
+// back on return.
+type foldSet struct {
+	steps    map[int64]bool  // a step's calls, opened under its counted row
+	unfolded map[int64]bool  // a run drawn whole, under its digest
+	whole    map[int64]bool  // a rail or a notice burst shown whole
+	prompts  map[int64]bool  // a long user prompt shown whole
+	runs     map[int64]int64 // the run a digest folds: its key to its last row's
+}
+
+func newFoldSet() foldSet {
+	s := foldSet{
+		steps: map[int64]bool{}, unfolded: map[int64]bool{}, whole: map[int64]bool{},
+		prompts: map[int64]bool{}, runs: map[int64]int64{},
+	}
+	return s
+}
+
+// viewFolds is a view's folds and the transcript they were made on: a shown
+// run keeps its own apart from the session's, off screen as it waits.
+type viewFolds struct {
+	foldSet
+	epoch int64
 }
 
 // settledKey is what the transcript's rows are built from: the log they read
@@ -679,8 +702,7 @@ func viewID(st *hostapi.ScreenState) string {
 // chatWidget is the chat region: the transcript, the live turn and the todos.
 func chatWidget(h *hostapi.Host) *widget {
 	f := &chatFolds{
-		steps: map[int64]bool{}, unfolded: map[int64]bool{}, whole: map[int64]bool{},
-		prompts: map[int64]bool{}, runs: map[int64]int64{},
+		foldSet: newFoldSet(), views: map[string]viewFolds{},
 		md: map[string][][]hostapi.Segment{}, hl: map[string][]hostapi.Segment{},
 	}
 	return &widget{
@@ -701,17 +723,21 @@ func keyOf(cut int64, oneBased int) int64 {
 	return int64(oneBased)
 }
 
-// reset drops the folds that belong to another transcript: a reset or a splice
-// renumbers under a new epoch, a shown run is an identity of its own, and a
-// new turn restarts the live calls its folds named.
+// reset keeps each view's folds: a reset or a splice renumbers every row under
+// a new epoch and drops them, while a shown run is an identity of its own, so
+// going into it and back hands the session the folds it left, its place among
+// them. A new turn restarts the live calls the folds named.
 func (f *chatFolds) reset(st *hostapi.ScreenState) {
-	view := ""
-	if st.View != nil {
-		view = st.View.ID
-	}
-	if ident := fmt.Sprintf("%d|%s", st.TranscriptEpoch, view); ident != f.ident {
-		f.steps, f.unfolded, f.whole, f.prompts, f.runs = map[int64]bool{}, map[int64]bool{}, map[int64]bool{}, map[int64]bool{}, map[int64]int64{}
-		f.ident, f.ver = ident, f.ver+1
+	if v, epoch := viewID(st), st.TranscriptEpoch; v != f.view || epoch != f.epoch {
+		// park the outgoing view's folds and take the incoming view's, a fresh
+		// set for a view never drawn and for a transcript that renumbered
+		f.views[f.view] = viewFolds{foldSet: f.foldSet, epoch: f.epoch}
+		next := f.views[v]
+		if next.steps == nil || next.epoch != epoch {
+			next = viewFolds{foldSet: newFoldSet(), epoch: epoch}
+		}
+		f.foldSet, f.view, f.epoch = next.foldSet, v, epoch
+		f.ver++
 	}
 	if n := len(st.Agent.Tools); n < f.calls {
 		for _, m := range []map[int64]bool{f.steps, f.unfolded, f.whole} {
