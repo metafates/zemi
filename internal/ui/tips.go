@@ -1,6 +1,9 @@
 package ui
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // The discovery tips: one is zemi's parting line, picked by the hour of the
 // host's clock so it does not change between runs in the same hour.
@@ -15,5 +18,5 @@ var _tips = []struct{ key, text string }{
 // Tip is this hour's discovery tip as one line, without the "tip:" prefix.
 func Tip(now time.Time) string {
 	t := _tips[int(now.Unix()/3600)%len(_tips)]
-	return t.key + t.text
+	return strings.TrimRight(t.key, " ") + " " + t.text
 }
