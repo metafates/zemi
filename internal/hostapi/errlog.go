@@ -195,7 +195,7 @@ func (h *Host) OpenErrors(args string) error {
 		}
 		items = append(items, OverlayItem{
 			Text:   e.source(),
-			Desc:   at + "  " + Headline(e.msg),
+			Desc:   at + "   " + Headline(e.msg),
 			Fields: fieldList("at", at, "error", ShortChunk(e.msg)),
 			Keys:   keys,
 		})

@@ -404,7 +404,7 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 		}
 		desc := opt.Description
 		if opt.Recommended {
-			desc = strings.TrimSuffix("recommended  "+desc, "  ")
+			desc = strings.TrimSuffix("recommended   "+desc, "   ")
 		}
 		paneWrapped[i] = a.host.Markdown(desc, inner)
 		paneN = max(paneN, min(len(paneWrapped[i]), 4))

@@ -497,7 +497,7 @@ func diffstat(diff string) []hostapi.Segment {
 
 // digest is what rows first..last of a turn fold into, the chat's digest row:
 // "1 command: run the tests", what it did then what the model said about the
-// first call, or "6 files, 8 commands  thought 8s"; "" when it holds neither,
+// first call, or "6 files, 8 commands   thought 8s"; "" when it holds neither,
 // so its rail stays.
 func digest(rows []entry, first, last int, cwd, home string) string {
 	var calls, fails, works []entry
@@ -563,7 +563,7 @@ func digest(rows []entry, first, last int, cwd, home string) string {
 		body := ""
 		if len(works) == 1 {
 			if _, after, found := strings.Cut(works[0].text, "  "); found {
-				body = after
+				body = strings.TrimSpace(after)
 			}
 		} else {
 			for line := range strings.SplitSeq(calls[0].output, "\n") {
@@ -622,7 +622,7 @@ func digest(rows []entry, first, last int, cwd, home string) string {
 	if secs >= 50*time.Millisecond || len(parts) == 0 && reasoned {
 		parts = append(parts, thoughtText(secs))
 	}
-	return strings.Join(parts, "  ")
+	return strings.Join(parts, "   ")
 }
 
 // chatFolds is what a chat render keeps between frames: the folds a click
@@ -1006,7 +1006,7 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 	}
 	add := func(text string) {
 		if len(tail) > 0 {
-			tail = append(tail, hostapi.Segment{Text: "  ", HL: "Dim"})
+			tail = append(tail, hostapi.Segment{Text: "   ", HL: "Dim"})
 		}
 		tail = append(tail, hostapi.Segment{Text: text, HL: "Dim"})
 	}
@@ -1187,8 +1187,8 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 			if answered {
 				if q, rest, ok := strings.Cut(out[i], "\t"); ok {
 					if a, note, ok := strings.Cut(rest, "\t"); ok {
-						if ansiWidth(q)+2+ansiWidth(a) <= inner-4 {
-							detail([]hostapi.Segment{{Text: q, HL: "Dim"}, {Text: "  " + a, HL: "Normal"}})
+						if ansiWidth(q)+3+ansiWidth(a) <= inner-4 {
+							detail([]hostapi.Segment{{Text: q, HL: "Dim"}, {Text: "   " + a, HL: "Normal"}})
 						} else {
 							detailText(q, "Dim")
 							detailText(a, "Normal")
@@ -1567,7 +1567,7 @@ func (b *chatBuilder) readout(tr []entry, last int, m entry) int {
 	var stats []hostapi.Segment
 	stat := func(text string) {
 		if len(stats) > 0 {
-			stats = append(stats, hostapi.Segment{Text: "  ", HL: "Dim"})
+			stats = append(stats, hostapi.Segment{Text: "   ", HL: "Dim"})
 		}
 		stats = append(stats, hostapi.Segment{Text: text, HL: "Dim"})
 	}
@@ -1879,7 +1879,7 @@ func (b *chatBuilder) todos(todos []store.Todo) {
 	// scaled, so the meter never changes meaning
 	head := []hostapi.Segment{
 		{Text: "Todos ", HL: "TodoTitle"},
-		{Text: strconv.Itoa(len(todos)-left) + "/" + strconv.Itoa(len(todos)) + "  ", HL: "Dim"},
+		{Text: strconv.Itoa(len(todos)-left) + "/" + strconv.Itoa(len(todos)) + "   ", HL: "Dim"},
 	}
 	cells := 2 * min(len(todos), rows)
 	// a cell fills at the done fraction, rounded up: a part-done list lights

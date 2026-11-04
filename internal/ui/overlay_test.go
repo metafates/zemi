@@ -1371,26 +1371,26 @@ func TestOverlayHints(t *testing.T) {
 		filter string
 		want   string
 	}{
-		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "inert"}}}, "", "y copy  esc close"},
-		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Fill: "x"}}, Verb: "run"}, "", "enter fill  y copy  esc close"},
-		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Detail: "x"}}, Verb: "pick"}, "", "enter open  y copy  esc close"},
-		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Run: "x"}}, Origin: lua.OriginBuiltin, Verb: "pick"}, "", "enter pick  y copy  esc close"},
-		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Run: "x", Verb: "open"}}, Verb: "pick", Reload: reload}, "", "enter open  y copy  esc close"},
-		{hostapi.Overlay{Items: run, Verb: "copy"}, "", "enter copy  esc close"},
-		{hostapi.Overlay{Items: run}, "", "enter run  y copy  esc close"},
-		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a"}}, OnSelect: &glua.LFunction{}}, "", "enter pick  y copy  esc close"},
-		{hostapi.Overlay{Items: run, Reload: reload}, "", "enter toggle  y copy  esc close"},
-		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Run: "x", Detail: "d"}}, Reload: reload}, "", "enter open  space toggle  y copy  esc close"},
-		{hostapi.Overlay{Items: run, Keys: keys}, "", "enter run  y copy  e edit  esc close"},
-		{hostapi.Overlay{Keys: keys}, "", "e edit  esc close"},
+		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "inert"}}}, "", "y copy   esc close"},
+		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Fill: "x"}}, Verb: "run"}, "", "enter fill   y copy   esc close"},
+		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Detail: "x"}}, Verb: "pick"}, "", "enter open   y copy   esc close"},
+		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Run: "x"}}, Origin: lua.OriginBuiltin, Verb: "pick"}, "", "enter pick   y copy   esc close"},
+		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Run: "x", Verb: "open"}}, Verb: "pick", Reload: reload}, "", "enter open   y copy   esc close"},
+		{hostapi.Overlay{Items: run, Verb: "copy"}, "", "enter copy   esc close"},
+		{hostapi.Overlay{Items: run}, "", "enter run   y copy   esc close"},
+		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a"}}, OnSelect: &glua.LFunction{}}, "", "enter pick   y copy   esc close"},
+		{hostapi.Overlay{Items: run, Reload: reload}, "", "enter toggle   y copy   esc close"},
+		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Run: "x", Detail: "d"}}, Reload: reload}, "", "enter open   space toggle   y copy   esc close"},
+		{hostapi.Overlay{Items: run, Keys: keys}, "", "enter run   y copy   e edit   esc close"},
+		{hostapi.Overlay{Keys: keys}, "", "e edit   esc close"},
 		{hostapi.Overlay{Keys: []hostapi.OverlayKey{{Key: "r", Desc: "resume"}}}, "", "esc close"}, // a row's key waits for a row
-		{hostapi.Overlay{Items: run, Keys: keys}, "/", "enter run  esc clear"},
-		{hostapi.Overlay{Items: run, Keys: keys}, "=a", "enter run  y copy  e edit  esc clear"},
-		{hostapi.Overlay{Follow: true, Items: run}, "", "enter run  y copy  esc close"},
-		{hostapi.Overlay{Body: "text"}, "", "y copy  esc close"},
-		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Copy: "export X"}}}, "", "enter copy  esc close"},
-		{hostapi.Overlay{Body: "text", Items: []hostapi.OverlayItem{{Text: "a", Fill: "x"}}}, "/", "enter fill  esc clear"},
-		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]hostapi.OverlayItem{{Text: "a", Fill: "x"}}, 30)}, "", "enter fill  y copy  esc close  ctrl+d/u scroll"},
+		{hostapi.Overlay{Items: run, Keys: keys}, "/", "enter run   esc clear"},
+		{hostapi.Overlay{Items: run, Keys: keys}, "=a", "enter run   y copy   e edit   esc clear"},
+		{hostapi.Overlay{Follow: true, Items: run}, "", "enter run   y copy   esc close"},
+		{hostapi.Overlay{Body: "text"}, "", "y copy   esc close"},
+		{hostapi.Overlay{Items: []hostapi.OverlayItem{{Text: "a", Copy: "export X"}}}, "", "enter copy   esc close"},
+		{hostapi.Overlay{Body: "text", Items: []hostapi.OverlayItem{{Text: "a", Fill: "x"}}}, "/", "enter fill   esc clear"},
+		{hostapi.Overlay{Body: strings.Repeat("line\n", 10), Items: slices.Repeat([]hostapi.OverlayItem{{Text: "a", Fill: "x"}}, 30)}, "", "enter fill   y copy   esc close   ctrl+d/u scroll"},
 	} {
 		if got := strings.Trim(hints(c.o, c.filter), "│ "); got != c.want {
 			t.Errorf("%v: %q, want %q", c.o.Items, got, c.want)
@@ -1508,10 +1508,10 @@ func TestHintOrder(t *testing.T) {
 		w    int
 		want string
 	}{
-		{80, "enter open  y copy  a keep  d drop  v show  esc close  ctrl+d/u scroll"},
-		{55, "enter open  y copy  a keep  d drop  v show  esc close"},
-		{40, "enter open  a keep  v show  esc close"},
-		{5, "enter open  esc close"},
+		{80, "enter open   y copy   a keep   d drop   v show   esc close   ctrl+d/u scroll"},
+		{55, "enter open   a keep   d drop   v show   esc close"},
+		{40, "enter open   a keep   v show   esc close"},
+		{5, "enter open   esc close"},
 	} {
 		if got := hostapi.SegsText(hint(c.w, pairs...)); got != c.want {
 			t.Errorf("%d cells: %q, want %q", c.w, got, c.want)
@@ -1855,7 +1855,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { { keys = { { key = 
 		check             func() string
 	}{
 		{"the row's keys are named beside the list's", "", "j", func() string {
-			ok := strings.Contains(footer(), "y copy  e edit  d Delete  o Open  esc close")
+			ok := strings.Contains(footer(), "y copy   e edit   d Delete   o Open   esc close")
 			return fail(ok, fmt.Sprintf("%q", footer()))
 		}},
 		{"a key without an id or a run does nothing", "", "j o", func() string {
@@ -1865,7 +1865,7 @@ assert(not pcall(zemi.ui.overlay.open, { id = "x", items = { { keys = { { key = 
 			return fail(len(app.overlays) == 1 && lastToast(app) == "", fmt.Sprintf("%d open, toast %q", len(app.overlays), lastToast(app)))
 		}},
 		{"a danger key arms, and says so", editKey, "j d", func() string {
-			ok := len(app.overlays) == 1 && app.overlays[0].keyArmed == "d" && strings.Contains(footer(), "d again to delete  esc cancel")
+			ok := len(app.overlays) == 1 && app.overlays[0].keyArmed == "d" && strings.Contains(footer(), "d again to delete   esc cancel")
 			return fail(ok, fmt.Sprintf("%d open, armed %q, footer %q", len(app.overlays), app.overlays[0].keyArmed, footer()))
 		}},
 		{"its second press runs it, with the key", "", "j d d", func() string {

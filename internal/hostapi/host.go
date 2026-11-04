@@ -1271,7 +1271,7 @@ func (h *Host) OpenHelp() error {
 	for _, k := range keys {
 		// y copies the line whole: a long desc truncates in the list, and
 		// its tail is the part a reader was after
-		items = append(items, OverlayItem{Text: k[0], Desc: k[1], Copy: k[0] + "  " + k[1], Section: "Keymaps"})
+		items = append(items, OverlayItem{Text: k[0], Desc: k[1], Copy: k[0] + "   " + k[1], Section: "Keymaps"})
 	}
 	var aliases []OverlayItem
 	for _, b := range h.Keymaps.List() {
@@ -1285,7 +1285,7 @@ func (h *Host) OpenHelp() error {
 		}
 		// a Lua keymap row copies whole, the Go ones' way: a plugin's long
 		// desc truncates in the list and its tail is what a reader wanted
-		items = append(items, OverlayItem{Text: b.Key, Desc: desc, Copy: b.Key + "  " + desc, Section: "Keymaps"})
+		items = append(items, OverlayItem{Text: b.Key, Desc: desc, Copy: b.Key + "   " + desc, Section: "Keymaps"})
 	}
 	for _, k := range lists {
 		items = append(items, OverlayItem{Text: k[0], Desc: k[1], Section: "Lists"})

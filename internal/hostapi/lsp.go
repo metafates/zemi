@@ -914,7 +914,7 @@ func (h *Host) lspItems() []OverlayItem {
 			files += " (starts on the first one)"
 		}
 		item := OverlayItem{
-			Text: row.Name, Desc: string(row.Status) + "  " + strings.Join(row.Filetypes, " "),
+			Text: row.Name, Desc: string(row.Status) + "   " + strings.Join(row.Filetypes, " "),
 			Fields: fieldList("command", row.Command, "status", string(row.Status), "files", files, "error", row.Error),
 		}
 		if row.Status != StatusIdle {

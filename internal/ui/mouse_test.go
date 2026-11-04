@@ -672,7 +672,7 @@ func TestSelectionStaysInItsPane(t *testing.T) {
 		want     string
 	}{
 		{"a view over the chat copies its text only", true, "first body", "second body", 0, "first body line\ns"},
-		{"a drag past the box's bottom selects to its last row", true, "first body", "", 0, "first body line\nsecond body line\n\ny copy  esc close"},
+		{"a drag past the box's bottom selects to its last row", true, "first body", "", 0, "first body line\nsecond body line\n\ny copy   esc close"},
 		{"a press outside a modal selects nothing", true, "chat line 5", "", 0, ""},
 		{"a drag out of the box from its last cell keeps it open", true, "close", "", 4, "e"},
 		{"a drag from the chat stops at the composer", false, "chat line 11", "typed draft", 0, "chat line 11 behind the box\n\nchat line 12 behind the box"},

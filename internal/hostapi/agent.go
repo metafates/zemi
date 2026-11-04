@@ -2612,7 +2612,7 @@ func modelDesc(id string, m agent.Model) string {
 		// both sides to the cent: a mixed precision reads as two scales
 		parts = append(parts, "$"+strconv.FormatFloat(m.CostPer1MIn, 'f', 2, 64)+"/$"+strconv.FormatFloat(m.CostPer1MOut, 'f', 2, 64))
 	}
-	return strings.Join(parts, "  ")
+	return strings.Join(parts, "   ")
 }
 
 // SetModel runs /model's arguments from any goroutine: none opens the chat
@@ -2864,7 +2864,7 @@ func (h *Host) effortDesc(model, level string) string {
 // slotLine is what a model row shows: the model the slot runs on and the
 // description beside it.
 func (h *Host) slotLine(name, desc string) string {
-	return cmp.Or(h.roleModel(name), "no model") + "  " + desc
+	return cmp.Or(h.roleModel(name), "no model") + "   " + desc
 }
 
 func (h *Host) agentNamespace(L *glua.LState) *glua.LTable {

@@ -94,11 +94,11 @@ func TestProjectsCommand(t *testing.T) {
 			name: "the list", args: "",
 			want: []string{
 				// the running decision beside the saved one, and a gone root's decision in its detail
-				"desc:untrusted this run        now", "[trust untrusted this run]", "tag:current",
+				"desc:untrusted this run         now", "[trust untrusted this run]", "tag:current",
 				// the current project keeps its keys: the verbs refuse it themselves
 				"key:s run:projects switch " + cur,
-				"desc:missing                   now", "[trust trusted] [messages ]",
-				"desc:trusted    1 message      now", "[messages 1  latest now: " + markedTitle(other, "fix the flaky test") + "]",
+				"desc:missing                    now", "[trust trusted] [messages ]",
+				"desc:trusted    1 message       now", "[messages 1  latest now: " + markedTitle(other, "fix the flaky test") + "]",
 				// the marker rides its own glyph, so the label stays the bare path
 				"text:" + perm.TildePath(other),
 				"desc:switch to it key:s run:projects switch " + other, "desc:forget trust key:f run:projects forget " + other, "danger:true desc:delete key:x run:projects delete " + other,

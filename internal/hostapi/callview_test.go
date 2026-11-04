@@ -58,7 +58,7 @@ func TestCallView(t *testing.T) {
 		{
 			5, "Question",
 			map[string]string{"status": "ok"},
-			[]BodyPart{{Text: "Where?  in main\nnote: because\nWhat?  now", Fill: FillWell}},
+			[]BodyPart{{Text: "Where?   in main\nnote: because\nWhat?   now", Fill: FillWell}},
 		},
 	} {
 		row, took, ok := h.chatRow(c.row)

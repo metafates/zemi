@@ -178,7 +178,7 @@ func (c *chatLog) Work(run, who, agent, status, text string) (int64, error) {
 	if err != nil {
 		return -1, err
 	}
-	label := who + "  "
+	label := who + "   "
 	rows := splitText(text, _chatSplitChars-len([]rune(label)))
 	for i := 1; i < len(rows); i++ {
 		rows[i] = label + rows[i]

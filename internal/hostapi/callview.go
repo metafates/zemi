@@ -581,7 +581,7 @@ func callOutput(m ChatMessage) string {
 			}
 			b.WriteString(fields[0])
 			if len(fields) > 1 {
-				b.WriteString("  " + fields[1])
+				b.WriteString("   " + fields[1])
 			}
 			if len(fields) > 2 && fields[2] != "" {
 				b.WriteString("\nnote: " + fields[2])

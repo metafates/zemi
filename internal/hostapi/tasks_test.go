@@ -206,7 +206,7 @@ func TestReportNoticeWhereRead(t *testing.T) {
 		t.Fatalf("delivered %d messages", len(msgs))
 	}
 	tr := h.Session().Transcript
-	want := "explore  found"
+	want := "explore   found"
 	if n := len(tr); n < 2 || tr[n-2].Kind != "notice" || tr[n-2].Text != want || tr[n-2].Status != CallOK || tr[n-2].Run != "r1" || tr[n-1].Text != "so far" {
 		t.Fatalf("transcript tail: %+v", tr)
 	}
@@ -220,13 +220,13 @@ func TestReportNoticeWhereRead(t *testing.T) {
 			d = m
 		}
 	}
-	if d.Text != "Counting tests  done" || d.Tool != "explore" {
+	if d.Text != "Counting tests   done" || d.Tool != "explore" {
 		t.Fatalf("described row: %+v", d)
 	}
 	// a description longer than the split's width cannot break the split
 	h.work("r3", strings.Repeat("d", 5000), "explore", "finished", "body")
 	for _, m := range h.Session().Transcript {
-		if m.Run == "r3" && !strings.HasPrefix(m.Text, clipRunes(strings.Repeat("d", 5000), 60)+"  body") {
+		if m.Run == "r3" && !strings.HasPrefix(m.Text, clipRunes(strings.Repeat("d", 5000), 60)+"   body") {
 			t.Fatalf("clipped row: %q", m.Text[:min(80, len(m.Text))])
 		}
 	}
@@ -236,7 +236,7 @@ func TestReportNoticeWhereRead(t *testing.T) {
 		t.Fatalf("log tail: %+v, %v", rows, err)
 	}
 	built := logRows(rows)
-	if len(built) != 3 || built[0].Text != want || built[0].Status != CallOK || built[0].Run != "r1" || built[0].Tool != "explore" || built[1].Text != "Counting tests  done" || built[2].Tool != "explore" {
+	if len(built) != 3 || built[0].Text != want || built[0].Status != CallOK || built[0].Run != "r1" || built[0].Tool != "explore" || built[1].Text != "Counting tests   done" || built[2].Tool != "explore" {
 		t.Fatalf("rebuilt rows: %+v", built)
 	}
 	// the toast's head: who first, the id trailing, the statuses that are no
@@ -586,10 +586,10 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 	rows := dumpItems(h.agentRunItems())
 	// the row is named by the run's label and its desc keeps the definition;
 	// enter opens its preview (the facts and the task), v its transcript
-	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "text:look") || !strings.Contains(rows, "explore  from Other work") || !strings.Contains(rows, "keys:[desc:view its transcript key:v run:agents view agent-9 list danger:true desc:stop key:s run:agents stop agent-9]") || !strings.Contains(rows, "fields:[status running]") || !strings.Contains(rows, "0 tool calls") {
+	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "text:look") || !strings.Contains(rows, "explore   from Other work") || !strings.Contains(rows, "keys:[desc:view its transcript key:v run:agents view agent-9 list danger:true desc:stop key:s run:agents stop agent-9]") || !strings.Contains(rows, "fields:[status running]") || !strings.Contains(rows, "0 tool calls") {
 		t.Fatalf("run of another session not listed:\n%s", rows)
 	}
-	if strings.Contains(rows, "scan part1") || !strings.Contains(rows, "  from Other work id:0000000f mark:wait run:workflows view 0000000f section:Workflows") {
+	if strings.Contains(rows, "scan part1") || !strings.Contains(rows, "   from Other work id:0000000f mark:wait run:workflows view 0000000f section:Workflows") {
 		t.Fatalf("another session's workflow is not one row:\n%s", rows)
 	}
 	// the running run, under New agent, is selected
@@ -906,7 +906,7 @@ func TestSendTo(t *testing.T) {
 	run := h.tasks.find(id)
 	var lines []string
 	if _, err := h.continueRun(t.Context(), run, "more", func(l string) { lines = append(lines, l) }); err != nil || len(lines) != 2 ||
-		!strings.HasPrefix(lines[0], "explore  1 tool call  glob") || lines[1] != "explore  1 tool call" || run.runner.MaxOutputTokens != 2000 {
+		!strings.HasPrefix(lines[0], "explore   1 tool call   glob") || lines[1] != "explore   1 tool call" || run.runner.MaxOutputTokens != 2000 {
 		t.Fatalf("continuation: %v, rows %q, max output %d", err, lines, run.runner.MaxOutputTokens)
 	}
 	resp, err := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "c1", Input: fmt.Sprintf(`{"prompt":"again","send_to":%q}`, id)})
