@@ -499,14 +499,14 @@ func runRead(ctx context.Context, p *Pipeline, in readArgs) (fantasy.ToolRespons
 	return fantasy.NewTextResponse(b.String()), nil
 }
 
-// readLine returns the next line without its ending, keeping at most max
-// bytes and naming the cut: one endless line costs max bytes, not the file.
-func readLine(br *bufio.Reader, max int) (string, error) {
+// readLine returns the next line without its ending, keeping at most limit
+// bytes and naming the cut: one endless line costs limit bytes, not the file.
+func readLine(br *bufio.Reader, limit int) (string, error) {
 	var line []byte
 	cut := false
 	for {
 		chunk, err := br.ReadSlice('\n')
-		if room := max - len(line); len(chunk) > room {
+		if room := limit - len(line); len(chunk) > room {
 			chunk, cut = chunk[:room], true
 		}
 		line = append(line, chunk...)
@@ -651,7 +651,7 @@ var fileLocks sync.Map // perm.CanonPath -> *sync.Mutex
 // agents and returns the unlock.
 func lockFile(path string) func() {
 	m, _ := fileLocks.LoadOrStore(perm.CanonPath(path), &sync.Mutex{})
-	mu := m.(*sync.Mutex)
+	mu, _ := m.(*sync.Mutex)
 	mu.Lock()
 	return mu.Unlock
 }
@@ -952,12 +952,12 @@ func lf(s string) string { return strings.ReplaceAll(s, "\r\n", "\n") }
 
 // editText applies an edit's old_string and new_string to LF text; msg
 // explains why it does not apply, and then out is to be ignored.
-func editText(src, old, new, where string) (out, msg string) {
-	old, new = lf(old), lf(new)
+func editText(src, oldText, newText, where string) (out, msg string) {
+	oldText, newText = lf(oldText), lf(newText)
 	var n int
-	out, n = applyEdit(src, old, new)
-	msg = editError(src, old, n, where)
-	if old != "" && old == new {
+	out, n = applyEdit(src, oldText, newText)
+	msg = editError(src, oldText, n, where)
+	if oldText != "" && oldText == newText {
 		msg = "old_string and new_string are the same; nothing to change"
 	}
 	return out, msg
@@ -966,12 +966,12 @@ func editText(src, old, new, where string) (out, msg string) {
 // applyEdit replaces old with new in s and returns the match count. With
 // several matches nothing changes: guessing which one was meant edits the
 // wrong place silently.
-func applyEdit(s, old, new string) (string, int) {
-	n := strings.Count(s, old)
+func applyEdit(s, oldText, newText string) (string, int) {
+	n := strings.Count(s, oldText)
 	if n != 1 {
 		return s, n
 	}
-	return strings.ReplaceAll(s, old, new), n
+	return strings.ReplaceAll(s, oldText, newText), n
 }
 
 // editError explains a failed match, or returns "" when the edit applied.
@@ -1133,11 +1133,11 @@ func runGrep(ctx context.Context, p *Pipeline, in grepArgs) (fantasy.ToolRespons
 	note := ""
 	if fi, err := os.Stat(root); err == nil && fi.Mode().IsRegular() {
 		// Grep opens no symbolic link, but one named as path was asked for
-		given, real := filepath.ToSlash(filepath.Clean(root)), root
+		given, target := filepath.ToSlash(filepath.Clean(root)), root
 		if r, err := filepath.EvalSymlinks(root); err == nil {
-			real = r
+			target = r
 		}
-		root, files = filepath.Dir(real), []string{filepath.Base(real)}
+		root, files = filepath.Dir(target), []string{filepath.Base(target)}
 		name = func(string) string { return given }
 	} else if files, note, err = ListFiles(ctx, root, ListLimit); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -1317,9 +1317,10 @@ func grepFile(root, rel string, re, whole *regexp.Regexp, limit int, buf *[]byte
 	}
 	var hits []Hit
 	n = 0
+	nl := []byte("\n")
 	for line := range bytes.Lines(data) {
 		n++
-		if line = bytes.TrimSuffix(line, []byte("\n")); re.Match(line) {
+		if line = bytes.TrimSuffix(line, nl); re.Match(line) {
 			if hits = append(hits, Hit{Rel: rel, Line: n, Text: string(line)}); len(hits) == limit {
 				break
 			}

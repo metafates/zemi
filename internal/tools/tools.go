@@ -399,6 +399,7 @@ func (NoProviderOptions) SetProviderOptions(fantasy.ProviderOptions) {}
 // tool implements fantasy.AgentTool over a plain run function.
 type tool struct {
 	NoProviderOptions
+
 	info fantasy.ToolInfo
 	// subjects parses the input into the requests the gate answers, and
 	// refuses input the tool could not act on (a URL that is no URL), so
@@ -713,7 +714,7 @@ func ResolveSchemaRefs(schema map[string]any) (map[string]any, error) {
 
 func resolveRefs(v, root any, seen set.Set[string], depth int) (any, error) {
 	if depth > 64 {
-		return nil, fmt.Errorf("schema nests deeper than 64 levels")
+		return nil, errors.New("schema nests deeper than 64 levels")
 	}
 	switch v := v.(type) {
 	case map[string]any:
@@ -775,13 +776,13 @@ func schemaPointer(root any, ref string) (any, error) {
 	return cur, nil
 }
 
-func gated(t fantasy.AgentTool) fantasy.AgentTool {
-	t.(*tool).gated = true
+func gated(t *tool) *tool {
+	t.gated = true
 	return t
 }
 
-func edits(t fantasy.AgentTool) fantasy.AgentTool {
-	t.(*tool).edits = true
+func edits(t *tool) *tool {
+	t.edits = true
 	return t
 }
 
@@ -790,7 +791,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	mk := func(name ToolName, desc string, parallel bool, args any,
 		subjects func(*Pipeline, map[string]any) ([]Request, error),
 		run func(context.Context, *Pipeline, map[string]any) (fantasy.ToolResponse, error),
-	) fantasy.AgentTool {
+	) *tool {
 		props, required := ArgsOf(args)
 		return &tool{
 			info: fantasy.ToolInfo{

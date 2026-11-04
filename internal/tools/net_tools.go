@@ -4,6 +4,7 @@
 package tools
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -22,7 +23,7 @@ func SafeClient(onHop func(u *url.URL) error) *http.Client {
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
-				return fmt.Errorf("stopped after 5 redirects")
+				return errors.New("stopped after 5 redirects")
 			}
 			if _, err := ParseNetURL(req.URL.String()); err != nil {
 				return fmt.Errorf("redirect: %w", err)
@@ -39,13 +40,13 @@ func ParseNetURL(raw string) (*url.URL, error) {
 		return nil, fmt.Errorf("bad url: %w", err)
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return nil, fmt.Errorf("only http and https urls are allowed")
+		return nil, errors.New("only http and https urls are allowed")
 	}
 	if u.User != nil {
-		return nil, fmt.Errorf("userinfo in urls is refused")
+		return nil, errors.New("userinfo in urls is refused")
 	}
 	if u.Hostname() == "" {
-		return nil, fmt.Errorf("url is missing a host")
+		return nil, errors.New("url is missing a host")
 	}
 	return u, nil
 }

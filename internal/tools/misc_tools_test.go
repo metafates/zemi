@@ -187,7 +187,7 @@ func TestQuestionAndPlanTools(t *testing.T) {
 			}
 		})
 	}
-	if o := asked[0].Options; len(asked) != 2 || asked[1].Type != TypeMulti || o[0] != (QuestionOption{"A", "first", true}) || o[1].Recommended {
+	if o := asked[0].Options; len(asked) != 2 || asked[1].Type != TypeMulti || o[0] != (QuestionOption{Label: "A", Description: "first", Recommended: true}) || o[1].Recommended {
 		t.Fatalf("question plumbing: %+v", asked)
 	}
 	if gotPlan != planBody {

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -44,9 +45,9 @@ const (
 )
 
 // waitJob holds until the job exits, its output has been quiet for quiet,
-// or the cap or the turn's cancel fires.
-func waitJob(ctx context.Context, j *Job, quiet, cap time.Duration) {
-	deadline := time.NewTimer(cap)
+// or the ceiling passes or the turn's cancel fires.
+func waitJob(ctx context.Context, j *Job, quiet, ceiling time.Duration) {
+	deadline := time.NewTimer(ceiling)
 	defer deadline.Stop()
 	tick := time.NewTicker(250 * time.Millisecond)
 	defer tick.Stop()
@@ -263,7 +264,7 @@ func (m *Jobs) add(j *Job, wait <-chan error) string {
 		m.jobs = map[string]*Job{}
 	}
 	m.seq++
-	j.ID = fmt.Sprintf("job-%d", m.seq)
+	j.ID = "job-" + strconv.Itoa(m.seq)
 	m.jobs[j.ID] = j
 	m.mu.Unlock()
 	if m.OnChange != nil {
@@ -307,7 +308,7 @@ func (m *Jobs) evictLocked() {
 		}
 	}
 	for id := 1; finished > maxKeptJobs && id <= m.seq; id++ {
-		key := fmt.Sprintf("job-%d", id)
+		key := "job-" + strconv.Itoa(id)
 		j, ok := m.jobs[key]
 		if !ok || !j.announced {
 			continue
@@ -333,7 +334,7 @@ func (m *Jobs) List() []*Job {
 	defer m.mu.Unlock()
 	out := make([]*Job, 0, len(m.jobs))
 	for i := 1; i <= m.seq; i++ {
-		if j, ok := m.jobs[fmt.Sprintf("job-%d", i)]; ok {
+		if j, ok := m.jobs["job-"+strconv.Itoa(i)]; ok {
 			out = append(out, j)
 		}
 	}
