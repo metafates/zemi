@@ -743,6 +743,7 @@ func (a *App) background(fn func()) {
 		return
 	}
 	a.workOnce.Do(func() {
+		// NOTE: 64 waiting keys is the burst bound; past it a key is dropped, not queued.
 		a.work = make(chan func(), 64)
 		go func() {
 			for f := range a.work {

@@ -80,6 +80,8 @@ func launch(o options) int {
 	p := tea.NewProgram(app)
 	app.SetProgram(p)
 	markConfig := setReload(host, steps, app)
+	// stop ends the watchers below once the TUI returns, so a clean quit leaves nothing running.
+	stop := make(chan struct{})
 
 	// While the TUI is up only the renderer may write to the terminal: fd 2
 	// goes to the log, so a panic's stack or a chatty library cannot smear
@@ -111,9 +113,16 @@ func launch(o options) int {
 		markConfig()
 		// an edit made mid-turn applies after it, or at the lua tool's next call
 		host.GoSafe("config watch", func() {
-			for range time.Tick(time.Second) {
-				if !host.AgentActive() {
-					host.ReloadIfChanged()
+			t := time.NewTicker(time.Second)
+			defer t.Stop()
+			for {
+				select {
+				case <-stop:
+					return
+				case <-t.C:
+					if !host.AgentActive() {
+						host.ReloadIfChanged()
+					}
 				}
 			}
 		})
@@ -139,12 +148,16 @@ func launch(o options) int {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGHUP)
 	go func() {
-		<-sig
-		proc.KillAll()
-		os.Exit(130)
+		select {
+		case <-sig:
+			proc.KillAll()
+			os.Exit(130)
+		case <-stop:
+		}
 	}()
 
 	_, err = p.Run()
+	close(stop)
 	// Children run in their own sessions (internal/proc), so the terminal
 	// closing does not reach them: stop them here, and start none after (a
 	// reload, an MCP retry, a plugin's job), which would outlive zemi. Exit

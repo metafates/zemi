@@ -45,7 +45,8 @@ const (
 	idleInterval     = 250 * time.Millisecond // the tick with nothing moving on its own; a bump wakes it
 	frameMS          = 50                     // the frame clock: spinner, eyes and shimmer step once per tick
 	doneLinger       = 3 * time.Second        // how long the mascot's eyes say how a turn ended
-	hookQueueSize    = 64
+	// NOTE: 64 waiting hooks is the burst bound; past it dispatch drops a message, await waits.
+	hookQueueSize = 64
 )
 
 // App is the root bubbletea model. It implements hostapi.UIHooks.
