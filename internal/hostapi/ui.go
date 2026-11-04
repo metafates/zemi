@@ -657,27 +657,33 @@ func overlayItems(v any) ([]OverlayItem, error) {
 // returns a string or one line of segments; a failing item falls back to its
 // plain value.
 func (h *Host) renderItems(L *glua.LState, id string, fn *glua.LFunction, items []OverlayItem) {
+	fail := func(item *OverlayItem, err error) {
+		h.RecordErrorOnce("overlay", id+" render_item", err.Error())
+		item.Row = []Segment{{Text: fmt.Sprint(item.raw)}}
+	}
 	for i := range items {
 		item := &items[i]
 		rets, err := h.callFn(L, h.callerOf(L), fn, 1, lua.FromGo(L, item.raw))
-		if err == nil {
-			switch v := rets[0].(type) {
-			case *glua.LTable:
-				var line any
-				if line, err = lua.ToGo(v); err == nil {
-					var rows [][]Segment
-					if rows, err = convertSegments([]any{line}); err == nil {
-						item.Row = rows[0]
-					}
-				}
-			case *glua.LNilType:
-			default:
-				item.Row = []Segment{{Text: v.String()}}
-			}
-		}
 		if err != nil {
-			h.RecordErrorOnce("overlay", id+" render_item", err.Error())
-			item.Row = []Segment{{Text: fmt.Sprint(item.raw)}}
+			fail(item, err)
+			continue
+		}
+		switch v := rets[0].(type) {
+		case *glua.LTable:
+			line, err := lua.ToGo(v)
+			if err != nil {
+				fail(item, err)
+				continue
+			}
+			rows, err := convertSegments([]any{line})
+			if err != nil {
+				fail(item, err)
+				continue
+			}
+			item.Row = rows[0]
+		case *glua.LNilType:
+		default:
+			item.Row = []Segment{{Text: v.String()}}
 		}
 	}
 }

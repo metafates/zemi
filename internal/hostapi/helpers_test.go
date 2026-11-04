@@ -8,7 +8,7 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	zemiruntime "github.com/metafates/zemi/runtime"
+	"github.com/metafates/zemi/runtime"
 )
 
 // TestSpecFieldTypes pins DESIGN §6.0 for option tables: a field of the
@@ -146,7 +146,7 @@ func dumpKeys(keys []ItemKey) []string {
 func newWindow(t *testing.T, stateHome, projectDir string) (*Host, *replyStubModel) {
 	t.Helper()
 	log := slog.New(slog.DiscardHandler)
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS})
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: runtime.FS})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{
 		StateHome:  stateHome,
 		DataHome:   t.TempDir(),

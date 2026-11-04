@@ -18,7 +18,7 @@ import (
 
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/set"
-	zemiruntime "github.com/metafates/zemi/runtime"
+	"github.com/metafates/zemi/runtime"
 )
 
 // TypesDir is where the annotations land: the data dir, not the config
@@ -58,11 +58,11 @@ func (h *Host) syncTypes() {
 // writeTypes copies the embedded annotations plus the runtime modules
 // config can require, so require("zemi.util") resolves to real source.
 func (h *Host) writeTypes(dir string) error {
-	types, err := fs.Sub(zemiruntime.Types, "types")
+	types, err := fs.Sub(runtime.Types, "types")
 	if err != nil {
 		return err
 	}
-	mods, err := fs.Sub(zemiruntime.FS, "lua")
+	mods, err := fs.Sub(runtime.FS, "lua")
 	if err != nil {
 		return err
 	}

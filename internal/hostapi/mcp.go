@@ -298,11 +298,18 @@ func (s *mcpServer) group() string {
 	return s.spec.Group
 }
 
-// specSnapshot copies the spec under the lock.
+// specSnapshot copies the spec under the lock, its lists and maps with it: a
+// server stored from it goes on alone.
 func (s *mcpServer) specSnapshot() mcpSpec {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.spec
+	spec := s.spec
+	spec.Args = slices.Clone(spec.Args)
+	spec.Env = maps.Clone(spec.Env)
+	spec.Headers = maps.Clone(spec.Headers)
+	spec.EnabledTools = slices.Clone(spec.EnabledTools)
+	spec.DisabledTools = slices.Clone(spec.DisabledTools)
+	return spec
 }
 
 // adoptGroup takes a spec's new group without a restart.
@@ -642,7 +649,12 @@ func (h *Host) deferMCP(set []fantasy.AgentTool, loaded *sync.Map) ([]fantasy.Ag
 	always = append(always, string(tools.ToolSearch))
 	active := func() []string {
 		out := slices.Clone(always)
-		loaded.Range(func(k, _ any) bool { out = append(out, k.(string)); return true })
+		loaded.Range(func(k, _ any) bool {
+			if name, ok := k.(string); ok {
+				out = append(out, name)
+			}
+			return true
+		})
 		return out
 	}
 	return append(set, newToolSearch(h, deferred, loaded)), active
@@ -662,6 +674,7 @@ func seedLoaded(loaded *sync.Map, history []fantasy.Message) {
 
 type toolSearch struct {
 	tools.NoProviderOptions
+
 	h      *Host
 	tools  []*mcpTool
 	loaded *sync.Map
@@ -671,7 +684,7 @@ type toolSearch struct {
 // newToolSearch builds the catalog once: it only changes with the servers,
 // so it keeps the provider's prompt cache for the session.
 func newToolSearch(h *Host, list []*mcpTool, loaded *sync.Map) *toolSearch {
-	byServer := map[string][]string{}
+	byServer := make(map[string][]string, len(list))
 	for _, m := range list {
 		byServer[m.srv.name] = append(byServer[m.srv.name], m.shortName())
 	}
@@ -782,6 +795,7 @@ const (
 
 type mcpTool struct {
 	tools.NoProviderOptions
+
 	h     *Host
 	srv   *mcpServer
 	tool  mcp.Tool

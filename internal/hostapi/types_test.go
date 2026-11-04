@@ -20,7 +20,7 @@ import (
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
-	zemiruntime "github.com/metafates/zemi/runtime"
+	"github.com/metafates/zemi/runtime"
 )
 
 // annotated collects every `function zemi.a.b(` and `---@field x` line of
@@ -218,7 +218,7 @@ func TestTypesExamples(t *testing.T) {
 
 func typesSource(t *testing.T) string {
 	t.Helper()
-	data, err := zemiruntime.Types.ReadFile("types/zemi.lua")
+	data, err := runtime.Types.ReadFile("types/zemi.lua")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +232,7 @@ func typesSource(t *testing.T) string {
 func bootedNamespaces(t *testing.T, other bool) map[string][]string {
 	t.Helper()
 	log := slog.New(slog.DiscardHandler)
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: zemiruntime.FS})
+	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, RuntimeFS: runtime.FS})
 	h := NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
 	var out map[string][]string
 	capture := lua.BootStep{Name: "capture", Run: func(_ context.Context, _ *lua.Runtime, g *lua.Generation) error {

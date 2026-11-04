@@ -44,7 +44,7 @@ func (h *Host) MemoriesCommand(args string) error {
 		if verb == "view" {
 			return h.openMemoriesRange(l, i)
 		}
-		return h.openMemoriesZoom(nodeID{l, i})
+		return h.openMemoriesZoom(nodeID{l: l, i: i})
 	default:
 		return Usagef("usage: /memories [zoom <l> <i> | view <l> <i>]")
 	}
@@ -117,7 +117,7 @@ func (h *Host) trackedLevel(id string) (Overlay, bool) {
 	}
 	if _, rest, ok := strings.Cut(id, " zoom "); ok { // a drill-in level
 		if l, i, err := parseNodeArgs(rest); err == nil {
-			return h.memoriesZoomOverlay(nodeID{l, i})
+			return h.memoriesZoomOverlay(nodeID{l: l, i: i})
 		}
 	}
 	return Overlay{}, false
@@ -152,12 +152,12 @@ func (h *Host) openMemoriesZoom(id nodeID) error {
 	}
 	above := -1 // the view line the node's first message falls in
 	for k, ln := range lines {
-		if (nodeID{ln.L, ln.I}).first() > id.first() {
+		if (nodeID{l: ln.L, i: ln.I}).first() > id.first() {
 			break
 		}
 		above = k
 	}
-	if above < 0 || id.last() > (nodeID{lines[above].L, lines[above].I}).last() {
+	if above < 0 || id.last() > (nodeID{l: lines[above].L, i: lines[above].I}).last() {
 		return Usagef("%s is above the view: zoom reaches down from it", id.id())
 	}
 	ui, err := h.Screen()
@@ -193,7 +193,7 @@ func (h *Host) memoriesOverlay() Overlay {
 	b, n, levels, unbuilt := viewStatsOf(lines)
 	lo := h.chatWindowLo()
 	for _, ln := range lines {
-		o.Items = append(o.Items, h.memoriesRow(nodeID{ln.L, ln.I}, ln.Text, lo))
+		o.Items = append(o.Items, h.memoriesRow(nodeID{l: ln.L, i: ln.I}, ln.Text, lo))
 	}
 	if n > 0 {
 		foot := fmt.Sprintf("%s  %s  %s", fmtBytes(int64(b)), pluralCount(n, "line", "lines"), pluralCount(levels, "level", "levels"))
@@ -222,14 +222,13 @@ func (h *Host) memoriesZoomOverlay(id nodeID) (Overlay, bool) {
 	if err != nil || id.first() >= count {
 		return o, false
 	}
+	o.Foot = pluralCount(int(id.span()), "message", "messages")
 	if n, err := h.DB.NodeAt(id.l, id.i); err == nil && n.Text != "" {
 		o.Body = n.Text
-		o.Foot = fmt.Sprintf("%s  %s", fmtBytes(int64(n.Size)), pluralCount(int(id.span()), "message", "messages"))
-	} else {
-		o.Foot = pluralCount(int(id.span()), "message", "messages")
+		o.Foot = fmt.Sprintf("%s  %s", fmtBytes(int64(n.Size)), o.Foot)
 	}
 	lo := h.chatWindowLo()
-	for _, child := range []nodeID{{id.l - 1, id.i * 2}, {id.l - 1, id.i*2 + 1}} {
+	for _, child := range []nodeID{{l: id.l - 1, i: id.i * 2}, {l: id.l - 1, i: id.i*2 + 1}} {
 		text := ""
 		if n, err := h.DB.NodeAt(child.l, child.i); err == nil {
 			text = n.Text
@@ -298,7 +297,7 @@ func (h *Host) openMemoriesRange(l, i int64) error {
 	if h.DB == nil {
 		return errors.New("no chat log in this boot")
 	}
-	id := nodeID{l, i}
+	id := nodeID{l: l, i: i}
 	count, err := h.DB.LogCount()
 	if err != nil {
 		return err
@@ -384,9 +383,9 @@ func viewStatsOf(ls []store.ViewLineText) (bytes, lines, levels, unbuilt int) {
 func fmtBytes(n int64) string {
 	switch {
 	case n >= 1_000_000:
-		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e6), ".0") + "M"
+		return strings.TrimSuffix(strconv.FormatFloat(float64(n)/1e6, 'f', 1, 64), ".0") + "M"
 	case n >= 1000:
-		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e3), ".0") + "k"
+		return strings.TrimSuffix(strconv.FormatFloat(float64(n)/1e3, 'f', 1, 64), ".0") + "k"
 	default:
 		return strconv.FormatInt(n, 10) + " B"
 	}

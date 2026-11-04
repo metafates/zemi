@@ -274,7 +274,7 @@ func TestTurnTelemetry(t *testing.T) {
 		two, _ := h.GlobalDB.GetKV("step2")
 		if one != `"1 number number"` || two != `"0 number number"` {
 			h.evlog.mu.Lock()
-			emitted := []any{}
+			var emitted []any
 			for _, e := range h.evlog.entries {
 				if e.name == "agent.step" {
 					emitted = append(emitted, e.payload["step"])

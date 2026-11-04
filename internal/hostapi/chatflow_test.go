@@ -141,6 +141,7 @@ func TestPendingLineNamesAndClips(t *testing.T) {
 // side calls (titles, the builder) pass through.
 type gateStub struct {
 	*replyStubModel
+
 	release chan struct{}
 	arrived chan struct{} // closed when the turn's first call reached the model
 	once    sync.Once
@@ -604,6 +605,7 @@ func TestReplyStatCarriesTheThought(t *testing.T) {
 // the first, so a thought accrues time the way a streaming provider's does.
 type slowThought struct {
 	fantasy.LanguageModel
+
 	gap time.Duration
 }
 

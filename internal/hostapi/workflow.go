@@ -139,6 +139,8 @@ func (h *Host) workflowSource(name string) (string, error) {
 // (wfRun) owns the script on its goroutine and writes the fields below mu
 // under it; the screens, the tool and flowControl read and steer them.
 type flowRun struct {
+	runState
+
 	id, name, description string
 	about                 string // a saved workflow's leading comment, "" for an inline script
 	parent                string // the session that started it, its agents' parent too
@@ -151,8 +153,6 @@ type flowRun struct {
 	// journal is the held fd the scheduler appends to, never the path: a
 	// stale file can plant a link at the name. nil with no session.
 	journal *os.File
-
-	runState
 
 	paused  bool
 	limit   int
@@ -172,6 +172,7 @@ type flowRun struct {
 // ended as its row says when a journal answered it.
 type flowAgent struct {
 	agentRow
+
 	run *agentRun
 }
 
@@ -1395,6 +1396,7 @@ func (h *Host) saveFlow(id, name string) (string, error) {
 
 type workflowTool struct {
 	tools.NoProviderOptions
+
 	h     *Host
 	pipe  *tools.Pipeline
 	saved []Workflow
@@ -1489,8 +1491,12 @@ func (t *workflowTool) Info() fantasy.ToolInfo {
 	props, required := tools.ArgsOf(workflowArgs{})
 	desc.WriteString(" Set background for runs that take minutes, and act on one with run and action; action list names this session's runs, the user's own from /workflows among them, and status lists the run ids of its agents." +
 		" wait blocks until that run ends, so its result is in the conversation by the time this call returns; a report the same run sends arrives as a message.")
-	props["action"].(map[string]any)["enum"] = actions
-	props["concurrency"].(map[string]any)["description"] = fmt.Sprintf("agents running at once, 1-%d (default %d); with run, changes a running workflow's", workflowMaxConcurrency, workflowConcurrency)
+	if p, ok := props["action"].(map[string]any); ok {
+		p["enum"] = actions
+	}
+	if p, ok := props["concurrency"].(map[string]any); ok {
+		p["description"] = fmt.Sprintf("agents running at once, 1-%d (default %d); with run, changes a running workflow's", workflowMaxConcurrency, workflowConcurrency)
+	}
 	if len(t.saved) > 0 {
 		desc.WriteString("\n\nSaved workflows (pass name instead of script):")
 		for _, w := range t.saved {

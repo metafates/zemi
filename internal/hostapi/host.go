@@ -1423,7 +1423,7 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 		// a hot runtime cannot run the deny hooks: fail closed
 		return VetoResult{Denied: true, Reason: "permission.request hooks could not run (lua runtime unavailable, /reload): " + err.Error()}
 	}
-	res := VetoResult{}
+	var res VetoResult
 	for _, o := range outcomes {
 		if o.timed {
 			res.TimedOut = true
@@ -1595,7 +1595,7 @@ const (
 
 // segment builds one segment from a { text = ... } table's fields.
 func segment(field func(string) any) Segment {
-	seg := Segment{}
+	var seg Segment
 	if t, ok := field("text").(string); ok {
 		seg.Text = sanitize.Row(t)
 	}
@@ -1806,7 +1806,7 @@ func (h *Host) instructionsCached() []string {
 	h.instrMu.Lock()
 	defer h.instrMu.Unlock()
 	if !h.instrStale.Swap(false) {
-		return h.instr
+		return slices.Clone(h.instr)
 	}
 	h.instr = nil
 	if root := h.repoRoot(); h.ProjectTrusted() && !TrustUnsaved(root) {
@@ -1822,7 +1822,7 @@ func (h *Host) instructionsCached() []string {
 			h.instr = append(h.instr, p)
 		}
 	}
-	return h.instr
+	return slices.Clone(h.instr)
 }
 
 // usageTable is the session token tally for widgets (DESIGN §8): totals

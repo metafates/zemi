@@ -52,7 +52,7 @@ type bindKey struct {
 	list bool
 }
 
-func (b *KeyBinding) slot() bindKey { return bindKey{b.Key, b.List} }
+func (b *KeyBinding) slot() bindKey { return bindKey{key: b.Key, list: b.List} }
 
 // mayReplace refuses one plugin's registration or removal over another's: both
 // carry OriginPlugin, so the later would silently replace or drop the first
@@ -140,7 +140,7 @@ func (r *KeymapRegistry) Set(b *KeyBinding) error {
 func (r *KeymapRegistry) Del(by lua.Origin, byPath, key string, list bool) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	k := bindKey{key, list}
+	k := bindKey{key: key, list: list}
 	b := r.bindings[k]
 	if b == nil {
 		return false, nil
@@ -156,7 +156,7 @@ func (r *KeymapRegistry) Del(by lua.Origin, byPath, key string, list bool) (bool
 func (r *KeymapRegistry) Lookup(key string) *KeyBinding {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.bindings[bindKey{key, false}]
+	return r.bindings[bindKey{key: key}]
 }
 
 // ListAlias is the list alias bound to key, nil when none: the key loop
@@ -164,7 +164,7 @@ func (r *KeymapRegistry) Lookup(key string) *KeyBinding {
 func (r *KeymapRegistry) ListAlias(key string) *KeyBinding {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.bindings[bindKey{key, true}]
+	return r.bindings[bindKey{key: key, list: true}]
 }
 
 // IsPrefix reports whether seq begins a longer bound key sequence.

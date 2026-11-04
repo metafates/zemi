@@ -84,7 +84,7 @@ func (h *Host) setTranscriptFromLog() {
 // reset's wipe does to the window.
 func (h *Host) SetTranscript(tr []ChatMessage) {
 	h.tMu.Lock()
-	h.session.Transcript, h.view = tr, nil
+	h.session.Transcript, h.view = slices.Clone(tr), nil
 	h.trEpoch.Add(1)
 	h.tMu.Unlock()
 	h.stampReset(tr)

@@ -2039,6 +2039,7 @@ func TestModelDesc(t *testing.T) {
 // along with the text; turns stream from the script.
 type btwModel struct {
 	*scriptModel
+
 	call fantasy.Call
 }
 

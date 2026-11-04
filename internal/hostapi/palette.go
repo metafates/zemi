@@ -1,6 +1,7 @@
 package hostapi
 
 import (
+	"errors"
 	"fmt"
 	"image/color"
 	"math"
@@ -144,7 +145,7 @@ func parsePalette(spec map[string]any) (Palette, error) {
 		*dst = rgb(col)
 	}
 	if p.Bg == nil || p.Fg == nil || p.Accent == nil || p.Ok == nil || p.Warn == nil || p.Danger == nil {
-		return p, fmt.Errorf("bg, fg, accent, ok, warn and danger are required")
+		return p, errors.New("bg, fg, accent, ok, warn and danger are required")
 	}
 	derive(&p)
 	return p, nil
@@ -152,7 +153,7 @@ func parsePalette(spec map[string]any) (Palette, error) {
 
 func parseHex(s string) (colorful.Color, error) {
 	if !isHexColor(s) {
-		return colorful.Color{}, fmt.Errorf("not a hex color")
+		return colorful.Color{}, errors.New("not a hex color")
 	}
 	return colorful.Hex(s)
 }

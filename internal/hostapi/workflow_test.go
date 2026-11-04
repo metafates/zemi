@@ -279,6 +279,7 @@ func TestWorkflowCallWarns(t *testing.T) {
 // the task's first line: the scratchpad line runAgent adds names the run.
 type gateModel struct {
 	scriptModel
+
 	release chan struct{}
 	running atomic.Int32
 	mu      sync.Mutex

@@ -360,18 +360,18 @@ func (h *Host) todoSnapshot() []store.Todo {
 			h.todos, _ = h.DB.Todos(sid)
 		}
 	}
-	return h.todos
+	return slices.Clone(h.todos)
 }
 
 // fmtTokens reads a token count as the statusline does: 1234 is 1.2k, 1500000000 is 1.5B.
 func fmtTokens(n int64) string {
 	switch {
 	case n >= 1_000_000_000:
-		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e9), ".0") + "B"
+		return strings.TrimSuffix(strconv.FormatFloat(float64(n)/1e9, 'f', 1, 64), ".0") + "B"
 	case n >= 1_000_000:
-		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e6), ".0") + "M"
+		return strings.TrimSuffix(strconv.FormatFloat(float64(n)/1e6, 'f', 1, 64), ".0") + "M"
 	case n >= 1000:
-		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1e3), ".0") + "k"
+		return strings.TrimSuffix(strconv.FormatFloat(float64(n)/1e3, 'f', 1, 64), ".0") + "k"
 	default:
 		return strconv.FormatInt(n, 10)
 	}
@@ -382,7 +382,7 @@ func fmtCost(usd float64) string {
 	if usd > 0 && usd < 0.005 {
 		return "<$0.01"
 	}
-	return fmt.Sprintf("$%.2f", usd)
+	return "$" + strconv.FormatFloat(usd, 'f', 2, 64)
 }
 
 // OpenUsage shows how full the context is, what the fixed prompt is made of,
@@ -423,7 +423,7 @@ func (h *Host) OpenUsage() error {
 		}
 		pctText := strconv.Itoa(int(pct)) + "%"
 		if pct < 1 {
-			pctText = fmt.Sprintf("%.1f%%", pct) // a filled cell beside a rounded "0%" reads as a lie
+			pctText = strconv.FormatFloat(pct, 'f', 1, 64) + "%" // a filled cell beside a rounded "0%" reads as a lie
 		}
 		section("Context")
 		rows = append(rows, append(append([]Segment{text("", "  ")}, bar(s.LastIn, s.CtxWindow, 32, hl)...),

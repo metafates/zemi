@@ -33,7 +33,7 @@ import (
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
-	zemiruntime "github.com/metafates/zemi/runtime"
+	"github.com/metafates/zemi/runtime"
 )
 
 // skillsReg caches discovery results between DB syncs. Everything that
@@ -196,7 +196,7 @@ func (h *Host) materializeBuiltinSkills() error {
 	if dir == "" {
 		return nil
 	}
-	sub, err := fs.Sub(zemiruntime.Skills, "skills")
+	sub, err := fs.Sub(runtime.Skills, "skills")
 	if err != nil {
 		return err
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -138,7 +137,7 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 	for ns, ms := range bootedNamespaces(t, false) {
 		for _, m := range ms {
 			if name := strings.TrimPrefix(ns, "zemi.") + "." + m; !luaReadOnly.Has(name) && !luaDelegated.Has(name) {
-				members = append(members, fmt.Sprintf("%q", name))
+				members = append(members, strconv.Quote(name))
 			}
 		}
 	}

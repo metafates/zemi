@@ -63,13 +63,13 @@ func (h *Host) recordEvent(name, from string, payload map[string]any) {
 	if strings.HasSuffix(name, "_delta") {
 		return
 	}
-	l.entries = appendLast(l.entries, eventEntry{h.now(), name, from, payload}, eventLogMax)
+	l.entries = appendLast(l.entries, eventEntry{at: h.now(), name: name, from: from, payload: payload}, eventLogMax)
 }
 
 func (h *Host) recordNotify(level slog.Level, title, body string) {
 	l := &h.evlog
 	l.mu.Lock()
-	l.notes = appendLast(l.notes, notifyEntry{h.now(), notifyName(level), title, body}, notifyLogMax)
+	l.notes = appendLast(l.notes, notifyEntry{at: h.now(), level: notifyName(level), title: title, body: body}, notifyLogMax)
 	l.mu.Unlock()
 }
 

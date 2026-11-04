@@ -381,6 +381,7 @@ const contextRole = "context"
 // from files (agent definitions, saved workflows) cannot move the prefix.
 type pinnedTool struct {
 	fantasy.AgentTool
+
 	info fantasy.ToolInfo
 }
 
@@ -433,7 +434,7 @@ func (h *Host) pinPrompt(toolset []fantasy.AgentTool) (out []fantasy.AgentTool, 
 	}
 	out = make([]fantasy.AgentTool, len(toolset))
 	for i, t := range toolset {
-		out[i] = pinnedTool{t, pin.infos[infos[i].Name]}
+		out[i] = pinnedTool{AgentTool: t, info: pin.infos[infos[i].Name]}
 	}
 	return out, pin.text, pin.context, pin.parts
 }

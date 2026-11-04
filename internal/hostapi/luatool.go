@@ -82,6 +82,7 @@ var luaDelegated = set.Of("tool.call")
 // script's callable set is built with under its own pipeline copy.
 type luaEvalTool struct {
 	tools.NoProviderOptions
+
 	h     *Host
 	pipe  *tools.Pipeline
 	build func(*tools.Pipeline) ([]fantasy.AgentTool, []string)
@@ -345,12 +346,12 @@ func (c *luaCalls) enter(ctx context.Context) (func(), bool) {
 // script the lua tool is running reaches it, and only while that run lives.
 func (h *Host) luaToolCall(L *glua.LState) int {
 	name := L.CheckString(1)
-	v, ok := h.scripts.Load(h.modelLuaScript(L))
+	v, _ := h.scripts.Load(h.modelLuaScript(L))
+	s, ok := v.(*luaScript)
 	if !ok {
 		// misuse, not a runtime failure: only the script the lua tool runs may call
 		L.RaiseError("zemi.tool.call is for the lua tool's own script, while it runs")
 	}
-	s := v.(*luaScript)
 	tool, ok := s.tools[name]
 	if !ok {
 		return luaResult(L, fmt.Errorf("no tool %q in this run; zemi.tool.list() names the tools, the prompt the rest", name))
@@ -426,11 +427,12 @@ type luaToolHandle struct {
 // run's tools, for one the prompt does not declare, nil when the run has none.
 func (h *Host) luaToolDescribe(L *glua.LState) int {
 	name := L.CheckString(1)
-	v, ok := h.scripts.Load(h.modelLuaScript(L))
+	v, _ := h.scripts.Load(h.modelLuaScript(L))
+	s, ok := v.(*luaScript)
 	if !ok {
 		L.RaiseError("zemi.tool.describe is for the lua tool's own script, while it runs")
 	}
-	tool, ok := v.(*luaScript).tools[name]
+	tool, ok := s.tools[name]
 	if !ok {
 		L.Push(glua.LNil)
 		return 1

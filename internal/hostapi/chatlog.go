@@ -468,7 +468,7 @@ func renderLine(l, i int64, text string) string {
 	if text == "" {
 		text = placeholder
 	}
-	return nodeID{l, i}.id() + "|" + strings.ReplaceAll(text, "\n", " ")
+	return nodeID{l: l, i: i}.id() + "|" + strings.ReplaceAll(text, "\n", " ")
 }
 
 // isViewMessage reports whether a history slice opens on the chat view: one
@@ -553,6 +553,7 @@ const zoomPageChars = 8_000
 // message whole.
 type zoomTool struct {
 	tools.NoProviderOptions
+
 	h *Host
 }
 
@@ -752,6 +753,7 @@ type dateArgs struct {
 // dateTool gives a log message's time.
 type dateTool struct {
 	tools.NoProviderOptions
+
 	h *Host
 }
 

@@ -82,10 +82,10 @@ func TestCopyReply(t *testing.T) {
 	if err := h.CopyReply(""); err != nil || len(ui.opened) != 1 || ui.opened[0].ID != "copy" || !ui.opened[0].CloseOnCopy {
 		t.Fatalf("/copy: %v, %v", err, ui.opened)
 	}
-	type copyRow struct{ text, desc, copy string }
+	type copyRow struct{ text, desc, dup string }
 	var rows []copyRow
 	for _, it := range ui.opened[0].Items {
-		rows = append(rows, copyRow{it.Text, it.Desc, it.Copy})
+		rows = append(rows, copyRow{text: it.Text, desc: it.Desc, dup: it.Copy})
 	}
 	wantRows := []copyRow{
 		{"1  go", "1 line  x := 1", "x := 1\n"},

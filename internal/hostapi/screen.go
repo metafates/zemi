@@ -105,6 +105,7 @@ type Retry struct {
 // AgentTool is one live call: the stream's row plus how long it has run.
 type AgentTool struct {
 	StreamTool
+
 	Elapsed time.Duration
 }
 

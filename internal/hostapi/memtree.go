@@ -170,7 +170,7 @@ func nextDueMerge(view []viewLine, t int64, size func(nodeID) (int, bool)) (int,
 		if a.l != c.l || c.i != a.i+1 || a.i%2 != 0 {
 			continue
 		}
-		parent := nodeID{a.l + 1, a.i / 2}
+		parent := nodeID{l: a.l + 1, i: a.i / 2}
 		if _, ok := size(parent); !ok {
 			continue
 		}
@@ -192,11 +192,11 @@ func mergeDown(view []viewLine, t int64, size func(nodeID) (int, bool), stop fun
 		if !ok {
 			break
 		}
-		parent := nodeID{view[k].id.l + 1, view[k].id.i / 2}
+		parent := nodeID{l: view[k].id.l + 1, i: view[k].id.i / 2}
 		n, _ := size(parent)
 		// the parent takes the first child's place: its ord is the first
 		// child's first message
-		view[k] = viewLine{parent, n}
+		view[k] = viewLine{id: parent, size: n}
 		view = slices.Delete(view, k+1, k+2)
 		merged = append(merged, parent)
 	}
@@ -443,9 +443,7 @@ func (b *memTree) run() {
 		return
 	}
 	for b.ctx.Err() == nil {
-		if err := b.rebuild(); err == nil {
-			break
-		} else {
+		if err := b.rebuild(); err != nil {
 			// the store hiccuped at boot: the rebuild retries on the next
 			// wake with its state still empty, so no half-built round runs
 			b.h.Log.Warn("memtree boot failed", "origin", "agent", "error", err)
@@ -455,7 +453,9 @@ func (b *memTree) run() {
 			case <-b.wake:
 			case <-b.rebld:
 			}
+			continue
 		}
+		break
 	}
 	for {
 		if err := b.syncNew(); err != nil {
@@ -535,7 +535,7 @@ func (b *memTree) rebuild() error {
 	}
 	b.built = make(map[nodeID]int, len(nodes))
 	for _, n := range nodes {
-		b.built[nodeID{n.L, n.I}] = n.Size
+		b.built[nodeID{l: n.L, i: n.I}] = n.Size
 	}
 	if err := b.resyncView(); err != nil {
 		return err
@@ -543,7 +543,7 @@ func (b *memTree) rebuild() error {
 	b.msgs, b.seen = count, count-1
 	b.leaves = b.leaves[:0]
 	for seq := range count {
-		if _, ok := b.built[nodeID{0, seq}]; !ok {
+		if _, ok := b.built[nodeID{l: 0, i: seq}]; !ok {
 			b.leaves = append(b.leaves, seq)
 		}
 	}
@@ -552,10 +552,10 @@ func (b *memTree) rebuild() error {
 		if id.i%2 != 0 {
 			continue // one pass per pair, from its first child
 		}
-		if _, ok := b.built[nodeID{id.l, id.i + 1}]; !ok {
+		if _, ok := b.built[nodeID{l: id.l, i: id.i + 1}]; !ok {
 			continue
 		}
-		parent := nodeID{id.l + 1, id.i / 2}
+		parent := nodeID{l: id.l + 1, i: id.i / 2}
 		if !b.isBuilt(parent) {
 			b.merges = append(b.merges, parent)
 		}
@@ -592,10 +592,10 @@ func (b *memTree) resyncView() error {
 	b.viewBytes = 0
 	for _, ln := range lines {
 		size := len(placeholder)
-		if n, ok := b.built[nodeID{ln.L, ln.I}]; ok {
+		if n, ok := b.built[nodeID{l: ln.L, i: ln.I}]; ok {
 			size = n
 		}
-		b.view = append(b.view, viewLine{nodeID{ln.L, ln.I}, size})
+		b.view = append(b.view, viewLine{id: nodeID{l: ln.L, i: ln.I}, size: size})
 		b.viewBytes += size
 	}
 	return nil
@@ -621,7 +621,7 @@ func (b *memTree) syncNew() error {
 		for _, e := range rows {
 			b.seen = e.Seq
 			b.msgs = e.Seq + 1
-			line := viewLine{id: nodeID{0, e.Seq}, size: len(placeholder)}
+			line := viewLine{id: nodeID{l: 0, i: e.Seq}, size: len(placeholder)}
 			switch e.Kind {
 			case store.KindTool, store.KindEcho:
 				// template-built in the append transaction: take its line
@@ -750,7 +750,7 @@ func (b *memTree) dispatchLeaf() bool {
 	b.leaves = b.leaves[1:]
 	if len(e.Text) <= nodeBytes {
 		// a short message is its own node verbatim, no model call
-		b.insertBuilt(nodeID{0, seq}, e.Text)
+		b.insertBuilt(nodeID{l: 0, i: seq}, e.Text)
 		return true
 	}
 	b.takeLeaf() // synchronous: the 8-line gate counts it from now
@@ -765,7 +765,7 @@ func (b *memTree) dispatchLeaf() bool {
 	b.h.GoSafe("memtree leaf", func() {
 		defer b.calls.Done()
 		defer b.endLeaf()
-		text, err := b.build(ctx, nodeID{0, seq}, prompt, first, wait)
+		text, err := b.build(ctx, nodeID{l: 0, i: seq}, prompt, first, wait)
 		b.send(buildResult{leaf: true, seq: seq, text: text, err: err})
 	})
 	return true
@@ -853,7 +853,7 @@ func (b *memTree) apply(r buildResult) {
 		return
 	}
 	b.scanned = false
-	id := nodeID{0, r.seq}
+	id := nodeID{l: 0, i: r.seq}
 	if !r.leaf {
 		id = r.parent
 	}
@@ -882,7 +882,7 @@ func (b *memTree) apply(r buildResult) {
 		b.cool = nil
 	}
 	if r.leaf {
-		b.insertBuilt(nodeID{0, r.seq}, r.text)
+		b.insertBuilt(nodeID{l: 0, i: r.seq}, r.text)
 		return
 	}
 	b.insertBuilt(r.parent, r.text)
@@ -927,15 +927,15 @@ func (b *memTree) insertBuilt(id nodeID, text string) {
 	}
 	b.built[id] = size
 	if id.l == 0 {
-		b.setLineSize(nodeID{0, id.i}, size)
+		b.setLineSize(nodeID{l: 0, i: id.i}, size)
 	}
 }
 
 // queueMerge queues the pair id completes, when its other half is built and
 // the parent is not. Each parent enqueues once, at its second half.
 func (b *memTree) queueMerge(id nodeID) {
-	parent := nodeID{id.l + 1, (id.i &^ 1) / 2}
-	if b.isBuilt(parent) || !b.isBuilt(nodeID{id.l, id.i ^ 1}) {
+	parent := nodeID{l: id.l + 1, i: (id.i &^ 1) / 2}
+	if b.isBuilt(parent) || !b.isBuilt(nodeID{l: id.l, i: id.i ^ 1}) {
 		return
 	}
 	b.merges = append(b.merges, parent)
@@ -947,7 +947,7 @@ func (b *memTree) setLineSize(id nodeID, size int) {
 	for _, at := range []struct {
 		lines *[]viewLine
 		bytes *int
-	}{{&b.view, &b.viewBytes}, {&b.cv, &b.cvBytes}} {
+	}{{lines: &b.view, bytes: &b.viewBytes}, {lines: &b.cv, bytes: &b.cvBytes}} {
 		lines := *at.lines
 		for k := len(lines) - 1; k >= 0; k-- {
 			ln := lines[k]
@@ -1054,12 +1054,12 @@ func (b *memTree) loadCV() error {
 			dropped++
 			continue
 		}
-		id := nodeID{p[0], p[1]}
+		id := nodeID{l: p[0], i: p[1]}
 		size := len(placeholder)
 		if n, ok := b.built[id]; ok {
 			size = n
 		}
-		b.cv = append(b.cv, viewLine{id, size})
+		b.cv = append(b.cv, viewLine{id: id, size: size})
 		b.cvBytes += size
 	}
 	if dropped > 0 {
@@ -1102,12 +1102,12 @@ func (b *memTree) leafPrompt(seq int64, kind, text string) string {
 // view before it.
 func (b *memTree) mergePrompt(a, c store.Node) string {
 	var w strings.Builder
-	if chat := b.chatContext(nodeID{c.L, c.I}.last() + 1); chat != "" {
+	if chat := b.chatContext(nodeID{l: c.L, i: c.I}.last() + 1); chat != "" {
 		fmt.Fprintf(&w, "<chat>\n%s\n</chat>\n\n", chat)
 	}
 	fmt.Fprintf(&w, "Compaction: merge lines %s and %s, adjacent, into one line of at most\n%d bytes (about 70 words), the length of this ruler:\n%s\n<chat> may hold their messages, %d to %d, in more detail: take details\nof them from there too.\n<input>\n%s\n%s\n</input>",
-		nodeID{a.L, a.I}.id(), nodeID{c.L, c.I}.id(), nodeBytes, ruler,
-		nodeID{a.L, a.I}.first(), nodeID{c.L, c.I}.last(), a.Text, c.Text)
+		nodeID{l: a.L, i: a.I}.id(), nodeID{l: c.L, i: c.I}.id(), nodeBytes, ruler,
+		nodeID{l: a.L, i: a.I}.first(), nodeID{l: c.L, i: c.I}.last(), a.Text, c.Text)
 	return w.String()
 }
 
@@ -1372,6 +1372,7 @@ func (b *memTree) openBurst() {
 // written once the provider begins to reply.
 type burstModel struct {
 	fantasy.LanguageModel
+
 	started func()
 }
 

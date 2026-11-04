@@ -73,7 +73,7 @@ func (h *Host) gitBranch() string {
 	if err != nil {
 		return ""
 	}
-	key := headKey{head, fi.ModTime(), fi.Size()}
+	key := headKey{path: head, mod: fi.ModTime(), size: fi.Size()}
 	h.branchMu.Lock()
 	defer h.branchMu.Unlock()
 	if h.branchKey == key {

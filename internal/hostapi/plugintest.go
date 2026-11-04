@@ -31,7 +31,7 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/tools"
-	zemiruntime "github.com/metafates/zemi/runtime"
+	"github.com/metafates/zemi/runtime"
 )
 
 // testEpoch is where a test zemi's clock starts, in UTC so os.date reads
@@ -81,7 +81,7 @@ type testStub struct {
 // run, then Run it and Close the host.
 func NewPluginTest(log *slog.Logger, classes lua.PathClasses, dirs config.Dirs, file string, run int) (*Host, *PluginTest) {
 	clock := &fakeClock{now: testEpoch}
-	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: zemiruntime.FS, Clock: clock, WholeTasks: true})
+	rt := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes, RuntimeFS: runtime.FS, Clock: clock, WholeTasks: true})
 	h := NewHost(rt, log, config.NewStore(), dirs)
 	t := &PluginTest{h: h, clock: clock, file: file, run: run, plugin: h.PluginOf(file)}
 	t.ui = &testUI{h: h}
@@ -331,7 +331,7 @@ func (c *fakeClock) set(now time.Time) {
 func (c *fakeClock) AfterFunc(d time.Duration, f func()) func() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	t := &fakeTimer{c.now.Add(d), f}
+	t := &fakeTimer{at: c.now.Add(d), f: f}
 	i := slices.IndexFunc(c.timers, func(o *fakeTimer) bool { return o.at.After(t.at) })
 	if i < 0 {
 		i = len(c.timers)

@@ -2,6 +2,7 @@ package hostapi
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -295,7 +296,7 @@ func TestSessionStartCapture(t *testing.T) {
 			}
 			waitFor(t, func() error {
 				if hookText() == "" {
-					return fmt.Errorf("no context captured")
+					return errors.New("no context captured")
 				}
 				return nil
 			})
@@ -374,7 +375,7 @@ func TestCaptureInvalidatesBuildInFlight(t *testing.T) {
 		h.agents.mu.Lock()
 		defer h.agents.mu.Unlock()
 		if h.agents.hookCtx == "" {
-			return fmt.Errorf("capture not landed")
+			return errors.New("capture not landed")
 		}
 		return nil
 	})
@@ -404,7 +405,7 @@ func TestCaptureContextCapped(t *testing.T) {
 		h.agents.mu.Lock()
 		defer h.agents.mu.Unlock()
 		if h.agents.hookCtx == "" {
-			return fmt.Errorf("capture not landed")
+			return errors.New("capture not landed")
 		}
 		return nil
 	})

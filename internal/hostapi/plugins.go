@@ -120,7 +120,7 @@ func (h *Host) PluginsStep() lua.BootStep {
 			h.hookReg.set(Gen(g.ID), hooks)
 			for _, p := range run {
 				init := filepath.Join(p.Dir, plugin.InitFile)
-				loads = append(loads, pluginLoad{p.Name, p.Dir, lua.LoadFileStep("plugin "+p.Name, init, lua.OriginPlugin).Run(ctx, r, g)})
+				loads = append(loads, pluginLoad{name: p.Name, dir: p.Dir, err: lua.LoadFileStep("plugin "+p.Name, init, lua.OriginPlugin).Run(ctx, r, g)})
 			}
 			slices.SortStableFunc(loads, func(a, b pluginLoad) int { return cmp.Compare(a.name, b.name) })
 			h.pluginLoads.Store(&loads)
@@ -167,19 +167,19 @@ func pickPlugins(ps []plugin.Plugin, pluginsRoot string) (run []plugin.Plugin, r
 		switch {
 		case !p.Enabled:
 		case uses != nil:
-			refused = append(refused, pluginLoad{p.Name, p.Dir, uses})
+			refused = append(refused, pluginLoad{name: p.Name, dir: p.Dir, err: uses})
 		case p.Local && installed.Has(p.Name):
-			refused = append(refused, pluginLoad{p.Name, p.Dir, errors.New("an installed plugin has this name; delete it or rename this one")})
+			refused = append(refused, pluginLoad{name: p.Name, dir: p.Dir, err: errors.New("an installed plugin has this name; delete it or rename this one")})
 		case err != nil:
-			refused = append(refused, pluginLoad{p.Name, p.Dir, errors.New("a dangling link, which loads nothing; it may have left its marketplace; delete it, then install it again")})
+			refused = append(refused, pluginLoad{name: p.Name, dir: p.Dir, err: errors.New("a dangling link, which loads nothing; it may have left its marketplace; delete it, then install it again")})
 		case isLink && !strings.HasPrefix(target, pluginsRoot+string(filepath.Separator)):
 			why := "a link out of the plugins tree, which zemi does not load; install it from its marketplace instead"
 			if p.Local {
 				why = "a link out of the plugins tree, which zemi does not load; keep it in " + filepath.Dir(p.Dir) + " as a real directory"
 			}
-			refused = append(refused, pluginLoad{p.Name, p.Dir, errors.New(why)})
+			refused = append(refused, pluginLoad{name: p.Name, dir: p.Dir, err: errors.New(why)})
 		case old != nil:
-			refused = append(refused, pluginLoad{p.Name, p.Dir, old})
+			refused = append(refused, pluginLoad{name: p.Name, dir: p.Dir, err: old})
 		default:
 			run = append(run, p)
 		}
@@ -341,11 +341,11 @@ func (h *Host) addClaudeMCP(name, root, data string, servers []plugin.ClaudeMCPS
 	}
 }
 
-// pluginDeclares reports whether the plugin named name declared the capability
-// cap in the manifest of the generation that loaded it.
-func (h *Host) pluginDeclares(name, cap string) bool {
+// pluginDeclares reports whether the plugin named name declared capability in
+// the manifest of the generation that loaded it.
+func (h *Host) pluginDeclares(name, capability string) bool {
 	g := h.pluginGrant.Load()
-	return g != nil && name != "" && slices.Contains(g.uses[name], cap)
+	return g != nil && name != "" && slices.Contains(g.uses[name], capability)
 }
 
 // sweepPluginState drops the zemi.state keys and kept setting picks of a
@@ -427,8 +427,8 @@ func (h *Host) PluginOf(path string) string {
 	if path == "" {
 		return ""
 	}
-	if real := perm.RealPath(path); real != "" {
-		path = real
+	if resolved := perm.RealPath(path); resolved != "" {
+		path = resolved
 	}
 	sep := string(filepath.Separator)
 	if rel, ok := strings.CutPrefix(path, h.pluginsRoot()+sep); ok {
@@ -541,7 +541,7 @@ func (h *Host) layerFiles(sub, ext string, load func(layerFile) bool) {
 				h.RecordErrorOnce(sub, "", path+": name must be "+skill.NameRule)
 				continue
 			}
-			if load(layerFile{name, path, d.origin, d.prefix}) {
+			if load(layerFile{name: name, path: path, origin: d.origin, prefix: d.prefix}) {
 				seen[name] = path
 				if renamed {
 					h.Log.Warn(fmt.Sprintf("%s %s is already in %s, loaded as %s", strings.TrimSuffix(sub, "s"), bare, seen[bare], name), "origin", sub, "path", path)

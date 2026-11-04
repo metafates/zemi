@@ -39,7 +39,7 @@ func TestPaletteDerive(t *testing.T) {
 		name string
 		spec map[string]any
 		role func(p *Palette) color.Color
-		min  float64 // its contrast on bg, panel and band
+		low  float64 // its contrast on bg, panel and band
 	}{
 		{"a warn on bg is clamped", map[string]any{"bg": "#fafafc", "fg": "#202127", "accent": "#5458c8", "ok": "#007f52", "warn": "#fafafc", "danger": "#c72d2e"}, func(p *Palette) color.Color { return p.Warn }, 3.5},
 		{"a dim given dim is clamped", map[string]any{"bg": "#17181e", "fg": "#e7e7ec", "accent": "#a2adfd", "ok": "#68d7a1", "warn": "#edcf6f", "danger": "#f17070", "dim": "#303030"}, func(p *Palette) color.Color { return p.Dim }, 4.5},
@@ -52,7 +52,7 @@ func TestPaletteDerive(t *testing.T) {
 		}
 		got := c.role(&p)
 		for _, on := range []color.Color{p.Bg, p.Panel, p.Band} {
-			if r := Contrast(got, on); r < c.min {
+			if r := Contrast(got, on); r < c.low {
 				t.Errorf("%s: %s is %.2f:1 on %s", c.name, Hex(got), r, Hex(on))
 			}
 		}

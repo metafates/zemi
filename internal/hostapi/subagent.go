@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1151,6 +1152,7 @@ func (h *Host) checkModelID(id string) error {
 // calls in one step run concurrently.
 type agentTool struct {
 	tools.NoProviderOptions
+
 	h    *Host
 	pipe *tools.Pipeline
 	defs []AgentDef
@@ -1202,10 +1204,17 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 	}
 	props, req := tools.ArgsOf(agentArgs{})
 	for _, name := range []string{"description", "agent"} {
-		p := props[name].(map[string]any)
-		p["description"] = p["description"].(string) + "; required unless send_to or wait is set"
+		p, ok := props[name].(map[string]any)
+		if !ok {
+			continue
+		}
+		if d, ok := p["description"].(string); ok {
+			p["description"] = d + "; required unless send_to or wait is set"
+		}
 	}
-	props["agent"].(map[string]any)["enum"] = t.names()
+	if p, ok := props["agent"].(map[string]any); ok {
+		p["enum"] = t.names()
+	}
 	return fantasy.ToolInfo{
 		Name:        string(tools.ToolAgent),
 		Description: b.String(),
@@ -1615,12 +1624,12 @@ func (t *agentTool) waitAll(ctx context.Context, callID string) fantasy.ToolResp
 			var handed []handedRun
 			for _, r := range runs {
 				if r.detach() {
-					handed = append(handed, handedRun{"agent", r.id, r.label()})
+					handed = append(handed, handedRun{kind: "agent", id: r.id, label: r.label()})
 				}
 			}
 			for _, f := range flows {
 				if f.detach() {
-					handed = append(handed, handedRun{"workflow", f.id, f.description})
+					handed = append(handed, handedRun{kind: "workflow", id: f.id, label: f.description})
 				}
 			}
 			if len(handed) == 0 {
@@ -1655,7 +1664,7 @@ func (t *agentTool) awaitRuns(ctx context.Context, callID string, change <-chan 
 	for i, r := range runs {
 		ch, cancel := r.waitUpdate()
 		defer cancel()
-		waiters[i] = waiter{r, ch}
+		waiters[i] = waiter{run: r, update: ch}
 	}
 	select {
 	case <-change:
@@ -1711,7 +1720,7 @@ func (t *agentTool) foreground(call context.Context, callID string, run *agentRu
 	}
 	answers := make(chan answer, 1)
 	t.h.GoSafe("agent run", func() {
-		a := answer{}
+		var a answer
 		// deferred: a panic inside the run must not leave the call waiting for
 		// an answer that never comes
 		defer func() {
@@ -1782,6 +1791,7 @@ func (t *agentTool) foreground(call context.Context, callID string, run *agentRu
 // waiting on the run reads it at its next step and can steer on it.
 type updateTool struct {
 	tools.NoProviderOptions
+
 	h    *Host
 	pipe *tools.Pipeline
 }
@@ -1872,11 +1882,11 @@ func (h *Host) postNotify(ctx context.Context, pad, tool, input string, reply *f
 // fmtDuration reads as the chat's durations do (tui text.duration).
 func fmtDuration(d time.Duration) string {
 	if d < 9950*time.Millisecond {
-		return fmt.Sprintf("%.1fs", d.Seconds())
+		return strconv.FormatFloat(d.Seconds(), 'f', 1, 64) + "s"
 	}
 	switch s := int(d.Round(time.Second).Seconds()); {
 	case s < 60:
-		return fmt.Sprintf("%ds", s)
+		return strconv.Itoa(s) + "s"
 	case s < 3600:
 		return fmt.Sprintf("%dm %02ds", s/60, s%60)
 	default:

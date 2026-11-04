@@ -42,12 +42,12 @@ import (
 func (h *Host) inRoots(path string, roots ...string) bool {
 	// Compare resolved paths, so a symlink inside a root cannot lead out
 	// (and a root reached through a symlink, like macOS /var, still matches).
-	real := perm.CanonPath(path)
-	if real == "" {
+	resolved := perm.CanonPath(path)
+	if resolved == "" {
 		return false
 	}
 	for _, r := range roots {
-		if _, ok := perm.Under(perm.CanonPath(r), real); ok {
+		if _, ok := perm.Under(perm.CanonPath(r), resolved); ok {
 			return true
 		}
 	}
@@ -84,8 +84,8 @@ func (h *Host) luaGate(L *glua.LState, subject, arg string, req func() map[strin
 	if h.RT.CurrentOrigin(L) == lua.OriginPlugin {
 		name = h.PluginOf(h.RT.CurrentPath(L))
 	}
-	if cap := pluginCap(subject); name != "" && cap != "" && !h.pluginDeclares(name, cap) {
-		L.RaiseError("%s %s: plugin %s declares no %q; add %q to uses in %s", subject, arg, name, cap, cap, plugin.ManifestFile)
+	if need := pluginCap(subject); name != "" && need != "" && !h.pluginDeclares(name, need) {
+		L.RaiseError("%s %s: plugin %s declares no %q; add %q to uses in %s", subject, arg, name, need, need, plugin.ManifestFile)
 	}
 	if h.test != nil {
 		var reply *stubReply
@@ -137,7 +137,9 @@ const (
 // pluginCaps is the capability each gated subject needs declared, keyed by
 // subject prefix: every lua.http.<method>, every tool.<name> and every
 // lua.agent.* call share one row.
-var pluginCaps = []struct{ prefix, cap string }{
+var pluginCaps = []struct {
+	prefix, capability string
+}{
 	{luaModelAsk, plugin.CapModel},
 	{luaClassifyAsk, plugin.CapModel},
 	{"lua.agent.", plugin.CapAgent},
@@ -156,7 +158,7 @@ func pluginCap(subject string) string {
 	}
 	for _, c := range pluginCaps {
 		if strings.HasPrefix(subject, c.prefix) {
-			return c.cap
+			return c.capability
 		}
 	}
 	return ""
@@ -478,7 +480,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 			return luaResult(L, err)
 		}
 		slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
-		rows := []any{}
+		var rows []any
 		for _, e := range entries {
 			if fi, err := e.Info(); err == nil {
 				rows = append(rows, map[string]any{"name": e.Name(), "type": kind(fi), "size": fi.Size()})
@@ -590,7 +592,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		if err != nil {
 			return luaResult(L, err)
 		}
-		rows := []any{}
+		var rows []any
 		for _, hit := range hits {
 			rows = append(rows, map[string]any{"path": hit.Rel, "line": hit.Line, "text": hit.Text})
 		}

@@ -137,7 +137,7 @@ func TestMCPBridge(t *testing.T) {
 		}
 		return nil
 	})
-	names := []string{}
+	var names []string
 	for _, tl := range list {
 		names = append(names, tl.Info().Name)
 	}
@@ -599,6 +599,7 @@ func TestMCPRefreshCoalesces(t *testing.T) {
 // toolsModel records the MCP tools and tool_search each request offers.
 type toolsModel struct {
 	*scriptModel
+
 	mu   sync.Mutex
 	sent []string
 }

@@ -234,7 +234,7 @@ func (h *Host) toolNamespace(L *glua.LState) *glua.LTable {
 	}))
 
 	tb.RawSetString("list", L.NewFunction(func(L *glua.LState) int {
-		rows := []any{}
+		var rows []any
 		for _, name := range h.builtinToolNames() {
 			rows = append(rows, map[string]any{"name": name, "builtin": true})
 		}
@@ -273,6 +273,7 @@ func (h *Host) luaFantasyTools(pipe *tools.Pipeline) []fantasy.AgentTool {
 // (tool.<name>) and the interpreter (DESIGN §6.4).
 type luaToolAdapter struct {
 	tools.NoProviderOptions
+
 	h    *Host
 	t    *luaTool
 	pipe *tools.Pipeline
@@ -539,13 +540,18 @@ func (h *Host) postChain(ctx context.Context, handlers []*EventHandler, pad, nam
 		t := h.luaTask(lua.ClassAgent, luaCaller{gen: hd.Gen, origin: hd.Origin, path: hd.Path}, hd.Fn, eventTable(EventToolPost, "host", payload))
 		t.Ceiling = toolPostSlice
 		t.Done = func(L *glua.LState, rets []glua.LValue) ([]any, error) {
-			if len(rets) > 0 {
-				if tb, ok := rets[0].(*glua.LTable); ok {
-					if s, ok := tb.RawGetString("output").(glua.LString); ok {
-						rewrite = new(string(s))
-					}
-				}
+			if len(rets) == 0 {
+				return nil, nil
 			}
+			tb, ok := rets[0].(*glua.LTable)
+			if !ok {
+				return nil, nil
+			}
+			s, ok := tb.RawGetString("output").(glua.LString)
+			if !ok {
+				return nil, nil
+			}
+			rewrite = new(string(s))
 			return nil, nil
 		}
 		_, err := h.RT.RunTask(postCtx, t)

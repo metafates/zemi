@@ -134,7 +134,7 @@ func runChunk(t *testing.T, r *lua.Runtime, src string) ([]any, error) {
 	done := make(chan chunk, 1)
 	go func() {
 		vals, err := r.Eval(ctx, src, "test.lua", lua.OriginUser, 30*time.Second, nil)
-		done <- chunk{vals, err}
+		done <- chunk{vals: vals, err: err}
 	}()
 	select {
 	case c := <-done:

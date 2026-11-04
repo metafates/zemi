@@ -670,11 +670,11 @@ func TestPluginCapVocabulary(t *testing.T) {
 		if strings.HasSuffix(probe, ".") {
 			probe += "x"
 		}
-		if got := pluginCap(probe); got != c.cap {
-			t.Errorf("pluginCap(%q) = %q, want its row's %q", probe, got, c.cap)
+		if got := pluginCap(probe); got != c.capability {
+			t.Errorf("pluginCap(%q) = %q, want its row's %q", probe, got, c.capability)
 		}
-		if !slices.Contains(plugin.Uses, c.cap) {
-			t.Errorf("%q maps to %q, which is no capability in plugin.Uses", c.prefix, c.cap)
+		if !slices.Contains(plugin.Uses, c.capability) {
+			t.Errorf("%q maps to %q, which is no capability in plugin.Uses", c.prefix, c.capability)
 		}
 	}
 	for _, c := range []struct {
@@ -697,7 +697,7 @@ func TestPluginCapVocabulary(t *testing.T) {
 	// handler and zemi.perm.ask, not a call subject)
 	mapped := map[string]bool{"job": true, "perm": true}
 	for _, c := range pluginCaps {
-		mapped[c.cap] = true
+		mapped[c.capability] = true
 	}
 	for _, u := range plugin.Uses {
 		if !mapped[u] {
