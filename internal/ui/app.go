@@ -55,6 +55,9 @@ type App struct {
 	log  *slog.Logger
 	thm  themeResolver
 
+	// copyTools are the local clipboard commands copyCmd tries in order.
+	copyTools [][]string
+
 	// termBG is the terminal's own background color as it answered an OSC
 	// 11 query; nil means the terminal does not answer, so zemi leaves its
 	// background alone.
@@ -276,6 +279,8 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 		now:      time.Now,
 		focused:  true,
 		hooks:    make(chan tea.Msg, hookQueueSize),
+
+		copyTools: [][]string{{"pbcopy"}, {"wl-copy"}, {"xclip", "-selection", "clipboard"}},
 
 		pendingScroll: map[region]hostapi.ScrollAction{},
 		pendingAnchor: map[region]int{},

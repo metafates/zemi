@@ -682,16 +682,13 @@ func (a *App) Copy(text string) {
 	}))
 }
 
-// copyTools are the local clipboard commands, tried in order.
-var copyTools = [][]string{{"pbcopy"}, {"wl-copy"}, {"xclip", "-selection", "clipboard"}}
-
 // copyCmd sets the clipboard through the terminal (works over ssh) and the
 // local clipboard tool (for terminals without OSC 52). The terminal's own
 // outcome cannot be read, so only local tools that ran and failed warn.
 func (a *App) copyCmd(text string) tea.Cmd {
 	return tea.Batch(tea.SetClipboard(text), func() tea.Msg {
 		failed := 0
-		for _, c := range copyTools {
+		for _, c := range a.copyTools {
 			if !has(c[0]) {
 				continue
 			}

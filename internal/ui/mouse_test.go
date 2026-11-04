@@ -794,9 +794,7 @@ func TestCopyWarnsWhenEveryLocalToolFails(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			app, _ := bootAgentApp(t, 80, 16)
-			saved := copyTools
-			copyTools = c.tools
-			t.Cleanup(func() { copyTools = saved })
+			app.copyTools = c.tools
 			batch, ok := app.copyCmd("x")().(tea.BatchMsg)
 			if !ok || len(batch) != 2 {
 				t.Fatalf("copyCmd = %v, want a batch of two", ok)

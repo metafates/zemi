@@ -23,7 +23,9 @@ const Service = "zemi"
 // ErrNotFound says the chain holds no entry; a test chain stands in with it.
 var ErrNotFound = errors.New("not in the keychain")
 
-// Chain is the OS keychain backend; tests swap it.
+// Chain is the OS keychain backend, and the package's one deliberate seam: the
+// keychain is process-wide, so a test swaps it in init rather than have every
+// caller carry it.
 var Chain chain = osChain{}
 
 type chain interface {

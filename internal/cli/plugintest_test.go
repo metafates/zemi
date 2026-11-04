@@ -68,7 +68,7 @@ for i = 1, 300 do test("case " .. i, function() end) end
 		args   []string          // <plugin> stands for its dir
 		spare  uint64            // file descriptors the run may open past those the test process holds
 		cancel bool              // interrupted before it starts
-		hangs  bool              // runs until a 2s caseTimeout; the rest run under zemi's own, which no loaded boot nears
+		hangs  bool              // runs under a 2s deadline; the rest run under zemi's own, which no loaded boot nears
 		code   int
 		want   string // (T) stands for the time a run took
 	}{
@@ -265,10 +265,9 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 			}
 			tmp := t.TempDir()
 			t.Setenv("TMPDIR", tmp)
+			timeout := caseTimeout
 			if c.hangs {
-				old := caseTimeout
-				caseTimeout = 2 * time.Second
-				defer func() { caseTimeout = old }()
+				timeout = 2 * time.Second
 			}
 			if c.spare > 0 {
 				restore := limitFDs(t, c.spare)
@@ -280,7 +279,7 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 			}
 			defer cancel()
 			var out strings.Builder
-			code := testPlugins(ctx, args, &out, &out)
+			code := testPluginsWithin(ctx, timeout, args, &out, &out)
 			got := regexp.MustCompile(`\d+\.\d\ds\)`).ReplaceAllString(out.String(), "(T))")
 			if real, err := filepath.EvalSymlinks(dir); err == nil {
 				got = strings.ReplaceAll(got, real, "<plugin>")

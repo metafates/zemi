@@ -661,12 +661,20 @@ func lockFile(path string) func() {
 // every call of a step before any runs, and Run waits until its id leads its
 // file. Shared by every runner, it clears only the ids a caller names, keyed by
 // the turn's CallScope: a provider may number calls per conversation.
-var callOrder = struct {
+var callOrder = newCallOrder()
+
+type callOrderState struct {
 	mu    sync.Mutex
 	cond  *sync.Cond
 	path  map[string]string   // call key -> file key
 	ahead map[string][]string // file key -> call keys, in call order
-}{path: map[string]string{}, ahead: map[string][]string{}}
+}
+
+func newCallOrder() *callOrderState {
+	c := &callOrderState{path: map[string]string{}, ahead: map[string][]string{}}
+	c.cond = sync.NewCond(&c.mu)
+	return c
+}
 
 type callScopeKey struct{}
 
@@ -708,7 +716,7 @@ func CallStart(ctx context.Context, id, tool, input string) bool {
 // and, at the end of a turn, whatever a step recorded and never dispatched.
 // Ids Run already released are no-ops.
 func CallDone(ctx context.Context, ids ...string) {
-	c := &callOrder
+	c := callOrder
 	c.mu.Lock()
 	for _, id := range ids {
 		id = callKey(ctx, id)
@@ -725,7 +733,7 @@ func CallDone(ctx context.Context, ids ...string) {
 // recorded, or ctx ends, and returns the release the caller runs once its
 // write landed.
 func turn(ctx context.Context, id string) func() {
-	c := &callOrder
+	c := callOrder
 	// taking mu first means the waiter is inside Wait when the broadcast lands
 	defer context.AfterFunc(ctx, func() { c.mu.Lock(); c.cond.Broadcast(); c.mu.Unlock() })()
 	c.mu.Lock()
@@ -738,8 +746,6 @@ func turn(ctx context.Context, id string) func() {
 	}
 	return func() { CallDone(ctx, id) }
 }
-
-func init() { callOrder.cond = sync.NewCond(&callOrder.mu) }
 
 // writeArgs is the write tool's input and its schema source.
 type writeArgs struct {

@@ -23,7 +23,7 @@ import (
 )
 
 // caseTimeout bounds one case in real time; the clock it reads is fake.
-var caseTimeout = 5 * time.Second
+const caseTimeout = 5 * time.Second
 
 // A plugin is code: a tree past these is a mistake, like a home dir.
 const (
@@ -42,6 +42,11 @@ var startsAtLine = regexp.MustCompile(`^[^\s:]+:\d+:`)
 // NOTE: the plugin's skills, agents and workflows load, but only a model
 // drives them, so no case can.
 func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	return testPluginsWithin(ctx, caseTimeout, args, stdout, stderr)
+}
+
+// testPluginsWithin is testPlugins with the per-case deadline its caller picks.
+func testPluginsWithin(ctx context.Context, timeout time.Duration, args []string, stdout, stderr io.Writer) int {
 	fail := func(err error) int {
 		fmt.Fprintln(stderr, "zemi: plugin test:", err)
 		return 1
@@ -97,12 +102,12 @@ func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) i
 			return pt, end, err
 		}
 		idle := func() {}
-		bctx, cancel := context.WithTimeout(ctx, caseTimeout)
+		bctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		err := h.RT.Boot(bctx, bootSteps(h, mainCommands(idle, idle), nil, h.PluginsStep(), []lua.BootStep{pt.Step()}, false))
 		if step, ok := errors.AsType[*lua.StepError](err); ok && errors.Is(bctx.Err(), context.DeadlineExceeded) {
 			// Lua names where the deadline stopped it
-			step.Err = errors.New(strings.Replace(step.Err.Error(), bctx.Err().Error(), "timed out after "+caseTimeout.String(), 1))
+			step.Err = errors.New(strings.Replace(step.Err.Error(), bctx.Err().Error(), "timed out after "+timeout.String(), 1))
 		}
 		return pt, end, err
 	}
@@ -146,7 +151,7 @@ func testPlugins(ctx context.Context, args []string, stdout, stderr io.Writer) i
 			case len(pt.Cases) <= i || pt.Cases[i].Name != c.Name:
 				lines = []string{fmt.Sprintf("case %d is not %q in this boot: a case name must not depend on the run", i+1, c.Name)}
 			default:
-				lines = pt.Run(ctx, caseTimeout)
+				lines = pt.Run(ctx, timeout)
 			}
 			end()
 			if ctx.Err() != nil {
