@@ -36,7 +36,7 @@ func Tip(w io.Writer) string {
 func Busy(w io.Writer, pid int) string {
 	t := tip{text: "another zemi is already open on this project; close it to open here"}
 	if pid > 0 {
-		t.key = strconv.Itoa(pid)
+		t.key = "pid " + strconv.Itoa(pid)
 	}
 	return tipStyled(colorprofile.Detect(w, os.Environ()), " busy ", t)
 }
