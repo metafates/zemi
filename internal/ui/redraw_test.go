@@ -279,3 +279,47 @@ func runCmd(cmd tea.Cmd) []tea.Msg {
 	}
 	return out
 }
+
+// TestRailRise: a rail action the live turn starts rises out of the surface
+// over the rise, one ramp per call, an action the earlier frames drew riding
+// the one it started.
+func TestRailRise(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	f := app.chatFolds()
+	at := time.UnixMilli(1000)
+	f.now = func() time.Time { return at }
+	tools := []hostapi.StreamTool{{ID: "t1", Name: "read", Label: "read go.mod", Status: hostapi.CallRun}}
+
+	fades := func() map[int]float64 {
+		host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: tools})
+		st := app.uiState()
+		lines, _ := renderChat(t, app, 98, 20, st)
+		out := map[int]float64{}
+		for _, row := range lines {
+			if c := rowCall(row); c != 0 {
+				for _, s := range row {
+					out[c] = max(out[c], s.Fade)
+				}
+			}
+		}
+		return out
+	}
+
+	got := fades()
+	if got[-1] < 0.5 {
+		t.Fatalf("a fresh call's row is not sunk: fade %v", got[-1])
+	}
+	// the ramp passes: the call rides it risen
+	at = at.Add(2 * _riseDuration)
+	if got = fades(); got[-1] != 0 {
+		t.Fatalf("the call stayed sunk after the ramp: fade %v", got[-1])
+	}
+	// a second call starts: it sinks, the first stays risen
+	tools = []hostapi.StreamTool{
+		{ID: "t1", Name: "read", Label: "read go.mod", Status: hostapi.CallOK},
+		{ID: "t2", Name: "shell", Label: "run the tests", Status: hostapi.CallRun},
+	}
+	if got = fades(); got[-2] < 0.5 || got[-1] != 0 {
+		t.Fatalf("the second call did not rise alone: %v", got)
+	}
+}

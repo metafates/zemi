@@ -19,6 +19,7 @@ type widget struct {
 	wrap     bool
 	render   func(*hostapi.ScreenState) ([][]hostapi.Segment, bool)
 	onClick  func(a *App, ev map[string]any) bool
+	chat     *chatFolds // the chat widget's fold state, its rises included
 }
 
 // widgetByID is the shipped widget with that id, nil for none.

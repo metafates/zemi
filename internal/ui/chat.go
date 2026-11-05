@@ -14,6 +14,7 @@ import (
 
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/anim"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -66,6 +67,7 @@ type entry struct {
 	kind    hostapi.RowKind
 	role    fantasy.MessageRole
 	tool    string
+	id      string // a live call's id, the rise one ramp per action
 	text    string
 	input   string
 	label   string
@@ -103,7 +105,7 @@ func entryOfCall(t hostapi.AgentTool) entry {
 	return entry{
 		kind: hostapi.RowTool, tool: s.Name, input: s.Input, label: s.Label, status: s.Status,
 		detail: s.Detail, run: s.Run, job: s.Job, diff: s.Diff, output: s.Output,
-		live: true, elapsed: t.Elapsed,
+		live: true, elapsed: t.Elapsed, id: s.ID,
 	}
 }
 
@@ -172,6 +174,36 @@ func sink(k, past int) float64 {
 		return 0
 	}
 	return float64(_sinkRows-k) / (_sinkRows + 1) * min(1, float64(past)/_sinkRows)
+}
+
+// fadeRail stamps the rise on a live rail's rows: an action the rail draws
+// for the first time starts sunk into the surface and rises over
+// _riseDuration, one ramp per call, the rows the earlier frames drew for it
+// riding the same ramp. Tests that pin no clock skip the stamp.
+func (f *chatFolds) fadeRail(rows [][]hostapi.Segment, calls []entry) {
+	if f.now == nil {
+		return
+	}
+	now := f.now()
+	for k, row := range rows {
+		c := rowCall(row)
+		if c >= 0 {
+			continue // live rows carry their entry's negative index
+		}
+		id := calls[-c-1].id
+		if id == "" {
+			continue
+		}
+		fade := f.railFades[id]
+		if fade == nil {
+			fade = anim.New(_riseDuration)
+			fade.Set(true, now)
+			f.railFades[id] = fade
+		}
+		if alpha := fade.Alpha(now); alpha < 1 {
+			rows[k] = faded(rows[k], 1-alpha)
+		}
+	}
 }
 
 // settling says whether the next flush settles a call beside the thought: the
@@ -635,6 +667,12 @@ type chatFolds struct {
 	epoch   int64                // the transcript these folds belong to
 	view    string               // the view foldSet draws
 	calls   int                  // the live calls the last render drew
+	// the rail actions' rise: a fade per live call id, started the first
+	// draw drew it, so a new action's rows start sunk into the surface and
+	// rise over _riseDuration. now is the animation clock, nil in the tests
+	// that pin none.
+	now       func() time.Time
+	railFades map[string]*anim.Fade
 	// md and hl memoize the costly rows by text and width: a marked-down reply
 	// and a highlighted command cost far more than the rows around them, and
 	// a frame rebuilds every settled row it is handed back.
@@ -704,12 +742,22 @@ func chatWidget(h *hostapi.Host) *widget {
 	f := &chatFolds{
 		foldSet: newFoldSet(), views: map[string]viewFolds{},
 		md: map[string][][]hostapi.Segment{}, hl: map[string][]hostapi.Segment{},
+		now: time.Now, railFades: map[string]*anim.Fade{},
 	}
 	return &widget{
 		id: "chat", region: _regionChat, priority: 10, wrap: true,
 		render:  func(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) { return f.render(h, st) },
 		onClick: f.click,
+		chat:    f,
 	}
+}
+
+// chatFolds is the chat widget's fold state, nil before the app has widgets.
+func (a *App) chatFolds() *chatFolds {
+	if w := a.widgetByID("chat"); w != nil {
+		return w.chat
+	}
+	return nil
 }
 
 // key is the identity a fold names a transcript row by: its place in the log's
@@ -750,6 +798,20 @@ func (f *chatFolds) reset(st *hostapi.ScreenState) {
 		delete(f.runs, 0)
 	}
 	f.calls = len(st.Agent.Tools)
+	// calls the live rail no longer holds have settled risen or left the
+	// screen; only the ones still on it keep a ramp
+	for id := range f.railFades {
+		live := false
+		for _, t := range st.Agent.Tools {
+			if t.Stream.ID == id {
+				live = true
+				break
+			}
+		}
+		if !live {
+			delete(f.railFades, id)
+		}
+	}
 }
 
 // toggle opens or closes the fold a click names.
@@ -1859,6 +1921,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 			liveFrom = len(b.lines)
 			b.gap(_blockActivity)
 			b.rail(calls, 0, len(calls)-1, railOpts{live: true})
+			f.fadeRail(b.lines[liveFrom:], calls)
 		}
 		// the live rail is rows of the run it extends: the settled tail's run,
 		// else the live-only one the picker names by its first call
