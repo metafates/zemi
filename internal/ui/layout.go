@@ -1018,7 +1018,12 @@ func pinCopy(row []hostapi.Segment, more bool, width int) []hostapi.Segment {
 			}
 			row = row[:len(row)-1]
 		}
-		row = append(truncateSegs(row, barText(width)-1), hostapi.Segment{Text: "…", HL: "Pinned", NoCopy: true, Fill: hostapi.FillPanel})
+		row = truncateSegs(row, barText(width)-1)
+		p := hostapi.Segment{Text: "…", HL: "Pinned", NoCopy: true, Fill: hostapi.FillPanel}
+		if len(row) > 0 {
+			p.Fade = row[len(row)-1].Fade // the ellipsis and the pad it rides rise with the row
+		}
+		row = append(row, p)
 	}
 	return row
 }

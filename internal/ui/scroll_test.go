@@ -917,6 +917,29 @@ func TestPadRidesTheFade(t *testing.T) {
 	}
 }
 
+// TestPinEllipsisRidesTheFade: a pinned header cut to one row ends in an
+// ellipsis that carries the row's ride, so the gray it and its pad paint
+// rises with the pinned text instead of popping in behind it.
+func TestPinEllipsisRidesTheFade(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name string
+		row  []hostapi.Segment
+		want float64
+	}{
+		{"an unfaded pin ends plain", []hostapi.Segment{{Text: "hi"}}, 0},
+		{"a rising pin's ellipsis keeps the ride", []hostapi.Segment{{Text: "hi", Fade: 0.5}}, 0.5},
+	} {
+		pin := pinCopy(c.row, true, 40)
+		if got := pin[len(pin)-1]; got.Text != "…" || got.Fade != c.want {
+			t.Fatalf("%s: tail %+v, want fade %v", c.name, got, c.want)
+		}
+		if pad, ok := padSeg(pin, 40); !ok || pad.Fade != c.want {
+			t.Fatalf("%s: pad fade %v, want %v", c.name, pad.Fade, c.want)
+		}
+	}
+}
+
 // TestThinkingFade: the live thinking tail sinks at its top while it hides
 // lines above, over the chat's own four-row ramp and easing off as the hidden
 // lines come back; a tail that fits keeps its colors, the rail bar never
