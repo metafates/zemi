@@ -215,7 +215,7 @@ func statusHints(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	}
 	return [][]hostapi.Segment{{
 		{Text: "/", HL: "SplashKey", Click: "help"},
-		{Text: " commands   ", HL: "Dim", Click: "help"},
+		{Text: " commands  ", HL: "Dim", Click: "help"},
 		{Text: "@", HL: "SplashKey"},
 		{Text: " attachments", HL: "Dim"},
 	}}, false
