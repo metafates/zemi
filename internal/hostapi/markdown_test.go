@@ -65,6 +65,16 @@ func TestMarkdownLinks(t *testing.T) {
 	if got := links("see [the docs](https://example.com/docs?a=1) and https://example.com/bare."); got["the docs"] != "https://example.com/docs?a=1" || got["https://example.com/bare"] != "https://example.com/bare" {
 		t.Fatalf("links: %q", got)
 	}
+	// a table carries its links inline, never as footnote rows below it
+	for _, row := range h.Markdown("| name | url |\n|------|-----|\n| docs | [the docs](https://example.com/docs) |\n", 60) {
+		var b strings.Builder
+		for _, s := range row {
+			b.WriteString(s.Text)
+		}
+		if strings.Contains(b.String(), "[1]:") {
+			t.Fatalf("table link drawn as a footnote: %q", b.String())
+		}
+	}
 	// the trailing period is punctuation, not the URL
 	for _, text := range []string{"[x](javascript:alert(1))", "[x](file:///etc/passwd)", "mailto a person: [x](mailto:a@b.c)"} {
 		got := links(text)
