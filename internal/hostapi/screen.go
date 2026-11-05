@@ -217,7 +217,13 @@ func (h *Host) ScreenState(width, height int, state UIState) *ScreenState {
 	if l, ok := h.Loop(); ok {
 		st.Loop = &LoopState{Prompt: sanitize.String(l.Prompt), Every: l.Every, Next: l.Next, Runs: l.Runs}
 	}
-	st.Usage = Usage{In: stream.SessionIn, Out: stream.SessionOut, Total: stream.SessionIn + stream.SessionOut, Cost: stream.SessionCost, Priced: h.modelPriced(h.turnModelID())}
+	// the tok fallback waits for the model spec: before the providers load, a
+	// window-less meter would dress a stale tally (a wiped chat's, a resume's)
+	// as a live reading for the boot's first frames. The ctx meter needs no
+	// spec: the window rides the stream, filled from the spec once it loads.
+	if _, ok := h.modelSpec(stream.Model); ok {
+		st.Usage = Usage{In: stream.SessionIn, Out: stream.SessionOut, Total: stream.SessionIn + stream.SessionOut, Cost: stream.SessionCost, Priced: h.modelPriced(stream.Model)}
+	}
 	st.Context = Context{Tokens: stream.LastIn, Window: stream.CtxWindow, Pct: contextPct(stream.LastIn, stream.CtxWindow)}
 
 	st.Trustable = !TrustUnsaved(h.trustRoot())
