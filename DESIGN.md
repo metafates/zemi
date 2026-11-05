@@ -243,7 +243,7 @@ Contracts that make this safe:
   call in wall time, waits included. A stuck handler
   fails the tool call with an error and marks the runtime "hot";
   force-reload is the Go-reserved `/reload` command plus the Go-reserved
-  cancel trigger, never routed through Lua (while hot, every Lua keymap is
+  quit trigger, never routed through Lua (while hot, every Lua keymap is
   dead; the reserved cancel and reload triggers are not, they dispatch
   before any Lua-visible keymap and are fixed). Reloading builds a
   fresh `LState`:
@@ -277,12 +277,12 @@ Contracts that make this safe:
   Whatever is still queued when
   the turn ends starts one follow-up turn; with nothing queued, a set goal
   is checked and may start the next (§6.3). `up` on an empty composer
-  takes the queue back for editing; a second `esc` within 2s or `ctrl+c`
-  cancels the turn and returns the queue to the composer.
+  takes the queue back for editing; a second `esc` within 4s cancels the
+  turn and returns the queue to the composer.
 
-Cancellation: `ctrl+c` (the cancel trigger, §8; the action is
-Go-reserved, §6.2, and its trigger is fixed: no origin, the user
-included, rebinds it) cancels the running
+Cancellation: `esc` twice (the interrupt rides a default keymap entry,
+§6.2 — a keymap may shadow it; the Go-reserved trigger `ctrl+c` quits
+and never interrupts) cancels the running
 turn by cancelling the fantasy
 context; in-flight Lua tool calls get the catchable "context canceled"
 error at the next opcode (see the watchdog above), and one suspended in a
@@ -875,8 +875,8 @@ config loading last shadows a user binding, and a key that starts a longer
 sequence shadows or is dead, whichever came later. `zemi.keymap.del`
 unmaps a key whatever bound it (user config can remove shipped defaults,
 and a plugin can remove a user key) and reports whether there was a
-binding. The actions behind cancel-turn and
-force-reload are Go-reserved: their triggers (the cancel key and the
+binding. The actions behind turn-quit and
+force-reload are Go-reserved: their triggers (the quit key and the
 exact, case-sensitive, non-abbreviable `/reload` command, checked on
 composer submit before any Lua-visible command lookup) are fixed
 (no origin, user included, rebinds them), so a compromised config
@@ -1650,7 +1650,7 @@ UI extensibility contract:
   takes the grey of its lightness and a foreground the ANSI color its
   lightness (a grey) or hue falls in, bright when light, stepping to the
   grey past its background when the two would be one color.
-- Key routing: bubbletea key -> normalized string -> Go-reserved cancel
+- Key routing: bubbletea key -> normalized string -> Go-reserved quit
   trigger -> Go-owned chrome (trust prompt, permission asks,
   question and plan prompts) -> the topmost overlay (Lua, or Go-built
   lists like the model picker) ->
@@ -2303,13 +2303,13 @@ view; a reset's wipe drops the row with the chat.
   row naming it rather than the user's own words, since the whole of it is the
   model's.
 - **Default keymaps** (all rebindable by user config except the
-  Go-reserved cancel and reload triggers, §6.2; a keymap bound to plain
+  Go-reserved quit and reload triggers, §6.2; a keymap bound to plain
   `esc` shadows the esc chords, so they are a default, never a guarantee):
   `enter` sends, `esc` twice within 4s interrupts the turn
   (`esc` in an agent view goes back; the esc chord stops a busy job),
   `ctrl+c` moves a draft into the history first, mid-turn included, then on
-  an empty composer interrupts a turn at once and twice within 2s when idle
-  quits, `pgdown`,
+  an empty composer arms quit — twice within 2s quits, mid-turn included,
+  and it never interrupts — `pgdown`,
   `shift+up`/`shift+down`, `ctrl+k`/`ctrl+j`, `ctrl+home` and `ctrl+b`
   scroll the transcript (the wheel too: mouse cell motion is captured because the
   altscreen has no native scrollback), and `alt+up`/`alt+down` jump to the previous or

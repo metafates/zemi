@@ -886,7 +886,7 @@ func (a *App) uiState() hostapi.UIState {
 		// the arm outlives the state it armed in (a paste fills the draft, a
 		// background report starts a turn): promise a quit only when the next
 		// ctrl+c reaches the arm branch
-		QuitArmed:      a.isArmed("ctrl+c") && a.composer.empty() && !a.host.AgentActive(),
+		QuitArmed:      a.isArmed("ctrl+c") && a.composer.empty(),
 		InterruptArmed: a.isArmed("esc") && a.armed.what == "interrupt",
 		RowsBelow:      a.rowsBelow(),
 		Cancelling:     a.cancelling, Editing: a.editing,

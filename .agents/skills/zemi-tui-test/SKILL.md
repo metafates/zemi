@@ -255,7 +255,9 @@ $S/zemi-lab -n ps down                          # quits zemi first, so the exit 
   recorder's block would kill the stream mid-write), and `down` waits for the terminal
   to report `program_status_removed` before killing the session: a mid-turn zemi eats
   the first ctrl+c as an interrupt and a drafted one as a draft-clear, so it keeps
-  sending (bounded) until the clear lands. The exit clear is assertable only with
+  sending (bounded) until the clear lands. A mid-turn ctrl+c now arms quit instead of
+  interrupting (esc interrupts), so `down`'s two ctrl+c presses quit directly. The exit
+  clear is assertable only with
   `down --keep` (a plain `down` deletes the tree with the stream): then
   `events program_status_removed` shows `reason=clear` - the session is gone by
   then, which is why `events` falls back to the kept tree's final stream (and warns

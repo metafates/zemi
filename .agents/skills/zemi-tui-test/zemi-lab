@@ -1172,8 +1172,9 @@ cmd_down() {
 			# quit zemi first so the exit clear reaches the terminal. Keys go to
 			# the zemi blocks only: a ctrl+c to the recorder's block would kill
 			# the stream mid-write. An ask or overlay is dismissed first, and a
-			# mid-turn zemi eats the first ctrl+c as an interrupt (a drafted one
-			# as a draft-clear), so send until the terminal reports the status
+			# drafted zemi eats the first ctrl+c as a draft-clear (a mid-turn
+			# one arms quit; ctrl+c never interrupts), so send until the
+			# terminal reports the status
 			# removed - bounded, then a plain kill takes whatever is left
 			# (rex kill would otherwise strand the last record). A corpse skips
 			# the dance: its keys land nowhere and the 4s wait buys nothing.

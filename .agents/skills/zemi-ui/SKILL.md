@@ -50,7 +50,7 @@ mark the frame dirty or View-driven tests recompose stale bytes.
 
 ## Gotchas
 
-- **The Go-reserved triggers** (`ctrl+c` cancel, `/reload`) are never routed through Lua
+- **The Go-reserved triggers** (`ctrl+c` quit, `/reload`) are never routed through Lua
   keymaps and cannot be rebound - `/reload` is matched on composer submit before the command
   registry, so nothing can shadow it. Keep them out of any "rebind everything" refactor.
 - **No editor modes.** The composer has the keys; commands are slash commands typed
@@ -153,8 +153,8 @@ mark the frame dirty or View-driven tests recompose stale bytes.
   view switch drops the cached transcript (`syncChatScroll`) so the frame it lands on draws the
   incoming one whole, never the other view's rows and never its scroll state measured against
   them. A turn's `turnScope` context (host.go) covers the model and tools, so
-  a second esc within 2s (`App.arm`, shared with the idle ctrl+c quit) stops all of them;
-  a second ctrl+c while "Cancelling" quits. A job the user waits on that is not a turn
+  a second esc within 4s (`App.arm`) stops all of them.
+  A job the user waits on that is not a turn
   (`/btw`, `/plugin` network work, `/model update`, `/health`, an MCP start,
   the idle recap) holds a `Host.Busy` entry: `ScreenState.Busy` is the list of
   them, newest first, the chat's pending row names the oldest as one part (`and N more`
