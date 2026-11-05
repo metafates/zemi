@@ -62,3 +62,107 @@ func (f *Fade) Shown() bool { return f.shown }
 
 // Smoothstep is the fades' easing: slow at both ends, quick in the middle.
 func Smoothstep(p float64) float64 { return p * p * (3 - 2*p) }
+
+// Rise holds one appear per key: a widget, a rail call, a reply's readout.
+// The first frame that asks after a key stamps its ramp, so a row drawn for
+// the first time rises out of the surface; a key gone loses its ramp. The
+// zero value is empty; NewRise gives ramps their duration and their clock.
+type Rise[K comparable] struct {
+	Dur  time.Duration
+	Now  func() time.Time // nil reads time.Now
+	fade map[K]*Fade
+}
+
+// NewRise is a Rise easing each key's appear over dur, read on now.
+func NewRise[K comparable](dur time.Duration, now func() time.Time) *Rise[K] {
+	return &Rise[K]{Dur: dur, Now: now}
+}
+
+func (r *Rise[K]) clock() time.Time {
+	if r.Now != nil {
+		return r.Now()
+	}
+	return time.Now()
+}
+
+// Get is the key's fade, nil before its first sight.
+func (r *Rise[K]) Get(key K) *Fade { return r.fade[key] }
+
+// At is the key's fade, stamped rising on its first sight.
+func (r *Rise[K]) At(key K) *Fade {
+	if r.fade == nil {
+		r.fade = map[K]*Fade{}
+	}
+	f, ok := r.fade[key]
+	if !ok {
+		f = New(r.Dur)
+		f.Set(true, r.clock())
+		r.fade[key] = f
+	}
+	return f
+}
+
+// Poke starts the key's ramp unless one is in flight: an appear stamps, a
+// row riding its ramp keeps it.
+func (r *Rise[K]) Poke(key K) {
+	now := r.clock()
+	if f := r.fade[key]; f != nil && f.Rising(now) {
+		return
+	}
+	if r.fade == nil {
+		r.fade = map[K]*Fade{}
+	}
+	f := New(r.Dur)
+	f.Set(true, now)
+	r.fade[key] = f
+}
+
+// Alpha is the key's value at now, 0 for a key that never appeared.
+func (r *Rise[K]) Alpha(key K) float64 {
+	if f := r.fade[key]; f != nil {
+		return f.Alpha(r.clock())
+	}
+	return 0
+}
+
+// Rising reports a ramp in flight for any key.
+func (r *Rise[K]) Rising() bool {
+	if len(r.fade) == 0 {
+		return false
+	}
+	now := r.clock()
+	for _, f := range r.fade {
+		if f.Rising(now) {
+			return true
+		}
+	}
+	return false
+}
+
+// Keep drops every key the predicate turns away.
+func (r *Rise[K]) Keep(keep func(K) bool) {
+	for k := range r.fade {
+		if !keep(k) {
+			delete(r.fade, k)
+		}
+	}
+}
+
+// Settle settles every ramp in flight at its target, reporting whether it
+// settled one: a test's pinned clock would otherwise freeze a ramp mid-rise.
+func (r *Rise[K]) Settle() bool {
+	if len(r.fade) == 0 {
+		return false
+	}
+	now, done := r.clock(), false
+	for _, f := range r.fade {
+		if f.Rising(now) {
+			f.Jump(f.Shown())
+			done = true
+		}
+	}
+	return done
+}
+
+// Clear empties the ledger.
+func (r *Rise[K]) Clear() { clear(r.fade) }

@@ -215,6 +215,15 @@ func (f *chatFolds) fadeRail(rows [][]hostapi.Segment, calls []entry) {
 	}
 }
 
+// clock is the rises' animation clock: the pinned one a test set, else the
+// wall's.
+func (f *chatFolds) clock() time.Time {
+	if f.now != nil {
+		return f.now()
+	}
+	return time.Now()
+}
+
 // fadeLive stamps the rise on the one live rail row key names: the first
 // draw starts it sunk into the surface, a row the last frame drew rides its
 // ramp, one back after frames away rises again.
@@ -222,16 +231,12 @@ func (f *chatFolds) fadeLive(key string, rows [][]hostapi.Segment) {
 	if f.now == nil {
 		return
 	}
-	now := f.now()
-	fade := f.liveRamps[key]
-	if fade == nil || !f.liveSeen[key] && !fade.Rising(now) {
-		fade = anim.New(_riseDuration)
-		fade.Set(true, now)
-		f.liveRamps[key] = fade
+	if !f.liveSeen[key] {
+		f.liveRise.Poke(key)
 	}
 	f.liveSeen[key] = true
-	if alpha := fade.Alpha(now); alpha < 1 {
-		rows[0] = fadedRail(rows[0], 1-alpha)
+	if alpha := f.liveRise.Alpha(key); alpha < 1 {
+		rows[0] = faded(rows[0], 1-alpha, spareRail)
 	}
 }
 
@@ -264,7 +269,7 @@ func (f *chatFolds) riseRow(id string, ord int, row []hostapi.Segment, now time.
 	for _, r := range f.railRamps[id] {
 		if ord < r.rows {
 			if alpha := r.fade.Alpha(now); alpha < 1 {
-				return fadedRail(row, 1-alpha)
+				return faded(row, 1-alpha, spareRail)
 			}
 			return row
 		}
@@ -274,23 +279,18 @@ func (f *chatFolds) riseRow(id string, ord int, row []hostapi.Segment, now time.
 		r := &f.railRamps[id][n-1]
 		if alpha := r.fade.Alpha(now); alpha < 1 {
 			r.rows++
-			return fadedRail(row, 1-alpha)
+			return faded(row, 1-alpha, spareRail)
 		}
 	}
 	fade := anim.New(_riseDuration)
 	fade.Set(true, now)
 	f.railRamps[id] = append(f.railRamps[id], railRamp{fade: fade, rows: 1})
-	return fadedRail(row, 1)
+	return faded(row, 1, spareRail)
 }
 
-// fadedRail fades a rail row's inside but not its border: the bar at column 0
-// stands from the first frame, only what the rail carries rises.
-func fadedRail(row []hostapi.Segment, t float64) []hostapi.Segment {
-	if len(row) > 0 && row[0].HL == "ThinkingBar" {
-		return append([]hostapi.Segment{row[0]}, faded(row[1:], t)...)
-	}
-	return faded(row, t)
-}
+// spareRail is a rail row's bar at column 0: it stands from the first frame,
+// only what the rail carries rises.
+func spareRail(s hostapi.Segment) bool { return s.HL == "ThinkingBar" }
 
 // readoutArrived stamps the readout rise of a reply that just landed: the
 // stats line appears only once the message under it is whole, and a reply
@@ -329,7 +329,7 @@ func (f *chatFolds) riseReadout(seq int64, row []hostapi.Segment) []hostapi.Segm
 		return row
 	}
 	if alpha := ramp.fade.Alpha(f.now()); alpha < 1 {
-		return faded(row, 1-alpha)
+		return faded(row, 1-alpha, nil)
 	}
 	ramp.done = true
 	return row
@@ -358,6 +358,28 @@ func (f *chatFolds) readoutRising() int64 {
 		return seq
 	}
 	return 0
+}
+
+// rising reports whether one of the chat's rises is in flight: the live
+// rows', the readouts', or a rail call's.
+func (f *chatFolds) rising() bool {
+	if f.liveRise.Rising() {
+		return true
+	}
+	for _, ramp := range f.readRamps {
+		if !ramp.done {
+			return true
+		}
+	}
+	now := f.clock()
+	for _, ramps := range f.railRamps {
+		for _, r := range ramps {
+			if r.fade.Rising(now) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // settling says whether the next flush settles a call beside the thought: the
@@ -838,8 +860,8 @@ type chatFolds struct {
 	// thought digest): a fade each, stamped on their first draw so they rise
 	// like the calls do; seen names the ones the last frame drew, and a row
 	// back after frames away rises again.
-	liveRamps map[string]*anim.Fade
-	liveSeen  map[string]bool
+	liveRise *anim.Rise[string]
+	liveSeen map[string]bool
 	// md and hl memoize the costly rows by text and width: a marked-down reply
 	// and a highlighted command cost far more than the rows around them, and
 	// a frame rebuilds every settled row it is handed back.
@@ -911,8 +933,9 @@ func chatWidget(h *hostapi.Host) *widget {
 		md: map[string][][]hostapi.Segment{}, hl: map[string][]hostapi.Segment{},
 		now: time.Now, railRamps: map[string][]railRamp{},
 		readRamps: map[int64]*readRamp{},
-		liveRamps: map[string]*anim.Fade{}, liveSeen: map[string]bool{},
+		liveRise:  anim.NewRise[string](_riseDuration, nil), liveSeen: map[string]bool{},
 	}
+	f.liveRise.Now = f.clock
 	return &widget{
 		id: "chat", region: _regionChat, priority: 10, wrap: true,
 		render:  func(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) { return f.render(h, st) },
@@ -956,7 +979,7 @@ func (f *chatFolds) reset(st *hostapi.ScreenState) {
 		f.foldSet, f.view, f.epoch = next.foldSet, v, epoch
 		f.ver++
 		clear(f.readRamps)
-		clear(f.liveRamps)
+		f.liveRise.Clear()
 		clear(f.liveSeen)
 	}
 	if n := len(st.Agent.Tools); n < f.calls {

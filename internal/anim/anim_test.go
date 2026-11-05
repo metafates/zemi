@@ -44,3 +44,46 @@ func TestFade(t *testing.T) {
 		t.Fatal("the delayed ramp did not settle")
 	}
 }
+
+// TestRise: a key's first sight stamps its ramp, Poke keeps a ramp in flight,
+// a key gone loses its entry, and Settle lands every ramp at its target.
+func TestRise(t *testing.T) {
+	now := time.UnixMilli(0)
+	clock := now
+	r := NewRise[string](100*time.Millisecond, func() time.Time { return clock })
+	if r.Alpha("k") != 0 || r.Get("k") != nil || r.Rising() {
+		t.Fatal("an empty rise reads hidden and settled")
+	}
+	r.Poke("k")
+	if got := r.Alpha("k"); got != 0 {
+		t.Fatalf("a fresh key is not sunk: %v", got)
+	}
+	clock = now.Add(50 * time.Millisecond)
+	if got := r.Alpha("k"); got < 0.4 || got > 0.6 {
+		t.Fatalf("mid-ramp alpha %v, want about half", got)
+	}
+	r.Poke("k")
+	if got := r.Alpha("k"); got < 0.4 || got > 0.6 {
+		t.Fatalf("a poke did not leave the ramp in flight: %v", got)
+	}
+	clock = now.Add(200 * time.Millisecond)
+	if r.Rising() || r.Alpha("k") != 1 {
+		t.Fatal("the ramp did not settle shown")
+	}
+	r.Poke("k")
+	if got := r.Alpha("k"); got != 0 {
+		t.Fatalf("a poke after the ramp did not start it over: %v", got)
+	}
+	r.Keep(func(string) bool { return false })
+	if r.Rising() || r.Get("k") != nil {
+		t.Fatal("keep did not drop the key")
+	}
+	r.At("j")
+	f := r.Get("j")
+	if got := r.Alpha("j"); got != 0 {
+		t.Fatalf("a fresh key is not sunk: %v", got)
+	}
+	if !r.Settle() || f.Alpha(clock) != 1 || r.Settle() {
+		t.Fatal("settle did not land the ramp at its target")
+	}
+}

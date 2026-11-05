@@ -179,7 +179,8 @@ type App struct {
 	pending       map[string]renderKey // widget id -> the render in flight
 	renderSeq     int64                // counts render dispatches, so the latest one wins
 	frameGen      int64
-	rises         map[string]*pillFade // statusline pills and the splash easing their appear and disappear
+	rises         map[string]*pillFade // statusline pills easing their appear and disappear
+	splashRise    *anim.Rise[string]   // the splash knot's one rise on its first draw
 	spun          bool                 // the last frame drew a spinner, so the tick keeps stepping it
 	timeStr       string
 	turnActive    bool             // what onFrame last saw of the agent
@@ -269,7 +270,7 @@ type widgetCache struct {
 // NewApp builds the root model; host hooks are attached by the caller via
 // host.SetUIHooks(app).
 func NewApp(host *hostapi.Host, log *slog.Logger) *App {
-	return &App{
+	a := &App{
 		host:     host,
 		log:      log,
 		thm:      themeResolver{sgr: map[string]uv.Style{}},
@@ -291,6 +292,8 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 		pendingScroll: map[region]hostapi.ScrollAction{},
 		pendingAnchor: map[region]int{},
 	}
+	a.splashRise = anim.NewRise[string](_riseDuration, func() time.Time { return a.now() })
+	return a
 }
 
 // SetProgram wires the running bubbletea program (for Quit/Send).
@@ -1030,15 +1033,10 @@ func (a *App) widgetFaded(msg widgetRender) [][]hostapi.Segment {
 		return msg.lines
 	}
 	if w.id == "splash" {
-		f := a.rises[msg.id]
-		if f == nil {
-			f = &pillFade{Fade: anim.New(_riseDuration)}
-			f.Set(true, a.now())
-			a.rises[msg.id] = f
-			a.wakeTick()
-		}
+		f := a.splashRise.At("splash")
+		a.wakeTick()
 		if alpha := f.Alpha(a.now()); alpha < 1 {
-			return sunkCopy(msg.lines, 1-alpha)
+			return fadedRows(msg.lines, 1-alpha, nil)
 		}
 		return msg.lines
 	}
@@ -1064,11 +1062,11 @@ func (a *App) widgetFaded(msg widgetRender) [][]hostapi.Segment {
 	case f.Shown() && alpha >= 1:
 		return msg.lines
 	case f.Shown():
-		return sunkCopy(msg.lines, 1-alpha)
+		return fadedRows(msg.lines, 1-alpha, nil)
 	case alpha <= 0:
 		return nil
 	default:
-		return sunkCopy(f.lines, 1-alpha)
+		return fadedRows(f.lines, 1-alpha, nil)
 	}
 }
 
@@ -1086,24 +1084,8 @@ func (a *App) fadesRising() bool {
 			return true
 		}
 	}
-	if f := a.chatFolds(); f != nil {
-		for _, ramps := range f.railRamps {
-			for _, r := range ramps {
-				if r.fade.Rising(now) {
-					return true
-				}
-			}
-		}
-		for _, ramp := range f.readRamps {
-			if !ramp.done {
-				return true
-			}
-		}
-		for _, fade := range f.liveRamps {
-			if fade.Rising(now) {
-				return true
-			}
-		}
+	if f := a.chatFolds(); f != nil && f.rising() {
+		return true
 	}
 	return false
 }
@@ -1139,25 +1121,7 @@ func (a *App) settleBars() bool {
 // settleSplash marks the splash's boot rise settled: a test's pinned clock
 // would freeze the knot mid-ramp. Reports whether it settled one.
 func (a *App) settleSplash() bool {
-	f, ok := a.rises["splash"]
-	if !ok || !f.Rising(a.now()) {
-		return false
-	}
-	f.Jump(true)
-	return true
-}
-
-// sunkCopy is rows with every segment sunk toward the surface it sits on.
-func sunkCopy(rows [][]hostapi.Segment, fade float64) [][]hostapi.Segment {
-	out := make([][]hostapi.Segment, len(rows))
-	for i, row := range rows {
-		out[i] = make([]hostapi.Segment, len(row))
-		for j, s := range row {
-			s.Fade = max(s.Fade, fade)
-			out[i][j] = s
-		}
-	}
-	return out
+	return a.splashRise.Settle()
 }
 
 // widgetRegion is the region a widget draws in.
