@@ -877,7 +877,9 @@ type chatFolds struct {
 	settledPrev blockKind
 	fillUnit    int
 	built       map[int][][]hostapi.Segment
-	ver         int // the folds' version: any change draws the rows again
+	builtFrom   settledKey // the state the builds belong to, with rows aside
+	builtSpan   [][2]int   // each built unit's transcript span
+	ver         int        // the folds' version: any change draws the rows again
 }
 
 // foldSet is one view's folds: the session's chat and a run's transcript
@@ -2016,7 +2018,21 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		fresh := key != f.settledKey
 		if fresh {
 			f.fillUnit = len(units) // a new state rebuilds from the tail
-			f.built = map[int][][]hostapi.Segment{}
+			// an appended transcript row keeps every build but the tail unit it
+			// grew into or follows; dropping them would dip the bar's total
+			// until the fill caught back up
+			now, prev := key, f.builtFrom
+			now.rows, prev.rows = 0, 0
+			if now != prev {
+				f.built = map[int][][]hostapi.Segment{}
+				f.builtSpan = nil
+			} else {
+				for k, u := range units {
+					if k >= len(f.builtSpan) || f.builtSpan[k] != [2]int{u.first, u.last} {
+						delete(f.built, k)
+					}
+				}
+			}
 		}
 		// a readout mid-rise rebuilds its unit at this frame's alpha, so the
 		// rise moves over the settled rows the cache would freeze
@@ -2092,6 +2108,11 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		f.settled = lines
 		f.fillUnit = newX
 		f.settledPrev, f.settledKey = _blockNone, key
+		f.builtFrom = key
+		f.builtSpan = make([][2]int, len(units))
+		for k, u := range units {
+			f.builtSpan[k] = [2]int{u.first, u.last}
+		}
 		if len(units) > 0 {
 			f.settledPrev = blockOf(len(units) - 1)
 		}

@@ -441,6 +441,32 @@ func TestReadoutRise(t *testing.T) {
 	}
 }
 
+// TestAppendKeepsTheSettledRows: a transcript row appended (a rail action
+// landing) rebuilds from the tail but keeps every unchanged unit's rows, so
+// the scrollbar's total never dips for the frames the fill would need.
+func TestAppendKeepsTheSettledRows(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	for range 40 {
+		host.AppendChat(hostapi.ChatMessage{Role: "user", Text: "a question"})
+		appendReply(host, "a reply of a few words", hostapi.TurnStat{Model: "fake/m", Out: 11})
+	}
+	for range 200 {
+		renderChat(t, app, 98, 20, app.uiState())
+		if app.chatFolds().fillUnit == 0 {
+			break
+		}
+	}
+	before := len(app.chatFolds().settled)
+	if before < 20 {
+		t.Fatalf("the transcript did not fill a view: %d rows", before)
+	}
+	appendReply(host, "one more", hostapi.TurnStat{Model: "fake/m", Out: 11})
+	renderChat(t, app, 98, 20, app.uiState())
+	if after := len(app.chatFolds().settled); after < before {
+		t.Fatalf("an append dipped the settled rows: %d after %d", after, before)
+	}
+}
+
 // linesOf renders the chat and returns the rows a live call draws.
 func linesOf(t testing.TB, app *App, call int) [][]hostapi.Segment {
 	t.Helper()
