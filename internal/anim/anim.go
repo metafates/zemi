@@ -1,5 +1,32 @@
 // Package anim holds the UI's small time-based animations: a value easing
 // toward a target on the caller's clock, so any widget rides the same ramp.
+//
+// Turning a static element into an animated one takes one of three patterns.
+//
+// An element that comes and goes with its widget (a pill, a splash, a chat
+// region) rides a Curtain: the widget draws its rows as always and hands
+// them through Draw, which rises them out of the surface on appear and
+// sinks them on the rows it kept on leave.
+//
+//	c := anim.NewCurtain(160 * time.Millisecond)
+//	out, _ := c.Draw(rows, now) // out is what the screen shows
+//
+// An element that appears and may go away within one widget's rows (a rail
+// call, a readout) rides a Rise keyed by what names it: report the keys the
+// frame drew with Present, fade the rows by Alpha while it is under 1, then
+// Prune so a key gone loses its ramp.
+//
+//	f := rise.Present(key, true)
+//	if a := rise.Alpha(key); a < 1 {
+//		row = anim.Faded(row, 1-a, nil)
+//	}
+//
+// An element that rises exactly once stamps the same way and never prunes;
+// Rise drops a key that finished sinking on its own.
+//
+// All types are for one goroutine: the render's. The zero value of every
+// type is settled hidden and safe; NewFade, NewCurtain and NewRise give a
+// ramp its duration.
 package anim
 
 import (
@@ -12,9 +39,11 @@ import (
 // mid-ramp starts the new ramp from the value's current place, so a pill
 // that reappears while sinking rises from where it is. The zero value is
 // settled hidden and never animates; NewFade gives the ramp its duration.
+// A Dur of 0 or less jumps: Alpha reads the target at once.
 type Fade struct {
 	Dur   time.Duration
 	Delay time.Duration // how long an appear waits before its ramp starts
+	Ease  func(float64) float64
 	shown bool
 	at    time.Time
 	from  float64
@@ -45,14 +74,22 @@ func (f *Fade) Alpha(now time.Time) float64 {
 	if f.shown {
 		target, delay = 1, f.Delay
 	}
-	p := float64(now.Sub(f.at)-delay) / float64(f.Dur)
+	dur := max(f.Dur, 0)
+	if dur <= 0 {
+		return target
+	}
+	p := float64(now.Sub(f.at)-delay) / float64(dur)
 	if p >= 1 {
 		return target
 	}
 	if p <= 0 {
 		return f.from
 	}
-	return f.from + (target-f.from)*Smoothstep(p)
+	ease := f.Ease
+	if ease == nil {
+		ease = Smoothstep
+	}
+	return min(max(f.from+(target-f.from)*ease(p), 0), 1)
 }
 
 // Rising reports a ramp in flight at now, an appear's delay included.
@@ -68,8 +105,12 @@ func (f *Fade) Shown() bool { return f.shown }
 func Smoothstep(p float64) float64 { return p * p * (3 - 2*p) }
 
 // Faded is row with every segment but the ones spare keeps sunk toward the
-// surface it sits on by t, keeping a deeper sink a row set itself.
+// surface it sits on by t, keeping a deeper sink a row set itself. A t of 0
+// or less hands the row back untouched.
 func Faded(row []hostapi.Segment, t float64, spare func(hostapi.Segment) bool) []hostapi.Segment {
+	if t <= 0 {
+		return row
+	}
 	out := make([]hostapi.Segment, len(row))
 	for i, s := range row {
 		if spare == nil || !spare(s) {
@@ -132,7 +173,7 @@ func (c *Curtain) Draw(rows [][]hostapi.Segment, now time.Time) (out [][]hostapi
 		c.sinking = true
 		return FadedRows(c.rows, 1-a, nil), false
 	}
-	settled, c.sinking = c.sinking, false // the sink rode out: report it once
+	settled, c.sinking, c.rows = c.sinking, false, nil // the sink rode out: report it once, lose the kept rows
 	return nil, settled
 }
 
@@ -211,7 +252,9 @@ func (r *Rise[K]) Present(key K, shown bool) {
 		r.seen = map[K]bool{}
 	}
 	now := r.clock()
-	r.seen[key] = true
+	if shown {
+		r.seen[key] = true
+	}
 	f, ok := r.fade[key]
 	switch {
 	case !ok:
@@ -228,10 +271,13 @@ func (r *Rise[K]) Present(key K, shown bool) {
 }
 
 // Prune ends a Present frame: keys the frame did not present lose their ramp
-// at once. Only an element that vanishes without a sink prunes.
+// at once, and a key that finished sinking loses its ramp too, so a missed
+// Prune cannot keep a ledger of dead keys. Only an element that vanishes
+// without a sink prunes.
 func (r *Rise[K]) Prune() {
-	for k := range r.fade {
-		if !r.seen[k] {
+	now := r.clock()
+	for k, f := range r.fade {
+		if !r.seen[k] && (f.Shown() || f.Alpha(now) <= 0) {
 			delete(r.fade, k)
 		}
 	}

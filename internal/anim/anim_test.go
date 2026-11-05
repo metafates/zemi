@@ -32,6 +32,24 @@ func TestFade(t *testing.T) {
 		t.Fatal("a jumped fade is settled at its target")
 	}
 
+	// a fade with no duration reads its target at once, never NaN
+	z := &Fade{}
+	if got := z.Alpha(now); got != 0 {
+		t.Fatalf("a zero fade is not settled hidden: %v", got)
+	}
+	z.Set(true, now)
+	if got := z.Alpha(now); got != 1 {
+		t.Fatalf("a durationless fade did not read shown: %v", got)
+	}
+
+	// an Ease replaces the default easing
+	e := NewFade(100 * time.Millisecond)
+	e.Ease = func(p float64) float64 { return p / 2 }
+	e.Set(true, now)
+	if got := e.Alpha(now.Add(50 * time.Millisecond)); got != 0.25 {
+		t.Fatalf("the ease was not honored: %v", got)
+	}
+
 	// a delayed appear holds its start value through the delay, then ramps
 	d := NewFade(100 * time.Millisecond)
 	d.Delay = 60 * time.Millisecond
@@ -100,6 +118,23 @@ func TestCurtain(t *testing.T) {
 	}
 }
 
+// TestFaded: a t of 0 or less hands the row back, a t fades every segment
+// but the ones spare keeps, and a row's own deeper sink stands.
+func TestFaded(t *testing.T) {
+	row := []hostapi.Segment{{Text: "a"}, {Text: "b", Fade: 0.9}, {Text: "c", HL: "Bar"}}
+	if got := Faded(row, 0, nil); &got[0] != &row[0] {
+		t.Fatal("a t of 0 did not hand the row back")
+	}
+	spares := func(s hostapi.Segment) bool { return s.HL == "Bar" }
+	got := Faded(row, 0.4, spares)
+	if got[0].Fade != 0.4 || got[1].Fade != 0.9 || got[2].Fade != 0 {
+		t.Fatalf("the fade ignored the spare or a deeper sink: %v", got)
+	}
+	if row[0].Fade != 0 {
+		t.Fatal("fading wrote into the row it was handed")
+	}
+}
+
 // TestRise: a key's first Present stamps its ramp, a Present while it rides
 // keeps it, a risen key stays risen, Prune drops the keys a frame did not
 // present, a sunk key rises again, and Stamp rises an element that never
@@ -165,5 +200,26 @@ func TestRise(t *testing.T) {
 	s2.Stamp("j")
 	if !s2.Settle() || s2.Settle() {
 		t.Fatal("settle did not land the ramp at its target")
+	}
+
+	// prune drops a key that finished sinking, keeps one still sinking
+	r.Present("sunk", true)
+	clock = clock.Add(10 * r.Dur)
+	r.Prune()
+	r.Present("sunk", false)
+	clock = clock.Add(10 * r.Dur)
+	r.Present("marker", true)
+	r.Prune()
+	if _, ok := r.fade["sunk"]; ok {
+		t.Fatal("prune kept a sunk key's fade")
+	}
+	r.Present("sinking", true)
+	clock = clock.Add(10 * r.Dur)
+	r.Present("sinking", false)
+	clock = clock.Add(r.Dur / 2)
+	r.Present("elsewhere", true)
+	r.Prune()
+	if got := r.Alpha("sinking"); got != 0.5 {
+		t.Fatalf("prune dropped a key still sinking, or its ramp moved: %v", got)
 	}
 }
