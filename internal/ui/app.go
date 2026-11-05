@@ -293,12 +293,11 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 	}
 	// the splash vanishes whole when the first message takes the region, and
 	// the chat's rows appear whole: only the reset's sink moves the chat as
-	// one
+	// one, scrollbar included
 	splash := anim.NewCurtain(_riseDuration)
 	splash.JumpOut = true
 	chat := anim.NewCurtain(_riseDuration)
 	chat.JumpIn = true
-	chat.Spare = spareBar
 	a.rises["splash"], a.rises["chat"] = splash, chat
 	return a
 }
@@ -1046,6 +1045,19 @@ func (a *App) widgetFaded(msg widgetRender) [][]hostapi.Segment {
 	}
 	if w.region != _regionStatusLeft && w.region != _regionStatusRight {
 		return msg.lines
+	}
+	if w.id == "statusline.hints" {
+		// the hints take the row's outer seat: while another pill's sink
+		// still draws its rows (the ctx pill a reset sinks), they wait, so
+		// they appear once, where they stay
+		for _, wg := range a.widgets {
+			if wg.region != _regionStatusRight || wg.id == w.id {
+				continue
+			}
+			if c := a.rises[wg.id]; c != nil && c.Sinking() {
+				return nil
+			}
+		}
 	}
 	return a.ride(w.id, msg.lines)
 }
