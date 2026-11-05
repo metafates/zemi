@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -78,13 +77,6 @@ func ruleText(text string) hostapi.Segment {
 	return hostapi.Segment{Text: text, HL: "Rule", NoCopy: true}
 }
 
-// clock is the turn's clock, which reads as a clock and never as a countdown:
-// the minutes pad, so "0m 48s" beside a bare "3s" window keeps the two apart.
-func clock(d time.Duration) string {
-	s := int(d.Seconds())
-	return fmt.Sprintf("%dm %02ds", s/60, s%60)
-}
-
 // workingRule draws the row: the snail, the block, and the part the row
 // centres, a cell of rule on either side of it.
 func workingRule(e *eyes, st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
@@ -145,7 +137,7 @@ func workingRule(e *eyes, st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 		if st.Cancelling {
 			state = "stopping"
 		}
-		ticks = []workingPart{{line: plain(clock(ag.Elapsed)), worth: 5}}
+		ticks = []workingPart{{line: plain(duration(ag.Elapsed.Seconds(), true)), worth: 5}}
 		if ag.Retry != nil {
 			state = "error"
 			// the reason and countdown outlast the key hint and the clock: a
@@ -161,7 +153,7 @@ func workingRule(e *eyes, st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 			if why := clipText(ag.Retry.Why, keep); why != "" {
 				ticks = append(ticks, workingPart{line: plain(why), worth: 7})
 			}
-			ticks = append(ticks, workingPart{line: plain("elapsed " + clock(ag.Elapsed)), worth: 5})
+			ticks = append(ticks, workingPart{line: plain("elapsed " + duration(ag.Elapsed.Seconds(), true)), worth: 5})
 		}
 		if st.Editing != "" {
 			state, ticks = "idle", nil
