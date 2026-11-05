@@ -491,6 +491,8 @@ func TestToastOverBox(t *testing.T) {
 	app, _ := bootAgentApp(t, 80, 10)
 	app.openOverlay(hostapi.Overlay{ID: "list", Title: "List", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "a"}, {Text: "b"}, {Text: "c"}}})
 	app.pushToast(slog.LevelInfo, "Copied to the clipboard", "")
+	app.View()        // the toast's rise starts
+	app.settleRamps() // land it
 	app.renderSync(t)
 	app.Frame()
 	y := slices.IndexFunc(app.lastRows, func(row []hostapi.Segment) bool {

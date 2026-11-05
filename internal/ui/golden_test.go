@@ -82,6 +82,8 @@ end, { desc = "notify on rebound ctrl+t" })
 
 	app.timeStr = "12:34" // pin the clock (host-provided UI state, DESIGN §8)
 	app.renderSync(t)
+	app.View()        // the toast's rise starts
+	app.settleRamps() // land it, the golden pins the settled frame
 
 	golden.RequireEqual(t, app.Frame())
 }

@@ -137,10 +137,10 @@ type App struct {
 	completion wordCompleter
 	palette    cmdPalette
 
-	overlays []overlayState
-	trust    *trustPrompt
-	toasts   []toast
-
+	overlays   []overlayState
+	trust      *trustPrompt
+	toasts     []toast
+	toastRamps *anim.Rise[string] // a section's box rises once and sinks when its last toast goes
 	// the trust answer's guard: the box a boot opens right after the answer
 	// (a first run lands on the model picker) must not act on the key that
 	// answered, so the router drops the first key that reaches it
@@ -296,9 +296,7 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 	splash := anim.NewCurtain(_riseDuration)
 	chat := anim.NewCurtain(_riseDuration)
 	chat.JumpIn = true
-	toasts := anim.NewCurtain(_riseDuration)
-	toasts.JumpIn = true // a toast's news is instant; only its leave eases
-	a.rises["splash"], a.rises["chat"], a.rises["toasts"] = splash, chat, toasts
+	a.rises["splash"], a.rises["chat"] = splash, chat
 	return a
 }
 
@@ -1091,6 +1089,9 @@ func (a *App) fadesRising() bool {
 			return true
 		}
 	}
+	if a.toastRise().Rising() {
+		return true
+	}
 	for _, st := range a.scrolls {
 		if st.bar.Shown() && st.bar.Rising(now) {
 			return true
@@ -1107,10 +1108,11 @@ func (a *App) fadesRising() bool {
 // mid-ride. Reports whether it settled one.
 func (a *App) settleRamps() bool {
 	done := false
-	for _, id := range []string{"splash", "toasts"} {
-		if c := a.rises[id]; c != nil && c.Settle(a.now()) {
-			done = true
-		}
+	if c := a.rises["splash"]; c != nil && c.Settle(a.now()) {
+		done = true
+	}
+	if a.toastRise().Settle() {
+		done = true
 	}
 	if done {
 		a.frameDirty = true // the settled ramp changes what the next frame draws
@@ -1249,11 +1251,66 @@ func (a *App) pushToast(level slog.Level, title, body string) {
 	a.frameDirty = true
 }
 
+// toastRise is the toasts' ramp ledger, created on first use the way ride
+// creates a region's curtain.
+func (a *App) toastRise() *anim.Rise[string] {
+	if a.toastRamps == nil {
+		a.toastRamps = anim.NewRise[string](_riseDuration, nil)
+	}
+	return a.toastRamps
+}
+
 func (a *App) pruneToasts(now time.Time) {
-	live := len(a.toasts)
-	a.toasts = slices.DeleteFunc(a.toasts, func(t toast) bool { return !now.Before(t.expires) })
-	if len(a.toasts) != live {
+	live, expired := len(a.toasts), false
+	a.toasts = slices.DeleteFunc(a.toasts, func(t toast) bool {
+		if now.Before(t.expires) {
+			return false
+		}
+		expired = true
+		// a toast whose section a live toast still shares drops at once; a
+		// section's last one lingers until its box's sink has ridden out
+		return !a.sectionLive(t, now) && a.toastRise().Alpha(toastSection(t)) <= 0
+	})
+	if len(a.toasts) != live || expired {
 		a.frameDirty = true
+	}
+	keys := make(map[string]bool, len(a.toasts))
+	for _, t := range a.toasts {
+		keys[toastSection(t)] = true
+	}
+	a.toastRise().Retain(func(key string) bool { return keys[key] || a.toastRise().Alpha(key) > 0 })
+}
+
+// toastSection is the identity a toast's box fades by: the tray's sections
+// group toasts by level and title, a lone title or body under an untitled one.
+func toastSection(t toast) string {
+	title := t.title
+	if (t.title == "") != (t.body == "") {
+		title = ""
+	}
+	return strconv.Itoa(int(t.level)) + "\x00" + title
+}
+
+// sectionLive reports whether a toast other than t of t's section is still
+// within its ttl.
+func (a *App) sectionLive(t toast, now time.Time) bool {
+	key := toastSection(t)
+	return slices.ContainsFunc(a.toasts, func(o toast) bool {
+		return o != t && toastSection(o) == key && now.Before(o.expires)
+	})
+}
+
+// toastEase rides a section's box through its ramp: a section rises out of
+// the surface on its first toast and sinks when its last one goes.
+func (a *App) toastEase(key string, shown bool, box [][]hostapi.Segment) [][]hostapi.Segment {
+	a.toastRise().Present(key, shown)
+	switch al := a.toastRise().Alpha(key); {
+	case al >= 1:
+		return box
+	case al <= 0:
+		return nil // the sink rode out; the prune drops the toast behind it
+	default:
+		return anim.FadedRows(box, 1-al, nil)
 	}
 }
 
@@ -1372,7 +1429,7 @@ func (a *App) compose(w, h int) string {
 	// over it, the rest in the margin, and stays inside the screen. A toast
 	// covers its own cells, so no box border takes a gap where one stands on it.
 	toasts := func() {
-		tray := a.ride("toasts", toastTray(a.toasts, stage.Dx(), stage.Dy()))
+		tray := toastTray(a.toasts, stage.Dx(), stage.Dy(), time.Now(), a.toastEase)
 		if len(tray) == 0 {
 			return
 		}
@@ -2231,10 +2288,13 @@ func (a *App) statusItems(r region) []statusItem {
 // tall, newest first: toasts of one level and title are one section, the
 // title in the rule that opens it and each body word-wrapped under it. A
 // lone title or body is a row in the level's color under an untitled rule.
-func toastTray(ts []toast, w, h int) [][]hostapi.Segment {
+// Each drawn section's box rides its ramp through ease.
+func toastTray(ts []toast, w, h int, now time.Time, ease func(key string, shown bool, box [][]hostapi.Segment) [][]hostapi.Segment) [][]hostapi.Segment {
 	type section struct {
+		key   string
 		level slog.Level
 		title string
+		live  bool
 		rows  [][]hostapi.Segment
 	}
 	inner := max(min(44, w-6), 12)
@@ -2252,21 +2312,31 @@ func toastTray(ts []toast, w, h int) [][]hostapi.Segment {
 			}
 			rows = append(rows[:_toastRows-1], more)
 		}
-		i := slices.IndexFunc(secs, func(s section) bool { return s.level == t.level && s.title == title })
+		key := toastSection(t)
+		i := slices.IndexFunc(secs, func(s section) bool { return s.key == key })
 		if i < 0 {
-			i, secs = len(secs), append(secs, section{level: t.level, title: title})
+			i, secs = len(secs), append(secs, section{key: key, level: t.level, title: title})
+		}
+		if now.Before(t.expires) {
+			secs[i].live = true
 		}
 		secs[i].rows = append(secs[i].rows, rows...)
 	}
 	var tray [][]hostapi.Segment
-	for i, s := range secs {
+	for _, s := range secs {
 		box := hostBox(s.title, toastHL(s.level), "", s.rows, inner+8, inner+4, inner)
+		if ease != nil {
+			box = ease(s.key, s.live, box)
+			if box == nil {
+				continue
+			}
+		}
 		// a section that does not fit drops whole: a row-wise cut would leave
 		// an orphaned bottom border under dropped rows
 		if len(tray)+len(box) > h {
 			break
 		}
-		if i > 0 {
+		if len(tray) > 0 {
 			// the section's rule closes the one above
 			top := box[0]
 			top[0].Text, top[len(top)-1].Text = "├", "┤"

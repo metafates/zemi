@@ -481,7 +481,7 @@ func TestToastTray(t *testing.T) {
 		}
 		app.pruneToasts(time.Now().Add(c.after))
 		var got []string
-		for _, r := range toastTray(app.toasts, c.w, c.h) {
+		for _, r := range toastTray(app.toasts, c.w, c.h, time.Now(), nil) {
 			got = append(got, hostapi.SegsText(r))
 		}
 		if !slices.Equal(got, c.want) {
