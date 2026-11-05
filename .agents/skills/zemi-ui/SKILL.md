@@ -32,6 +32,20 @@ changes what a rule says, never how many rows the frame takes, so nothing above 
 The statusline clusters draw from their outer edges by widget priority and a short row drops
 the highest first (`fitClusters`), so what lasts sits outermost and never moves.
 
+## Animation (internal/anim)
+
+Every ramp lives in `internal/anim`; its package doc is the recipe. The three patterns: a widget
+that comes and goes rides a `Curtain` — give the `widget` `eases: true` and `widgetFaded` routes
+its lines through one, no per-widget code; widgets that share a region's seat (`solo: true`, the
+chat and the splash) hand over through the outgoing one's sink, by region rule, never by id;
+rows that rise inside a widget (a rail call, a readout) ride a `Rise` keyed by what names the
+element — `Spread` when it grows while it rises, `Present` + `Prune` when it comes and goes,
+`Stamp` when it rises once. Rows fade by `anim.Faded(row, 1-alpha, spare)`; a `spare` (like
+`spareRail`) leaves a row's chrome standing while its content rises. The toast tray eases too:
+its leave sinks, its news is instant (`JumpIn`). A test with a pinned clock settles what it
+stamped with `settleRamps`/`Rise.Settle` — an unsettled ramp freezes mid-rise, and a settle must
+mark the frame dirty or View-driven tests recompose stale bytes.
+
 ## Gotchas
 
 - **The Go-reserved triggers** (`ctrl+c` cancel, `/reload`) are never routed through Lua
