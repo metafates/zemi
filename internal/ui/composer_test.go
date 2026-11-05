@@ -1001,9 +1001,9 @@ func TestKindCompletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	reloadUI(t, host, host.SkillsUserHooksStep())
-	// review: a file and the built-in workflow; lint: a file and the
+	// hunt: a file and the built-in workflow; lint: a file and the
 	// skill; solo.md: the files' alone
-	app.completion.setFiles([]string{"review", "lint", "solo.md"})
+	app.completion.setFiles([]string{"hunt", "lint", "solo.md"})
 	reopen := func(word string) {
 		r := []rune(word)
 		app.composer.text, app.composer.cursor = word, len(r)
@@ -1037,11 +1037,11 @@ func TestKindCompletion(t *testing.T) {
 		t.Fatalf("@workflow: rows: %+v", app.completion.entityRows)
 	}
 	// an accept spells the kind out only where the name is shared
-	reopen("@review")
+	reopen("@hunt")
 	base := len(app.completion.extra) + len(app.completion.matches) + len(app.completion.paths) + len(app.completion.skillRows)
 	app.completion.selected = base // the workflow row under the file's name
 	app.acceptCompletion()
-	if got := app.composer.text; got != "@workflow:review " {
+	if got := app.composer.text; got != "@workflow:hunt " {
 		t.Fatalf("the shared workflow accepted %q", got)
 	}
 	reopen("@lint")

@@ -336,7 +336,7 @@ function zemi.config.schema() end
 zemi.keymap = {}
 
 --- Bind a key or a key sequence. The right-hand side is a function, a
---- command name with or without its slash ("review", "/review", so what
+--- command name with or without its slash ("compact", "/compact", so what
 --- `get` hands back rebinds as is), or a host action ("zemi.ui.scroll.up").
 --- Keys may be sequences that start with a non-printable key: "ctrl+x s",
 --- "<leader>gs" (`<leader>` is the `keymap.leader` setting, ctrl+x by
@@ -362,7 +362,7 @@ zemi.keymap = {}
 --- zemi.ui.scroll.{up,down,top,bottom,line_up,line_down,sticky_up,sticky_down}.
 ---
 --- ```lua
---- zemi.keymap.set("<leader>r", "/review", { desc = "review the diff" })
+--- zemi.keymap.set("<leader>r", "/compact", { desc = "compact the chat" })
 --- zemi.keymap.set("<leader>k", "zemi.ui.scroll.up")
 --- ```
 ---@param key string
@@ -844,7 +844,7 @@ zemi.ui.overlay = {}
 --- zemi.ui.overlay.open({
 --- 	id = "snippets",
 --- 	title = "Snippets",
---- 	items = { { text = "review", desc = "review the diff", fill = "/review " } },
+--- 	items = { { text = "compact", desc = "compact the chat", fill = "/compact " } },
 --- })
 --- ```
 ---@param spec zemi.OverlaySpec

@@ -1866,7 +1866,7 @@ var _workflowVerbs = []string{"run", "view", "pause", "resume", "stop", "rerun",
 // the procedure lives.
 const _newWorkflowPrompt = "I want a new zemi workflow that does what the command above says; ask me when it says nothing. Read SKILL.md in %s, the zemi skill's directory, then follow the New workflow steps in workflows.md there."
 
-// workflowCommands are /workflows and /review.
+// workflowCommands are /workflows.
 func (h *Host) workflowCommands() []*Command {
 	return []*Command{{
 		Name: "workflows", NArgs: NArgsAny, Desc: "see workflow runs and saved workflows, act on them, or make a new workflow",
@@ -1980,12 +1980,6 @@ func (h *Host) workflowCommands() []*Command {
 				out = append(out, f.id)
 			}
 			return out
-		},
-	}, {
-		Name: "review", NArgs: NArgsOptional, Desc: "review your changes, a base ref or a commit, with several agents",
-		GoFn: func(h *Host, args string, confirm bool) error {
-			typed, attached := agent.CutAttached(args)
-			return h.runSaved(attached, "review", strings.TrimSpace(typed))
 		},
 	}}
 }

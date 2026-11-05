@@ -164,9 +164,9 @@ zemi.event.on("agent.finish", function(ev) zemi.log.info(ev.model .. " $" .. ev.
 zemi.agent.run({ agent = "explore", prompt = "Where is the retry logic?" }, function(text, err)
 	zemi.notify({ title = "explore", body = text or err })
 end)
-zemi.command.add("review", function()
-	zemi.workflow.run({ name = "review" }, function(result, err) zemi.agent.send(result or err) end)
-end, { desc = "run workflows/review.lua and hand the result to the agent" })
+zemi.command.add("audit", function()
+	zemi.workflow.run({ name = "audit" }, function(result, err) zemi.agent.send(result or err) end)
+end, { desc = "run workflows/audit.lua and hand the result to the agent" })
 ```
 
 Agent files and workflow scripts are not config Lua: `agents.md` and `workflows.md` have them.

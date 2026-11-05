@@ -146,9 +146,9 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 -- zemi.config.set("editor.command", "hx") -- /config lists every setting
 
 -- Keys: <leader> is keymap.leader (ctrl+x). The right-hand side is a
--- command name ("review", "/review"), a host action (zemi.HostAction in
+-- command name ("compact", "/compact"), a host action (zemi.HostAction in
 -- the type annotations lists them) or a function.
--- zemi.keymap.set("<leader>r", "review", { desc = "review the diff" })
+-- zemi.keymap.set("<leader>r", "compact", { desc = "compact the chat" })
 -- zemi.keymap.set("<leader>m", "zemi.model.pick", { desc = "switch model" })
 
 -- Your own slash command, completed in the palette like the builtin ones.

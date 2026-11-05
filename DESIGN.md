@@ -1165,7 +1165,7 @@ to, over the session where it was left. The row's keys
 restart or stop a running one; its stop has no hotkey, since `x` on the
 run's view stops the run. While any run lives
 one ticker rebuilds whichever of the two is open once a second. The user
-starts a saved one with `/workflows run` or `/review`, with no model call
+starts a saved one with `/workflows run`, with no model call
 before the work: it runs detached with a live notice row.
 
 Builtin providers come from catwalk's embedded catalog, or the one
@@ -2355,7 +2355,7 @@ view; a reset's wipe drops the row with the chat.
   recent errors, trust, MCP servers, language servers, and the rows Lua adds),
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/skills`,
-  `/agents`, `/jobs`, `/workflows`, `/review`, `/mcp`,
+  `/agents`, `/jobs`, `/workflows`, `/mcp`,
   `/keys`, `/lsp`, `/plugin`, `/note`,
   `/projects` (the projects zemi keeps state for; switch restarts zemi there)),
   the boot's own (`/config` (§5), `/effort`, `/usage` (tokens and cost),

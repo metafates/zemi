@@ -19,7 +19,6 @@ var _tips = []tip{
 	{"/btw ", "asks a side question the conversation does not keep"},
 	{"@", "attaches files, dirs and skills to the prompt"},
 	{"/goal ", "keeps working until a condition holds"},
-	{"/review", "has several agents review your changes"},
 	{"alt+o", "browses the chat's whole memory, however old"},
 	{"/config", "you can disable tips with ui.tips set to false"},
 }

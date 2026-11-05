@@ -1816,20 +1816,20 @@ func TestSavedWorkflows(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "review.lua"), []byte("-- Review the diff\n-- from three angles\nreturn 1\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "hunt.lua"), []byte("-- Review the diff\n-- from three angles\nreturn 1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	// the user's file shadows the builtin one of the same name, the other
 	// builtins arriving beside it
 	list := h.workflows()
-	i := slices.IndexFunc(list, func(w Workflow) bool { return w.Name == "review" })
+	i := slices.IndexFunc(list, func(w Workflow) bool { return w.Name == "hunt" })
 	if i < 0 || list[i].Description != "Review the diff from three angles" || list[i].Source != lua.OriginUser {
 		t.Fatalf("workflows = %+v", list)
 	}
-	if !slices.ContainsFunc(list, func(w Workflow) bool { return w.Name == "hunt" && w.Source == lua.OriginBuiltin }) {
-		t.Fatalf("workflows = %+v, want the builtin hunt beside it", list)
+	if !slices.ContainsFunc(list, func(w Workflow) bool { return w.Name == "brainstorm" && w.Source == lua.OriginBuiltin }) {
+		t.Fatalf("workflows = %+v, want the builtin brainstorm beside it", list)
 	}
-	if _, err := h.workflowSource("nope"); err == nil || !strings.Contains(err.Error(), "have review") {
+	if _, err := h.workflowSource("nope"); err == nil || !strings.Contains(err.Error(), "have hunt") {
 		t.Fatalf("missing workflow err = %v", err)
 	}
 	ui := &fakeUI{}
@@ -1848,7 +1848,7 @@ func TestSavedWorkflows(t *testing.T) {
 		t.Fatalf("the list does not head with making one: %v", ui.opened[0].Items[0])
 	}
 	var acts []string
-	for _, k := range row("review").Keys {
+	for _, k := range row("hunt").Keys {
 		acts = append(acts, k.Key+" "+k.Desc)
 	}
 	if want := []string{"r run", "a run with arguments", "o open in the editor"}; !slices.Equal(acts, want) {
@@ -1858,7 +1858,7 @@ func TestSavedWorkflows(t *testing.T) {
 	// a run's script saves under workflows/, headed by its description and
 	// named after it when no name is given, a name no other workflow has
 	var runs []*flowRun
-	for _, desc := range []string{"Sum up", "Review"} {
+	for _, desc := range []string{"Sum up", "Hunt"} {
 		f, err := h.startFlow(t.Context(), flowSpec{description: desc, src: "return 1"})
 		if err != nil {
 			t.Fatal(err)
@@ -1880,8 +1880,8 @@ func TestSavedWorkflows(t *testing.T) {
 		{0, "Sum Up", "lowercase letters"},
 		{0, strings.Repeat("a", 64), ""}, // the loader's name cap
 		{0, strings.Repeat("a", 65), "up to 63"},
-		{1, "", "a workflow review exists"},
-		{1, "review", "a workflow review exists"}, // an explicit name too: it would shadow the builtin
+		{1, "", "a workflow hunt exists"},
+		{1, "hunt", "a workflow hunt exists"}, // an explicit name too: it would shadow the user's hunt.lua
 	} {
 		path, err := h.saveFlow(runs[c.run].id, c.name)
 		if c.want != "" {
@@ -1936,32 +1936,6 @@ return wf.agent("look")`})
 	}
 	if !slices.Contains(ui.closed, "workflow:"+f.id) || !slices.Contains(ui.closed, "workflows") {
 		t.Fatalf("closed %v, want the run's view and the list gone", ui.closed)
-	}
-}
-
-// TestReviewTargetsACommit: a sha reviews what that commit introduced. Its
-// merge base with HEAD is the commit itself, so reading one as a base ref
-// would review everything since it plus the working tree.
-func TestReviewTargetsACommit(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	echoAgents(h)
-	src, err := h.workflowSource("review")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range []struct{ args, want string }{
-		{"abc1234", "git show abc1234"},
-		{"main", "git diff --merge-base main"},
-		{"", "git diff HEAD"},
-	} {
-		res, err := runFlow(t.Context(), h, src, c.args)
-		if err != nil {
-			t.Fatalf("%q: %v", c.args, err)
-		}
-		if !strings.Contains(res, c.want) {
-			t.Errorf("/review %q collected with %q", c.args, res)
-		}
 	}
 }
 

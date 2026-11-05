@@ -252,7 +252,7 @@ func (h *Host) CommandFailed(name string, err error) {
 }
 
 // SendPrompt sends a prompt as the composer would: one naming a registered
-// command runs it with its attachment, so /review, /workflows run and the
+// command runs it with its attachment, so /workflows run and the
 // markdown commands reach a script, a git hook or a loop; anything else is
 // a message for the model.
 func (h *Host) SendPrompt(prompt string) error {

@@ -205,7 +205,6 @@ func TestBuiltinWorkflows(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	echoAgents(h)
 	for _, c := range []struct{ name, args, want string }{
-		{"review", "", "Verify these review findings"},
 		{"hunt", "the spinner never stops", "Decide the cause of this failure"},
 		{"brainstorm", "fewer roundtrips", "Turn this brainstorm into the worth-try list"},
 		{"ship", "add a rate limiter", "ready to ship"},
