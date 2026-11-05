@@ -2,7 +2,11 @@
 // toward a target on the caller's clock, so any widget rides the same ramp.
 package anim
 
-import "time"
+import (
+	"time"
+
+	"github.com/metafates/zemi/internal/hostapi"
+)
 
 // Fade eases a 0..1 value toward shown 1 or hidden 0 over Dur. Flipping
 // mid-ramp starts the new ramp from the value's current place, so a pill
@@ -62,6 +66,101 @@ func (f *Fade) Shown() bool { return f.shown }
 
 // Smoothstep is the fades' easing: slow at both ends, quick in the middle.
 func Smoothstep(p float64) float64 { return p * p * (3 - 2*p) }
+
+// Faded is row with every segment but the ones spare keeps sunk toward the
+// surface it sits on by t, keeping a deeper sink a row set itself.
+func Faded(row []hostapi.Segment, t float64, spare func(hostapi.Segment) bool) []hostapi.Segment {
+	out := make([]hostapi.Segment, len(row))
+	for i, s := range row {
+		if spare == nil || !spare(s) {
+			s.Fade = max(s.Fade, t)
+		}
+		out[i] = s
+	}
+	return out
+}
+
+// FadedRows is rows with every row faded.
+func FadedRows(rows [][]hostapi.Segment, t float64, spare func(hostapi.Segment) bool) [][]hostapi.Segment {
+	out := make([][]hostapi.Segment, len(rows))
+	for i, row := range rows {
+		out[i] = Faded(row, t, spare)
+	}
+	return out
+}
+
+// Curtain is one thing that comes and goes on a fade: appearing rises out
+// of the surface, leaving sinks back into it on the rows it kept drawing,
+// and a return rises from where it sank. Draw hands it a frame's rows and
+// hands back what the screen shows, so a widget never reads the ramp.
+type Curtain struct {
+	Dur     time.Duration
+	JumpIn  bool                       // an appear takes the rows whole: no rise
+	JumpOut bool                       // a leave takes the rows off whole: no sink
+	Spare   func(hostapi.Segment) bool // rows a sink never dims
+
+	fade    Fade
+	rows    [][]hostapi.Segment // the rows a sink keeps drawing
+	sinking bool
+}
+
+// NewCurtain is a Curtain easing over dur.
+func NewCurtain(dur time.Duration) *Curtain { return &Curtain{Dur: dur, fade: Fade{Dur: dur}} }
+
+// Draw settles a frame's rows through the curtain at now: the widget's rows
+// while they ride full alpha, the kept rows while they sink, nil once the
+// region is out. settled reports a sink that just rode out, once: what the
+// sink covered behind it draws from the next frame on.
+func (c *Curtain) Draw(rows [][]hostapi.Segment, now time.Time) (out [][]hostapi.Segment, settled bool) {
+	if len(rows) > 0 {
+		c.sinking = false
+		if !c.fade.Shown() {
+			if c.JumpIn {
+				c.fade.Jump(true)
+			} else {
+				c.fade.Set(true, now)
+			}
+		}
+		c.rows = rows
+		if a := c.fade.Alpha(now); a < 1 {
+			return FadedRows(rows, 1-a, c.Spare), false
+		}
+		return rows, false
+	}
+	if c.JumpOut {
+		c.fade.Jump(false)
+		return nil, false
+	}
+	if c.fade.Shown() {
+		c.fade.Set(false, now) // the sink starts where the rows stand
+	}
+	if a := c.fade.Alpha(now); a > 0 {
+		c.sinking = true
+		return FadedRows(c.rows, 1-a, c.Spare), false
+	}
+	settled, c.sinking = c.sinking, false // the sink rode out: report it once
+	return nil, settled
+}
+
+// Rising reports a ramp in flight at now, a sink included: it holds until
+// the screen has seen the region out, so the tick keeps coming over a
+// sink's end.
+func (c *Curtain) Rising(now time.Time) bool {
+	return c.sinking || c.fade.Rising(now)
+}
+
+// Jump takes the curtain to its target with no ramp.
+func (c *Curtain) Jump(shown bool) { c.fade.Jump(shown) }
+
+// Settle jumps a ramp in flight to its target: a test's pinned clock would
+// otherwise freeze it mid-ride. Reports whether it settled one.
+func (c *Curtain) Settle(now time.Time) bool {
+	if c.fade.Rising(now) {
+		c.fade.Jump(c.fade.Shown())
+		return true
+	}
+	return false
+}
 
 // Rise holds one appear per key: a widget, a rail call, a reply's readout.
 // Two ways to drive it. Stamp for an element that rises once: the first

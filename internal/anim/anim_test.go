@@ -3,6 +3,8 @@ package anim
 import (
 	"testing"
 	"time"
+
+	"github.com/metafates/zemi/internal/hostapi"
 )
 
 // TestFade: a fade rises from the value it had, a flip mid-ramp resumes
@@ -42,6 +44,63 @@ func TestFade(t *testing.T) {
 	}
 	if d.Rising(now.Add(160 * time.Millisecond)) {
 		t.Fatal("the delayed ramp did not settle")
+	}
+}
+
+// TestCurtain: a curtain appears rising, leaves sinking on the rows it kept
+// drawing, returns rising from where it sank, and Rising holds until the
+// screen has seen the region out.
+func TestCurtain(t *testing.T) {
+	now := time.UnixMilli(0)
+	row := func() [][]hostapi.Segment {
+		return [][]hostapi.Segment{{{Text: "gone", HL: "Dim"}}}
+	}
+	c := NewCurtain(100 * time.Millisecond)
+	if got, _ := c.Draw(row(), now); got == nil || got[0][0].Fade != 1 {
+		t.Fatalf("a fresh curtain's first draw is not sunk: %v", got)
+	}
+	if !c.Rising(now) {
+		t.Fatal("a fresh curtain is not rising")
+	}
+	if got, _ := c.Draw(row(), now.Add(2*c.Dur)); got == nil || got[0][0].Fade != 0 {
+		t.Fatal("the risen curtain did not draw its rows clean")
+	}
+
+	// the leave sinks on the rows it kept, and Rising holds until a draw saw
+	// the region out: a sink that expires unseen still holds the tick
+	if got, _ := c.Draw(nil, now.Add(2*c.Dur)); got == nil || got[0][0].Fade > 0.5 {
+		t.Fatal("a leaving curtain did not start its sink from the kept rows")
+	}
+	if got, _ := c.Draw(nil, now.Add(2*c.Dur).Add(c.Dur/2)); got == nil || got[0][0].Fade < 0.4 || got[0][0].Fade > 0.6 {
+		t.Fatalf("the sink did not ride mid-ramp: %v", got)
+	}
+	if !c.Rising(now.Add(4 * c.Dur)) {
+		t.Fatal("an unseen sink's end does not keep the curtain rising")
+	}
+	if got, settled := c.Draw(nil, now.Add(4*c.Dur)); got != nil || !settled {
+		t.Fatalf("the sink did not ride out: %v settled %v", got, settled)
+	}
+	if _, settled := c.Draw(nil, now.Add(4*c.Dur)); settled {
+		t.Fatal("the sink's end was reported twice")
+	}
+
+	// a return rises from where it sank
+	if got, _ := c.Draw(row(), now.Add(4*c.Dur)); got == nil || got[0][0].Fade != 1 {
+		t.Fatal("a returned curtain did not rise from sunk")
+	}
+	if got, _ := c.Draw(row(), now.Add(4*c.Dur).Add(c.Dur/2)); got == nil || got[0][0].Fade < 0.4 || got[0][0].Fade > 0.6 {
+		t.Fatalf("the returned curtain did not ride its rise: %v", got)
+	}
+
+	// JumpIn takes an appear whole, JumpOut a leave
+	j := NewCurtain(100 * time.Millisecond)
+	j.JumpIn = true
+	if got, _ := j.Draw(row(), now); got == nil || got[0][0].Fade != 0 {
+		t.Fatal("a jump-in curtain's first draw rose")
+	}
+	j.JumpOut = true
+	if got, _ := j.Draw(nil, now); got != nil {
+		t.Fatal("a jump-out curtain sank")
 	}
 }
 
