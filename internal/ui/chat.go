@@ -68,7 +68,6 @@ type entry struct {
 	role    fantasy.MessageRole
 	tool    string
 	id      string // a live call's id, the rise one ramp per action
-	seq     int64  // a settled row's log message: a reply's readout rises by it
 	text    string
 	input   string
 	label   string
@@ -91,7 +90,6 @@ func entryOf(m hostapi.ChatMessage) entry {
 	e := entry{
 		kind: m.Kind, role: m.Role, tool: string(m.Tool), text: m.Text, label: m.Label,
 		status: m.Status, detail: m.Detail, run: m.Run, job: m.Job, diff: m.Diff, output: m.Output,
-		seq: m.Seq,
 	}
 	if m.Stat != nil {
 		e.elapsed = time.Duration(m.Stat.ElapsedMS) * time.Millisecond
@@ -294,7 +292,9 @@ func (f *chatFolds) readoutArrived(st *hostapi.ScreenState) {
 		if m.Kind == hostapi.RowMessage && m.Role != fantasy.MessageRoleUser && m.Stat != nil && f.now != nil {
 			fade := anim.NewFade(_riseDuration)
 			fade.Set(true, f.now())
-			f.readRamps[m.Seq] = &readRamp{fade: fade}
+			// the row lands unstamped and the log names it moments later, so
+			// the ramp keys by the row's place, the way the folds do
+			f.readRamps[keyOf(st.TranscriptCut, n)] = &readRamp{fade: fade}
 		}
 		return
 	}
@@ -833,11 +833,11 @@ type chatFolds struct {
 	// that pin none.
 	now       func() time.Time
 	railRamps map[string][]railRamp
-	// a reply's readout rise: a ramp per reply, keyed by its log message,
-	// stamped the frame the reply's row lands at the transcript's tail, so
-	// the stats line under it rises after the message landed whole. rows is
-	// the transcript length the last render saw, the growth a fresh reply
-	// reads against.
+	// a reply's readout rise: a ramp per reply, keyed by its row's place in
+	// the window, stamped the frame the reply's row lands at the transcript's
+	// tail, so the stats line under it rises after the message landed whole.
+	// rows is the transcript length the last render saw, the growth a fresh
+	// reply reads against.
 	readRamps map[int64]*readRamp
 	rows      int
 	// the live rows no call of their own carries (the thinking spinner, the
@@ -1835,7 +1835,7 @@ func (b *chatBuilder) unit(tr []entry, first, last int, mode runMode) {
 	default:
 		b.gap(_blockText)
 		b.markdown(m.text)
-		content = b.readout(tr, last, m)
+		content = b.readout(tr, first, last, m)
 	}
 	to := len(b.lines)
 	if content >= 0 {
@@ -1847,7 +1847,7 @@ func (b *chatBuilder) unit(tr []entry, first, last int, mode runMode) {
 // readout draws a reply's turn stats when it ends the exchange, and returns
 // where its rows end. Only the next text row decides: a call, notice or error
 // after it changes nothing, while another reply means a sentence between runs.
-func (b *chatBuilder) readout(tr []entry, last int, m entry) int {
+func (b *chatBuilder) readout(tr []entry, first, last int, m entry) int {
 	final := true
 	for i := last + 1; i < len(tr); i++ {
 		if tr[i].kind == hostapi.RowMessage {
@@ -1884,7 +1884,7 @@ func (b *chatBuilder) readout(tr []entry, last int, m entry) int {
 		return content
 	}
 	b.gap(_blockStats)
-	b.push(b.folds.riseReadout(m.seq, append([]hostapi.Segment{{Text: "  ", NoCopy: true}}, stats...)))
+	b.push(b.folds.riseReadout(keyOf(b.st.TranscriptCut, first+1), append([]hostapi.Segment{{Text: "  ", NoCopy: true}}, stats...)))
 	return content
 }
 
@@ -2020,7 +2020,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		// rise moves over the settled rows the cache would freeze
 		if !fresh && rising != 0 {
 			for k, u := range units {
-				if tr[u.first].seq == rising {
+				if keyOf(b.st.TranscriptCut, u.first+1) == rising {
 					f.built[k] = unitLines(k)
 					break
 				}

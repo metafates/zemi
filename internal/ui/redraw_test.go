@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/fantasy"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
@@ -438,6 +439,47 @@ func TestReadoutRise(t *testing.T) {
 	appendReply(host2, "old answer", hostapi.TurnStat{Model: "fake/m", ElapsedMS: 600, Out: 11})
 	if fade, ok := readoutFade(app2); !ok || fade != 0 {
 		t.Fatalf("a resumed readout rose: fade %v found %v", fade, ok)
+	}
+}
+
+// TestReadoutRiseSurvivesTheSeqNaming: the reply's row lands unstamped and
+// the log names it a moment later; the rise keys by the row's place in the
+// window, so the naming neither freezes the readout sunk nor pops it clean.
+func TestReadoutRiseSurvivesTheSeqNaming(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	f := app.chatFolds()
+	at := time.UnixMilli(1000)
+	f.now = func() time.Time { return at }
+	f.epoch, f.rows = 1, 1 // the user row ahead of the reply is drawn already
+	st := &hostapi.ScreenState{
+		Width: 98, Height: 20, TranscriptEpoch: 1, TranscriptCount: 2,
+		Transcript: []hostapi.ChatMessage{
+			{Role: fantasy.MessageRoleUser, Text: "q", Seq: 1},
+			{Role: fantasy.MessageRoleAssistant, Text: "a", Stat: &hostapi.TurnStat{Model: "fake/m", Out: 11}, Seq: hostapi.NoSeq},
+		},
+	}
+	f.render(host, st) // the reply lands unstamped: its readout sinks
+
+	// the log names the row between frames, as the flush's stamping does
+	st.Transcript[1].Seq = 2
+	fade := func() float64 {
+		lines, _ := f.render(host, st)
+		out := 0.0
+		for _, row := range lines {
+			if len(row) > 1 && row[0].NoCopy && row[0].Text == "  " && strings.HasSuffix(hostapi.SegsText(row), " out") {
+				for _, s := range row {
+					out = max(out, s.Fade)
+				}
+			}
+		}
+		return out
+	}
+	if fade() == 0 {
+		t.Fatal("the readout drew clean before its rise")
+	}
+	at = at.Add(2 * _riseDuration)
+	if fade := fade(); fade != 0 {
+		t.Fatalf("the readout stayed sunk after the log named its row: fade %v", fade)
 	}
 }
 
