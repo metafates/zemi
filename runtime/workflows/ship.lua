@@ -1,11 +1,13 @@
--- Develop a requirement end to end, ready to ship: read from all sides,
--- planned and audited until sound, implemented by workers (parallel
--- worktrees when it splits), merged and unified, then a verify-and-fix
--- loop runs until nothing is left, and the scaffolding cleans itself up.
--- args is the requirement.
+-- Ship a requirement end to end, ready to ship: read from all sides, planned
+-- and audited until sound, implemented by workers (parallel worktrees when it
+-- splits), merged and unified, then a verify-and-fix loop runs until nothing
+-- is left, and the scaffolding cleans itself up.
+-- A large flow, dozens of agent calls and many minutes: run it only for big
+-- features, and ask the user first unless the prompt explicitly names this
+-- workflow or attaches it. args is the requirement.
 local wf = zemi.workflow
 local req = type(wf.args) == "string" and wf.args ~= "" and wf.args or nil
-if not req then return "develop needs a requirement: /workflows run develop <what to build or change>" end
+if not req then return "ship needs a requirement: /workflows run ship <what to build or change>" end
 
 local cadence = "Commit each verified area as its own lowercase one-line commit; never push. "
 	.. "Never leave the tree red: when a commit breaks the checks, revert that commit and fix forward - a red tree is not slept on. "
@@ -133,7 +135,7 @@ local split = wf.agent(
 		.. "Read the plan and the files it touches. Split only when zones touch disjoint files and no zone needs another's result: "
 		.. "when one must land before another, they are one zone; when in doubt, one zone. At most 4 zones. "
 		.. "When there is a split, create every worktree yourself before answering, as "
-		.. "`git worktree add <path> -b develop/<zone>` with <path> a sibling directory of this repository named <repo>-<zone>, and commit nothing. "
+		.. "`git worktree add <path> -b ship/<zone>` with <path> a sibling directory of this repository named <repo>-<zone>, and commit nothing. "
 		.. "Answer with a line '=== ZONES: <count>' followed by one block per zone:\n"
 		.. "=== ZONE: <short name>\nworktree: <absolute path>\ntask: <the plan steps this worker owns, and the checks to run>\n"
 		.. "When there is no split, answer '=== ZONES: 1' and nothing else.\n\nRequirement: "
@@ -173,7 +175,7 @@ end
 if #zones > 1 then wf.log(#zones .. " zones, one worker each in its own worktree") end
 
 wf.phase("implement")
-local work, branch = {}, "develop/"
+local work, branch = {}, "ship/"
 local function zoneTask(z)
 	return "Implement one zone of an approved plan in the git worktree "
 		.. z.wt
@@ -213,16 +215,23 @@ if #zones > 1 then
 		table.insert(work, 1, "## plan\n" .. plan)
 		return "every zone failed:\n\n" .. table.concat(work, "\n\n")
 	end
+	local zonePlan = {}
+	for _, z in ipairs(zones) do
+		zonePlan[#zonePlan + 1] = "## zone " .. z.name .. " (" .. z.wt .. ")\n" .. table.concat(z.task, "\n")
+	end
 	local merged, merr = wf.agent(
 		"Merge the zones' branches into this working tree: for each branch below bring its commits in (merge, cherry-pick or patches, whatever fits), "
 			.. "resolve conflicts, and unify code two or more zones wrote twice into one shared helper - the less code the better. "
+			.. "The zone plan and every worker's report below are mandatory input: an edge case a worker landed that the merge drops is a lost requirement. "
 			.. "Then run the project's own full checks and fix what the merge broke. "
 			.. cadence
 			.. "Leave the result as commits on this branch, nothing pushed. Answer with what landed, what you unified, and the checks' outcome.\n\nRequirement: "
 			.. req
 			.. "\n\nPlan:\n"
 			.. plan
-			.. "\n\nZones:\n"
+			.. "\n\nZone plan:\n"
+			.. table.concat(zonePlan, "\n\n")
+			.. "\n\nWorker reports:\n"
 			.. table.concat(work, "\n\n"),
 		{ agent = "general", description = "merge zones" }
 	)
@@ -277,6 +286,12 @@ for round = 1, 4 do
 			"general",
 			"the mechanical gates: find this project's own check and test commands, run them whole, and report every failure",
 		},
+		{
+			"fresh eyes",
+			"general",
+			"hostile review: you see the diff and the requirement alone, no plan, no one's claims about it; assume the change hides something and break it",
+			bare = true,
+		},
 	}
 	local vjobs = {}
 	for _, lens in ipairs(lenses) do
@@ -289,10 +304,7 @@ for round = 1, 4 do
 					.. "Answer with a line '=== VERDICT: clean' when your lens finds nothing, or '=== VERDICT: flawed' followed by one line per finding, most severe first, "
 					.. "each as '- file:line - what is wrong - the fix'.\n\nRequirement: "
 					.. req
-					.. "\n\nPlan:\n"
-					.. plan
-					.. "\n\nWhat landed:\n"
-					.. table.concat(work, "\n\n")
+					.. (lens.bare and "" or ("\n\nPlan:\n" .. plan .. "\n\nWhat landed:\n" .. table.concat(work, "\n\n")))
 					.. "\n\nThe changes:\n"
 					.. state,
 				{ agent = lens[2], description = lens[1] }

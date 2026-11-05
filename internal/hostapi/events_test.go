@@ -208,7 +208,7 @@ func TestBuiltinWorkflows(t *testing.T) {
 		{"review", "", "Verify these review findings"},
 		{"hunt", "the spinner never stops", "Decide the cause of this failure"},
 		{"brainstorm", "fewer roundtrips", "Turn this brainstorm into the worth-try list"},
-		{"develop", "add a rate limiter", "ready to ship"},
+		{"ship", "add a rate limiter", "ready to ship"},
 	} {
 		i := slices.IndexFunc(h.workflows(), func(w Workflow) bool { return w.Name == c.name })
 		if i < 0 || h.workflows()[i].Source != lua.OriginBuiltin || h.workflows()[i].Description == "" {
