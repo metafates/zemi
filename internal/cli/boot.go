@@ -57,6 +57,10 @@ func launch(o options) int {
 		return usage("stdout is not a terminal; the TUI draws on one")
 	}
 	fail := func(err error) int {
+		if le, ok := errors.AsType[*lockedError](err); ok {
+			fmt.Fprintln(os.Stderr, "\n"+ui.Busy(os.Stderr, le.pid)+"\n")
+			return 1
+		}
 		fmt.Fprintln(os.Stderr, "zemi:", err)
 		return 1
 	}
@@ -287,6 +291,15 @@ func bootHost(o options, inert bool) (*hostapi.Host, *trustGate, *slog.Logger, f
 	}, nil
 }
 
+// lockedError is the one-instance refusal; the TUI's launch dresses it like
+// a tip, the headless paths print its plain words.
+type lockedError struct {
+	pid int
+	msg string
+}
+
+func (e *lockedError) Error() string { return e.msg }
+
 // lockInstance holds this project's one-instance lock for the process's life:
 // a second zemi on the same project names the holder and stops here. The
 // lock lives on an open fd, so a zemi that dies releases it; the file beside
@@ -302,12 +315,13 @@ func lockInstance(dirs config.Dirs) (func(), error) {
 			return nil, err
 		}
 		msg := "another zemi is already open on this project; close it to open here"
+		pid := 0
 		if raw, rerr := os.ReadFile(path); rerr == nil {
-			if pid, _ := strconv.Atoi(strings.TrimSpace(string(raw))); pid > 0 {
-				msg = fmt.Sprintf("another zemi (pid %d) is already open on this project; close it to open here", pid)
+			if n, _ := strconv.Atoi(strings.TrimSpace(string(raw))); n > 0 {
+				pid, msg = n, fmt.Sprintf("another zemi (pid %d) is already open on this project; close it to open here", n)
 			}
 		}
-		return nil, errors.New(msg)
+		return nil, &lockedError{pid: pid, msg: msg}
 	}
 	_ = os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())), 0o600)
 	return unlock, nil

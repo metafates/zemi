@@ -4,6 +4,7 @@ import (
 	"io"
 	"math/rand/v2"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/colorprofile"
@@ -27,14 +28,27 @@ var _tips = []tip{
 // a keycap on the panel, the rest on the terminal's own ground. It reads as
 // plain words off a terminal.
 func Tip(w io.Writer) string {
-	return tipStyled(colorprofile.Detect(w, os.Environ()), _tips[rand.N(len(_tips))])
+	return tipStyled(colorprofile.Detect(w, os.Environ()), " tip ", _tips[rand.N(len(_tips))])
 }
 
-// tipStyled draws one tip for the terminal p describes.
-func tipStyled(p colorprofile.Profile, t tip) string {
+// Busy is the one-instance refusal, dressed like a tip: a chip names the
+// trouble, the holder's pid rides as the keycap when the lock knows it.
+func Busy(w io.Writer, pid int) string {
+	t := tip{text: "another zemi is already open on this project; close it to open here"}
+	if pid > 0 {
+		t.key = strconv.Itoa(pid)
+	}
+	return tipStyled(colorprofile.Detect(w, os.Environ()), " busy ", t)
+}
+
+// tipStyled draws one tip for the terminal p describes; a tip without a key
+// draws its chip and text alone.
+func tipStyled(p colorprofile.Profile, chip string, t tip) string {
 	pal := hostapi.Whorl
 	styled := func(st uv.Style, s string) string { c := uv.ConvertStyle(st, p); return c.Styled(s) }
-	chip := styled(uv.Style{Fg: pal.Bg, Bg: pal.Accent, Attrs: uv.AttrBold}, " tip ")
-	key := styled(uv.Style{Fg: pal.Accent, Bg: pal.Panel, Attrs: uv.AttrBold}, " "+strings.TrimRight(t.key, " ")+" ")
-	return chip + key + " " + t.text
+	line := styled(uv.Style{Fg: pal.Bg, Bg: pal.Accent, Attrs: uv.AttrBold}, chip)
+	if t.key != "" {
+		line += styled(uv.Style{Fg: pal.Accent, Bg: pal.Panel, Attrs: uv.AttrBold}, " "+strings.TrimRight(t.key, " ")+" ")
+	}
+	return line + " " + t.text
 }
