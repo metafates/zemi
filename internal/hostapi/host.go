@@ -867,6 +867,12 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	}
 	h.recentStale.Store(true)
 	h.trEpoch.Store(1) // 0 means "an agent run's transcript; do not cache"
+	// the saved decision lands before the first frame draws: the boot's trust
+	// step still asks when none is saved, but a decided project never flashes
+	// the statusline's untrusted pill
+	if v, ok := h.Dirs.ReadTrust()[h.trustRoot()]; ok {
+		h.SetProjectTrusted(v == config.Trusted)
+	}
 	return h
 }
 

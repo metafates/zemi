@@ -960,3 +960,34 @@ func TestHistoryRowFacts(t *testing.T) {
 		})
 	}
 }
+
+// TestSavedTrustDecidesAtConstruction: the saved decision applies when the
+// host is built, before any boot step, so a decided project never flashes
+// the untrusted pill; an unsaved one waits for the boot's ask.
+func TestSavedTrustDecidesAtConstruction(t *testing.T) {
+	tmp := t.TempDir()
+	for _, c := range []struct {
+		name string
+		mark string // "" saves nothing
+		want bool
+	}{
+		{"trusted", "trusted", true},
+		{"untrusted", "untrusted", false},
+		{"unsaved", "", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dirs := config.Dirs{ProjectDir: t.TempDir(), ConfigHome: t.TempDir(), StateHome: filepath.Join(tmp, c.mark, "state")}
+			if c.mark != "" {
+				if err := dirs.WriteTrust(map[string]string{dirs.TrustRoot(): c.mark}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			log := slog.New(slog.DiscardHandler)
+			h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), dirs)
+			t.Cleanup(h.Close)
+			if got := h.ProjectTrusted(); got != c.want {
+				t.Fatalf("ProjectTrusted = %v, want %v", got, c.want)
+			}
+		})
+	}
+}

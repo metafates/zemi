@@ -225,6 +225,7 @@ func newHost(dirs config.Dirs, log *slog.Logger, o options) (*hostapi.Host, *tru
 	trust := &trustGate{h: host, dirs: dirs}
 	if o.trust != nil {
 		trust.session.Store(o.trust)
+		host.SetProjectTrusted(*o.trust) // the flag's run decides at once; the step re-applies it
 	}
 	return host, trust
 }
