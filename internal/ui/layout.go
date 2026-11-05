@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image/color"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -1214,4 +1215,85 @@ func placeBox(rows, box [][]hostapi.Segment, x0, y0, w int) {
 		row = append(row, dropCells(under, x0+bw)...)
 		rows[y] = padSegs(truncateSegs(row, w), w)
 	}
+}
+
+// blendRow composites a fading toast's line over the row beneath it cell by
+// cell: a blank box cell leaves the cell beneath with its own colors, sunk
+// toward the box's panel by the ramp, and a box glyph sinks toward the
+// surface it covers — what the ramp covers keeps its own colors and never
+// pops when the ramp ends.
+func (a *App) blendRow(under, line []hostapi.Segment, x0, w int, al float64) []hostapi.Segment {
+	bw := hostapi.SegsWidth(line)
+	mid := segCells(truncateSegs(dropCells(under, x0), bw))
+	// glyphs[k] is the box glyph standing on the span's column k: there the
+	// cell beneath gives way to the box's text
+	glyphs := make([]*hostapi.Segment, bw)
+	tcol := 0
+	for _, t := range segCells(line) {
+		tw := max(ansi.StringWidth(t.Text), 1)
+		if strings.TrimSpace(t.Text) != "" {
+			g := t
+			for k := tcol; k < min(tcol+tw, bw); k++ {
+				glyphs[k] = &g
+			}
+		}
+		tcol += tw
+	}
+	out := append([]hostapi.Segment{}, truncateSegs(under, x0)...)
+	col, ui := 0, 0
+	for col < bw {
+		if g := glyphs[col]; g != nil {
+			c := *g
+			c.Fade = 1 - al
+			if ui < len(mid) {
+				c.Sink = a.sinkOf(mid[ui])
+			} else {
+				c.Sink = hostapi.Whorl.Bg
+			}
+			out = append(out, c)
+		} else if ui < len(mid) {
+			u := mid[ui]
+			u.Fade = 1 - (1-u.Fade)*(1-al)
+			u.Sink = hostapi.Whorl.Panel
+			out = append(out, u)
+		}
+		if ui < len(mid) {
+			col += max(ansi.StringWidth(mid[ui].Text), 1)
+			ui++
+		} else {
+			col++
+		}
+	}
+	out = append(out, dropCells(under, x0+bw)...)
+	return padSegs(truncateSegs(out, w), w)
+}
+
+// sinkOf is the surface color a fading toast's glyph sinks toward: the one
+// the cell beneath it paints.
+func (a *App) sinkOf(u hostapi.Segment) color.Color {
+	if st := a.segStyle(u.HL, u.Over, u.Fill, u.Fade, u.OnPanel, nil); st.Bg != nil {
+		return st.Bg
+	}
+	return hostapi.Whorl.Bg
+}
+
+// segCells splits segs into one segment per cell, a wide rune keeping both
+// of its columns and a combining rune standing on the cell before it, so two
+// rows composite cell by cell.
+func segCells(segs []hostapi.Segment) []hostapi.Segment {
+	var out []hostapi.Segment
+	for _, s := range segs {
+		rs := []rune(s.Text)
+		for i := 0; i < len(rs); {
+			j := i + 1
+			for j < len(rs) && ansi.StringWidth(string(rs[j])) == 0 {
+				j++ // combining runes stand on the cell before them
+			}
+			c := s
+			c.Text = string(rs[i:j])
+			out = append(out, c)
+			i = j
+		}
+	}
+	return out
 }

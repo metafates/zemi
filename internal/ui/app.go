@@ -141,6 +141,9 @@ type App struct {
 	trust      *trustPrompt
 	toasts     []toast
 	toastRamps *anim.Rise[string] // a section's box rises once and sinks when its last toast goes
+	// toastDrawn marks the sections whose box a frame has drawn with the
+	// blend: only such a box lingers past its ttl, sinking where it stood
+	toastDrawn map[string]bool
 	// the trust answer's guard: the box a boot opens right after the answer
 	// (a first run lands on the model picker) must not act on the key that
 	// answered, so the router drops the first key that reaches it
@@ -1248,6 +1251,9 @@ func (a *App) pushToast(level slog.Level, title, body string) {
 	if len(a.toasts) > _toastsLive {
 		a.toasts = a.toasts[len(a.toasts)-_toastsLive:]
 	}
+	// the section's rise starts here, not at its first draw: a frame drawn
+	// before the tick wakes would blend a half-risen box over the stage
+	a.toastRise().Present(toastSection(t), true)
 	a.bump() // the rise's frames draw only if the tick wakes: frameDirty alone never fires one
 }
 
@@ -1267,9 +1273,20 @@ func (a *App) pruneToasts(now time.Time) {
 			return false
 		}
 		expired = true
-		// a toast whose section a live toast still shares drops at once; a
-		// section's last one lingers until its box's sink has ridden out
-		return !a.sectionLive(t, now) && a.toastRise().Alpha(toastSection(t)) <= 0
+		key := toastSection(t)
+		if a.sectionLive(t, now) {
+			return false
+		}
+		// a box that never drew drops unseen; one on stage lingers until its
+		// sink has ridden out
+		if !a.toastDrawn[key] {
+			return true
+		}
+		if a.toastRise().Alpha(key) > 0 {
+			return false
+		}
+		delete(a.toastDrawn, key)
+		return true
 	})
 	if len(a.toasts) != live || expired {
 		a.frameDirty = true
@@ -1301,16 +1318,24 @@ func (a *App) sectionLive(t toast, now time.Time) bool {
 }
 
 // toastEase rides a section's box through its ramp: a section rises out of
-// the surface on its first toast and sinks when its last one goes.
-func (a *App) toastEase(key string, shown bool, box [][]hostapi.Segment) [][]hostapi.Segment {
+// the surface on its first toast and sinks when its last one goes. The box
+// returns with the alpha placement blends it over the rows beneath by, so
+// what the box covers fades into them instead of painting over.
+func (a *App) toastEase(key string, shown bool, box [][]hostapi.Segment) ([][]hostapi.Segment, float64) {
 	a.toastRise().Present(key, shown)
+	if a.toastRise().Alpha(key) > 0 {
+		if a.toastDrawn == nil {
+			a.toastDrawn = map[string]bool{}
+		}
+		a.toastDrawn[key] = true
+	}
 	switch al := a.toastRise().Alpha(key); {
 	case al >= 1:
-		return box
+		return box, 1
 	case al <= 0:
-		return nil // the sink rode out; the prune drops the toast behind it
+		return nil, 0 // the sink rode out; the prune drops the toast behind it
 	default:
-		return anim.FadedRows(box, 1-al, nil)
+		return box, al
 	}
 }
 
@@ -1429,13 +1454,18 @@ func (a *App) compose(w, h int) string {
 	// over it, the rest in the margin, and stays inside the screen. A toast
 	// covers its own cells, so no box border takes a gap where one stands on it.
 	toasts := func() {
-		tray := toastTray(a.toasts, stage.Dx(), stage.Dy(), time.Now(), a.toastEase)
+		tray, alphas := toastTray(a.toasts, stage.Dx(), stage.Dy(), time.Now(), a.toastEase)
 		if len(tray) == 0 {
 			return
 		}
 		x := max(min(stage.Max.X-3, w-hostapi.SegsWidth(tray[0])-1), 0)
 		for i, line := range tray {
-			placeBox(rows, [][]hostapi.Segment{line}, x, stage.Min.Y+i, w)
+			y := stage.Min.Y + i
+			if al := alphas[i]; al < 1 {
+				rows[y] = a.blendRow(rows[y], line, x, w, al)
+			} else {
+				placeBox(rows, [][]hostapi.Segment{line}, x, y, w)
+			}
 		}
 	}
 	for i, place := range modals {
@@ -2289,7 +2319,7 @@ func (a *App) statusItems(r region) []statusItem {
 // title in the rule that opens it and each body word-wrapped under it. A
 // lone title or body is a row in the level's color under an untitled rule.
 // Each drawn section's box rides its ramp through ease.
-func toastTray(ts []toast, w, h int, now time.Time, ease func(key string, shown bool, box [][]hostapi.Segment) [][]hostapi.Segment) [][]hostapi.Segment {
+func toastTray(ts []toast, w, h int, now time.Time, ease func(key string, shown bool, box [][]hostapi.Segment) ([][]hostapi.Segment, float64)) ([][]hostapi.Segment, []float64) {
 	type section struct {
 		key   string
 		level slog.Level
@@ -2323,6 +2353,7 @@ func toastTray(ts []toast, w, h int, now time.Time, ease func(key string, shown 
 		secs[i].rows = append(secs[i].rows, rows...)
 	}
 	var tray [][]hostapi.Segment
+	var alphas []float64
 	for _, s := range secs {
 		box := hostBox(s.title, toastHL(s.level), "", s.rows, inner+8, inner+4, inner)
 		// the tray floats over the stage's canvas, not on a panel: its fade
@@ -2332,8 +2363,9 @@ func toastTray(ts []toast, w, h int, now time.Time, ease func(key string, shown 
 				r[i].OnPanel = false
 			}
 		}
+		al := 1.0
 		if ease != nil {
-			box = ease(s.key, s.live, box)
+			box, al = ease(s.key, s.live, box)
 			if box == nil {
 				continue
 			}
@@ -2348,8 +2380,12 @@ func toastTray(ts []toast, w, h int, now time.Time, ease func(key string, shown 
 			top := box[0]
 			top[0].Text, top[len(top)-1].Text = "├", "┤"
 			tray = tray[:len(tray)-1]
+			alphas = alphas[:len(alphas)-1]
 		}
 		tray = append(tray, box...)
+		for range box {
+			alphas = append(alphas, al)
+		}
 	}
 	// a toast sits over a box the user may be reading, so a drag across it
 	// copies the box's own text and never two boxes at once
@@ -2358,7 +2394,7 @@ func toastTray(ts []toast, w, h int, now time.Time, ease func(key string, shown 
 			line[i].NoCopy = true
 		}
 	}
-	return tray
+	return tray, alphas
 }
 
 func toastHL(level slog.Level) string {
@@ -2383,7 +2419,7 @@ func (a *App) hlStyle(hl string) uv.Style {
 	return a.thm.style(hl)
 }
 
-func (a *App) segStyle(hl, over string, fill hostapi.Fill, fade float64, panel bool) uv.Style {
+func (a *App) segStyle(hl, over string, fill hostapi.Fill, fade float64, panel bool, sink color.Color) uv.Style {
 	st := a.hlStyle(hl)
 	if over != "" {
 		st = a.thm.hover(st, over)
@@ -2407,6 +2443,9 @@ func (a *App) segStyle(hl, over string, fill hostapi.Fill, fade float64, panel b
 			if panel {
 				to = pal.Panel
 			}
+			if sink != nil {
+				to = sink
+			}
 			st.Fg = hostapi.Mix(cmp.Or(st.Fg, pal.Fg), to, fade)
 			if st.Bg != nil {
 				st.Bg = hostapi.Mix(st.Bg, to, fade)
@@ -2423,7 +2462,7 @@ func (a *App) segStyle(hl, over string, fill hostapi.Fill, fade float64, panel b
 // terminal's own. It is cached for the frame: compose styles thousands of
 // segments and building the sequence for each is the biggest cost of
 // drawing one.
-func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill, fade float64, panel bool) string {
+func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill, fade float64, panel bool, sink color.Color) string {
 	key := hl // no highlight name holds a NUL, and hover, a fill and a fade are the rare cases
 	if over != "" {
 		key = hl + "\x00" + over
@@ -2443,11 +2482,15 @@ func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill, fade float64, panel 
 		if panel {
 			key += "p"
 		}
+		if sink != nil {
+			r, g, b, _ := sink.RGBA()
+			key += "\x00" + strconv.FormatUint(uint64(r>>8), 16) + strconv.FormatUint(uint64(g>>8), 16) + strconv.FormatUint(uint64(b>>8), 16)
+		}
 	}
 	if p, ok := a.prefixes[key]; ok {
 		return p
 	}
-	st := a.segStyle(hl, over, fill, fade, panel)
+	st := a.segStyle(hl, over, fill, fade, panel, sink)
 	p := ""
 	if !st.IsZero() {
 		p = st.String()
@@ -2469,7 +2512,7 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 		if s.Text == "" {
 			continue
 		}
-		p := a.sgrPrefix(s.HL, s.Over, s.Fill, s.Fade, s.OnPanel)
+		p := a.sgrPrefix(s.HL, s.Over, s.Fill, s.Fade, s.OnPanel, s.Sink)
 		if p != "" {
 			b.WriteString(p)
 		}

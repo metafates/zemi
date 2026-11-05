@@ -481,12 +481,48 @@ func TestToastTray(t *testing.T) {
 		}
 		app.pruneToasts(time.Now().Add(c.after))
 		var got []string
-		for _, r := range toastTray(app.toasts, c.w, c.h, time.Now(), nil) {
+		tray, _ := toastTray(app.toasts, c.w, c.h, time.Now(), nil)
+		for _, r := range tray {
 			got = append(got, hostapi.SegsText(r))
 		}
 		if !slices.Equal(got, c.want) {
 			t.Errorf("%s:\n%s\nwant\n%s", c.name, strings.Join(got, "\n"), strings.Join(c.want, "\n"))
 		}
+	}
+}
+
+// TestToastBlend: a fading toast's box composites over the row beneath it,
+// so what it covers keeps its own colors instead of popping when the ramp
+// ends — a blank box cell sinks the cell beneath toward the panel, a box
+// glyph sinks toward the surface that cell paints.
+func TestToastBlend(t *testing.T) {
+	t.Parallel()
+	app, _ := notifyApp(t)
+	under := []hostapi.Segment{
+		{Text: " ab ", HL: "Normal", Fill: hostapi.FillBand},
+		{Text: " cd", HL: "Normal"},
+	}
+	line := []hostapi.Segment{
+		{Text: "┌─", HL: hostapi.ChromeRule, NoCopy: true},
+		{Text: " x ", HL: "Normal", Fill: hostapi.FillPanel, NoCopy: true},
+		{Text: "─┐", HL: hostapi.ChromeRule, NoCopy: true},
+	}
+	out := app.blendRow(under, line, 1, 80, 0.5)
+	var text []string
+	for _, s := range out {
+		if strings.TrimSpace(s.Text) == "" {
+			continue
+		}
+		text = append(text, s.Text)
+		if s.Fade != 0.5 || s.Sink == nil {
+			t.Fatalf("cell %q: fade %.2f, sink %v; want every blended cell sunk toward the surface beneath", s.Text, s.Fade, s.Sink)
+		}
+	}
+	// the rule's glyphs sink toward the band they cover, the box's text takes
+	// the band as its sink, and the band's own text stands under the box's
+	// blanks, sunk toward the panel
+	if !slices.Equal(text, []string{"┌", "─", "x", "c", "─", "┐"}) {
+		t.Fatalf("blended cells: %q", text)
 	}
 }
 
