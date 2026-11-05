@@ -12,6 +12,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"math/rand/v2"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -177,8 +178,8 @@ func launch(o options) int {
 		closeLog()      // an exec runs no defers
 		return fail(relaunch(dir))
 	}
-	// the parting discovery tip; the terminal is the TUI's no longer
-	if host.Settings.Bool(config.KeyUITips) {
+	// the parting discovery tip, one exit in five
+	if host.Settings.Bool(config.KeyUITips) && rand.N(5) == 0 {
 		fmt.Println("\n" + ui.Tip(os.Stdout) + "\n")
 	}
 	return 0
