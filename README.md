@@ -21,7 +21,8 @@ Zemi is a (coding) agent harness that...
 > [!NOTE]
 > I use zemi daily exclusively and have better experience with it than with other harnesses.
 > However, things may be different for you. If you like this project but something is not working well, open an issue / PR.
-> Expect breaking changes until v1.
+
+Zemi is still in preview and iterating rapidly. There will be compatibility-breaking changes.
 
 ## Install
 
@@ -42,7 +43,7 @@ zemi
 Or let another agent set it up for you:
 
 ```markdown
-Install github.com/metafates/zemi (go install github.com/metafates/zemi@latest), ask which model provider I use and put its API key in my shell config, then print the one command I should run.
+Install zemi with `go install github.com/metafates/zemi@latest`, ask which model provider I use and put its API key in my shell config, then print the one command I should run.
 ```
 
 ## Features
