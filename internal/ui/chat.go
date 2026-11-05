@@ -1130,14 +1130,14 @@ func (b *chatBuilder) user(text string, waiting bool, key int64) {
 	switch {
 	case len(wrapped) > draw:
 		// the glyph says what the click and the cursor's keys do: ▸ opens the
-		// hidden lines, ▾ folds them back
+		// hidden lines, ▴ folds them back
 		text := "… +" + strconv.Itoa(len(wrapped)-draw) + " lines"
 		if click != "" {
 			text = "▸ +" + strconv.Itoa(len(wrapped)-draw) + " lines"
 		}
 		b.push(b.userFold(barHL, pin, text, click))
 	case open: // drawn whole: the row that folds it back
-		b.push(b.userFold(barHL, pin, "▾ collapse", click))
+		b.push(b.userFold(barHL, pin, "▴ collapse", click))
 	}
 }
 

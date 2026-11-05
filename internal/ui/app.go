@@ -1994,9 +1994,10 @@ func (a *App) chatFoldKey(key string) {
 			if !strings.HasPrefix(seg.Click, "turn:") && !strings.HasPrefix(seg.Click, "prompt:") {
 				continue
 			}
-			// the glyph says the fold's state: ▸ folded, ▾ open. A prompt's
-			// head rows carry the click without one
-			open := strings.HasPrefix(seg.Text, "▾")
+			// the glyph says the fold's state: ▸ folded, ▴/▾ open (a prompt
+			// folds upward, a run's digest downward). Head rows carry the
+			// click without one
+			open := strings.HasPrefix(seg.Text, "▾") || strings.HasPrefix(seg.Text, "▴")
 			if !open && !strings.HasPrefix(seg.Text, "▸") {
 				continue
 			}

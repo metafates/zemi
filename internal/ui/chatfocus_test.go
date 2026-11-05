@@ -270,7 +270,7 @@ func TestChatCursorFoldsALongPrompt(t *testing.T) {
 	}
 	head := prompt()
 	foldKey(tea.KeyPressMsg{Code: 'l'})
-	if !folded("▾") || folded("▸") {
+	if !folded("▴") || folded("▸") {
 		t.Fatalf("l did not open the prompt:\n%s", strings.Join(rows(), "\n"))
 	}
 	if n := prompt(); n <= head+1 {
@@ -282,7 +282,7 @@ func TestChatCursorFoldsALongPrompt(t *testing.T) {
 	}
 	x, y := findCell(t, app, "▸ +")
 	clickAt(app, x, y)
-	if !folded("▾") {
+	if !folded("▴") {
 		t.Fatalf("a click on the fold row did not open the prompt:\n%s", strings.Join(rows(), "\n"))
 	}
 }
