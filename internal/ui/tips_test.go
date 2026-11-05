@@ -32,7 +32,7 @@ func TestTip(t *testing.T) {
 // TestTipPlain: off a terminal a tip reads as plain words, bold alone.
 func TestTipPlain(t *testing.T) {
 	t.Parallel()
-	if got := tipStyled(colorprofile.NoTTY, " tip ", _tips[0]); got != " tip  /btw  asks a side question the conversation does not keep" {
+	if got := tipStyled(colorprofile.NoTTY, " tip ", _tips[0]); got != " tip  /btw  asks a side question without interrupting main agent" {
 		t.Fatalf("plain tip: %q", got)
 	}
 }

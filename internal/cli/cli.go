@@ -211,8 +211,36 @@ With no command zemi opens the TUI.`,
 	}
 	healthJSON = jsonFlag(health)
 
-	root.AddCommand(projectsCommand(o), pluginCommand(o), dbCommand(o), health)
+	root.AddCommand(projectsCommand(o), pluginCommand(o), dbCommand(o), health, docsCommand(o))
 	return root
+}
+
+// docsCommand is zemi docs: short agent-facing notes that point another AI
+// agent at the zemi skill so it can configure zemi for the user.
+func docsCommand(o *options) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "docs",
+		Short: "documentation for configuring zemi, meant for other AI agents",
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "setup",
+		Short: "how to set zemi's providers and models up",
+		Args:  cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			path := filepath.Join(o.dirs.DataHome, "builtin-skills", "zemi", "SKILL.md")
+			fmt.Fprintf(c.OutOrStdout(), `Set zemi up by following its documentation skill at %s
+(config.md in the same directory covers settings, providers and models, MCP, trust and the command line).
+
+Ask the user how much of your own configuration to replicate: everything, only some parts, or a minimal setup.
+Never write an API key into a file; config reads it with zemi.env.get("NAME").
+`, path)
+			if _, err := os.Stat(path); err != nil {
+				fmt.Fprintln(c.OutOrStdout(), "(start zemi once; it writes the skill on boot)")
+			}
+			return nil
+		},
+	})
+	return cmd
 }
 
 // completionDirs are the dirs a completion reads, after -C: cobra runs no

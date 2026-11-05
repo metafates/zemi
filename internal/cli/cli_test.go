@@ -34,6 +34,7 @@ func TestCLI(t *testing.T) {
 		t.Setenv("ZEMI_"+env+"_HOME", filepath.Join(home, strings.ToLower(env)))
 	}
 	writeFile(t, filepath.Join(home, "config", "init.lua"), `zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "http://x", models = { { id = "m1" } } })`)
+	writeFile(t, filepath.Join(home, "data", "builtin-skills", "zemi", "SKILL.md"), "# zemi\n")
 	for _, name := range []string{"rub", "ver", "zzq"} {
 		if err := os.MkdirAll(filepath.Join(home, "data", "plugins", "local", name), 0o755); err != nil {
 			t.Fatal(err)
@@ -114,6 +115,8 @@ func TestCLI(t *testing.T) {
 		{name: "delete off a terminal", args: []string{"plugin", "delete", "zzq"}, code: 2, stderr: "pass --yes to delete zzq"},
 		{name: "plugins lists", args: []string{"plugin", "list"}, stdout: "rub  local  on  "},
 		{name: "bare plugin shows its help", args: []string{"plugin"}, stdout: "Available Commands:"},
+		{name: "docs setup names the skill path", args: []string{"docs", "setup"}, stdout: filepath.Join(dirs.DataHome, "builtin-skills", "zemi", "SKILL.md"), notStdout: "start zemi once"},
+		{name: "bare docs shows its help", args: []string{"docs"}, stdout: "Available Commands:"},
 		{name: "plugins as JSON", args: []string{"plugin", "list", "--json"}, stdout: `{"name":"rub","version":"local","local":true,"enabled":true,"source":"`},
 		{name: "the JSON carries the declared uses", args: []string{"plugin", "list", "--json"}, stdout: `"uses":["job"]`},
 		{name: "a local plugin's manifest is the version it lists", args: []string{"plugin", "list"}, stdout: "ver  1.2.0  on  "},

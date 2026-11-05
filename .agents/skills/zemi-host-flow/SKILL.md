@@ -11,8 +11,8 @@ The command line is a cobra tree (`execute`): `zemi` opens the TUI, and
 `projects` (`hostapi.ListProjects` with its
 stores read through `store.OpenRead`, which creates, migrates and
 sweeps nothing, runs `query_only` so even a write through it fails, and takes no lock a running zemi waits on;
-one line each, the absolute root at column 36 for `cut -c36-`), `models` (and `models update`),
-`db` (one read-only query against the project's store, its first argument whole and the rest bound to `?1`, `?2`, ..., `--global` the global one), `plugin` (bare, it lists), `health`, cobra's `completion` and `help` are subcommands, each declaring its
+one line each, the absolute root at column 36 for `cut -c36-`),
+`db` (one read-only query against the project's store, its first argument whole and the rest bound to `?1`, `?2`, ..., `--global` the global one), `plugin` (bare, it lists), `health`, `docs` (`docs setup` prints short agent-facing notes that point another AI agent at the zemi skill's path, so it can configure zemi; no boot), cobra's `completion` and `help` are subcommands, each declaring its
 `Args` (cobra checks positionals only on the root). The listing ones (`projects`,
 `plugin`, `health`, `plugin marketplace list`) take `--json` (`jsonFlag`): JSON Lines through `writeJSON`, the one writer
 every listing shares. Their plain lines share one `table` renderer (aligned columns,
