@@ -1,5 +1,5 @@
 <div align="center">
-	<img width="300" alt="zemi" src="https://github.com/user-attachments/assets/7eb88996-83c0-4d41-a3ed-cfaf09ddbf7e" />
+	<img width="300" alt="zemi" src="./assets/zemi.png" />
 	<h1>zemi @··</h1>
 	<p>There are many agent harnesses, but this one takes <i>the best from them</i></p>
 </div>
