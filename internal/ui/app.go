@@ -1248,7 +1248,7 @@ func (a *App) pushToast(level slog.Level, title, body string) {
 	if len(a.toasts) > _toastsLive {
 		a.toasts = a.toasts[len(a.toasts)-_toastsLive:]
 	}
-	a.frameDirty = true
+	a.bump() // the rise's frames draw only if the tick wakes: frameDirty alone never fires one
 }
 
 // toastRise is the toasts' ramp ledger, created on first use the way ride
@@ -2325,6 +2325,13 @@ func toastTray(ts []toast, w, h int, now time.Time, ease func(key string, shown 
 	var tray [][]hostapi.Segment
 	for _, s := range secs {
 		box := hostBox(s.title, toastHL(s.level), "", s.rows, inner+8, inner+4, inner)
+		// the tray floats over the stage's canvas, not on a panel: its fade
+		// sinks toward the canvas, or the box's panel fill never fades
+		for _, r := range box {
+			for i := range r {
+				r[i].OnPanel = false
+			}
+		}
 		if ease != nil {
 			box = ease(s.key, s.live, box)
 			if box == nil {

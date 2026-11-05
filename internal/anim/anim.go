@@ -304,8 +304,8 @@ func (r *Rise[K]) Present(key K, shown bool) {
 		r.ramps[key] = []riseRamp{{fade: f, rows: 1}}
 	case shown:
 		f := rs[len(rs)-1].fade
-		if !f.Rising(now) && !f.Shown() {
-			f.Set(true, now) // returned after a sink: rise from where it sank to
+		if !f.Shown() {
+			f.Set(true, now) // returned mid-sink: rise from where it sank to
 		}
 	default:
 		rs[len(rs)-1].fade.Set(false, now)

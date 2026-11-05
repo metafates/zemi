@@ -490,6 +490,19 @@ func TestToastTray(t *testing.T) {
 	}
 }
 
+// TestToastWakesTheTick: a toast's rise draws frame by frame only if the
+// tick wakes — frameDirty alone never fires one, and the box would pop.
+func TestToastWakesTheTick(t *testing.T) {
+	t.Parallel()
+	app, _ := notifyApp(t)
+	app.pushToast(slog.LevelInfo, "Copied", "12 bytes")
+	select {
+	case <-app.wake:
+	default:
+		t.Fatal("a pushed toast left the frame tick asleep; its rise would pop")
+	}
+}
+
 // TestToastNotCopied: a drag over a box a toast stands on copies the box's own
 // text, never the toast's words, which would paste two boxes as one.
 func TestToastNotCopied(t *testing.T) {
