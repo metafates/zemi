@@ -29,8 +29,8 @@ func TestSplashIsTheWhorl(t *testing.T) {
 	}
 }
 
-// TestSplashRises: the knot rises out of the surface over _riseDuration on
-// its first draw and stays settled after.
+// TestSplashRises: the knot rises out of the surface over _riseDuration
+// behind the boot's delay on its first draw and stays settled after.
 func TestSplashRises(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 24)
@@ -53,7 +53,7 @@ func TestSplashRises(t *testing.T) {
 		t.Fatalf("the splash's rise must keep the tick awake")
 	}
 
-	app.now = func() time.Time { return time.UnixMilli(500 + _riseDuration.Milliseconds()) }
+	app.now = func() time.Time { return time.UnixMilli(500 + (_barDelay + _riseDuration).Milliseconds()) }
 	app.renderShown(t, app.frameGen)
 	if fade := mid(); fade != 0 {
 		t.Fatalf("the knot never settled: fade %v after the ramp", fade)

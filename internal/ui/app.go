@@ -46,7 +46,7 @@ const (
 	_idleInterval     = 250 * time.Millisecond // the tick with nothing moving on its own; a bump wakes it
 	_frameMS          = 50                     // the frame clock: spinner, eyes and shimmer step once per tick
 	_riseDuration     = 160 * time.Millisecond // how long a statusline pill's appear or disappear takes
-	_barDelay         = 120 * time.Millisecond // how long the scrollbar's and the chat's boot appear waits after a pill's starts
+	_barDelay         = 120 * time.Millisecond // how long the boot's first paints (the pills', the scrollbar's, the chat's) wait before they rise
 	_riseTick         = 16 * time.Millisecond  // the tick while one runs, so the ramp reads smooth
 	_doneLinger       = 3 * time.Second        // how long the mascot's eyes say how a turn ended
 	// NOTE: 64 waiting hooks is the burst bound; past it dispatch drops a message, await waits.
@@ -179,6 +179,7 @@ type App struct {
 	renderSeq     int64                // counts render dispatches, so the latest one wins
 	frameGen      int64
 	rises         map[string]*anim.Curtain // pills, the splash and the chat easing their come and go
+	began         time.Time                // the boot's first paint, where every widget's rise waits from
 	spun          bool                     // the last frame drew a spinner, so the tick keeps stepping it
 	timeStr       string
 	turnActive    bool             // what onFrame last saw of the agent
@@ -292,7 +293,7 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 	}
 	// the chat's rows appear whole once its seat is taken: only the reset's
 	// sink and the knot's leave on the first message move a region as one;
-	// the boot's first paint rises like the scrollbar's (chat.bootRise)
+	// the boot's first paint rises with the rest (ride, inBoot)
 	splash := anim.NewCurtain(_riseDuration)
 	chat := anim.NewCurtain(_riseDuration)
 	chat.JumpIn = true
@@ -1034,25 +1035,16 @@ func (a *App) widgetFaded(msg widgetRender) [][]hostapi.Segment {
 	if w.solo {
 		// while another owner of the seat still draws — its curtain sinking,
 		// its last lines cached — my rows would sit on its kept ones
-		owned := false
 		for _, sib := range a.widgets {
 			if sib == w || !sib.solo || sib.region != w.region {
 				continue
 			}
-			if c := a.rises[sib.id]; c != nil {
-				if c.Sinking() {
-					return nil
-				}
-				owned = owned || c.Owned()
+			if c := a.rises[sib.id]; c != nil && c.Sinking() {
+				return nil
 			}
 			if c := a.caches[sib.id]; c != nil && len(c.lines) > 0 && len(msg.lines) > 0 {
 				return nil
 			}
-		}
-		// the boot's paint of a seat no sibling ever owned rises like the
-		// scrollbar's first paint; one taken back from the splash draws whole
-		if c := a.rises[w.id]; !owned && len(msg.lines) > 0 && w.bootRise > 0 && c != nil && !c.Shown() {
-			c.Boot(w.bootRise, a.now())
 		}
 	} else if c := a.rises[w.id]; len(msg.lines) > 0 && (c == nil || (!c.Shown() && !c.Sinking())) {
 		// one appearing out of nothing waits out a neighbor's sink, so it
@@ -1080,6 +1072,11 @@ func (a *App) ride(id string, lines [][]hostapi.Segment) [][]hostapi.Segment {
 		c = anim.NewCurtain(_riseDuration)
 		a.rises[id] = c
 	}
+	// the boot's first paints rise together: a widget whose first rows land
+	// in the boot's window waits out the scrollbar's delay like the chat's
+	if len(lines) > 0 && !c.Owned() && a.inBoot() {
+		c.Boot(_barDelay, a.now())
+	}
 	was := c.Rising(a.now())
 	out, settled := c.Draw(lines, a.now())
 	if !was && c.Rising(a.now()) {
@@ -1089,6 +1086,15 @@ func (a *App) ride(id string, lines [][]hostapi.Segment) [][]hostapi.Segment {
 		a.bump()
 	}
 	return out
+}
+
+// inBoot reports the app's first paints, where a widget's rise waits out the
+// scrollbar's delay; later appearances rise at once.
+func (a *App) inBoot() bool {
+	if a.began.IsZero() {
+		a.began = a.now()
+	}
+	return a.now().Sub(a.began) < _barDelay+_riseDuration
 }
 
 // fadesRising reports whether a pill's or scrollbar's appear or disappear is

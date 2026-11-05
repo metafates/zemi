@@ -40,8 +40,8 @@ its lines through one, no per-widget code; widgets that share a region's seat (`
 chat and the splash) hand over through the outgoing one's sink, by region rule, never by id;
 rows that rise inside a widget (a rail call, a readout) ride a `Rise` keyed by what names the
 element — `Spread` when it grows while it rises, `Present` + `Prune` when it comes and goes,
-`Stamp` when it rises once. A solo widget's first paint of a seat no sibling ever owned waits
-out the scrollbar's delay and rises (`bootRise`, the chat view's boot fade); a seat taken back
+`Stamp` when it rises once. The boot's first paints (the pills', the scrollbar's, the chat's)
+all wait out one delay and rise together (`ride`'s `inBoot` window); a seat taken back
 from a sibling draws whole. Rows fade by `anim.Faded(row, 1-alpha, spare)`; a `spare` (like
 `spareRail`) leaves a row's chrome standing while its content rises. The toast tray does not
 ease: a notification pops in and drops out whole, never a ramp. A test with a pinned clock settles what it

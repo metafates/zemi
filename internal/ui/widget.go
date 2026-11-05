@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"runtime/debug"
 	"slices"
-	"time"
 
 	"github.com/metafates/zemi/internal/hostapi"
 )
@@ -28,10 +27,6 @@ type widget struct {
 	// splash): one yields while another still draws, so the region hands
 	// over through the outgoing one's sink
 	solo bool
-	// bootRise is how long a solo widget's first paint of a seat no sibling
-	// ever owned waits before its rise, the scrollbar's delay; a seat taken
-	// back from a sibling draws whole
-	bootRise time.Duration
 }
 
 // widgetByID is the shipped widget with that id, nil for none.

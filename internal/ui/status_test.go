@@ -170,7 +170,8 @@ func TestPlanStatus(t *testing.T) {
 
 // TestStatusRise: a statusline pill rises out of the surface when it starts
 // drawing and sinks back in when it stops, each over _riseDuration on its
-// own clock, and the ramps keep the tick awake while they run.
+// own clock behind the boot's delay, and the ramps keep the tick awake while
+// they run.
 func TestStatusRise(t *testing.T) {
 	_, host := statusApp(t)
 	app := &App{
@@ -191,7 +192,9 @@ func TestStatusRise(t *testing.T) {
 	if !app.fadesRising() || app.tickInterval() != _riseTick {
 		t.Fatal("the rise did not keep the tick awake")
 	}
-	app.now = func() time.Time { return time.UnixMilli(500 + _riseDuration.Milliseconds()/2) }
+	app.now = func() time.Time {
+		return time.UnixMilli(500 + _barDelay.Milliseconds() + _riseDuration.Milliseconds()/2)
+	}
 	app.onWidgetRendered(widgetRender{id: id, lines: lines, gen: 2, seq: 2, width: 80, height: 14})
 	if got := app.caches[id].lines[0][0].Fade; got < 0.4 || got > 0.6 {
 		t.Fatalf("mid-rise fade %v, want about half", got)
