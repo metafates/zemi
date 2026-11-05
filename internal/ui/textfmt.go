@@ -101,7 +101,7 @@ func running(st *hostapi.ScreenState) string {
 // pendingLine is what the session still waits on as one row: other work, and
 // the jobs the user waits on. Its labels breathe, so the row ticks the frame
 // clock while it lives; nil when nothing pends.
-func pendingLine(st *hostapi.ScreenState) []hostapi.Segment {
+func pendingLine(st *hostapi.ScreenState, withBusy bool) []hostapi.Segment {
 	var parts []string
 	// the live rail already names the run the turn waits on: counts are other work
 	if !st.AgentActive {
@@ -109,14 +109,16 @@ func pendingLine(st *hostapi.ScreenState) []hostapi.Segment {
 			parts = append(parts, runs)
 		}
 	}
-	if n := len(st.Busy); n > 0 {
-		// one part however many run: the oldest's label, which a new job
-		// joining does not move, and the rest of the fleet counted
-		label := lower(st.Busy[n-1].Label)
-		if n > 1 {
-			label = fmt.Sprintf("%s, and %d more", label, n-1)
+	if withBusy {
+		if n := len(st.Busy); n > 0 {
+			// one part however many run: the oldest's label, which a new job
+			// joining does not move, and the rest of the fleet counted
+			label := lower(st.Busy[n-1].Label)
+			if n > 1 {
+				label = fmt.Sprintf("%s, and %d more", label, n-1)
+			}
+			parts = append(parts, label)
 		}
-		parts = append(parts, label)
 	}
 	if len(parts) == 0 {
 		return nil

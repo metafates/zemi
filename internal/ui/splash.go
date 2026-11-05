@@ -77,7 +77,7 @@ func splashRows(st *hostapi.ScreenState) [][]hostapi.Segment {
 func splashLastRow(st *hostapi.ScreenState, room int) []hostapi.Segment {
 	var pending []hostapi.Segment
 	if st.View == nil {
-		pending = pendingLine(st)
+		pending = pendingLine(st, true)
 	}
 	if pending == nil {
 		return []hostapi.Segment{{Text: ""}}

@@ -1904,7 +1904,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 	// session's counts are about other work, so a run's view leaves it out
 	var pending []hostapi.Segment
 	if st.View == nil {
-		pending = pendingLine(st)
+		pending = pendingLine(st, true)
 	}
 	// A reply closes the run it follows at once, streaming or settled: the run
 	// the turn is working in is its last activity run, while that reaches the

@@ -245,8 +245,8 @@ func rowsAfterPending() int {
 }
 
 // TestPendingRowCarriesOnlyOnceItLeavesTheView: the chat draws its pending row
-// above the todo list and reports how many rows sit below it, so the rule
-// carries the row only once that block scrolled out of view too.
+// above the todo list and reports how many rows sit below it; the rule never
+// carries a busy label - the chat's row is where that work lives.
 func TestPendingRowCarriesOnlyOnceItLeavesTheView(t *testing.T) {
 	// the count is the chat render's report on the package, not the frame's:
 	// no t.Parallel, or another render answers for this one
@@ -266,8 +266,8 @@ func TestPendingRowCarriesOnlyOnceItLeavesTheView(t *testing.T) {
 	if got := rule(0); strings.Contains(got, label) {
 		t.Fatalf("the rule carries the pending row still in view: %q", got)
 	}
-	if got := rule(1); !strings.Contains(got, label) {
-		t.Fatalf("the rule dropped the pending row the reader scrolled past: %q", got)
+	if got := rule(1); strings.Contains(got, label) {
+		t.Fatalf("the rule carries a busy label: %q", got)
 	}
 	seedTodos(t, host, []store.Todo{{Content: "a thing", Status: store.TodoPending}})
 	app.renderSync(t)
@@ -275,11 +275,8 @@ func TestPendingRowCarriesOnlyOnceItLeavesTheView(t *testing.T) {
 	if after == 0 {
 		t.Fatal("the todo block below the pending row is not counted")
 	}
-	if got := rule(after); strings.Contains(got, label) {
-		t.Fatalf("the rule carried the pending row over %d rows still in view: %q", after, got)
-	}
-	if got := rule(after + 1); !strings.Contains(got, label) {
-		t.Fatalf("the rule dropped the pending row past all %d rows below it: %q", after, got)
+	if got := rule(after + 1); strings.Contains(got, label) {
+		t.Fatalf("the rule carried the pending row over %d rows still in view: %q", after+1, got)
 	}
 }
 

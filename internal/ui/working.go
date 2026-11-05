@@ -101,7 +101,7 @@ func workingRule(e *eyes, st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	// scrolled it out of the view: centred where a view's name stands and
 	// drawn as the chat draws it, clickable nowhere
 	if st.View == nil && st.RowsBelow > rowsAfter {
-		if pending := pendingLine(st); pending != nil {
+		if pending := pendingLine(st, false); pending != nil {
 			parts = append(parts, workingPart{line: pending, worth: 4, center: true})
 		}
 	}
