@@ -334,6 +334,17 @@ func TestRailRise(t *testing.T) {
 	if got = fades(); got[-2] < 0.5 || got[-1] != 0 {
 		t.Fatalf("the second call did not rise alone: %v", got)
 	}
+	// the output under a call's command appears when the result does, after
+	// the call's own ramp: it sinks and rises on a ramp of its own
+	tools[1].Status = hostapi.CallErr
+	tools[1].Output = "no game-over line\nexit status 255"
+	if got = fades(); got[-2] < 0.5 {
+		t.Fatalf("the output the result brought did not sink: %v", got)
+	}
+	at = at.Add(2 * _riseDuration)
+	if got = fades(); got[-2] != 0 {
+		t.Fatalf("the output stayed sunk after its ramp: %v", got)
+	}
 	// a rail longer than it keeps folds its head away: once the kept calls
 	// have risen, a new one still sinks though it adds no height
 	tools = tools[:1]

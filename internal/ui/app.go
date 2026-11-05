@@ -1087,9 +1087,11 @@ func (a *App) fadesRising() bool {
 		}
 	}
 	if f := a.chatFolds(); f != nil {
-		for _, fade := range f.railFades {
-			if fade.Rising(now) {
-				return true
+		for _, ramps := range f.railRamps {
+			for _, r := range ramps {
+				if r.fade.Rising(now) {
+					return true
+				}
 			}
 		}
 	}
