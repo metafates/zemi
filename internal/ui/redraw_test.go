@@ -639,6 +639,43 @@ func TestUserPromptRise(t *testing.T) {
 	}
 }
 
+// TestQueuedMessageRise: a message queued behind a running turn rises into
+// the chat the way a sent prompt does.
+func TestQueuedMessageRise(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	f := app.chatFolds()
+	at := time.UnixMilli(1000)
+	f.now = func() time.Time { return at }
+
+	queuedFade := func(app *App) float64 {
+		lines, _ := renderChat(t, app, 98, 20, app.uiState())
+		fade := 0.0
+		for _, row := range lines {
+			if len(row) > 1 && row[0].Text == "▌ " && row[0].HL == "Queued" {
+				for _, s := range row {
+					fade = max(fade, s.Fade)
+				}
+			}
+		}
+		return fade
+	}
+
+	// the boot's empty frames read the log the splash owns
+	renderChat(t, app, 98, 20, app.uiState())
+	host.AppendChat(hostapi.ChatMessage{Role: fantasy.MessageRoleUser, Text: "a question"})
+	host.SeedStream(hostapi.StreamSnapshot{Active: true})
+	if err := host.AgentSend("one more thing"); err != nil {
+		t.Fatal(err)
+	}
+	if fade := queuedFade(app); fade < 0.5 {
+		t.Fatalf("the queued message did not sink: fade %v", fade)
+	}
+	at = at.Add(2 * _riseDuration)
+	if fade := queuedFade(app); fade != 0 {
+		t.Fatalf("the queued message stayed sunk after the ramp: fade %v", fade)
+	}
+}
+
 // TestReadoutRiseSurvivesTheSeqNaming: the reply's row lands unstamped and
 // the log names it a moment later; the rise keys by the row's place in the
 // window, so the naming neither freezes the readout sunk nor pops it clean.

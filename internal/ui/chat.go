@@ -215,17 +215,20 @@ func (f *chatFolds) clock() time.Time {
 	return time.Now()
 }
 
-// fadeLive stamps the rise on the one live rail row key names: the first
-// draw starts it sunk into the surface, a row the last frame drew rides its
-// ramp, one back after frames away rises again. The caller prunes the rise
-// once the frame's rows are drawn.
-func (f *chatFolds) fadeLive(key string, rows [][]hostapi.Segment) {
+// fadeLive stamps the rise on the live rows key names: the first draw starts
+// them sunk into the surface, rows the last frame drew ride the ramp, one back
+// after frames away rises again. The caller prunes the rise once the frame's
+// rows are drawn; spare keeps from the first frame what a rail row's bar does,
+// nil fades the block whole.
+func (f *chatFolds) fadeLive(key string, rows [][]hostapi.Segment, spare func(hostapi.Segment) bool) {
 	if f.now == nil {
 		return
 	}
 	f.liveRise.Present(key, true)
 	if alpha := f.liveRise.Alpha(key); alpha < 1 {
-		rows[0] = anim.Faded(rows[0], 1-alpha, spareRail)
+		for i := range rows {
+			rows[i] = anim.Faded(rows[i], 1-alpha, spare)
+		}
 	}
 }
 
@@ -260,7 +263,6 @@ func (f *chatFolds) rowArrived(st *hostapi.ScreenState) {
 		f.rows = n
 		return
 	}
-	f.rows = n
 	f.rows = n
 	m := st.Transcript[n-1]
 	if m.Kind == hostapi.RowMessage && (m.Role == fantasy.MessageRoleUser || m.Stat != nil) && f.now != nil {
@@ -1215,7 +1217,7 @@ func (b *chatBuilder) thinking(tail string) {
 	b.frame()
 	at := len(b.lines)
 	b.push([]hostapi.Segment{barSeg(""), railMark(tools.MarkSpin, ""), {Text: "thinking", HL: "Dim", Effect: hostapi.EffectShimmer}})
-	b.folds.fadeLive("thinking", b.lines[at:at+1])
+	b.folds.fadeLive("thinking", b.lines[at:at+1], spareRail)
 	if tail != "" {
 		b.reasoning(tail, 4, "")
 	}
@@ -2116,7 +2118,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 			b.gap(_blockActivity)
 			at := len(b.lines)
 			b.digestRow(thoughtText(ag.Thought), "", hostapi.PinNone, false)
-			f.fadeLive("thought", b.lines[at:at+1])
+			f.fadeLive("thought", b.lines[at:at+1], spareRail)
 		case ag.Text == "" && len(calls) == 0 && ag.Active && st.View == nil && ag.Retry == nil &&
 			!st.Cancelling && st.Waiting == "" && ag.Elapsed >= 300*time.Millisecond:
 			// the wait before any output: the thinking row opens with the turn,
@@ -2150,10 +2152,13 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 			b.markdown(ag.Text)
 		}
 		// what waits for the turn's next step boundary: the user's own words as
-		// typed, folding past the paste threshold like any user row
+		// typed, folding past the paste threshold like any user row, rising the
+		// way a sent prompt does
 		for _, q := range queued {
 			b.gap(_blockQueued)
+			at := len(b.lines)
 			b.user(q, true, 0)
+			f.fadeLive("queued "+q, b.lines[at:], nil)
 		}
 	}
 	// what will change this conversation later sits between it and the todos
