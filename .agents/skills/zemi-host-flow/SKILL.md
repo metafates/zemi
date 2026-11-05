@@ -28,16 +28,16 @@ run's other flags are left behind. The TUI takes a terminal on stdin and stdout,
 a pipe on either.
 Completion offers plugin names
 from `plugin.Scan`; `completionDirs` applies `-C`, since cobra runs no hook before a
-completion function. `zemi models` and the `-m` completion boot
+completion function. A completion boots
 inert (`bootHeadless` with `Host.Inert`): no store, no log file, `proc.Refuse`, and four
 guards (`resolveModel` calls no model, `luaGate` refuses all but reads, `addMCP` starts no
 server, `installNamespaces` syncs no files), so a tab press runs nothing config asks for.
 Flags apply after boot so they win over `init.lua`, except `--trust`, which the trust boot step
-reads. `-m`, `/model <provider/model>` and `zemi.model.set` write `models.default`, so a pick moves what the
+reads. `/model <provider/model>` and `zemi.model.set` write `models.default`, so a pick moves what the
 conversation runs on.
 `Host.SetModel` parses the rest of `/model` and `Host.CompleteModel` offers the same grammar.
 
-`zemi health`, `zemi models` and the flag completions boot headless (`bootHeadless`, the TUI's
+`zemi health` boots headless (`bootHeadless`, the TUI's
 steps without it; its `stderr` is `Host.Stderr`). None of them sends a prompt: a host with no
 UI never runs a turn. It still drops what
 needs a user (`_headlessExcluded`: a no-UI host cannot answer a question or approve a plan).
@@ -78,7 +78,7 @@ boot no model can run opens the `/model` picker once (`Host.OfferModel`, after t
 apply, never on a reload or after a failed init.lua). Builtin
 providers come from the catwalk catalog (`agent.LoadCatalog`, converted at boot by
 `agent.Builtin` with the key env vars resolved in Go, never stored in config, into the
-`Host.Builtin` pointer): the embedded one, or the one `/model update` or `zemi models update`
+`Host.Builtin` pointer): the embedded one, or the one `/model update`
 (`agent.UpdateCatalog`) fetched into `<data>/catwalk.json`, never `<cache>`, since the catalog picks where each key is sent. A fetched one reads only the
 variables the bundled one names (`bundledRef`), so the feed cannot pick which secret goes. No
 network at boot. Each builtin is on only while its key is exported, one without is in

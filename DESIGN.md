@@ -792,7 +792,7 @@ error. A value a known key's kind or choices refuse is flagged in `/errors`
 and leaves the key at what it held, so one bad line never stops the rest of
 init.lua. A reload
 replays it, but a call that writes the value the last boot wrote is skipped,
-so a runtime pick (`/model`, `/effort`, `-m`) is not reverted
+so a runtime pick (`/model`, `/effort`) is not reverted
 by an unrelated config edit; a pick is settled to its last value too, so a
 reload cannot loosen it silently. A key whose `set` line was deleted returns
 to its saved pick, else its default, on that reload, unless a runtime pick moved it since.
@@ -1169,7 +1169,7 @@ starts a saved one with `/workflows run`, with no model call
 before the work: it runs detached with a live notice row.
 
 Builtin providers come from catwalk's embedded catalog, or the one
-`/model update` or `zemi models update` fetched from catwalk.charm.land and saved in the data
+`/model update` fetched from catwalk.charm.land and saved in the data
 dir (the catalog picks where each key is sent, so it lives in zemi's own
 data dir, and it reads only the variables the bundled one names;
 one saved under another bundled catwalk version is ignored, so an

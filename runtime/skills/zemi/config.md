@@ -4,7 +4,7 @@ Everything here goes in the user's init.lua (`<config>/init.lua`, run at startup
 
 ## Providers and models
 
-The builtin providers (anthropic, openai, gemini, deepseek, openrouter, ...) are on while their key is exported in the shell that starts zemi (`ANTHROPIC_API_KEY`, ...); `/model` lists them and names the variable a missing one needs. Their models come from the catalog bundled with zemi; `/model update` (or `zemi models update` in a shell; `zemi models` lists the ids) fetches the latest from catwalk.charm.land and keeps it for later starts, until a zemi upgrade brings a newer bundle; the `/health` catalog row says which is in use. A gateway, a local server or a provider zemi does not know:
+The builtin providers (anthropic, openai, gemini, deepseek, openrouter, ...) are on while their key is exported in the shell that starts zemi (`ANTHROPIC_API_KEY`, ...); `/model` lists them and names the variable a missing one needs. Their models come from the catalog bundled with zemi; `/model update` fetches the latest from catwalk.charm.land and keeps it for later starts, until a zemi upgrade brings a newer bundle; the `/health` catalog row says which is in use. A gateway, a local server or a provider zemi does not know:
 
 ```lua
 zemi.provider.add({
@@ -92,7 +92,7 @@ Language servers (gopls, pyright, typescript, clangd, rust-analyzer, luals - the
 ## Command line
 
 `zemi [flags]` opens the TUI. It takes `-m provider/model` and `--trust`; `-C <dir>` runs any command as if started in dir. The TUI needs a terminal on stdin and stdout.
-`zemi health` prints the checks (exits 1 when one errors); `zemi db <sql>` runs one read-only query against the store (`db.md`); `zemi projects` lists every project zemi keeps state for, the path from column 36 (`zemi -C "$(zemi projects | fzf | cut -c36-)"` opens a picked one); `zemi models` lists the ids `-m` takes. `projects`, `plugin`, `health` and `db` take `--json`: one object per line (DESIGN §8 has the fields). `/btw` prints its answer, and `/goal make check is clean` runs until the goal is met. `zemi plugin ...` manages plugins from a shell (`plugins.md`), and `zemi completion <shell>` prints a completion script.
+`zemi health` prints the checks (exits 1 when one errors); `zemi db <sql>` runs one read-only query against the store (`db.md`); `zemi projects` lists every project zemi keeps state for, the path from column 36 (`zemi -C "$(zemi projects | fzf | cut -c36-)"` opens a picked one); `projects`, `plugin`, `health` and `db` take `--json`: one object per line (DESIGN §8 has the fields). `/btw` prints its answer, and `/goal make check is clean` runs until the goal is met. `zemi plugin ...` manages plugins from a shell (`plugins.md`), and `zemi completion <shell>` prints a completion script.
 
 ## Commands and input
 
