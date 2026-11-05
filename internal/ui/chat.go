@@ -68,6 +68,7 @@ type entry struct {
 	role    fantasy.MessageRole
 	tool    string
 	id      string // a live call's id, the rise one ramp per action
+	seq     int64  // a settled row's log message: a reply's readout rises by it
 	text    string
 	input   string
 	label   string
@@ -90,6 +91,7 @@ func entryOf(m hostapi.ChatMessage) entry {
 	e := entry{
 		kind: m.Kind, role: m.Role, tool: string(m.Tool), text: m.Text, label: m.Label,
 		status: m.Status, detail: m.Detail, run: m.Run, job: m.Job, diff: m.Diff, output: m.Output,
+		seq: m.Seq,
 	}
 	if m.Stat != nil {
 		e.elapsed = time.Duration(m.Stat.ElapsedMS) * time.Millisecond
@@ -213,6 +215,14 @@ func (f *chatFolds) fadeRail(rows [][]hostapi.Segment, calls []entry) {
 	}
 }
 
+// readRamp is a reply's readout rise: stamped when the reply settled, done a
+// frame after its ramp ran out, when the clean rows have replaced the sunk.
+type readRamp struct {
+	fade *anim.Fade
+	full bool // a frame saw the ramp out
+	done bool
+}
+
 // riseRow sinks one live rail row into the surface: a row a ramp carries
 // rides it, a row beyond every ramp — one the earlier frames did not draw —
 // joins the ramp still rising or starts the call's next one.
@@ -246,6 +256,74 @@ func fadedRail(row []hostapi.Segment, t float64) []hostapi.Segment {
 		return append([]hostapi.Segment{row[0]}, faded(row[1:], t)...)
 	}
 	return faded(row, t)
+}
+
+// readoutArrived stamps the readout rise of a reply that just landed: the
+// stats line appears only once the message under it is whole, and a reply
+// the chat opens with never rises. It runs before reset, which would take
+// the incoming epoch as read.
+func (f *chatFolds) readoutArrived(st *hostapi.ScreenState) {
+	if st.View != nil {
+		return
+	}
+	if st.TranscriptEpoch != f.epoch {
+		f.rows = len(st.Transcript)
+		return
+	}
+	if n := len(st.Transcript); n > f.rows {
+		f.rows = n
+		m := st.Transcript[n-1]
+		if m.Kind == hostapi.RowMessage && m.Role != fantasy.MessageRoleUser && m.Stat != nil && f.now != nil {
+			fade := anim.New(_riseDuration)
+			fade.Set(true, f.now())
+			f.readRamps[m.Seq] = &readRamp{fade: fade}
+		}
+		return
+	}
+	f.rows = len(st.Transcript)
+}
+
+// riseReadout sinks the readout into the surface on its first draw and rises
+// it over _riseDuration. The settled cache would freeze a mid-rise row, so
+// the render rebuilds the readout's unit while the ramp runs (readoutRising).
+func (f *chatFolds) riseReadout(seq int64, row []hostapi.Segment) []hostapi.Segment {
+	if f.now == nil {
+		return row
+	}
+	ramp, ok := f.readRamps[seq]
+	if !ok || ramp.done {
+		return row
+	}
+	if alpha := ramp.fade.Alpha(f.now()); alpha < 1 {
+		return faded(row, 1-alpha)
+	}
+	ramp.done = true
+	return row
+}
+
+// readoutRising names the reply whose readout is still rising, 0 for none:
+// the render rebuilds that unit at each frame's alpha, one frame past the
+// ramp so the settled rows land clean.
+func (f *chatFolds) readoutRising() int64 {
+	if f.now == nil {
+		return 0
+	}
+	now := f.now()
+	for seq, ramp := range f.readRamps {
+		if ramp.done {
+			continue
+		}
+		if ramp.fade.Alpha(now) < 1 {
+			return seq
+		}
+		if ramp.full {
+			ramp.done = true
+			continue
+		}
+		ramp.full = true
+		return seq
+	}
+	return 0
 }
 
 // settling says whether the next flush settles a call beside the thought: the
@@ -715,6 +793,13 @@ type chatFolds struct {
 	// that pin none.
 	now       func() time.Time
 	railRamps map[string][]railRamp
+	// a reply's readout rise: a ramp per reply, keyed by its log message,
+	// stamped the frame the reply's row lands at the transcript's tail, so
+	// the stats line under it rises after the message landed whole. rows is
+	// the transcript length the last render saw, the growth a fresh reply
+	// reads against.
+	readRamps map[int64]*readRamp
+	rows      int
 	// md and hl memoize the costly rows by text and width: a marked-down reply
 	// and a highlighted command cost far more than the rows around them, and
 	// a frame rebuilds every settled row it is handed back.
@@ -785,6 +870,7 @@ func chatWidget(h *hostapi.Host) *widget {
 		foldSet: newFoldSet(), views: map[string]viewFolds{},
 		md: map[string][][]hostapi.Segment{}, hl: map[string][]hostapi.Segment{},
 		now: time.Now, railRamps: map[string][]railRamp{},
+		readRamps: map[int64]*readRamp{},
 	}
 	return &widget{
 		id: "chat", region: _regionChat, priority: 10, wrap: true,
@@ -828,6 +914,7 @@ func (f *chatFolds) reset(st *hostapi.ScreenState) {
 		}
 		f.foldSet, f.view, f.epoch = next.foldSet, v, epoch
 		f.ver++
+		clear(f.readRamps)
 	}
 	if n := len(st.Agent.Tools); n < f.calls {
 		for _, m := range []map[int64]bool{f.steps, f.unfolded, f.whole} {
@@ -1745,7 +1832,7 @@ func (b *chatBuilder) readout(tr []entry, last int, m entry) int {
 		return content
 	}
 	b.gap(_blockStats)
-	b.push(append([]hostapi.Segment{{Text: "  ", NoCopy: true}}, stats...))
+	b.push(b.folds.riseReadout(m.seq, append([]hostapi.Segment{{Text: "  ", NoCopy: true}}, stats...)))
 	return content
 }
 
@@ -1763,6 +1850,9 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 	b := &chatBuilder{width: cmp.Or(st.Width, 80), st: st, host: h, folds: f}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	// a reply that just landed hands its readout a rise, before reset takes
+	// the incoming epoch as read
+	f.readoutArrived(st)
 	f.reset(st)
 	// work that outlives this view of the session sits at the tail: a
 	// session's counts are about other work, so a run's view leaves it out
@@ -1793,7 +1883,8 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		rows: len(st.Transcript), older: st.LogRows(), width: b.width,
 		folds: f.ver, view: viewID(st), tail: tailFirst, replying: st.Agent.Text == "",
 	}
-	if key == f.settledKey && f.fillUnit == 0 {
+	rising := f.readoutRising()
+	if key == f.settledKey && f.fillUnit == 0 && rising == 0 {
 		// appending may write into the spare capacity, which the settled
 		// slice's own rows never reach
 		b.lines, b.prev = f.settled, f.settledPrev
@@ -1858,6 +1949,16 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		if fresh {
 			f.fillUnit = len(units) // a new state rebuilds from the tail
 			f.built = map[int][][]hostapi.Segment{}
+		}
+		// a readout mid-rise rebuilds its unit at this frame's alpha, so the
+		// rise moves over the settled rows the cache would freeze
+		if !fresh && rising != 0 {
+			for k, u := range units {
+				if tr[u.first].seq == rising {
+					f.built[k] = unitLines(k)
+					break
+				}
+			}
 		}
 		// The pass builds the tail-most units the window still owes: on a
 		// first build down to the view plus slack, later ones 30 ms at a time.

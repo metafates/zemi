@@ -362,6 +362,53 @@ func TestRailRise(t *testing.T) {
 	}
 }
 
+// TestReadoutRise: the stats line under a reply appears only once the
+// message landed whole, rising out of the surface; a reply a session opens
+// with never rises.
+func TestReadoutRise(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	f := app.chatFolds()
+	at := time.UnixMilli(1000)
+	f.now = func() time.Time { return at }
+
+	readoutFade := func(app *App) (float64, bool) {
+		st := app.uiState()
+		lines, _ := renderChat(t, app, 98, 20, st)
+		fade, found := 0.0, false
+		for _, row := range lines {
+			if len(row) > 1 && row[0].NoCopy && row[0].Text == "  " && strings.HasSuffix(hostapi.SegsText(row), " out") {
+				found = true
+				for _, s := range row {
+					fade = max(fade, s.Fade)
+				}
+			}
+		}
+		return fade, found
+	}
+
+	// the reply streams
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Text: "streaming"})
+	renderChat(t, app, 98, 20, app.uiState())
+	// it settles whole: its readout appears sunk and rises
+	host.SeedStream(hostapi.StreamSnapshot{})
+	appendReply(host, "the answer", hostapi.TurnStat{Model: "fake/m", ElapsedMS: 600, Out: 11})
+	if fade, ok := readoutFade(app); !ok || fade < 0.5 {
+		t.Fatalf("the fresh readout did not sink: fade %v found %v", fade, ok)
+	}
+	at = at.Add(2 * _riseDuration)
+	if fade, ok := readoutFade(app); !ok || fade != 0 {
+		t.Fatalf("the readout stayed sunk after the ramp: fade %v found %v", fade, ok)
+	}
+
+	// a reply a session opens with (a resume) is read as it is
+	app2, host2 := bootAgentApp(t, 100, 30)
+	app2.chatFolds().now = func() time.Time { return at }
+	appendReply(host2, "old answer", hostapi.TurnStat{Model: "fake/m", ElapsedMS: 600, Out: 11})
+	if fade, ok := readoutFade(app2); !ok || fade != 0 {
+		t.Fatalf("a resumed readout rose: fade %v found %v", fade, ok)
+	}
+}
+
 // linesOf renders the chat and returns the rows a live call draws.
 func linesOf(t testing.TB, app *App, call int) [][]hostapi.Segment {
 	t.Helper()

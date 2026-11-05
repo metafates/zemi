@@ -1094,6 +1094,11 @@ func (a *App) fadesRising() bool {
 				}
 			}
 		}
+		for _, ramp := range f.readRamps {
+			if !ramp.done {
+				return true
+			}
+		}
 	}
 	return false
 }
