@@ -215,6 +215,40 @@ func (f *chatFolds) fadeRail(rows [][]hostapi.Segment, calls []entry) {
 	}
 }
 
+// fadeLive stamps the rise on the one live rail row key names: the first
+// draw starts it sunk into the surface, a row the last frame drew rides its
+// ramp, one back after frames away rises again.
+func (f *chatFolds) fadeLive(key string, rows [][]hostapi.Segment) {
+	if f.now == nil {
+		return
+	}
+	now := f.now()
+	fade := f.liveRamps[key]
+	if fade == nil || !f.liveSeen[key] && !fade.Rising(now) {
+		fade = anim.New(_riseDuration)
+		fade.Set(true, now)
+		f.liveRamps[key] = fade
+	}
+	f.liveSeen[key] = true
+	if alpha := fade.Alpha(now); alpha < 1 {
+		rows[0] = fadedRail(rows[0], 1-alpha)
+	}
+}
+
+// keepLive keeps the ramps of the live rows this frame drew: a row the frame
+// did not draw loses its ramp, so its return rises again.
+func (f *chatFolds) keepLive(key string) {
+	if key == "" {
+		clear(f.liveSeen)
+		return
+	}
+	for k := range f.liveSeen {
+		if k != key {
+			delete(f.liveSeen, k)
+		}
+	}
+}
+
 // readRamp is a reply's readout rise: stamped when the reply settled, done a
 // frame after its ramp ran out, when the clean rows have replaced the sunk.
 type readRamp struct {
@@ -800,6 +834,12 @@ type chatFolds struct {
 	// reads against.
 	readRamps map[int64]*readRamp
 	rows      int
+	// the live rows no call of their own carries (the thinking spinner, the
+	// thought digest): a fade each, stamped on their first draw so they rise
+	// like the calls do; seen names the ones the last frame drew, and a row
+	// back after frames away rises again.
+	liveRamps map[string]*anim.Fade
+	liveSeen  map[string]bool
 	// md and hl memoize the costly rows by text and width: a marked-down reply
 	// and a highlighted command cost far more than the rows around them, and
 	// a frame rebuilds every settled row it is handed back.
@@ -871,6 +911,7 @@ func chatWidget(h *hostapi.Host) *widget {
 		md: map[string][][]hostapi.Segment{}, hl: map[string][]hostapi.Segment{},
 		now: time.Now, railRamps: map[string][]railRamp{},
 		readRamps: map[int64]*readRamp{},
+		liveRamps: map[string]*anim.Fade{}, liveSeen: map[string]bool{},
 	}
 	return &widget{
 		id: "chat", region: _regionChat, priority: 10, wrap: true,
@@ -915,6 +956,8 @@ func (f *chatFolds) reset(st *hostapi.ScreenState) {
 		f.foldSet, f.view, f.epoch = next.foldSet, v, epoch
 		f.ver++
 		clear(f.readRamps)
+		clear(f.liveRamps)
+		clear(f.liveSeen)
 	}
 	if n := len(st.Agent.Tools); n < f.calls {
 		for _, m := range []map[int64]bool{f.steps, f.unfolded, f.whole} {
@@ -1180,7 +1223,9 @@ func (b *chatBuilder) thoughtRow(d time.Duration, click string) {
 // settled thought is a thought row, static.
 func (b *chatBuilder) thinking(tail string) {
 	b.frame()
+	at := len(b.lines)
 	b.push([]hostapi.Segment{barSeg(""), railMark(tools.MarkSpin, ""), {Text: "thinking", HL: "Dim", Effect: hostapi.EffectShimmer}})
+	b.folds.fadeLive("thinking", b.lines[at:at+1])
 	if tail != "" {
 		b.reasoning(tail, 4, "")
 	}
@@ -2045,19 +2090,26 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		case ag.Thinking && ag.Reasoning != "" && ag.Text == "":
 			b.gap(_blockActivity)
 			b.thinking(ag.Reasoning)
+			f.keepLive("thinking")
 		// The thought no longer draws as the thinking block (the reply
 		// streams): the digest row it will settle as stands here already, so
 		// the settle shifts nothing. A thought a flush settles beside its calls
 		// draws nothing: the digest names the calls, not the thought.
 		case tailFirst == 0 && st.View == nil && (ag.Thought >= 50*time.Millisecond || !settling(calls)) && strings.TrimSpace(ag.Reasoning) != "":
 			b.gap(_blockActivity)
+			at := len(b.lines)
 			b.digestRow(thoughtText(ag.Thought), "", hostapi.PinNone, false)
+			f.fadeLive("thought", b.lines[at:at+1])
+			f.keepLive("thought")
 		case ag.Text == "" && len(calls) == 0 && ag.Active && st.View == nil && ag.Retry == nil &&
 			!st.Cancelling && st.Waiting == "" && ag.Elapsed >= 300*time.Millisecond:
 			// the wait before any output: the thinking row opens with the turn,
 			// after the same 300ms that guards the working rule's block
 			b.gap(_blockActivity)
 			b.thinking("")
+			f.keepLive("thinking")
+		default:
+			f.keepLive("")
 		}
 		liveFrom := 0
 		if len(calls) > 0 {

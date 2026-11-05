@@ -1099,6 +1099,11 @@ func (a *App) fadesRising() bool {
 				return true
 			}
 		}
+		for _, fade := range f.liveRamps {
+			if fade.Rising(now) {
+				return true
+			}
+		}
 	}
 	return false
 }

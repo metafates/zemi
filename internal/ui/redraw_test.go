@@ -360,6 +360,38 @@ func TestRailRise(t *testing.T) {
 	if got = fades(); got[-len(tools)] < 0.5 || got[-6] != 0 {
 		t.Fatalf("a call the folded rail scrolled in did not sink alone: %v", got)
 	}
+
+	// the thinking row the same turn draws rises like a call: the spinner row
+	// sinks on its first draw and rides the ramp risen
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Thinking: true, Reasoning: "a thought"})
+	lines, _ := renderChat(t, app, 98, 20, app.uiState())
+	spin := 0.0
+	for _, row := range lines {
+		if len(row) > 2 && row[2].Text == "thinking" {
+			spin = max(spin, row[2].Fade)
+		}
+	}
+	if spin < 0.5 {
+		t.Fatalf("the thinking row is not sunk: fade %v", spin)
+	}
+	at = at.Add(2 * _riseDuration)
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Thinking: true, Reasoning: "more"})
+	lines, _ = renderChat(t, app, 98, 20, app.uiState())
+	for _, row := range lines {
+		if len(row) > 2 && row[2].Text == "thinking" && row[2].Fade != 0 {
+			t.Fatalf("the thinking row stayed sunk after the ramp: %v", row[2])
+		}
+	}
+	// the row back after frames away rises again
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Text: "a reply"})
+	renderChat(t, app, 98, 20, app.uiState())
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Thinking: true, Reasoning: "again"})
+	lines, _ = renderChat(t, app, 98, 20, app.uiState())
+	for _, row := range lines {
+		if len(row) > 2 && row[2].Text == "thinking" && row[2].Fade < 0.5 {
+			t.Fatalf("the thinking row back after frames away did not rise: %v", row[2])
+		}
+	}
 }
 
 // TestReadoutRise: the stats line under a reply appears only once the
