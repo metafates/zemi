@@ -867,7 +867,7 @@ func TestFadeGround(t *testing.T) {
 		{"the canvas", false, hostapi.Mix(fg, bg, 0.5)},
 		{"a box's panel", true, hostapi.Mix(fg, panel, 0.5)},
 	} {
-		if got := app.segStyle("Normal", "", hostapi.FillPanel, 0.5, c.panel, nil).Fg; got != c.want {
+		if got := app.segStyle("Normal", "", hostapi.FillPanel, 0.5, c.panel).Fg; got != c.want {
 			t.Fatalf("%s: fg = %v, want %v", c.name, got, c.want)
 		}
 	}

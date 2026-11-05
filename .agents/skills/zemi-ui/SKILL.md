@@ -41,10 +41,8 @@ chat and the splash) hand over through the outgoing one's sink, by region rule, 
 rows that rise inside a widget (a rail call, a readout) ride a `Rise` keyed by what names the
 element — `Spread` when it grows while it rises, `Present` + `Prune` when it comes and goes,
 `Stamp` when it rises once. Rows fade by `anim.Faded(row, 1-alpha, spare)`; a `spare` (like
-`spareRail`) leaves a row's chrome standing while its content rises. The toast tray eases too:
-each section's box rides a `Rise` keyed by the section (level and title) — it rises on the
-section's first toast and sinks when its last one goes, lingering toasts kept until the sink
-rides out. A test with a pinned clock settles what it
+`spareRail`) leaves a row's chrome standing while its content rises. The toast tray does not
+ease: a notification pops in and drops out whole, never a ramp. A test with a pinned clock settles what it
 stamped with `settleRamps`/`Rise.Settle` — an unsettled ramp freezes mid-rise, and a settle must
 mark the frame dirty or View-driven tests recompose stale bytes.
 

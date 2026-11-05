@@ -212,15 +212,11 @@ func TestFrameCache(t *testing.T) {
 	}
 
 	app.pushToast(slog.LevelInfo, "saved", "")
-	app.View()        // the toast's rise starts
-	app.settleRamps() // land it, a real clock would ride the 160ms
 	if frame := ansi.Strip(app.View().Content); !strings.Contains(frame, "saved") {
 		t.Fatalf("a toast did not show:\n%s", frame)
 	}
 	app.toasts[0].expires = time.Now().Add(-time.Second) // expired for the tray's clock too
 	app.pruneToasts(time.Now().Add(time.Hour))
-	app.View()        // the leave starts its sink
-	app.settleRamps() // land it, a real clock would ride the 160ms
 	if frame := ansi.Strip(app.View().Content); strings.Contains(frame, "saved") {
 		t.Fatalf("an expired toast stayed:\n%s", frame)
 	}

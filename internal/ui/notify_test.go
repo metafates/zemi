@@ -481,7 +481,7 @@ func TestToastTray(t *testing.T) {
 		}
 		app.pruneToasts(time.Now().Add(c.after))
 		var got []string
-		tray, _ := toastTray(app.toasts, c.w, c.h, time.Now(), nil)
+		tray := toastTray(app.toasts, c.w, c.h, time.Now())
 		for _, r := range tray {
 			got = append(got, hostapi.SegsText(r))
 		}
@@ -491,43 +491,8 @@ func TestToastTray(t *testing.T) {
 	}
 }
 
-// TestToastBlend: a fading toast's box composites over the row beneath it,
-// so what it covers keeps its own colors instead of popping when the ramp
-// ends — a blank box cell sinks the cell beneath toward the panel, a box
-// glyph sinks toward the surface that cell paints.
-func TestToastBlend(t *testing.T) {
-	t.Parallel()
-	app, _ := notifyApp(t)
-	under := []hostapi.Segment{
-		{Text: " ab ", HL: "Normal", Fill: hostapi.FillBand},
-		{Text: " cd", HL: "Normal"},
-	}
-	line := []hostapi.Segment{
-		{Text: "┌─", HL: hostapi.ChromeRule, NoCopy: true},
-		{Text: " x ", HL: "Normal", Fill: hostapi.FillPanel, NoCopy: true},
-		{Text: "─┐", HL: hostapi.ChromeRule, NoCopy: true},
-	}
-	out := app.blendRow(under, line, 1, 80, 0.5)
-	var text []string
-	for _, s := range out {
-		if strings.TrimSpace(s.Text) == "" {
-			continue
-		}
-		text = append(text, s.Text)
-		if s.Fade != 0.5 || s.Sink == nil {
-			t.Fatalf("cell %q: fade %.2f, sink %v; want every blended cell sunk toward the surface beneath", s.Text, s.Fade, s.Sink)
-		}
-	}
-	// the rule's glyphs sink toward the band they cover, the box's text takes
-	// the band as its sink, and the band's own text stands under the box's
-	// blanks, sunk toward the panel
-	if !slices.Equal(text, []string{"┌", "─", "x", "c", "─", "┐"}) {
-		t.Fatalf("blended cells: %q", text)
-	}
-}
-
-// TestToastWakesTheTick: a toast's rise draws frame by frame only if the
-// tick wakes — frameDirty alone never fires one, and the box would pop.
+// TestToastWakesTheTick: a pushed toast wakes the frame tick, so its box
+// draws without waiting for a keystroke.
 func TestToastWakesTheTick(t *testing.T) {
 	t.Parallel()
 	app, _ := notifyApp(t)
@@ -535,7 +500,7 @@ func TestToastWakesTheTick(t *testing.T) {
 	select {
 	case <-app.wake:
 	default:
-		t.Fatal("a pushed toast left the frame tick asleep; its rise would pop")
+		t.Fatal("a pushed toast left the frame tick asleep; its box would pop")
 	}
 }
 

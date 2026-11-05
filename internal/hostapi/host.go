@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"image/color"
 	"io"
 	"log/slog"
 	"maps"
@@ -1583,10 +1582,6 @@ type Segment struct {
 	// sits on: a scrolled view's rows at an edge content lies past, or a
 	// widget's own clipped block, which sets it on the segments it cuts
 	Fade float64
-	// Sink is Go only: the surface color a Fade sinks toward when neither the
-	// canvas nor the panel is the surface under the segment — a fading toast's
-	// box sinks into the rows it covers, one cell's surface at a time
-	Sink color.Color
 }
 
 // Pin is a row's part in a scrolled region's pinned header stack.
