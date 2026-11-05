@@ -34,9 +34,6 @@ func dbCommand(o *options) *cobra.Command {
 		Long:  "run one read-only query against zemi's store; the args after it bind to ?1, ?2, ...; --global for the global store",
 		Args:  minArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			if err := checkModelFlag(o.model); err != nil {
-				return err
-			}
 			dirs := o.dirs
 			path := store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot())
 			if *global {

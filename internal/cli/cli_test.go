@@ -99,13 +99,6 @@ func TestCLI(t *testing.T) {
 		{name: "trust false", args: []string{"--trust=false"}, want: &options{trust: new(false)}},
 		{name: "version", args: []string{"--version"}, stdout: "zemi "},
 		{name: "health takes no args", args: []string{"health", "x"}, code: 2, stderr: "Run 'zemi health --help'"},
-		{name: "a parent takes no args", args: []string{"models", "are", "slow"}, code: 2, stderr: `unknown command "are" for "zemi models"`},
-		{name: "models lists what init.lua adds", args: []string{"models"}, stdout: "gw/m1\n"},
-		{name: "-m parses before a subcommand", args: []string{"-m", "gw/m1", "models"}, stdout: "gw/m1\n"},
-		{name: "-m without a slash refuses db", args: []string{"-m", "nope", "db", "select 1"}, code: 1, stderr: `zemi: db: -m "nope" is not a provider/model id`},
-		{name: "-m with an empty half refuses models", args: []string{"-m", "nope/", "models"}, code: 1, stderr: `zemi: models: -m "nope/" is not a provider/model id`},
-		{name: "-m a well-formed unknown provider stays db's no-op", args: []string{"-m", "nope/x", "db", "select 1"}, stdout: "1"},
-		{name: "complete a model", args: []string{"__complete", "-m", ""}, stdout: "gw/m1\n"},
 		{name: "a failure is 1", args: []string{"db", "select * from nope"}, code: 1, stderr: `zemi: db: SQL logic error: no such table: nope`},
 		// the TUI's chat opens on the log's tail; the CLI keeps no session surface
 		{name: "projects lists", args: []string{"projects"}, stdout: "  undecided     1  " + dirs.TrustRoot() + "\n"},
@@ -331,7 +324,7 @@ func newTrustGate(t *testing.T) (*trustGate, *hostapi.Host, *lua.Runtime) {
 	return &trustGate{h: h, dirs: dirs}, h, r
 }
 
-// TestTrustGateInertWritesNothing: zemi models, zemi health and a completion
+// TestTrustGateInertWritesNothing: zemi health and a completion
 // boot the project trust step too, and an inert boot may not leave a
 // .agents/worktrees/.gitignore in the user's repository.
 func TestTrustGateInertWritesNothing(t *testing.T) {
@@ -413,13 +406,6 @@ func TestHeadlessNotices(t *testing.T) {
 		name, want string
 		do         func() error
 	}{
-		{"-m unlisted", "zemi: Model not listed: a/unlisted: not in the provider's models list; the provider decides whether it exists\n", func() error { return applyOptions(h, options{model: "a/unlisted"}) }},
-		{"-m a target name", "", func() error {
-			if err := applyOptions(h, options{model: "compact"}); err == nil || !strings.Contains(err.Error(), `provider "compact" is not registered`) {
-				return fmt.Errorf("got %w", err)
-			}
-			return nil
-		}},
 		{"info", "", func() error { h.Notify(slog.LevelInfo, "Copied", "3 chars"); return nil }},
 		{"untitled error", "zemi: Error: first\n  second\n", func() error { h.Notify(slog.LevelError, "", "first\nsecond"); return nil }},
 		{"zemi.notify.warn", "zemi: Warning: w\n", func() error {
@@ -437,38 +423,6 @@ func TestHeadlessNotices(t *testing.T) {
 		if err := c.do(); err != nil || out.String() != c.want {
 			t.Errorf("%s: err %v, stderr %q", c.name, err, out.String())
 		}
-	}
-}
-
-// TestModelFlag: -m writes the conversation's slot, models.default, and
-// leaves the other slots alone.
-func TestModelFlag(t *testing.T) {
-	_, h, r := newTrustGate(t)
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
-		t.Fatal(err)
-	}
-	provider := `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "main" }, { id = "cheap" } } })`
-	if err := r.ExecuteChunk(t.Context(), provider, "init.lua", lua.OriginUser); err != nil {
-		t.Fatal(err)
-	}
-	if err := applyOptions(h, options{model: "a/main"}); err != nil {
-		t.Fatal(err)
-	}
-	if got := h.Settings.Str("models.default"); got != "a/main" {
-		t.Fatalf("models.default = %q, want the flag's model", got)
-	}
-	// a bare /model <id> follows the slot the same way
-	if err := h.SetModel("a/cheap"); err != nil {
-		t.Fatal(err)
-	}
-	if got := h.Settings.Str("models.default"); got != "a/cheap" {
-		t.Fatalf("models.default = %q, want the bare pick", got)
-	}
-	if err := h.SetModel("compact a/main"); err != nil {
-		t.Fatal(err)
-	}
-	if got, def := h.Settings.Str("models.compact"), h.Settings.Str("models.default"); got != "a/main" || def != "a/cheap" {
-		t.Fatalf("a named slot wrote another: compact %q, default %q", got, def)
 	}
 }
 
@@ -654,26 +608,6 @@ func TestProjectsAllUnreadable(t *testing.T) {
 	}
 	if code != 0 {
 		t.Errorf("code = %d, want 0; stdout %q", code, out.String())
-	}
-}
-
-// TestModelsOverBrokenInit: an init.lua that fails after adding providers
-// still boots soft, but the list it prints is incomplete, so the run is a
-// failure, the way health reads the same state.
-func TestModelsOverBrokenInit(t *testing.T) {
-	home := t.TempDir()
-	for _, env := range []string{"CONFIG", "DATA", "STATE", "CACHE"} {
-		t.Setenv("ZEMI_"+env+"_HOME", filepath.Join(home, strings.ToLower(env)))
-	}
-	base := t.TempDir()
-	t.Chdir(base)
-	t.Setenv("PWD", base)
-	writeFile(t, filepath.Join(home, "config", "init.lua"), `zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "http://x", models = { { id = "m1" } } })
-error("boom after the providers")`)
-	var out, errOut strings.Builder
-	code := execute([]string{"models"}, &out, &errOut, func(options) int { return 0 })
-	if code != 1 || !strings.Contains(out.String(), "gw/m1") {
-		t.Errorf("code = %d, stdout %q, stderr %q; want 1 with the model list on stdout", code, out.String(), errOut.String())
 	}
 }
 

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -116,37 +115,6 @@ func TestConfigFingerprint(t *testing.T) {
 		if got := fingerprint() != base; got != c.noticed {
 			t.Errorf("edit to %s noticed = %v, want %v", c.edit, got, c.noticed)
 		}
-	}
-}
-
-// TestHeadlessModelFlag: a headless boot (zemi health's) applies the run's
-// -m, so health checks the model the flag named; an id no provider names
-// fails the run.
-func TestHeadlessModelFlag(t *testing.T) {
-	home := t.TempDir()
-	for _, env := range []string{"CONFIG", "DATA", "STATE", "CACHE"} {
-		t.Setenv("ZEMI_"+env+"_HOME", filepath.Join(home, strings.ToLower(env)))
-	}
-	base := t.TempDir()
-	t.Chdir(base)
-	t.Setenv("PWD", base)
-	writeFile(t, filepath.Join(home, "config", "init.lua"), `zemi.provider.add({ id = "gw", kind = "openai_compat", base_url = "http://x", models = { { id = "m1" } } })`)
-	dirs, err := config.ResolveDirs()
-	if err != nil {
-		t.Fatal(err)
-	}
-	h, done, err := bootHeadless(options{model: "gw/m1", dirs: dirs}, false, io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := h.Settings.Str("models.default"); got != "gw/m1" {
-		t.Fatalf("models.default = %q, want the flag's model", got)
-	}
-	done()
-	// an id no provider names fails the run; an unlisted one only warns
-	// (TestHeadlessNotices)
-	if _, _, err := bootHeadless(options{model: "compact", dirs: dirs}, false, io.Discard); err == nil {
-		t.Fatal("a headless boot took a model no provider names")
 	}
 }
 

@@ -124,13 +124,8 @@ func launch(o options) int {
 				}
 			}
 		})
-		// A bad flag is a toast, not a boot failure: the TUI is still usable.
-		if err := applyOptions(host, o); err != nil {
-			host.RecordError("flag", "", err.Error())
-			app.Notify(slog.LevelError, "Could not apply a flag", err.Error())
-		}
 		host.KeepPicks.Store(true)
-		// here, not in app.ready: once per process, after -m, never on a reload
+		// here, not in app.ready: once per process, never on a reload
 		host.OfferModel()
 	}()
 
@@ -255,7 +250,7 @@ func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App) []lua.BootStep {
 
 // bootHost is the prologue a TUI boot and a headless one (zemi health, a
 // completion) share: this run's dirs, the log, the host and the trust gate
-// its steps read. An inert boot (zemi models, a completion) only reads
+// its steps read. An inert boot (a completion) only reads
 // config: no store, no log file, no process. closeLog releases the log, the
 // one-instance lock and, for an inert boot, the process refusal.
 func bootHost(o options, inert bool) (*hostapi.Host, *trustGate, *slog.Logger, func(), error) {
@@ -327,7 +322,7 @@ func lockInstance(dirs config.Dirs) (func(), error) {
 	return unlock, nil
 }
 
-// bootHeadless boots zemi with no TUI, for zemi health, zemi models and the
+// bootHeadless boots zemi with no TUI, for zemi health and the
 // flag completions; done stops what boot started (MCP and language servers)
 // and closes the log. stderr gets its diagnostics. A non-inert boot applies
 // the run's flags; an id no provider names fails the run, where the TUI
@@ -356,12 +351,6 @@ func bootHeadless(o options, inert bool, stderr io.Writer) (*hostapi.Host, func(
 		return nil, nil, err
 	}
 	markConfig()
-	if !inert {
-		if err := applyOptions(h, o); err != nil {
-			done()
-			return nil, nil, err
-		}
-	}
 	return h, done, nil
 }
 
@@ -663,7 +652,7 @@ func (tg *trustGate) step() lua.BootStep {
 			trusted, err := tg.decide()
 			tg.h.SetProjectTrusted(trusted)
 			// .agents/worktrees/.gitignore, so git status never lists the
-			// checkouts. An inert boot (zemi models, completion) writes nothing.
+			// checkouts. An inert boot (a completion) writes nothing.
 			if trusted && !tg.h.Inert {
 				if _, werr := tg.dirs.WorktreesIgnore(); werr != nil {
 					tg.h.Log.Warn("cannot write .agents/worktrees/.gitignore", "origin", "trust", "error", werr)

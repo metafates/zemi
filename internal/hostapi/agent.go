@@ -2492,7 +2492,7 @@ func (h *Host) SetModel(args string) error {
 	picker := func(role string) error {
 		err := h.OpenModelPicker(role)
 		if errors.Is(err, ErrNeedsTUI) {
-			err = fmt.Errorf("%w; zemi models lists the ids, /model [<role>] <id> sets one", err)
+			err = fmt.Errorf("%w; /model [<role>] <id> sets one", err)
 		}
 		return err
 	}
@@ -2542,7 +2542,7 @@ func (h *Host) SetTargetModel(role, id string) error {
 // another zemi may have saved the file this one never ran.
 func (h *Host) updateCatalog() error {
 	if _, err := h.Screen(); err != nil {
-		return fmt.Errorf("%w; zemi models update fetches the catalog", err)
+		return fmt.Errorf("%w; /model update fetches the catalog", err)
 	}
 	kept := "bundled"
 	if !h.Builtin.Load().Info.Fetched.IsZero() {

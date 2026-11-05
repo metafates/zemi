@@ -28,7 +28,6 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/mod/module"
 
-	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/perm"
@@ -57,7 +56,6 @@ Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
 var _version string
 
 type options struct {
-	model string
 	dir   string // -C
 	trust *bool  // --trust for this run; nil when not given
 	// dirs are this run's, resolved once by the root's hook after -C; a
@@ -196,9 +194,6 @@ With no command zemi opens the TUI.`,
 	root.PersistentFlags().StringVarP(&o.dir, "cd", "C", "", "run in `dir`, as if zemi started there")
 	root.PersistentFlags().Bool("trust", false, "trust the project for this run; --trust=false does not")
 	_ = root.MarkPersistentFlagDirname("cd")
-	// -m is persistent, so a subcommand parses it (zemi -m <id> health)
-	root.PersistentFlags().StringVarP(&o.model, "model", "m", "", "model for the conversation, by provider/model `id`")
-	_ = root.RegisterFlagCompletionFunc("model", completeBooted((*hostapi.Host).ModelIDs))
 
 	var healthJSON *bool
 	health := &cobra.Command{
@@ -216,26 +211,8 @@ With no command zemi opens the TUI.`,
 	}
 	healthJSON = jsonFlag(health)
 
-	root.AddCommand(projectsCommand(o), pluginCommand(o), modelsCommand(o), dbCommand(o), health)
+	root.AddCommand(projectsCommand(o), pluginCommand(o), dbCommand(o), health)
 	return root
-}
-
-// completeBooted offers what only config knows (models, modes),
-// read by an inert boot. The dirs are resolved here: cobra runs no hook
-// before a completion.
-func completeBooted(names func(*hostapi.Host) []string) cobra.CompletionFunc {
-	return func(c *cobra.Command, _ []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
-		dirs, err := completionDirs(c)
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		h, done, err := bootHeadless(options{dirs: dirs}, true, os.Stderr)
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		defer done()
-		return names(h), cobra.ShellCompDirectiveNoFileComp
-	}
 }
 
 // completionDirs are the dirs a completion reads, after -C: cobra runs no
@@ -547,59 +524,6 @@ func projectsCommand(o *options) *cobra.Command {
 		},
 	}
 	asJSON = jsonFlag(cmd)
-	return cmd
-}
-
-func modelsCommand(o *options) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "models",
-		Short: "list the models -m takes",
-		Args:  cobra.NoArgs,
-		RunE: func(c *cobra.Command, _ []string) error {
-			if err := checkModelFlag(o.model); err != nil {
-				return err
-			}
-			h, done, err := bootHeadless(*o, true, os.Stderr)
-			if err != nil {
-				return err
-			}
-			defer done()
-			ids := h.ModelIDs()
-			if len(ids) == 0 {
-				fmt.Fprintln(c.ErrOrStderr(), "zemi: no model yet;", h.NoModelHint())
-				return exitError(1)
-			}
-			fmt.Fprintln(c.OutOrStdout(), strings.Join(ids, "\n"))
-			// a broken init.lua boots soft, so the list is incomplete; health
-			// exits 1 on the same state
-			if h.InitError() != "" {
-				return status(1)
-			}
-			return nil
-		},
-	}
-	// the catalog picks where each key is sent, so it lives in <data>; nothing boots
-	cmd.AddCommand(&cobra.Command{
-		Use:   "update",
-		Short: "fetch the latest model catalog",
-		Args:  cobra.NoArgs,
-		RunE: func(c *cobra.Command, _ []string) error {
-			ctx, stop := signalContext()
-			defer stop()
-			cat, changed, err := agent.UpdateCatalog(ctx, agent.CatalogURL, o.dirs.DataHome, os.Getenv)
-			switch {
-			case ctx.Err() != nil:
-				return exitError(130)
-			case err != nil:
-				return err
-			case changed:
-				fmt.Fprintln(c.OutOrStdout(), "Model catalog updated:", cat.Info.Summary())
-			default:
-				fmt.Fprintln(c.OutOrStdout(), "Model catalog is up to date")
-			}
-			return nil
-		},
-	})
 	return cmd
 }
 
@@ -925,31 +849,6 @@ func headlessTrust() func(root, cwd, state string) string {
 	return func(root, _, _ string) string {
 		return "later"
 	}
-}
-
-// applyOptions applies the flags after boot, so they win over init.lua.
-func applyOptions(h *hostapi.Host, o options) error {
-	if o.model != "" {
-		if err := h.SetTargetModel("default", o.model); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// checkModelFlag validates -m's syntax for the commands that never boot a
-// host (db, models), where applyOptions has nothing to check a catalog
-// against: the id carries a slash with both halves named, as ModelID.Split
-// reads it everywhere. A well-formed unknown provider stays their no-op.
-func checkModelFlag(id string) error {
-	if id == "" {
-		return nil
-	}
-	prov, model, ok := agent.ModelID(id).Split()
-	if !ok || prov == "" || model == "" {
-		return fmt.Errorf("-m %q is not a provider/model id", id)
-	}
-	return nil
 }
 
 // printHealth writes the /health checks for a headless run; any failed
