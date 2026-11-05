@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
@@ -309,6 +310,17 @@ func TestRailRise(t *testing.T) {
 	if got[-1] < 0.5 {
 		t.Fatalf("a fresh call's row is not sunk: fade %v", got[-1])
 	}
+	// the border stands from the first frame: only the row's inside fades
+	for _, row := range linesOf(t, app, -1) {
+		if row[0].HL == "ThinkingBar" {
+			if row[0].Fade != 0 {
+				t.Fatalf("the rail's bar faded: %v", row[0])
+			}
+			if len(row) > 1 && row[1].Fade == 0 {
+				t.Fatalf("the action inside did not fade: %v", row)
+			}
+		}
+	}
 	// the ramp passes: the call rides it risen
 	at = at.Add(2 * _riseDuration)
 	if got = fades(); got[-1] != 0 {
@@ -322,4 +334,33 @@ func TestRailRise(t *testing.T) {
 	if got = fades(); got[-2] < 0.5 || got[-1] != 0 {
 		t.Fatalf("the second call did not rise alone: %v", got)
 	}
+	// a rail longer than it keeps folds its head away: once the kept calls
+	// have risen, a new one still sinks though it adds no height
+	tools = tools[:1]
+	for i := 2; i <= _railKeep+2; i++ {
+		tools = append(tools, hostapi.StreamTool{ID: fmt.Sprintf("t%d", i), Name: "shell", Label: "call", Status: hostapi.CallOK})
+	}
+	fades()
+	at = at.Add(2 * _riseDuration)
+	if got = fades(); got[-6] != 0 {
+		t.Fatalf("the kept calls stayed sunk after their ramp: %v", got)
+	}
+	tools = append(tools, hostapi.StreamTool{ID: "t-new", Name: "shell", Label: "next", Status: hostapi.CallRun})
+	if got = fades(); got[-len(tools)] < 0.5 || got[-6] != 0 {
+		t.Fatalf("a call the folded rail scrolled in did not sink alone: %v", got)
+	}
+}
+
+// linesOf renders the chat and returns the rows a live call draws.
+func linesOf(t testing.TB, app *App, call int) [][]hostapi.Segment {
+	t.Helper()
+	st := app.uiState()
+	lines, _ := renderChat(t, app, 98, 20, st)
+	var out [][]hostapi.Segment
+	for _, row := range lines {
+		if rowCall(row) == call {
+			out = append(out, row)
+		}
+	}
+	return out
 }

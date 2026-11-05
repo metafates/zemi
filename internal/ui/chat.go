@@ -201,9 +201,18 @@ func (f *chatFolds) fadeRail(rows [][]hostapi.Segment, calls []entry) {
 			f.railFades[id] = fade
 		}
 		if alpha := fade.Alpha(now); alpha < 1 {
-			rows[k] = faded(rows[k], 1-alpha)
+			rows[k] = fadedRail(rows[k], 1-alpha)
 		}
 	}
+}
+
+// fadedRail fades a rail row's inside but not its border: the bar at column 0
+// stands from the first frame, only what the rail carries rises.
+func fadedRail(row []hostapi.Segment, t float64) []hostapi.Segment {
+	if len(row) > 0 && row[0].HL == "ThinkingBar" {
+		return append([]hostapi.Segment{row[0]}, faded(row[1:], t)...)
+	}
+	return faded(row, t)
 }
 
 // settling says whether the next flush settles a call beside the thought: the
