@@ -418,9 +418,14 @@ func TestResetSinksTheChatIntoTheSplash(t *testing.T) {
 		app.onWidgetRendered(widgetRender{id: id, lines: lines, more: more, gen: 1, seq: 1, width: 98, height: 20})
 		return app.caches[id].lines
 	}
-	// the chat's rows appear whole: only the reset's sink moves them as one
+	// the boot's paint rises like the scrollbar's: sunk through the delay,
+	// settled after it
+	if lines := draw("chat", st(1, 1)); len(lines) == 0 || maxFade(lines) != 1 {
+		t.Fatalf("the boot's chat did not draw sunk: fade %v", maxFade(lines))
+	}
+	at = at.Add(_barDelay + _riseDuration)
 	if lines := draw("chat", st(1, 1)); len(lines) == 0 || maxFade(lines) != 0 {
-		t.Fatalf("the chat's first rows did not draw clean: fade %v", maxFade(lines))
+		t.Fatalf("the boot's chat never settled: fade %v", maxFade(lines))
 	}
 	// the first message took the region: the knot vanishes whole
 	if rows := draw("splash", st(1, 1)); rows != nil {
@@ -496,6 +501,42 @@ func TestFirstMessageSinksTheKnot(t *testing.T) {
 	// the knot rode out: the chat takes the region whole
 	if lines := draw("chat", st(1)); len(lines) == 0 || maxFade(lines) != 0 {
 		t.Fatalf("the chat's first rows did not draw clean: fade %v", maxFade(lines))
+	}
+}
+
+// TestChatBootRise: a chat that boots with rows rises like the scrollbar's
+// first paint — sunk through the delay, settled after it — keeping the tick
+// awake while it rides.
+func TestChatBootRise(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 100, 30)
+	at := time.UnixMilli(1000)
+	app.now = func() time.Time { return at }
+
+	st := &hostapi.ScreenState{Width: 98, Height: 20, TranscriptCount: 1, TranscriptEpoch: 1}
+	st.Transcript = []hostapi.ChatMessage{{Role: "user", Text: "hello"}}
+	draw := func() [][]hostapi.Segment {
+		lines, more := app.widgetByID("chat").render(st)
+		app.onWidgetRendered(widgetRender{id: "chat", lines: lines, more: more, gen: 1, seq: 1, width: 98, height: 20})
+		return app.caches["chat"].lines
+	}
+	if lines := draw(); len(lines) == 0 || maxFade(lines) != 1 {
+		t.Fatalf("the boot's chat did not draw sunk: fade %v", maxFade(lines))
+	}
+	if !app.fadesRising() || app.tickInterval() != _riseTick {
+		t.Fatal("the chat's boot rise did not keep the tick awake")
+	}
+	at = at.Add(_barDelay / 2)
+	if lines := draw(); len(lines) == 0 || maxFade(lines) != 1 {
+		t.Fatalf("the chat's delay did not hold it sunk: fade %v", maxFade(lines))
+	}
+	at = at.Add(_barDelay/2 + _riseDuration/2)
+	if lines := draw(); len(lines) == 0 || maxFade(lines) < 0.4 || maxFade(lines) > 0.6 {
+		t.Fatalf("the chat's rise did not ride mid-ramp: fade %v", maxFade(lines))
+	}
+	at = at.Add(_riseDuration)
+	if lines := draw(); len(lines) == 0 || maxFade(lines) != 0 {
+		t.Fatalf("the boot's chat never settled: fade %v", maxFade(lines))
 	}
 }
 

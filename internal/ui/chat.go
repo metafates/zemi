@@ -885,9 +885,10 @@ func chatWidget(h *hostapi.Host) *widget {
 	return &widget{
 		id: "chat", region: _regionChat, priority: 10, wrap: true,
 		eases: true, solo: true,
-		render:  func(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) { return f.render(h, st) },
-		onClick: f.click,
-		chat:    f,
+		bootRise: _barDelay,
+		render:   func(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) { return f.render(h, st) },
+		onClick:  f.click,
+		chat:     f,
 	}
 }
 

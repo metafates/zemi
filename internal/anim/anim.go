@@ -11,6 +11,8 @@
 //	c := anim.NewCurtain(160 * time.Millisecond)
 //	out, _ := c.Draw(rows, now) // out is what the screen shows
 //
+// A curtain whose first paint must wait out a delay (the chat view's boot,
+// the scrollbar's) stamps it with Boot instead of drawing into a JumpIn.
 // An element that appears and may go away within one widget's rows (a rail
 // call, a readout) rides a Rise keyed by what names it: report the keys the
 // frame drew with Present, fade the rows by Alpha while it is under 1, then
@@ -141,10 +143,25 @@ type Curtain struct {
 	fade    Fade
 	rows    [][]hostapi.Segment // the rows a sink keeps drawing
 	sinking bool
+	drawn   bool // the curtain ever drew rows: it has owned its seat
 }
 
 // NewCurtain is a Curtain easing over dur.
 func NewCurtain(dur time.Duration) *Curtain { return &Curtain{Dur: dur, fade: Fade{Dur: dur}} }
+
+// Owned reports a curtain that ever drew rows: the seat it took.
+func (c *Curtain) Owned() bool { return c.drawn }
+
+// Boot stamps the curtain's first appear to wait delay and rise, where its
+// JumpIn would take the rows whole: the chat view rises on boot like the
+// scrollbar's first paint. A seat taken back from a sibling draws whole.
+func (c *Curtain) Boot(delay time.Duration, now time.Time) {
+	if c.drawn {
+		return
+	}
+	c.fade.Delay = delay
+	c.fade.Set(true, now)
+}
 
 // Draw settles a frame's rows through the curtain at now: the widget's rows
 // while they ride full alpha, the kept rows while they sink, nil once the
@@ -152,7 +169,7 @@ func NewCurtain(dur time.Duration) *Curtain { return &Curtain{Dur: dur, fade: Fa
 // sink covered behind it draws from the next frame on.
 func (c *Curtain) Draw(rows [][]hostapi.Segment, now time.Time) (out [][]hostapi.Segment, settled bool) {
 	if len(rows) > 0 {
-		c.sinking = false
+		c.sinking, c.drawn = false, true
 		if !c.fade.Shown() {
 			if c.JumpIn {
 				c.fade.Jump(true)
