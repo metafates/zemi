@@ -206,7 +206,7 @@ func TestFrameCache(t *testing.T) {
 		t.Fatalf("the draft did not repaint:\n%s", frame)
 	}
 
-	app.onWidgetRendered(widgetRender{id: "chat", lines: [][]hostapi.Segment{{{Text: "fresh lines"}}}, width: 78, height: 12, gen: app.frameGen})
+	app.onWidgetRendered(widgetRender{id: "statusline.model", lines: [][]hostapi.Segment{{{Text: "fresh lines"}}}, width: 78, height: 12, gen: app.frameGen})
 	if frame := ansi.Strip(app.View().Content); !strings.Contains(frame, "fresh lines") {
 		t.Fatalf("a widget's lines did not repaint:\n%s", frame)
 	}
@@ -216,13 +216,15 @@ func TestFrameCache(t *testing.T) {
 		t.Fatalf("a toast did not show:\n%s", frame)
 	}
 	app.pruneToasts(time.Now().Add(time.Hour))
+	app.View()        // the leave starts its sink
+	app.settleRamps() // land it, a real clock would ride the 160ms
 	if frame := ansi.Strip(app.View().Content); strings.Contains(frame, "saved") {
 		t.Fatalf("an expired toast stayed:\n%s", frame)
 	}
 
 	// a frame that drew something moving by itself is never clean: its
 	// shimmer steps with the frame clock though nothing else changed
-	app.onWidgetRendered(widgetRender{id: "chat", lines: [][]hostapi.Segment{{{Text: "breathing", HL: "Dim", Effect: hostapi.EffectShimmer}}}, width: 78, height: 12, gen: app.frameGen})
+	app.onWidgetRendered(widgetRender{id: "statusline.model", lines: [][]hostapi.Segment{{{Text: "breathing", HL: "Dim", Effect: hostapi.EffectShimmer}}}, width: 78, height: 12, gen: app.frameGen})
 	app.View()
 	app.now = func() time.Time { return time.UnixMilli(50) }
 	slow := app.View().Content
@@ -474,7 +476,7 @@ func TestFirstMessageSinksTheKnot(t *testing.T) {
 	if rows := draw("splash", st(0)); len(rows) == 0 {
 		t.Fatal("the knot did not draw")
 	}
-	app.settleSplash()
+	app.settleRamps()
 
 	// the first message: the splash renders none, its curtain sinks the knot,
 	// and the chat waits while the kept rows still draw

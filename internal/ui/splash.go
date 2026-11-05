@@ -15,6 +15,8 @@ func splashWidget() *widget {
 		id:       "splash",
 		region:   _regionChat,
 		priority: 5,
+		eases:    true,
+		solo:     true,
 		onClick:  nil, // the app runs it, since it edits the composer and runs commands
 		render: func(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 			if !emptyChat(st) {

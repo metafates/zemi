@@ -125,7 +125,7 @@ func bootAgentAppIn(t testing.TB, w, h int, clock lua.Clock, cfg, project string
 	app.now = func() time.Time { return time.UnixMilli(500) }
 	// a test's clock is pinned, so a pill fade would freeze mid-ramp: the
 	// boot's frames are settled ones, statusline pills start settled shown
-	app.settlePills()
+	app.settleRamps()
 	// the rail's rise reads its own clock; none is pinned here
 	app.chatFolds().now = nil
 	return app, host

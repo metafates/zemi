@@ -90,12 +90,12 @@ end, { desc = "notify on rebound ctrl+t" })
 // goroutine (the frame loop is not running in tests) and fills the caches.
 func (a *App) renderSync(tb testing.TB) {
 	// the frame draws settled: a pinned clock would freeze a pill's fade
-	a.settlePills()
+	a.settleRamps()
 	gen := a.frameGen
 	a.renderShown(tb, gen)
 	// a pinned clock freezes a bar's or the splash's boot rise mid-ramp:
 	// settle what the first paint set rising, then redraw
-	if a.settleBars() || a.settleSplash() {
+	if a.settleBars() || a.settleRamps() {
 		a.renderShown(tb, gen)
 	}
 }

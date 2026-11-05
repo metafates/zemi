@@ -110,6 +110,8 @@ func TestGoldenWorkflows(t *testing.T) {
 	pressKeys(app, "p")
 	waitPrompt(t, app, func() bool { return strings.Contains(frame(), "paused") })
 	app.toasts = nil // the pause's toast sits above the view
+	app.View()       // its leave starts the sink
+	app.settleRamps()
 	paused := frame()
 	t.Run("paused", func(t *testing.T) { golden.RequireEqual(t, paused) })
 

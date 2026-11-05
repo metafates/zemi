@@ -20,6 +20,13 @@ type widget struct {
 	render   func(*hostapi.ScreenState) ([][]hostapi.Segment, bool)
 	onClick  func(a *App, ev map[string]any) bool
 	chat     *chatFolds // the chat widget's fold state, its rises included
+	// eases routes the widget's lines through a curtain: appearing rises out
+	// of the surface, leaving sinks on the rows it kept
+	eases bool
+	// solo marks widgets that share their region's seat (the chat and the
+	// splash): one yields while another still draws, so the region hands
+	// over through the outgoing one's sink
+	solo bool
 }
 
 // widgetByID is the shipped widget with that id, nil for none.

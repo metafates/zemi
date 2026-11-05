@@ -296,7 +296,9 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 	splash := anim.NewCurtain(_riseDuration)
 	chat := anim.NewCurtain(_riseDuration)
 	chat.JumpIn = true
-	a.rises["splash"], a.rises["chat"] = splash, chat
+	toasts := anim.NewCurtain(_riseDuration)
+	toasts.JumpIn = true // a toast's news is instant; only its leave eases
+	a.rises["splash"], a.rises["chat"], a.rises["toasts"] = splash, chat, toasts
 	return a
 }
 
@@ -1022,43 +1024,37 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 	a.frameDirty = true // the new lines join the next View though the generation stood still
 }
 
-// widgetFaded is a widget's lines settled through its fade: a statusline
-// pill's come and go, the splash knot's rises, and the chat a reset sinks
-// before the splash takes the region back.
+// widgetFaded is a widget's lines settled through its fade: an eases widget's
+// come and go rides its curtain, and a solo one yields while the one it
+// shares its region's seat with still draws, so the region hands over through
+// the outgoing widget's sink.
 func (a *App) widgetFaded(msg widgetRender) [][]hostapi.Segment {
 	w := a.widgetByID(msg.id)
-	if w == nil {
+	if w == nil || !w.eases {
 		return msg.lines
 	}
-	if w.id == "chat" {
-		// the chat waits out the knot's leave on the first message, as the
-		// splash waits out the reset's sink
-		if c := a.rises["splash"]; c != nil && c.Sinking() {
-			return nil
-		}
-		return a.ride(msg.id, msg.lines)
-	}
-	if w.id == "splash" {
-		// the knot waits out the chat's reset sink: while the chat's kept
-		// rows still draw, the region is not empty yet. On the first message
-		// the knot has no rows of its own: riding nil sinks the rows it kept.
-		if c := a.caches["chat"]; c != nil && len(c.lines) > 0 && len(msg.lines) > 0 {
-			return nil
-		}
-		return a.ride("splash", msg.lines)
-	}
-	if w.region != _regionStatusLeft && w.region != _regionStatusRight {
-		return msg.lines
-	}
-	if w.id == "statusline.hints" {
-		// the hints take the row's outer seat: while another pill's sink
-		// still draws its rows (the ctx pill a reset sinks), they wait, so
-		// they appear once, where they stay
-		for _, wg := range a.widgets {
-			if wg.region != _regionStatusRight || wg.id == w.id {
+	if w.solo {
+		// while another owner of the seat still draws — its curtain sinking,
+		// its last lines cached — my rows would sit on its kept ones
+		for _, sib := range a.widgets {
+			if sib == w || !sib.solo || sib.region != w.region {
 				continue
 			}
-			if c := a.rises[wg.id]; c != nil && c.Sinking() {
+			if c := a.rises[sib.id]; c != nil && c.Sinking() {
+				return nil
+			}
+			if c := a.caches[sib.id]; c != nil && len(c.lines) > 0 && len(msg.lines) > 0 {
+				return nil
+			}
+		}
+	} else if c := a.rises[w.id]; c == nil || !c.Shown() {
+		// one appearing waits out a neighbor's sink, so it shows up once,
+		// where it stays
+		for _, sib := range a.widgets {
+			if sib == w || sib.region != w.region || !sib.eases {
+				continue
+			}
+			if c := a.rises[sib.id]; c != nil && c.Sinking() {
 				return nil
 			}
 		}
@@ -1106,9 +1102,19 @@ func (a *App) fadesRising() bool {
 	return false
 }
 
-// settlePills marks every statusline pill settled shown: a test's pinned
-// clock would freeze a pill's first fade mid-ramp.
-func (a *App) settlePills() {
+// settleRamps marks every statusline pill settled shown and settles the
+// splash's and the toasts' ramps: a test's pinned clock would freeze them
+// mid-ride. Reports whether it settled one.
+func (a *App) settleRamps() bool {
+	done := false
+	for _, id := range []string{"splash", "toasts"} {
+		if c := a.rises[id]; c != nil && c.Settle(a.now()) {
+			done = true
+		}
+	}
+	if done {
+		a.frameDirty = true // the settled ramp changes what the next frame draws
+	}
 	for _, w := range a.widgets {
 		if w.region == _regionStatusLeft || w.region == _regionStatusRight {
 			if a.rises[w.id] == nil {
@@ -1118,6 +1124,7 @@ func (a *App) settlePills() {
 			}
 		}
 	}
+	return done
 }
 
 // settleBars marks every boot-stamped scrollbar settled: a test's pinned
@@ -1132,12 +1139,6 @@ func (a *App) settleBars() bool {
 		}
 	}
 	return done
-}
-
-// settleSplash marks the splash's rise settled: a test's pinned clock would
-// freeze the knot mid-ramp. Reports whether it settled one.
-func (a *App) settleSplash() bool {
-	return a.rises["splash"].Settle(a.now())
 }
 
 // widgetRegion is the region a widget draws in.
@@ -1371,7 +1372,7 @@ func (a *App) compose(w, h int) string {
 	// over it, the rest in the margin, and stays inside the screen. A toast
 	// covers its own cells, so no box border takes a gap where one stands on it.
 	toasts := func() {
-		tray := toastTray(a.toasts, stage.Dx(), stage.Dy())
+		tray := a.ride("toasts", toastTray(a.toasts, stage.Dx(), stage.Dy()))
 		if len(tray) == 0 {
 			return
 		}

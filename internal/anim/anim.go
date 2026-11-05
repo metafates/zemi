@@ -187,6 +187,9 @@ func (c *Curtain) Rising(now time.Time) bool {
 // Sinking reports a sink still drawing the rows it kept.
 func (c *Curtain) Sinking() bool { return c.sinking }
 
+// Shown reports the curtain's target.
+func (c *Curtain) Shown() bool { return c.fade.Shown() }
+
 // Jump takes the curtain to its target with no ramp.
 func (c *Curtain) Jump(shown bool) { c.fade.Jump(shown) }
 
