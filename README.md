@@ -43,7 +43,8 @@ zemi
 Or let another agent set it up for you:
 
 ```markdown
-Install zemi with `go install github.com/metafates/zemi@latest`, ask which model provider I use and put its API key in my shell config, then print the one command I should run.
+Install zemi with `go install github.com/metafates/zemi@latest`.
+Then, follow `zemi docs setup` output - it guides you how to setup zemi.
 ```
 
 ## Features
