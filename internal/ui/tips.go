@@ -17,10 +17,10 @@ type tip struct{ key, text string }
 
 // The discovery tips: one is zemi's parting line, drawn at random on each exit.
 var _tips = []tip{
-	{"/btw ", "asks a side question the conversation does not keep"},
-	{"@", "attaches files, dirs and skills to the prompt"},
+	{"/btw ", "asks a side question without interrupting main agent"},
+	{"@", "attaches files, dirs, skills, workflows and more to the prompt"},
 	{"/goal ", "keeps working until a condition holds"},
-	{"alt+o", "browses the chat's whole memory, however old"},
+	{"tab", "toggle chat focus"},
 	{"/config", "you can disable tips with ui.tips set to false"},
 }
 
