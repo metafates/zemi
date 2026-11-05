@@ -419,7 +419,7 @@ func TestReplyReadoutBehindANotice(t *testing.T) {
 			readouts = append(readouts, row)
 		}
 	}
-	if len(readouts) != 1 || !strings.Contains(readouts[0], "1.5s   200 out") {
+	if len(readouts) != 1 || !strings.Contains(readouts[0], "1.5s · 200 out") {
 		t.Fatalf("the reply's readout is %q, want one row naming 1.5s and 200 out", readouts)
 	}
 }
@@ -727,7 +727,7 @@ func TestTurnStats(t *testing.T) {
 	if n := strings.Count(strings.Join(ended, "\n"), "0.9s"); n != 0 {
 		t.Fatalf("a sentence between runs carries a readout:\n%s", strings.Join(ended, "\n"))
 	}
-	if n := strings.Count(strings.Join(ended, "\n"), "1.5s 200 out"); n != 1 {
+	if n := strings.Count(strings.Join(ended, "\n"), "1.5s · 200 out"); n != 1 {
 		t.Fatalf("the reply that ends the exchange carries the readout:\n%s", strings.Join(ended, "\n"))
 	}
 }

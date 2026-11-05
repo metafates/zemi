@@ -1880,7 +1880,7 @@ func (b *chatBuilder) readout(tr []entry, last int, m entry) int {
 	var stats []hostapi.Segment
 	stat := func(text string) {
 		if len(stats) > 0 {
-			stats = append(stats, hostapi.Segment{Text: "   ", HL: "Dim"})
+			stats = append(stats, hostapi.Segment{Text: " · ", HL: "Dim"})
 		}
 		stats = append(stats, hostapi.Segment{Text: text, HL: "Dim"})
 	}
