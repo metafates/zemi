@@ -7,7 +7,7 @@ import "time"
 // Fade eases a 0..1 value toward shown 1 or hidden 0 over Dur. Flipping
 // mid-ramp starts the new ramp from the value's current place, so a pill
 // that reappears while sinking rises from where it is. The zero value is
-// settled hidden and never animates; New gives the ramp its duration.
+// settled hidden and never animates; NewFade gives the ramp its duration.
 type Fade struct {
 	Dur   time.Duration
 	Delay time.Duration // how long an appear waits before its ramp starts
@@ -16,8 +16,8 @@ type Fade struct {
 	from  float64
 }
 
-// New is a Fade easing over dur.
-func New(dur time.Duration) *Fade { return &Fade{Dur: dur} }
+// NewFade is a Fade easing over dur.
+func NewFade(dur time.Duration) *Fade { return &Fade{Dur: dur} }
 
 // Set flips the fade's target at now, starting the ramp from the value's
 // current place.
@@ -64,13 +64,16 @@ func (f *Fade) Shown() bool { return f.shown }
 func Smoothstep(p float64) float64 { return p * p * (3 - 2*p) }
 
 // Rise holds one appear per key: a widget, a rail call, a reply's readout.
-// The first frame that asks after a key stamps its ramp, so a row drawn for
-// the first time rises out of the surface; a key gone loses its ramp. The
-// zero value is empty; NewRise gives ramps their duration and their clock.
+// Two ways to drive it. Stamp for an element that rises once: the first
+// Stamp stamps the ramp and later frames just read Alpha. Present for an
+// element that comes and goes: report what the frame drew, then Prune, so a
+// return rises again and a key gone loses its ramp at once. The zero value
+// is empty; NewRise gives ramps their duration and their clock.
 type Rise[K comparable] struct {
 	Dur  time.Duration
 	Now  func() time.Time // nil reads time.Now
 	fade map[K]*Fade
+	seen map[K]bool
 }
 
 // NewRise is a Rise easing each key's appear over dur, read on now.
@@ -85,36 +88,58 @@ func (r *Rise[K]) clock() time.Time {
 	return time.Now()
 }
 
-// Get is the key's fade, nil before its first sight.
-func (r *Rise[K]) Get(key K) *Fade { return r.fade[key] }
-
-// At is the key's fade, stamped rising on its first sight.
-func (r *Rise[K]) At(key K) *Fade {
+// Stamp is the key's fade, stamped rising on its first sight. An element
+// that rises once stamps on its first frame and only reads Alpha after.
+func (r *Rise[K]) Stamp(key K) *Fade {
 	if r.fade == nil {
 		r.fade = map[K]*Fade{}
 	}
 	f, ok := r.fade[key]
 	if !ok {
-		f = New(r.Dur)
+		f = NewFade(r.Dur)
 		f.Set(true, r.clock())
 		r.fade[key] = f
 	}
 	return f
 }
 
-// Poke starts the key's ramp unless one is in flight: an appear stamps, a
-// row riding its ramp keeps it.
-func (r *Rise[K]) Poke(key K) {
-	now := r.clock()
-	if f := r.fade[key]; f != nil && f.Rising(now) {
-		return
-	}
+// Present reports whether the frame drew the key: its first sight or a
+// return after a Prune stamps a fresh ramp, a ramp in flight keeps riding,
+// and a key already risen stays risen. Present with false flips a risen key
+// toward hidden, sinking where it stands.
+func (r *Rise[K]) Present(key K, shown bool) {
 	if r.fade == nil {
 		r.fade = map[K]*Fade{}
 	}
-	f := New(r.Dur)
-	f.Set(true, now)
-	r.fade[key] = f
+	if r.seen == nil {
+		r.seen = map[K]bool{}
+	}
+	now := r.clock()
+	r.seen[key] = true
+	f, ok := r.fade[key]
+	switch {
+	case !ok:
+		f = NewFade(r.Dur)
+		f.Set(shown, now)
+		r.fade[key] = f
+	case shown:
+		if !f.Rising(now) && !f.Shown() {
+			f.Set(true, now) // returned after a sink: rise from where it sank to
+		}
+	default:
+		f.Set(false, now)
+	}
+}
+
+// Prune ends a Present frame: keys the frame did not present lose their ramp
+// at once. Only an element that vanishes without a sink prunes.
+func (r *Rise[K]) Prune() {
+	for k := range r.fade {
+		if !r.seen[k] {
+			delete(r.fade, k)
+		}
+	}
+	clear(r.seen)
 }
 
 // Alpha is the key's value at now, 0 for a key that never appeared.
@@ -137,15 +162,6 @@ func (r *Rise[K]) Rising() bool {
 		}
 	}
 	return false
-}
-
-// Keep drops every key the predicate turns away.
-func (r *Rise[K]) Keep(keep func(K) bool) {
-	for k := range r.fade {
-		if !keep(k) {
-			delete(r.fade, k)
-		}
-	}
 }
 
 // Settle settles every ramp in flight at its target, reporting whether it

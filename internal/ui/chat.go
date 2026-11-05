@@ -226,31 +226,15 @@ func (f *chatFolds) clock() time.Time {
 
 // fadeLive stamps the rise on the one live rail row key names: the first
 // draw starts it sunk into the surface, a row the last frame drew rides its
-// ramp, one back after frames away rises again.
+// ramp, one back after frames away rises again. The caller prunes the rise
+// once the frame's rows are drawn.
 func (f *chatFolds) fadeLive(key string, rows [][]hostapi.Segment) {
 	if f.now == nil {
 		return
 	}
-	if !f.liveSeen[key] {
-		f.liveRise.Poke(key)
-	}
-	f.liveSeen[key] = true
+	f.liveRise.Present(key, true)
 	if alpha := f.liveRise.Alpha(key); alpha < 1 {
 		rows[0] = faded(rows[0], 1-alpha, spareRail)
-	}
-}
-
-// keepLive keeps the ramps of the live rows this frame drew: a row the frame
-// did not draw loses its ramp, so its return rises again.
-func (f *chatFolds) keepLive(key string) {
-	if key == "" {
-		clear(f.liveSeen)
-		return
-	}
-	for k := range f.liveSeen {
-		if k != key {
-			delete(f.liveSeen, k)
-		}
 	}
 }
 
@@ -282,7 +266,7 @@ func (f *chatFolds) riseRow(id string, ord int, row []hostapi.Segment, now time.
 			return faded(row, 1-alpha, spareRail)
 		}
 	}
-	fade := anim.New(_riseDuration)
+	fade := anim.NewFade(_riseDuration)
 	fade.Set(true, now)
 	f.railRamps[id] = append(f.railRamps[id], railRamp{fade: fade, rows: 1})
 	return faded(row, 1, spareRail)
@@ -308,7 +292,7 @@ func (f *chatFolds) readoutArrived(st *hostapi.ScreenState) {
 		f.rows = n
 		m := st.Transcript[n-1]
 		if m.Kind == hostapi.RowMessage && m.Role != fantasy.MessageRoleUser && m.Stat != nil && f.now != nil {
-			fade := anim.New(_riseDuration)
+			fade := anim.NewFade(_riseDuration)
 			fade.Set(true, f.now())
 			f.readRamps[m.Seq] = &readRamp{fade: fade}
 		}
@@ -861,7 +845,6 @@ type chatFolds struct {
 	// like the calls do; seen names the ones the last frame drew, and a row
 	// back after frames away rises again.
 	liveRise *anim.Rise[string]
-	liveSeen map[string]bool
 	// md and hl memoize the costly rows by text and width: a marked-down reply
 	// and a highlighted command cost far more than the rows around them, and
 	// a frame rebuilds every settled row it is handed back.
@@ -935,7 +918,7 @@ func chatWidget(h *hostapi.Host) *widget {
 		md: map[string][][]hostapi.Segment{}, hl: map[string][]hostapi.Segment{},
 		now: time.Now, railRamps: map[string][]railRamp{},
 		readRamps: map[int64]*readRamp{},
-		liveRise:  anim.NewRise[string](_riseDuration, nil), liveSeen: map[string]bool{},
+		liveRise:  anim.NewRise[string](_riseDuration, nil),
 	}
 	f.liveRise.Now = f.clock
 	return &widget{
@@ -982,7 +965,6 @@ func (f *chatFolds) reset(st *hostapi.ScreenState) {
 		f.ver++
 		clear(f.readRamps)
 		f.liveRise.Clear()
-		clear(f.liveSeen)
 	}
 	if n := len(st.Agent.Tools); n < f.calls {
 		for _, m := range []map[int64]bool{f.steps, f.unfolded, f.whole} {
@@ -2134,7 +2116,6 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		case ag.Thinking && ag.Reasoning != "" && ag.Text == "":
 			b.gap(_blockActivity)
 			b.thinking(ag.Reasoning)
-			f.keepLive("thinking")
 		// The thought no longer draws as the thinking block (the reply
 		// streams): the digest row it will settle as stands here already, so
 		// the settle shifts nothing. A thought a flush settles beside its calls
@@ -2144,17 +2125,14 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 			at := len(b.lines)
 			b.digestRow(thoughtText(ag.Thought), "", hostapi.PinNone, false)
 			f.fadeLive("thought", b.lines[at:at+1])
-			f.keepLive("thought")
 		case ag.Text == "" && len(calls) == 0 && ag.Active && st.View == nil && ag.Retry == nil &&
 			!st.Cancelling && st.Waiting == "" && ag.Elapsed >= 300*time.Millisecond:
 			// the wait before any output: the thinking row opens with the turn,
 			// after the same 300ms that guards the working rule's block
 			b.gap(_blockActivity)
 			b.thinking("")
-			f.keepLive("thinking")
-		default:
-			f.keepLive("")
 		}
+		f.liveRise.Prune()
 		liveFrom := 0
 		if len(calls) > 0 {
 			liveFrom = len(b.lines)

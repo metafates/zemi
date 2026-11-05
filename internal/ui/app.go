@@ -1033,7 +1033,7 @@ func (a *App) widgetFaded(msg widgetRender) [][]hostapi.Segment {
 		return msg.lines
 	}
 	if w.id == "splash" {
-		f := a.splashRise.At("splash")
+		f := a.splashRise.Stamp("splash")
 		a.wakeTick()
 		if alpha := f.Alpha(a.now()); alpha < 1 {
 			return fadedRows(msg.lines, 1-alpha, nil)
@@ -1046,7 +1046,7 @@ func (a *App) widgetFaded(msg widgetRender) [][]hostapi.Segment {
 	f := a.rises[msg.id]
 	shown := len(msg.lines) > 0
 	if f == nil {
-		f = &pillFade{Fade: anim.New(_riseDuration)}
+		f = &pillFade{Fade: anim.NewFade(_riseDuration)}
 		a.rises[msg.id] = f
 	}
 	if f.Shown() != shown {
@@ -1096,7 +1096,7 @@ func (a *App) settlePills() {
 	for _, w := range a.widgets {
 		if w.region == _regionStatusLeft || w.region == _regionStatusRight {
 			if a.rises[w.id] == nil {
-				f := anim.New(_riseDuration)
+				f := anim.NewFade(_riseDuration)
 				f.Jump(true)
 				a.rises[w.id] = &pillFade{Fade: f}
 			}

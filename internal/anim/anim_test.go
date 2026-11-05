@@ -9,7 +9,7 @@ import (
 // from where the value is, and Jump settles with no ramp.
 func TestFade(t *testing.T) {
 	now := time.UnixMilli(0)
-	f := New(100 * time.Millisecond)
+	f := NewFade(100 * time.Millisecond)
 	if f.Alpha(now) != 0 || f.Rising(now) || f.Shown() {
 		t.Fatal("a fresh fade draws hidden and settled")
 	}
@@ -31,7 +31,7 @@ func TestFade(t *testing.T) {
 	}
 
 	// a delayed appear holds its start value through the delay, then ramps
-	d := New(100 * time.Millisecond)
+	d := NewFade(100 * time.Millisecond)
 	d.Delay = 60 * time.Millisecond
 	d.Set(true, now)
 	if got := d.Alpha(now.Add(30 * time.Millisecond)); got != 0 || !d.Rising(now.Add(30*time.Millisecond)) {
@@ -45,16 +45,18 @@ func TestFade(t *testing.T) {
 	}
 }
 
-// TestRise: a key's first sight stamps its ramp, Poke keeps a ramp in flight,
-// a key gone loses its entry, and Settle lands every ramp at its target.
+// TestRise: a key's first Present stamps its ramp, a Present while it rides
+// keeps it, a risen key stays risen, Prune drops the keys a frame did not
+// present, a sunk key rises again, and Stamp rises an element that never
+// leaves exactly once.
 func TestRise(t *testing.T) {
 	now := time.UnixMilli(0)
 	clock := now
 	r := NewRise[string](100*time.Millisecond, func() time.Time { return clock })
-	if r.Alpha("k") != 0 || r.Get("k") != nil || r.Rising() {
+	if r.Alpha("k") != 0 || r.Rising() {
 		t.Fatal("an empty rise reads hidden and settled")
 	}
-	r.Poke("k")
+	r.Present("k", true)
 	if got := r.Alpha("k"); got != 0 {
 		t.Fatalf("a fresh key is not sunk: %v", got)
 	}
@@ -62,28 +64,51 @@ func TestRise(t *testing.T) {
 	if got := r.Alpha("k"); got < 0.4 || got > 0.6 {
 		t.Fatalf("mid-ramp alpha %v, want about half", got)
 	}
-	r.Poke("k")
+	r.Present("k", true)
 	if got := r.Alpha("k"); got < 0.4 || got > 0.6 {
-		t.Fatalf("a poke did not leave the ramp in flight: %v", got)
+		t.Fatalf("a present did not leave the ramp in flight: %v", got)
 	}
 	clock = now.Add(200 * time.Millisecond)
 	if r.Rising() || r.Alpha("k") != 1 {
 		t.Fatal("the ramp did not settle shown")
 	}
-	r.Poke("k")
+	r.Present("k", true)
+	if got := r.Alpha("k"); got != 1 {
+		t.Fatalf("a present of a risen key did not leave it risen: %v", got)
+	}
+	r.Present("k", true)
+	r.Prune()
+	r.Present("k", true)
+	r.Present("gone", true)
+	r.Prune()
+	if r.Alpha("gone") != 0 {
+		t.Fatal("prune did not drop the key the frame did not present")
+	}
+	if r.Alpha("k") != 1 {
+		t.Fatal("prune dropped a key the frame presented")
+	}
+	r.Present("k", false)
+	clock = now.Add(400 * time.Millisecond)
+	if r.Alpha("k") != 0 || r.Rising() {
+		t.Fatal("a present-false did not sink the key")
+	}
+	r.Present("k", true)
 	if got := r.Alpha("k"); got != 0 {
-		t.Fatalf("a poke after the ramp did not start it over: %v", got)
+		t.Fatalf("a return after a sink did not rise again: %v", got)
 	}
-	r.Keep(func(string) bool { return false })
-	if r.Rising() || r.Get("k") != nil {
-		t.Fatal("keep did not drop the key")
+
+	s := NewRise[string](100*time.Millisecond, func() time.Time { return clock })
+	f := s.Stamp("j")
+	if f.Alpha(clock) != 0 {
+		t.Fatal("a fresh stamp is not sunk")
 	}
-	r.At("j")
-	f := r.Get("j")
-	if got := r.Alpha("j"); got != 0 {
-		t.Fatalf("a fresh key is not sunk: %v", got)
+	clock = clock.Add(200 * time.Millisecond)
+	if f2 := s.Stamp("j"); f2 != f || f.Alpha(clock) != 1 {
+		t.Fatal("a re-stamp did not return the settled fade")
 	}
-	if !r.Settle() || f.Alpha(clock) != 1 || r.Settle() {
+	s2 := NewRise[string](100*time.Millisecond, func() time.Time { return clock })
+	s2.Stamp("j")
+	if !s2.Settle() || s2.Settle() {
 		t.Fatal("settle did not land the ramp at its target")
 	}
 }
