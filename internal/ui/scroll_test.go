@@ -885,6 +885,38 @@ func TestScrollbarSurface(t *testing.T) {
 	}
 }
 
+// TestPadRidesTheFade: the pad a row is widened by keeps the surface and the
+// ride of the row it pads, so a band or slab runs to the edge through a ramp
+// instead of popping in behind the fading text.
+func TestPadRidesTheFade(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name string
+		row  []hostapi.Segment
+		want hostapi.Segment
+	}{
+		{
+			"an unfaded row pads plain",
+			[]hostapi.Segment{{Text: "hi"}},
+			hostapi.Segment{HL: "Normal"},
+		},
+		{
+			"a banded row's pad keeps the band and the fade",
+			[]hostapi.Segment{{Text: "hi", Fill: hostapi.FillBand, Fade: 0.5, OnPanel: true}},
+			hostapi.Segment{HL: "Normal", Fill: hostapi.FillBand, Fade: 0.5, OnPanel: true},
+		},
+	} {
+		pad, ok := padSeg(c.row, 10)
+		if !ok {
+			t.Fatalf("%s: no pad", c.name)
+		}
+		c.want.Text = pad.Text
+		if pad != c.want {
+			t.Fatalf("%s: pad %+v, want %+v", c.name, pad, c.want)
+		}
+	}
+}
+
 // TestThinkingFade: the live thinking tail sinks at its top while it hides
 // lines above, over the chat's own four-row ramp and easing off as the hidden
 // lines come back; a tail that fits keeps its colors, the rail bar never

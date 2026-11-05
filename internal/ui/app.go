@@ -2491,12 +2491,14 @@ func padSeg(segs []hostapi.Segment, w int) (hostapi.Segment, bool) {
 	}
 	// a Normal fill cell sits on the canvas, the palette's bg, instead of
 	// leaving the terminal's background showing; a row that ends on a fill
-	// (the prompt's slab, a band) keeps it out to the edge
-	fill := hostapi.FillAuto
+	// (the prompt's slab, a band) keeps it out to the edge, riding the row's
+	// fade and surface, so a ramp covers the row it pads
+	p := hostapi.Segment{Text: text, HL: "Normal"}
 	if n := len(segs); n > 0 {
-		fill = segs[n-1].Fill
+		last := segs[n-1]
+		p.Fill, p.Fade, p.OnPanel = last.Fill, last.Fade, last.OnPanel
 	}
-	return hostapi.Segment{Text: text, HL: "Normal", Fill: fill}, true
+	return p, true
 }
 
 func padSegs(segs []hostapi.Segment, w int) []hostapi.Segment {

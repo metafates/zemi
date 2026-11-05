@@ -933,10 +933,7 @@ func bandSpan(lines [][]hostapi.Segment, from, to, width int) [][]hostapi.Segmen
 		for k := range row {
 			row[k].Fill = hostapi.FillBand
 		}
-		if pad := width - hostapi.SegsWidth(row); pad > 0 {
-			row = append(row, hostapi.Segment{Text: strings.Repeat(" ", pad), HL: "Normal", Fill: hostapi.FillBand})
-		}
-		out[i] = row
+		out[i] = padSegs(row, width)
 	}
 	return out
 }
