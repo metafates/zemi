@@ -176,14 +176,6 @@ func sink(k, past int) float64 {
 	return float64(_sinkRows-k) / (_sinkRows + 1) * min(1, float64(past)/_sinkRows)
 }
 
-// railRamp is one rise a call's rows ride: the rows the rail drew when the
-// call appeared share its first ramp, rows that appear later — the output
-// under a shell's command — share the newest one.
-type railRamp struct {
-	fade *anim.Fade
-	rows int // rows of the call this ramp carries
-}
-
 // fadeRail stamps the rise on a live rail's rows: an action the rail draws
 // for the first time starts sunk into the surface and rises over
 // _riseDuration, one ramp per call, the rows the earlier frames drew for it
@@ -193,7 +185,6 @@ func (f *chatFolds) fadeRail(rows [][]hostapi.Segment, calls []entry) {
 	if f.now == nil {
 		return
 	}
-	now := f.now()
 	prev, ord := "", 0
 	for k, row := range rows {
 		c := rowCall(row)
@@ -209,7 +200,9 @@ func (f *chatFolds) fadeRail(rows [][]hostapi.Segment, calls []entry) {
 		} else {
 			ord++
 		}
-		rows[k] = f.riseRow(id, ord, row, now)
+		if alpha := f.railRise.Spread(id, ord); alpha < 1 {
+			rows[k] = anim.Faded(row, 1-alpha, spareRail)
+		}
 	}
 }
 
@@ -242,32 +235,6 @@ type readRamp struct {
 	fade *anim.Fade
 	full bool // a frame saw the ramp out
 	done bool
-}
-
-// riseRow sinks one live rail row into the surface: a row a ramp carries
-// rides it, a row beyond every ramp — one the earlier frames did not draw —
-// joins the ramp still rising or starts the call's next one.
-func (f *chatFolds) riseRow(id string, ord int, row []hostapi.Segment, now time.Time) []hostapi.Segment {
-	for _, r := range f.railRamps[id] {
-		if ord < r.rows {
-			if alpha := r.fade.Alpha(now); alpha < 1 {
-				return anim.Faded(row, 1-alpha, spareRail)
-			}
-			return row
-		}
-		ord -= r.rows
-	}
-	if n := len(f.railRamps[id]); n > 0 {
-		r := &f.railRamps[id][n-1]
-		if alpha := r.fade.Alpha(now); alpha < 1 {
-			r.rows++
-			return anim.Faded(row, 1-alpha, spareRail)
-		}
-	}
-	fade := anim.NewFade(_riseDuration)
-	fade.Set(true, now)
-	f.railRamps[id] = append(f.railRamps[id], railRamp{fade: fade, rows: 1})
-	return anim.Faded(row, 1, spareRail)
 }
 
 // spareRail is a rail row's bar at column 0: it stands from the first frame,
@@ -355,15 +322,7 @@ func (f *chatFolds) rising() bool {
 			return true
 		}
 	}
-	now := f.clock()
-	for _, ramps := range f.railRamps {
-		for _, r := range ramps {
-			if r.fade.Rising(now) {
-				return true
-			}
-		}
-	}
-	return false
+	return f.railRise.Rising()
 }
 
 // settling says whether the next flush settles a call beside the thought: the
@@ -827,12 +786,13 @@ type chatFolds struct {
 	epoch   int64                // the transcript these folds belong to
 	view    string               // the view foldSet draws
 	calls   int                  // the live calls the last render drew
-	// the rail actions' rise: a fade per live call id, started the first
+	// the rail actions' rise: a ramp per live call id, started the first
 	// draw drew it, so a new action's rows start sunk into the surface and
-	// rise over _riseDuration. now is the animation clock, nil in the tests
-	// that pin none.
-	now       func() time.Time
-	railRamps map[string][]railRamp
+	// rise over _riseDuration, rows that appear later joining the newest
+	// ramp or starting the call's next one. now is the animation clock, nil
+	// in the tests that pin none.
+	now      func() time.Time
+	railRise *anim.Rise[string]
 	// a reply's readout rise: a ramp per reply, keyed by its row's place in
 	// the window, stamped the frame the reply's row lands at the transcript's
 	// tail, so the stats line under it rises after the message landed whole.
@@ -916,10 +876,11 @@ func chatWidget(h *hostapi.Host) *widget {
 	f := &chatFolds{
 		foldSet: newFoldSet(), views: map[string]viewFolds{},
 		md: map[string][][]hostapi.Segment{}, hl: map[string][]hostapi.Segment{},
-		now: time.Now, railRamps: map[string][]railRamp{},
+		now: time.Now, railRise: anim.NewRise[string](_riseDuration, nil),
 		readRamps: map[int64]*readRamp{},
 		liveRise:  anim.NewRise[string](_riseDuration, nil),
 	}
+	f.railRise.Now = f.clock
 	f.liveRise.Now = f.clock
 	return &widget{
 		id: "chat", region: _regionChat, priority: 10, wrap: true,
@@ -980,18 +941,14 @@ func (f *chatFolds) reset(st *hostapi.ScreenState) {
 	f.calls = len(st.Agent.Tools)
 	// calls the live rail no longer holds have settled risen or left the
 	// screen; only the ones still on it keep a ramp
-	for id := range f.railRamps {
-		live := false
+	f.railRise.Retain(func(id string) bool {
 		for _, t := range st.Agent.Tools {
 			if t.Stream.ID == id {
-				live = true
-				break
+				return true
 			}
 		}
-		if !live {
-			delete(f.railRamps, id)
-		}
-	}
+		return false
+	})
 }
 
 // toggle opens or closes the fold a click names.

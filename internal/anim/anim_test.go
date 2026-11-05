@@ -118,6 +118,37 @@ func TestCurtain(t *testing.T) {
 	}
 }
 
+// TestSpread: rows a ramp already carries ride it, growth past it joins the
+// newest ramp while it rises or starts the next one, and Retain drops the
+// keys keep refuses.
+func TestSpread(t *testing.T) {
+	clock := time.UnixMilli(0)
+	r := NewRise[string](100*time.Millisecond, func() time.Time { return clock })
+	if got := r.Spread("call", 0); got != 0 {
+		t.Fatalf("a fresh spread is not sunk: %v", got)
+	}
+	clock = clock.Add(50 * time.Millisecond)
+	if got := r.Spread("call", 0); got < 0.4 || got > 0.6 {
+		t.Fatalf("the stamped ramp did not ride: %v", got)
+	}
+	// a row past the ramp's rows joins it while it rises
+	if got := r.Spread("call", 1); got != r.Alpha("call") {
+		t.Fatalf("the grown row did not ride the ramp: %v vs %v", got, r.Alpha("call"))
+	}
+	// once it settles, the next row starts a new ramp
+	clock = clock.Add(10 * r.Dur)
+	if got := r.Spread("call", 2); got != 0 {
+		t.Fatalf("a row past a settled ramp did not start sunk: %v", got)
+	}
+	if got := r.Spread("call", 1); got != 1 {
+		t.Fatalf("the settled ramp's rows did not stay risen: %v", got)
+	}
+	r.Retain(func(id string) bool { return id != "call" })
+	if _, ok := r.ramps["call"]; ok {
+		t.Fatal("retain kept a refused key's ramps")
+	}
+}
+
 // TestFaded: a t of 0 or less hands the row back, a t fades every segment
 // but the ones spare keeps, and a row's own deeper sink stands.
 func TestFaded(t *testing.T) {
@@ -210,7 +241,7 @@ func TestRise(t *testing.T) {
 	clock = clock.Add(10 * r.Dur)
 	r.Present("marker", true)
 	r.Prune()
-	if _, ok := r.fade["sunk"]; ok {
+	if _, ok := r.ramps["sunk"]; ok {
 		t.Fatal("prune kept a sunk key's fade")
 	}
 	r.Present("sinking", true)

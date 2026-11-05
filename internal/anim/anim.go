@@ -207,13 +207,23 @@ func (c *Curtain) Settle(now time.Time) bool {
 // Two ways to drive it. Stamp for an element that rises once: the first
 // Stamp stamps the ramp and later frames just read Alpha. Present for an
 // element that comes and goes: report what the frame drew, then Prune, so a
-// return rises again and a key gone loses its ramp at once. The zero value
-// is empty; NewRise gives ramps their duration and their clock.
+// return rises again and a key gone loses its ramp at once. An element that
+// grows while it rises — a rail call gaining output rows — stamps by Spread:
+// rows the earlier frames drew ride the ramp in flight, growth past it starts
+// the key's next ramp. The zero value is empty; NewRise gives ramps their
+// duration and their clock.
 type Rise[K comparable] struct {
-	Dur  time.Duration
-	Now  func() time.Time // nil reads time.Now
-	fade map[K]*Fade
-	seen map[K]bool
+	Dur   time.Duration
+	Now   func() time.Time // nil reads time.Now
+	ramps map[K][]riseRamp
+	seen  map[K]bool
+}
+
+// riseRamp is one of a key's ramps and how many of its rows it carries: the
+// rows a frame drew for the key share the ramp their ordinals fall under.
+type riseRamp struct {
+	fade *Fade
+	rows int
 }
 
 // NewRise is a Rise easing each key's appear over dur, read on now.
@@ -228,19 +238,47 @@ func (r *Rise[K]) clock() time.Time {
 	return time.Now()
 }
 
+// stamp is the key's ramps with one rising stamped at now, if it had none.
+func (r *Rise[K]) stamp(key K, now time.Time) []riseRamp {
+	if r.ramps == nil {
+		r.ramps = map[K][]riseRamp{}
+	}
+	if _, ok := r.ramps[key]; !ok {
+		f := NewFade(r.Dur)
+		f.Set(true, now)
+		r.ramps[key] = []riseRamp{{fade: f, rows: 1}}
+	}
+	return r.ramps[key]
+}
+
 // Stamp is the key's fade, stamped rising on its first sight. An element
 // that rises once stamps on its first frame and only reads Alpha after.
 func (r *Rise[K]) Stamp(key K) *Fade {
-	if r.fade == nil {
-		r.fade = map[K]*Fade{}
+	rs := r.stamp(key, r.clock())
+	return rs[len(rs)-1].fade
+}
+
+// Spread is the key's alpha for its n-th row at now: rows the earlier frames
+// drew ride the ramp that carried them, and a row past every ramp joins the
+// newest one while it still rises or starts the key's next ramp, sunk.
+func (r *Rise[K]) Spread(key K, n int) float64 {
+	now := r.clock()
+	rs := r.stamp(key, now)
+	for _, ramp := range rs {
+		if n < ramp.rows {
+			return ramp.fade.Alpha(now)
+		}
+		n -= ramp.rows
 	}
-	f, ok := r.fade[key]
-	if !ok {
-		f = NewFade(r.Dur)
-		f.Set(true, r.clock())
-		r.fade[key] = f
+	last := &rs[len(rs)-1]
+	if a := last.fade.Alpha(now); a < 1 {
+		last.rows++
+		return a
 	}
-	return f
+	f := NewFade(r.Dur)
+	f.Set(true, now)
+	r.ramps[key] = append(rs, riseRamp{fade: f, rows: 1})
+	return 0
 }
 
 // Present reports whether the frame drew the key: its first sight or a
@@ -248,8 +286,8 @@ func (r *Rise[K]) Stamp(key K) *Fade {
 // and a key already risen stays risen. Present with false flips a risen key
 // toward hidden, sinking where it stands.
 func (r *Rise[K]) Present(key K, shown bool) {
-	if r.fade == nil {
-		r.fade = map[K]*Fade{}
+	if r.ramps == nil {
+		r.ramps = map[K][]riseRamp{}
 	}
 	if r.seen == nil {
 		r.seen = map[K]bool{}
@@ -258,30 +296,32 @@ func (r *Rise[K]) Present(key K, shown bool) {
 	if shown {
 		r.seen[key] = true
 	}
-	f, ok := r.fade[key]
+	rs, ok := r.ramps[key]
 	switch {
 	case !ok:
-		f = NewFade(r.Dur)
+		f := NewFade(r.Dur)
 		f.Set(shown, now)
-		r.fade[key] = f
+		r.ramps[key] = []riseRamp{{fade: f, rows: 1}}
 	case shown:
+		f := rs[len(rs)-1].fade
 		if !f.Rising(now) && !f.Shown() {
 			f.Set(true, now) // returned after a sink: rise from where it sank to
 		}
 	default:
-		f.Set(false, now)
+		rs[len(rs)-1].fade.Set(false, now)
 	}
 }
 
-// Prune ends a Present frame: keys the frame did not present lose their ramp
-// at once, and a key that finished sinking loses its ramp too, so a missed
+// Prune ends a Present frame: keys the frame did not present lose their ramps
+// at once, and a key that finished sinking loses its ramps too, so a missed
 // Prune cannot keep a ledger of dead keys. Only an element that vanishes
 // without a sink prunes.
 func (r *Rise[K]) Prune() {
 	now := r.clock()
-	for k, f := range r.fade {
+	for k, rs := range r.ramps {
+		f := rs[len(rs)-1].fade
 		if !r.seen[k] && (f.Shown() || f.Alpha(now) <= 0) {
-			delete(r.fade, k)
+			delete(r.ramps, k)
 		}
 	}
 	clear(r.seen)
@@ -289,21 +329,35 @@ func (r *Rise[K]) Prune() {
 
 // Alpha is the key's value at now, 0 for a key that never appeared.
 func (r *Rise[K]) Alpha(key K) float64 {
-	if f := r.fade[key]; f != nil {
-		return f.Alpha(r.clock())
+	rs := r.ramps[key]
+	if len(rs) > 0 {
+		return rs[len(rs)-1].fade.Alpha(r.clock())
 	}
 	return 0
 }
 
+// Retain drops every key keep refuses: an element the widget no longer draws
+// has settled risen or left the screen, and only the keys still on it keep
+// their ramps.
+func (r *Rise[K]) Retain(keep func(K) bool) {
+	for k := range r.ramps {
+		if !keep(k) {
+			delete(r.ramps, k)
+		}
+	}
+}
+
 // Rising reports a ramp in flight for any key.
 func (r *Rise[K]) Rising() bool {
-	if len(r.fade) == 0 {
+	if len(r.ramps) == 0 {
 		return false
 	}
 	now := r.clock()
-	for _, f := range r.fade {
-		if f.Rising(now) {
-			return true
+	for _, rs := range r.ramps {
+		for _, ramp := range rs {
+			if ramp.fade.Rising(now) {
+				return true
+			}
 		}
 	}
 	return false
@@ -312,18 +366,20 @@ func (r *Rise[K]) Rising() bool {
 // Settle settles every ramp in flight at its target, reporting whether it
 // settled one: a test's pinned clock would otherwise freeze a ramp mid-rise.
 func (r *Rise[K]) Settle() bool {
-	if len(r.fade) == 0 {
+	if len(r.ramps) == 0 {
 		return false
 	}
 	now, done := r.clock(), false
-	for _, f := range r.fade {
-		if f.Rising(now) {
-			f.Jump(f.Shown())
-			done = true
+	for _, rs := range r.ramps {
+		for _, ramp := range rs {
+			if ramp.fade.Rising(now) {
+				ramp.fade.Jump(ramp.fade.Shown())
+				done = true
+			}
 		}
 	}
 	return done
 }
 
 // Clear empties the ledger.
-func (r *Rise[K]) Clear() { clear(r.fade) }
+func (r *Rise[K]) Clear() { clear(r.ramps) }
