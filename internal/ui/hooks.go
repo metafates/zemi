@@ -95,7 +95,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		rows = append(rows, nil)
 		rows = append(rows, wrapText("Trusting loads what this "+what+" ships:", "", width)...)
 		for _, g := range []string{
-			".agents: Lua, skills, agents, commands and workflows",
+			".agents: skills and agents",
 			"AGENTS.md and CLAUDE.md instructions",
 			"language servers, which can build the project",
 		} {
