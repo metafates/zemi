@@ -14,6 +14,7 @@ import (
 	"charm.land/fantasy"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/metafates/zemi/internal/anim"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
@@ -937,7 +938,7 @@ func TestThinkingFade(t *testing.T) {
 		}
 	}
 	// a row the widget sank deeper keeps its sink: the region's edge is shallower
-	row := faded([]hostapi.Segment{{Text: "a", Fade: 0.9}, {Text: "b", Bar: true}}, 0.4, spareBar)
+	row := anim.Faded([]hostapi.Segment{{Text: "a", Fade: 0.9}, {Text: "b", Bar: true}}, 0.4, spareBar)
 	if row[0].Fade != 0.9 || row[1].Fade != 0 {
 		t.Fatalf("the region brightened a sunk row: %+v", row)
 	}

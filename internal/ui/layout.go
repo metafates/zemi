@@ -536,10 +536,10 @@ func edgeRamp(rows [][]hostapi.Segment, above, below, fade int, skip func(int) b
 	for k := range fade {
 		t := float64(fade-k) / float64(fade+1)
 		if i := first + k; top > 0 && i <= last && !skip(i) {
-			rows[i] = faded(rows[i], t*top, spareBar)
+			rows[i] = anim.Faded(rows[i], t*top, spareBar)
 		}
 		if i := last - k; bottom > 0 && i >= first && !skip(i) {
-			rows[i] = faded(rows[i], t*bottom, spareBar)
+			rows[i] = anim.Faded(rows[i], t*bottom, spareBar)
 		}
 	}
 }
@@ -745,28 +745,6 @@ func (a *App) paintScrolled(n *node, r uv.Rectangle) [][]hostapi.Segment {
 		rows[i] = padSegs(rows[i], w)
 	}
 	return rows
-}
-
-// faded is row with every segment but the ones spare keeps sunk toward the
-// surface it sits on by t, keeping a deeper sink a widget set itself.
-func faded(row []hostapi.Segment, t float64, spare func(hostapi.Segment) bool) []hostapi.Segment {
-	out := make([]hostapi.Segment, len(row))
-	for i, s := range row {
-		if spare == nil || !spare(s) {
-			s.Fade = max(s.Fade, t)
-		}
-		out[i] = s
-	}
-	return out
-}
-
-// fadedRows is rows with every row faded.
-func fadedRows(rows [][]hostapi.Segment, t float64, spare func(hostapi.Segment) bool) [][]hostapi.Segment {
-	out := make([][]hostapi.Segment, len(rows))
-	for i, row := range rows {
-		out[i] = faded(row, t, spare)
-	}
-	return out
 }
 
 // spareBar is the scrollbar cell: it never sinks with its rows, it rides its

@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/fantasy"
 
+	"github.com/metafates/zemi/internal/anim"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
@@ -175,7 +176,7 @@ func TestStatusRise(t *testing.T) {
 	app := &App{
 		host:    host,
 		widgets: statuslineWidgets(),
-		rises:   map[string]*pillFade{},
+		rises:   map[string]*anim.Curtain{},
 		caches:  map[string]*widgetCache{},
 		now:     func() time.Time { return time.UnixMilli(500) },
 	}

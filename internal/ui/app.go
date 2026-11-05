@@ -179,9 +179,8 @@ type App struct {
 	pending       map[string]renderKey // widget id -> the render in flight
 	renderSeq     int64                // counts render dispatches, so the latest one wins
 	frameGen      int64
-	rises         map[string]*pillFade // statusline pills easing their appear and disappear
-	splashRise    *anim.Rise[string]   // the splash knot's one rise on its first draw
-	spun          bool                 // the last frame drew a spinner, so the tick keeps stepping it
+	rises         map[string]*anim.Curtain // pills, the splash and the chat easing their come and go
+	spun          bool                     // the last frame drew a spinner, so the tick keeps stepping it
 	timeStr       string
 	turnActive    bool             // what onFrame last saw of the agent
 	turnDone      *turnDoneMsg     // the last turn's end, waiting for a frame that reads the agent idle
@@ -278,7 +277,7 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 		wake:     make(chan struct{}, 1),
 		prefixes: map[string]string{},
 		fadeKeys: map[float64]string{},
-		rises:    map[string]*pillFade{},
+		rises:    map[string]*anim.Curtain{},
 		scrolls:  map[region]*scrollState{},
 		lastSel:  map[string]string{},
 		widgets:  shippedWidgets(host),
@@ -292,7 +291,15 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 		pendingScroll: map[region]hostapi.ScrollAction{},
 		pendingAnchor: map[region]int{},
 	}
-	a.splashRise = anim.NewRise[string](_riseDuration, func() time.Time { return a.now() })
+	// the splash vanishes whole when the first message takes the region, and
+	// the chat's rows appear whole: only the reset's sink moves the chat as
+	// one
+	splash := anim.NewCurtain(_riseDuration)
+	splash.JumpOut = true
+	chat := anim.NewCurtain(_riseDuration)
+	chat.JumpIn = true
+	chat.Spare = spareBar
+	a.rises["splash"], a.rises["chat"] = splash, chat
 	return a
 }
 
@@ -1018,56 +1025,49 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 	a.frameDirty = true // the new lines join the next View though the generation stood still
 }
 
-// pillFade is one statusline pill's fade, its lines kept for the sink: what
-// a disappearing pill keeps drawing while it sinks back in.
-type pillFade struct {
-	*anim.Fade
-	lines [][]hostapi.Segment
-}
-
 // widgetFaded is a widget's lines settled through its fade: a statusline
-// pill's appear and disappear, the splash knot's one rise on its first draw.
+// pill's come and go, the splash knot's rises, and the chat a reset sinks
+// before the splash takes the region back.
 func (a *App) widgetFaded(msg widgetRender) [][]hostapi.Segment {
 	w := a.widgetByID(msg.id)
 	if w == nil {
 		return msg.lines
 	}
+	if w.id == "chat" {
+		return a.ride(msg.id, msg.lines)
+	}
 	if w.id == "splash" {
-		f := a.splashRise.Stamp("splash")
-		a.wakeTick()
-		if alpha := f.Alpha(a.now()); alpha < 1 {
-			return fadedRows(msg.lines, 1-alpha, nil)
+		// the knot waits out the chat's reset sink: while the chat's kept
+		// rows still draw, the region is not empty yet
+		if c := a.caches["chat"]; c != nil && len(c.lines) > 0 {
+			return nil
 		}
-		return msg.lines
+		return a.ride("splash", msg.lines)
 	}
 	if w.region != _regionStatusLeft && w.region != _regionStatusRight {
 		return msg.lines
 	}
-	f := a.rises[msg.id]
-	shown := len(msg.lines) > 0
-	if f == nil {
-		f = &pillFade{Fade: anim.NewFade(_riseDuration)}
-		a.rises[msg.id] = f
+	return a.ride(w.id, msg.lines)
+}
+
+// ride draws a widget's rows through its curtain, creating it on first use.
+// A ramp the draw started wakes the tick, and a sink's end bumps the frame,
+// so what the region gave up draws behind it without waiting a beat.
+func (a *App) ride(id string, lines [][]hostapi.Segment) [][]hostapi.Segment {
+	c := a.rises[id]
+	if c == nil {
+		c = anim.NewCurtain(_riseDuration)
+		a.rises[id] = c
 	}
-	if f.Shown() != shown {
-		if shown {
-			f.lines = msg.lines
-		}
-		f.Set(shown, a.now())
+	was := c.Rising(a.now())
+	out, settled := c.Draw(lines, a.now())
+	if !was && c.Rising(a.now()) {
 		a.wakeTick()
-	} else if shown {
-		f.lines = msg.lines
 	}
-	switch alpha := f.Alpha(a.now()); {
-	case f.Shown() && alpha >= 1:
-		return msg.lines
-	case f.Shown():
-		return fadedRows(msg.lines, 1-alpha, nil)
-	case alpha <= 0:
-		return nil
-	default:
-		return fadedRows(f.lines, 1-alpha, nil)
+	if settled {
+		a.bump()
 	}
+	return out
 }
 
 // fadesRising reports whether a pill's or scrollbar's appear or disappear is
@@ -1096,9 +1096,9 @@ func (a *App) settlePills() {
 	for _, w := range a.widgets {
 		if w.region == _regionStatusLeft || w.region == _regionStatusRight {
 			if a.rises[w.id] == nil {
-				f := anim.NewFade(_riseDuration)
+				f := anim.NewCurtain(_riseDuration)
 				f.Jump(true)
-				a.rises[w.id] = &pillFade{Fade: f}
+				a.rises[w.id] = f
 			}
 		}
 	}
@@ -1118,10 +1118,10 @@ func (a *App) settleBars() bool {
 	return done
 }
 
-// settleSplash marks the splash's boot rise settled: a test's pinned clock
-// would freeze the knot mid-ramp. Reports whether it settled one.
+// settleSplash marks the splash's rise settled: a test's pinned clock would
+// freeze the knot mid-ramp. Reports whether it settled one.
 func (a *App) settleSplash() bool {
-	return a.splashRise.Settle()
+	return a.rises["splash"].Settle(a.now())
 }
 
 // widgetRegion is the region a widget draws in.

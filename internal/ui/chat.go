@@ -232,7 +232,7 @@ func (f *chatFolds) fadeLive(key string, rows [][]hostapi.Segment) {
 	}
 	f.liveRise.Present(key, true)
 	if alpha := f.liveRise.Alpha(key); alpha < 1 {
-		rows[0] = faded(rows[0], 1-alpha, spareRail)
+		rows[0] = anim.Faded(rows[0], 1-alpha, spareRail)
 	}
 }
 
@@ -251,7 +251,7 @@ func (f *chatFolds) riseRow(id string, ord int, row []hostapi.Segment, now time.
 	for _, r := range f.railRamps[id] {
 		if ord < r.rows {
 			if alpha := r.fade.Alpha(now); alpha < 1 {
-				return faded(row, 1-alpha, spareRail)
+				return anim.Faded(row, 1-alpha, spareRail)
 			}
 			return row
 		}
@@ -261,13 +261,13 @@ func (f *chatFolds) riseRow(id string, ord int, row []hostapi.Segment, now time.
 		r := &f.railRamps[id][n-1]
 		if alpha := r.fade.Alpha(now); alpha < 1 {
 			r.rows++
-			return faded(row, 1-alpha, spareRail)
+			return anim.Faded(row, 1-alpha, spareRail)
 		}
 	}
 	fade := anim.NewFade(_riseDuration)
 	fade.Set(true, now)
 	f.railRamps[id] = append(f.railRamps[id], railRamp{fade: fade, rows: 1})
-	return faded(row, 1, spareRail)
+	return anim.Faded(row, 1, spareRail)
 }
 
 // spareRail is a rail row's bar at column 0: it stands from the first frame,
@@ -313,7 +313,7 @@ func (f *chatFolds) riseReadout(seq int64, row []hostapi.Segment) []hostapi.Segm
 		return row
 	}
 	if alpha := ramp.fade.Alpha(f.now()); alpha < 1 {
-		return faded(row, 1-alpha, nil)
+		return anim.Faded(row, 1-alpha, nil)
 	}
 	ramp.done = true
 	return row

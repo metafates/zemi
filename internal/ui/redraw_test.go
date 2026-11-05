@@ -395,6 +395,73 @@ func TestRailRise(t *testing.T) {
 	}
 }
 
+// TestResetSinksTheChatIntoTheSplash: a reset's wipe reaches the chat as an
+// empty transcript under a new epoch, and the screen sinks the chat it
+// showed toward the surface before the knot rises in its place.
+func TestResetSinksTheChatIntoTheSplash(t *testing.T) {
+	app, _ := bootAgentApp(t, 100, 30)
+	f := app.chatFolds()
+	at := time.UnixMilli(1000)
+	f.now = func() time.Time { return at }
+	app.now = func() time.Time { return at }
+
+	st := func(count int, epoch int64) *hostapi.ScreenState {
+		s := &hostapi.ScreenState{Width: 98, Height: 20, TranscriptCount: count, TranscriptEpoch: epoch}
+		if count > 0 {
+			s.Transcript = []hostapi.ChatMessage{{Role: "assistant", Text: "the answer"}}
+		}
+		return s
+	}
+	draw := func(id string, s *hostapi.ScreenState) [][]hostapi.Segment {
+		lines, more := app.widgetByID(id).render(s)
+		app.onWidgetRendered(widgetRender{id: id, lines: lines, more: more, gen: 1, seq: 1, width: 98, height: 20})
+		return app.caches[id].lines
+	}
+	// the chat's rows appear whole: only the reset's sink moves them as one
+	if lines := draw("chat", st(1, 1)); len(lines) == 0 || maxFade(lines) != 0 {
+		t.Fatalf("the chat's first rows did not draw clean: fade %v", maxFade(lines))
+	}
+	// the first message took the region: the knot vanishes whole
+	if rows := draw("splash", st(1, 1)); rows != nil {
+		t.Fatal("the knot drew over the chat")
+	}
+	// the reset: the chat sinks on the rows it kept, the knot waits
+	lines := draw("chat", st(0, 2))
+	if len(lines) == 0 {
+		t.Fatal("the reset emptied the chat in one frame")
+	}
+	at = at.Add(_riseDuration / 2)
+	if lines = draw("chat", st(0, 2)); len(lines) == 0 || maxFade(lines) < 0.4 || maxFade(lines) > 0.6 {
+		t.Fatalf("the sink did not ride mid-ramp: fade %v", maxFade(lines))
+	}
+	if rows := draw("splash", st(0, 2)); rows != nil {
+		t.Fatal("the knot rose while the chat still sank")
+	}
+	at = at.Add(2 * _riseDuration)
+	if lines := draw("chat", st(0, 2)); len(lines) != 0 {
+		t.Fatal("the chat stayed after its sink")
+	}
+	// the knot rises in the region the chat gave up
+	if rows := draw("splash", st(0, 2)); len(rows) == 0 || maxFade(rows) == 0 {
+		t.Fatalf("the knot did not rise after the chat sank: fade %v", maxFade(rows))
+	}
+	at = at.Add(2 * _riseDuration)
+	if rows := draw("splash", st(0, 2)); len(rows) != 0 && maxFade(rows) != 0 {
+		t.Fatalf("the knot stayed sunk after its ramp: fade %v", maxFade(rows))
+	}
+}
+
+// maxFade is the deepest sink in rows, 0 when they draw clean.
+func maxFade(rows [][]hostapi.Segment) float64 {
+	fade := 0.0
+	for _, row := range rows {
+		for _, s := range row {
+			fade = max(fade, s.Fade)
+		}
+	}
+	return fade
+}
+
 // TestReadoutRise: the stats line under a reply appears only once the
 // message landed whole, rising out of the surface; a reply a session opens
 // with never rises.
