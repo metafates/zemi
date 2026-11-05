@@ -126,4 +126,9 @@ func TestResetChat(t *testing.T) {
 	if tr := h.Session().Transcript; len(tr) == 0 || tr[0].Text != "again" || tr[0].Seq != 1 {
 		t.Fatalf("the chat restarted with %+v", tr)
 	}
+	// the reset's note sits at seq 0 below the window's head, but it draws
+	// nothing: no earlier message stands behind the fresh chat
+	if n := h.ScreenState(80, 24, UIState{}).LogRows(); n != 0 {
+		t.Fatalf("the fresh chat names %d earlier messages, want none", n)
+	}
 }

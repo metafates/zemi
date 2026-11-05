@@ -584,6 +584,9 @@ type Host struct {
 	// for the rest of a long chat. A whole replacement leaves it; the chat
 	// re-adopts it when the epoch hands it a new window.
 	trCut atomic.Int64
+	// trHeadNote says the log opens with the reset's own note: the transcript
+	// drops it, and the head count must not name it an earlier message.
+	trHeadNote atomic.Bool
 
 	watches *watchReg
 	hookReg *hookReg
@@ -831,6 +834,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		// no resume, only more of itself. The tail is read with slack so
 		// its head can sit on a turn start, not an answer's shed remains.
 		if rows, err := h.DB.LogTail(_chatWindowRows * 3); err == nil {
+			h.trHeadNote.Store(len(rows) > 0 && systemNote(rows[0]))
 			h.session.Transcript = alignTrim(logRows(rows))
 			h.stampReset(h.session.Transcript)
 			h.markDeadTail()

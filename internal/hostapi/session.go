@@ -234,6 +234,19 @@ func stampable(m ChatMessage) bool {
 	return m.Kind == "" && m.Text != ""
 }
 
+// systemNote reports a note the chat's transcript draws nothing of: the
+// wipe's own mark, which zoom reaches in the log.
+func systemNote(row store.LogEntry) bool {
+	if row.Kind != store.KindNote {
+		return false
+	}
+	var meta struct {
+		System bool `json:"system"`
+	}
+	_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
+	return meta.System
+}
+
 // logRows converts log rows into the transcript rows the chat draws: a user
 // or agent message its text, a tool call and its echo one row, a work report
 // a notice naming the run, a thought, an error or a shell command its own row.
@@ -382,11 +395,7 @@ func logRowsFor(rows []store.LogEntry, browse bool) []ChatMessage {
 		case store.KindNote:
 			// a chapter mark the model reads, so the chat shows where; the
 			// wipe's own system note stays off the transcript
-			var meta struct {
-				System bool `json:"system"`
-			}
-			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
-			if meta.System {
+			if systemNote(row) {
 				continue
 			}
 			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: messageHead(row.Text), Seq: row.Seq})
