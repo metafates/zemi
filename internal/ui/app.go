@@ -1048,9 +1048,11 @@ func (a *App) widgetFaded(msg widgetRender) [][]hostapi.Segment {
 				return nil
 			}
 		}
-	} else if c := a.rises[w.id]; c == nil || !c.Shown() {
-		// one appearing waits out a neighbor's sink, so it shows up once,
-		// where it stays
+	} else if c := a.rises[w.id]; len(msg.lines) > 0 && (c == nil || (!c.Shown() && !c.Sinking())) {
+		// one appearing out of nothing waits out a neighbor's sink, so it
+		// shows up once, where it stays; one returning mid-sink rides its own
+		// ramp, and one departing (no lines) rides its sink through — or two
+		// sinks wait on each other and freeze
 		for _, sib := range a.widgets {
 			if sib == w || sib.region != w.region || !sib.eases {
 				continue
