@@ -317,6 +317,8 @@ func TestListProjects(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	tmp := t.TempDir()
 	dirs := config.Dirs{StateHome: t.TempDir()}
+	_ = os.MkdirAll(dirs.ScratchDir(), 0o700)
+	scratch, _ := filepath.EvalSymlinks(dirs.ScratchDir())
 	for _, c := range []struct {
 		root     string
 		trust    string
@@ -329,6 +331,8 @@ func TestListProjects(t *testing.T) {
 		{root: filepath.Join(tmp, "neither"), sessions: 1},
 		{root: "/zemi-test-missing/x", trust: "trusted", opened: 2 * time.Hour},
 		{root: home, opened: 3 * time.Hour},
+		// the scratch project: a decision and a store exist, the list hides it
+		{root: scratch, trust: "trusted", opened: 4 * time.Hour, sessions: 1},
 	} {
 		_ = os.MkdirAll(c.root, 0o755) // the missing one's parent is not writable
 		if c.opened != 0 || c.sessions > 0 {

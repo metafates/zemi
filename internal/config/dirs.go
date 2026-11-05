@@ -311,6 +311,10 @@ func (d Dirs) WriteTrust(m map[string]string) error {
 	return WriteFileAtomic(filepath.Join(d.StateHome, "trust.json"), data)
 }
 
+// ScratchDir is the --scratch stand-in project's root: a fixed dir for
+// one-off questions, hidden from the project lists and always trusted.
+func (d Dirs) ScratchDir() string { return filepath.Join(d.StateHome, "scratch") }
+
 // TrustRoot is the directory a trust decision belongs to: the repository
 // root with symlinks resolved, and for a linked worktree its main checkout,
 // so every worktree of a repository shares one decision.

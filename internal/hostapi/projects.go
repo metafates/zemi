@@ -61,8 +61,14 @@ func ListProjects(dirs config.Dirs, stats bool) []Project {
 		}
 		byRoot[root].Used = used
 	}
+	// the scratch project is nobody's switch target: --scratch opens it, and
+	// a list row would invite a delete of the one stand-in every run shares
+	scratch, _ := filepath.EvalSymlinks(dirs.ScratchDir())
 	out := make([]Project, 0, len(byRoot))
 	for _, p := range byRoot {
+		if p.Root == scratch {
+			continue
+		}
 		if _, err := os.Stat(p.Root); errors.Is(err, fs.ErrNotExist) {
 			p.Missing = true
 		}

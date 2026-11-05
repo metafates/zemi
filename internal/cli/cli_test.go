@@ -126,6 +126,8 @@ func TestCLI(t *testing.T) {
 		{name: "complete a plugin name", args: []string{"__complete", "plugin", "enable", ""}, stdout: "rub\n"},
 		{name: "-C a missing dir", args: []string{"-C", "nope", "health"}, code: 1, stderr: "zemi: health: -C nope: no such file or directory"},
 		{name: "-C a dir", args: []string{"-C", dir}, want: &options{dir: dir}},
+		{name: "scratch is trusted for the run", args: []string{"--scratch"}, want: &options{scratch: true, trust: new(true)}},
+		{name: "scratch and -C collide", args: []string{"--scratch", "-C", dir}, code: 1, stderr: "none of the others can be"},
 	} {
 		if err := os.Chdir(base); err != nil {
 			t.Fatal(err)

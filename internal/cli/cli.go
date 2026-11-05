@@ -56,8 +56,9 @@ Exit status: 0 success, 1 error, 2 usage error, 130 interrupted.
 var _version string
 
 type options struct {
-	dir   string // -C
-	trust *bool  // --trust for this run; nil when not given
+	dir     string // -C
+	scratch bool   // --scratch: run in the fixed stand-in project
+	trust   *bool  // --trust for this run; nil when not given
 	// dirs are this run's, resolved once by the root's hook after -C; a
 	// completion resolves its own, since cobra runs no hook there.
 	dirs config.Dirs
@@ -107,6 +108,17 @@ func execute(args []string, stdout, stderr io.Writer, launch func(options) int) 
 		dirs, err := config.ResolveDirs()
 		if err != nil {
 			return err
+		}
+		if o.scratch {
+			dir := dirs.ScratchDir()
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				return err
+			}
+			if err := enterDir(dir); err != nil {
+				return err
+			}
+			dirs.ProjectDir = dir
+			o.trust = new(true) // scratch is always trusted, for this run only
 		}
 		o.dirs = dirs
 		return nil
@@ -192,6 +204,8 @@ With no command zemi opens the TUI.`,
 	root.SetHelpTemplate(root.HelpTemplate() + _envHelp)
 	root.SetVersionTemplate("zemi {{.Version}}\n")
 	root.PersistentFlags().StringVarP(&o.dir, "cd", "C", "", "run in `dir`, as if zemi started there")
+	root.PersistentFlags().BoolVar(&o.scratch, "scratch", false, "run in a fixed throwaway project dir, always trusted and hidden from the project lists")
+	root.MarkFlagsMutuallyExclusive("cd", "scratch")
 	root.PersistentFlags().Bool("trust", false, "trust the project for this run; --trust=false does not")
 	_ = root.MarkPersistentFlagDirname("cd")
 
