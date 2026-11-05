@@ -94,9 +94,8 @@ func FadedRows(rows [][]hostapi.Segment, t float64, spare func(hostapi.Segment) 
 // and a return rises from where it sank. Draw hands it a frame's rows and
 // hands back what the screen shows, so a widget never reads the ramp.
 type Curtain struct {
-	Dur     time.Duration
-	JumpIn  bool // an appear takes the rows whole: no rise
-	JumpOut bool // a leave takes the rows off whole: no sink
+	Dur    time.Duration
+	JumpIn bool // an appear takes the rows whole: no rise
 
 	fade    Fade
 	rows    [][]hostapi.Segment // the rows a sink keeps drawing
@@ -125,10 +124,6 @@ func (c *Curtain) Draw(rows [][]hostapi.Segment, now time.Time) (out [][]hostapi
 			return FadedRows(rows, 1-a, nil), false
 		}
 		return rows, false
-	}
-	if c.JumpOut {
-		c.fade.Jump(false)
-		return nil, false
 	}
 	if c.fade.Shown() {
 		c.fade.Set(false, now) // the sink starts where the rows stand

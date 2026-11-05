@@ -291,11 +291,9 @@ func NewApp(host *hostapi.Host, log *slog.Logger) *App {
 		pendingScroll: map[region]hostapi.ScrollAction{},
 		pendingAnchor: map[region]int{},
 	}
-	// the splash vanishes whole when the first message takes the region, and
-	// the chat's rows appear whole: only the reset's sink moves the chat as
-	// one, scrollbar included
+	// the chat's rows appear whole: only the reset's sink and the knot's
+	// leave on the first message move a region as one
 	splash := anim.NewCurtain(_riseDuration)
-	splash.JumpOut = true
 	chat := anim.NewCurtain(_riseDuration)
 	chat.JumpIn = true
 	a.rises["splash"], a.rises["chat"] = splash, chat
@@ -1033,12 +1031,18 @@ func (a *App) widgetFaded(msg widgetRender) [][]hostapi.Segment {
 		return msg.lines
 	}
 	if w.id == "chat" {
+		// the chat waits out the knot's leave on the first message, as the
+		// splash waits out the reset's sink
+		if c := a.rises["splash"]; c != nil && c.Sinking() {
+			return nil
+		}
 		return a.ride(msg.id, msg.lines)
 	}
 	if w.id == "splash" {
 		// the knot waits out the chat's reset sink: while the chat's kept
-		// rows still draw, the region is not empty yet
-		if c := a.caches["chat"]; c != nil && len(c.lines) > 0 {
+		// rows still draw, the region is not empty yet. On the first message
+		// the knot has no rows of its own: riding nil sinks the rows it kept.
+		if c := a.caches["chat"]; c != nil && len(c.lines) > 0 && len(msg.lines) > 0 {
 			return nil
 		}
 		return a.ride("splash", msg.lines)

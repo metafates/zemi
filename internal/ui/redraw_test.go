@@ -451,6 +451,53 @@ func TestResetSinksTheChatIntoTheSplash(t *testing.T) {
 	}
 }
 
+// TestFirstMessageSinksTheKnot: the first message takes the region, and the
+// knot sinks on the rows it kept before the chat's rows draw whole.
+func TestFirstMessageSinksTheKnot(t *testing.T) {
+	app, _ := bootAgentApp(t, 100, 30)
+	at := time.UnixMilli(1000)
+	app.now = func() time.Time { return at }
+
+	st := func(count int) *hostapi.ScreenState {
+		s := &hostapi.ScreenState{Width: 98, Height: 20, TranscriptCount: count, TranscriptEpoch: 1}
+		if count > 0 {
+			s.Transcript = []hostapi.ChatMessage{{Role: "user", Text: "hello"}}
+		}
+		return s
+	}
+	draw := func(id string, s *hostapi.ScreenState) [][]hostapi.Segment {
+		lines, more := app.widgetByID(id).render(s)
+		app.onWidgetRendered(widgetRender{id: id, lines: lines, more: more, gen: 1, seq: 1, width: 98, height: 20})
+		return app.caches[id].lines
+	}
+	// the boot's knot stands settled
+	if rows := draw("splash", st(0)); len(rows) == 0 {
+		t.Fatal("the knot did not draw")
+	}
+	app.settleSplash()
+
+	// the first message: the splash renders none, its curtain sinks the knot,
+	// and the chat waits while the kept rows still draw
+	if rows := draw("splash", st(1)); rows == nil {
+		t.Fatal("the knot vanished whole on the first message")
+	}
+	if lines := draw("chat", st(1)); len(lines) != 0 {
+		t.Fatal("the chat drew over the knot's sink")
+	}
+	at = at.Add(_riseDuration / 2)
+	if rows := draw("splash", st(1)); len(rows) == 0 || maxFade(rows) < 0.4 || maxFade(rows) > 0.6 {
+		t.Fatalf("the knot's sink did not ride mid-ramp: fade %v", maxFade(rows))
+	}
+	at = at.Add(2 * _riseDuration)
+	if rows := draw("splash", st(1)); len(rows) != 0 {
+		t.Fatal("the knot stayed after its sink")
+	}
+	// the knot rode out: the chat takes the region whole
+	if lines := draw("chat", st(1)); len(lines) == 0 || maxFade(lines) != 0 {
+		t.Fatalf("the chat's first rows did not draw clean: fade %v", maxFade(lines))
+	}
+}
+
 // maxFade is the deepest sink in rows, 0 when they draw clean.
 func maxFade(rows [][]hostapi.Segment) float64 {
 	fade := 0.0

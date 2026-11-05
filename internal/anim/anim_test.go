@@ -92,15 +92,11 @@ func TestCurtain(t *testing.T) {
 		t.Fatalf("the returned curtain did not ride its rise: %v", got)
 	}
 
-	// JumpIn takes an appear whole, JumpOut a leave
+	// JumpIn takes an appear whole
 	j := NewCurtain(100 * time.Millisecond)
 	j.JumpIn = true
 	if got, _ := j.Draw(row(), now); got == nil || got[0][0].Fade != 0 {
 		t.Fatal("a jump-in curtain's first draw rose")
-	}
-	j.JumpOut = true
-	if got, _ := j.Draw(nil, now); got != nil {
-		t.Fatal("a jump-out curtain sank")
 	}
 }
 
