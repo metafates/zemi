@@ -598,6 +598,47 @@ func TestReadoutRise(t *testing.T) {
 	}
 }
 
+// TestUserPromptRise: a prompt the reader sends rises out of the surface;
+// one a session opens with never rises.
+func TestUserPromptRise(t *testing.T) {
+	app, host := bootAgentApp(t, 100, 30)
+	f := app.chatFolds()
+	at := time.UnixMilli(1000)
+	f.now = func() time.Time { return at }
+
+	promptFade := func(app *App) float64 {
+		lines, _ := renderChat(t, app, 98, 20, app.uiState())
+		fade := 0.0
+		for _, row := range lines {
+			if len(row) > 1 && row[0].Text == "▌ " && row[0].HL == "UserMsg" {
+				for _, s := range row {
+					fade = max(fade, s.Fade)
+				}
+			}
+		}
+		return fade
+	}
+
+	// the boot's empty frames read the log the splash owns
+	renderChat(t, app, 98, 20, app.uiState())
+	host.AppendChat(hostapi.ChatMessage{Role: fantasy.MessageRoleUser, Text: "a question"})
+	if fade := promptFade(app); fade < 0.5 {
+		t.Fatalf("the sent prompt did not sink: fade %v", fade)
+	}
+	at = at.Add(2 * _riseDuration)
+	if fade := promptFade(app); fade != 0 {
+		t.Fatalf("the prompt stayed sunk after the ramp: fade %v", fade)
+	}
+
+	// a prompt a session opens with (a resume) is read as it is
+	app2, host2 := bootAgentApp(t, 100, 30)
+	app2.chatFolds().now = func() time.Time { return at }
+	host2.AppendChat(hostapi.ChatMessage{Role: fantasy.MessageRoleUser, Text: "an old question"})
+	if fade := promptFade(app2); fade != 0 {
+		t.Fatalf("a resumed prompt rose: fade %v", fade)
+	}
+}
+
 // TestReadoutRiseSurvivesTheSeqNaming: the reply's row lands unstamped and
 // the log names it a moment later; the rise keys by the row's place in the
 // window, so the naming neither freezes the readout sunk nor pops it clean.
@@ -606,7 +647,7 @@ func TestReadoutRiseSurvivesTheSeqNaming(t *testing.T) {
 	f := app.chatFolds()
 	at := time.UnixMilli(1000)
 	f.now = func() time.Time { return at }
-	f.epoch, f.rows = 1, 1 // the user row ahead of the reply is drawn already
+	f.readEpoch, f.epoch, f.rows = 1, 1, 1 // the user row ahead of the reply is drawn already
 	st := &hostapi.ScreenState{
 		Width: 98, Height: 20, TranscriptEpoch: 1, TranscriptCount: 2,
 		Transcript: []hostapi.ChatMessage{

@@ -38,7 +38,7 @@ Every ramp lives in `internal/anim`; its package doc is the recipe. The three pa
 that comes and goes rides a `Curtain` — give the `widget` `eases: true` and `widgetFaded` routes
 its lines through one, no per-widget code; widgets that share a region's seat (`solo: true`, the
 chat and the splash) hand over through the outgoing one's sink, by region rule, never by id;
-rows that rise inside a widget (a rail call, a readout) ride a `Rise` keyed by what names the
+rows that rise inside a widget (a rail call, a readout, a prompt just sent) ride a `Rise` keyed by what names the
 element — `Spread` when it grows while it rises, `Present` + `Prune` when it comes and goes,
 `Stamp` when it rises once. The boot's first paints (the pills', the scrollbar's, the chat's)
 all wait out one delay and rise together (`ride`'s `inBoot` window); a seat taken back

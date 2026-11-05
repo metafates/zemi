@@ -229,9 +229,10 @@ func (f *chatFolds) fadeLive(key string, rows [][]hostapi.Segment) {
 	}
 }
 
-// readRamp is a reply's readout rise: stamped when the reply settled, done a
-// frame after its ramp ran out, when the clean rows have replaced the sunk.
-type readRamp struct {
+// rowRamp is a row's rise (a sent prompt, a reply's readout): stamped when
+// the row landed, done a frame after its ramp ran out, when the clean rows
+// have replaced the sunk.
+type rowRamp struct {
 	fade *anim.Fade
 	full bool // a frame saw the ramp out
 	done bool
@@ -241,41 +242,44 @@ type readRamp struct {
 // only what the rail carries rises.
 func spareRail(s hostapi.Segment) bool { return s.HL == "ThinkingBar" }
 
-// readoutArrived stamps the readout rise of a reply that just landed: the
-// stats line appears only once the message under it is whole, and a reply
-// the chat opens with never rises. It runs before reset, which would take
-// the incoming epoch as read.
-func (f *chatFolds) readoutArrived(st *hostapi.ScreenState) {
+// rowArrived stamps the rise of a row that just landed at the transcript's
+// tail: a sent prompt rises out of the surface, a reply's readout appears
+// only once the message under it is whole, and a row the chat opens with
+// never rises — a log whose epoch the ledger has not read (a boot, a resume)
+// is taken whole instead.
+func (f *chatFolds) rowArrived(st *hostapi.ScreenState) {
 	if st.View != nil {
 		return
 	}
-	if st.TranscriptEpoch != f.epoch {
-		f.rows = len(st.Transcript)
+	n := len(st.Transcript)
+	if st.TranscriptEpoch != f.readEpoch {
+		f.readEpoch, f.rows = st.TranscriptEpoch, n
 		return
 	}
-	if n := len(st.Transcript); n > f.rows {
+	if n <= f.rows {
 		f.rows = n
-		m := st.Transcript[n-1]
-		if m.Kind == hostapi.RowMessage && m.Role != fantasy.MessageRoleUser && m.Stat != nil && f.now != nil {
-			fade := anim.NewFade(_riseDuration)
-			fade.Set(true, f.now())
-			// the row lands unstamped and the log names it moments later, so
-			// the ramp keys by the row's place, the way the folds do
-			f.readRamps[keyOf(st.TranscriptCut, n)] = &readRamp{fade: fade}
-		}
 		return
 	}
-	f.rows = len(st.Transcript)
+	f.rows = n
+	f.rows = n
+	m := st.Transcript[n-1]
+	if m.Kind == hostapi.RowMessage && (m.Role == fantasy.MessageRoleUser || m.Stat != nil) && f.now != nil {
+		fade := anim.NewFade(_riseDuration)
+		fade.Set(true, f.now())
+		// the row lands unstamped and the log names it moments later, so
+		// the ramp keys by the row's place, the way the folds do
+		f.rowRamps[keyOf(st.TranscriptCut, n)] = &rowRamp{fade: fade}
+	}
 }
 
 // riseReadout sinks the readout into the surface on its first draw and rises
 // it over _riseDuration. The settled cache would freeze a mid-rise row, so
-// the render rebuilds the readout's unit while the ramp runs (readoutRising).
+// the render rebuilds the readout's unit while the ramp runs (risingRow).
 func (f *chatFolds) riseReadout(seq int64, row []hostapi.Segment) []hostapi.Segment {
 	if f.now == nil {
 		return row
 	}
-	ramp, ok := f.readRamps[seq]
+	ramp, ok := f.rowRamps[seq]
 	if !ok || ramp.done {
 		return row
 	}
@@ -286,15 +290,34 @@ func (f *chatFolds) riseReadout(seq int64, row []hostapi.Segment) []hostapi.Segm
 	return row
 }
 
-// readoutRising names the reply whose readout is still rising, 0 for none:
-// the render rebuilds that unit at each frame's alpha, one frame past the
-// ramp so the settled rows land clean.
-func (f *chatFolds) readoutRising() int64 {
+// riseUser sinks a prompt that just landed into the surface and rises its
+// block over _riseDuration, the way a reply's readout rises under it.
+func (f *chatFolds) riseUser(key int64, rows [][]hostapi.Segment) {
+	if f.now == nil {
+		return
+	}
+	ramp, ok := f.rowRamps[key]
+	if !ok || ramp.done {
+		return
+	}
+	if alpha := ramp.fade.Alpha(f.now()); alpha < 1 {
+		for i, row := range rows {
+			rows[i] = anim.Faded(row, 1-alpha, nil)
+		}
+		return
+	}
+	ramp.done = true
+}
+
+// risingRow names the row whose rise is still running, 0 for none: the
+// render rebuilds that unit at each frame's alpha, one frame past the ramp
+// so the settled rows land clean.
+func (f *chatFolds) risingRow() int64 {
 	if f.now == nil {
 		return 0
 	}
 	now := f.now()
-	for seq, ramp := range f.readRamps {
+	for seq, ramp := range f.rowRamps {
 		if ramp.done {
 			continue
 		}
@@ -312,12 +335,12 @@ func (f *chatFolds) readoutRising() int64 {
 }
 
 // rising reports whether one of the chat's rises is in flight: the live
-// rows', the readouts', or a rail call's.
+// rows', a landed row's, or a rail call's.
 func (f *chatFolds) rising() bool {
 	if f.liveRise.Rising() {
 		return true
 	}
-	for _, ramp := range f.readRamps {
+	for _, ramp := range f.rowRamps {
 		if !ramp.done {
 			return true
 		}
@@ -793,13 +816,15 @@ type chatFolds struct {
 	// in the tests that pin none.
 	now      func() time.Time
 	railRise *anim.Rise[string]
-	// a reply's readout rise: a ramp per reply, keyed by its row's place in
-	// the window, stamped the frame the reply's row lands at the transcript's
-	// tail, so the stats line under it rises after the message landed whole.
-	// rows is the transcript length the last render saw, the growth a fresh
-	// reply reads against.
-	readRamps map[int64]*readRamp
+	// a landed row's rise (a sent prompt, a reply's readout): a ramp per row,
+	// keyed by its place in the window, stamped the frame the row lands at the
+	// transcript's tail. rows is the transcript length the last render saw,
+	// the growth a fresh row reads against, readEpoch the log they were read
+	// on: a log the chat opens with is read whole, no row of it rising, and
+	// reset's epoch waits for the fold parking it does there.
+	rowRamps  map[int64]*rowRamp
 	rows      int
+	readEpoch int64
 	// the live rows no call of their own carries (the thinking spinner, the
 	// thought digest): a fade each, stamped on their first draw so they rise
 	// like the calls do; seen names the ones the last frame drew, and a row
@@ -877,8 +902,8 @@ func chatWidget(h *hostapi.Host) *widget {
 		foldSet: newFoldSet(), views: map[string]viewFolds{},
 		md: map[string][][]hostapi.Segment{}, hl: map[string][]hostapi.Segment{},
 		now: time.Now, railRise: anim.NewRise[string](_riseDuration, nil),
-		readRamps: map[int64]*readRamp{},
-		liveRise:  anim.NewRise[string](_riseDuration, nil),
+		rowRamps: map[int64]*rowRamp{},
+		liveRise: anim.NewRise[string](_riseDuration, nil),
 	}
 	f.railRise.Now = f.clock
 	f.liveRise.Now = f.clock
@@ -925,7 +950,7 @@ func (f *chatFolds) reset(st *hostapi.ScreenState) {
 		}
 		f.foldSet, f.view, f.epoch = next.foldSet, v, epoch
 		f.ver++
-		clear(f.readRamps)
+		clear(f.rowRamps)
 		f.liveRise.Clear()
 	}
 	if n := len(st.Agent.Tools); n < f.calls {
@@ -1789,7 +1814,9 @@ func (b *chatBuilder) unit(tr []entry, first, last int, mode runMode) {
 	case m.role == fantasy.MessageRoleUser:
 		// plain text: what the user typed is not markdown
 		b.gap(_blockUser)
+		from := len(b.lines)
 		b.user(m.text, false, keyOf(b.st.TranscriptCut, first+1))
+		b.folds.riseUser(keyOf(b.st.TranscriptCut, first+1), b.lines[from:])
 	default:
 		b.gap(_blockText)
 		b.markdown(m.text)
@@ -1855,15 +1882,22 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 	// the splash owns the empty chat: it draws the pending row too, in a block
 	// that fits, so nothing here can scroll it off the top
 	if emptyChat(st) {
+		// the empty log is still a log the row ledger reads, so the first
+		// prompt sent on it lands on one the folds track and rises
+		if st.View == nil && st.TranscriptEpoch != f.readEpoch {
+			f.mu.Lock()
+			f.readEpoch, f.rows = st.TranscriptEpoch, 0
+			f.mu.Unlock()
+		}
 		return nil, false
 	}
 	b := &chatBuilder{width: cmp.Or(st.Width, 80), st: st, host: h, folds: f}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	// a reply that just landed hands its readout a rise, before reset takes
-	// the incoming epoch as read
-	f.readoutArrived(st)
+	// a row that just landed (a sent prompt, a settled reply) hands its rise
+	// in: after reset, whose epoch change must not wipe the stamp
 	f.reset(st)
+	f.rowArrived(st)
 	// work that outlives this view of the session sits at the tail: a
 	// session's counts are about other work, so a run's view leaves it out
 	var pending []hostapi.Segment
@@ -1893,7 +1927,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		rows: len(st.Transcript), older: st.LogRows(), width: b.width,
 		folds: f.ver, view: viewID(st), tail: tailFirst, replying: st.Agent.Text == "",
 	}
-	rising := f.readoutRising()
+	rising := f.risingRow()
 	if key == f.settledKey && f.fillUnit == 0 && rising == 0 {
 		// appending may write into the spare capacity, which the settled
 		// slice's own rows never reach
@@ -1974,7 +2008,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 				}
 			}
 		}
-		// a readout mid-rise rebuilds its unit at this frame's alpha, so the
+		// a row mid-rise rebuilds its unit at this frame's alpha, so the
 		// rise moves over the settled rows the cache would freeze
 		if !fresh && rising != 0 {
 			for k, u := range units {
