@@ -221,7 +221,7 @@ func workingRule(e *eyes, st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 			continue
 		}
 		if len(after) > 0 {
-			after = append(after, hostapi.Segment{Text: "   ", HL: "Dim"})
+			after = append(after, hostapi.Segment{Text: " · ", HL: "Dim"})
 		}
 		after = append(after, p.line...)
 	}

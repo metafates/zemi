@@ -670,7 +670,7 @@ func diffstat(diff string) []hostapi.Segment {
 
 // digest is what rows first..last of a turn fold into, the chat's digest row:
 // "1 command: run the tests", what it did then what the model said about the
-// first call, or "6 files, 8 commands   thought 8s"; "" when it holds neither,
+// first call, or "6 files, 8 commands · thought 8s"; "" when it holds neither,
 // so its rail stays.
 func digest(rows []entry, first, last int, cwd, home string) string {
 	var calls, fails, works []entry
@@ -795,7 +795,7 @@ func digest(rows []entry, first, last int, cwd, home string) string {
 	if secs >= 50*time.Millisecond || len(parts) == 0 && reasoned {
 		parts = append(parts, thoughtText(secs))
 	}
-	return strings.Join(parts, "   ")
+	return strings.Join(parts, " · ")
 }
 
 // chatFolds is what a chat render keeps between frames: the folds a click
