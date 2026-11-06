@@ -1156,3 +1156,39 @@ func TestScrollBarRisesAtBoot(t *testing.T) {
 		t.Fatalf("the boot bar stayed sunk at fade %v", got)
 	}
 }
+
+// TestFoldToggleKeepsTheBarTotal: unfolding a rail above the viewport
+// rebuilds its unit at once, so the scrollbar's total never dips for the
+// frames the fill would need.
+func TestFoldToggleKeepsTheBarTotal(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 100, 20)
+	for i := 1; i <= 30; i++ {
+		host.AppendMessage("user", fmt.Sprintf("message %d", i))
+		appendReasoning(host, fmt.Sprintf("thought %d\n", i), hostapi.TurnStat{ThoughtMS: 4200})
+		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"})
+		appendReply(host, fmt.Sprintf("reply %d one\ntwo\nthree\nfour", i), hostapi.TurnStat{In: 1000, Out: 100, ElapsedMS: 1500})
+	}
+	for range 200 {
+		renderChat(t, app, 98, 20, app.uiState())
+		if app.chatFolds().fillUnit == 0 {
+			break
+		}
+	}
+	before := len(app.chatFolds().settled)
+	clickChat(t, app, "turn:2")
+	renderChat(t, app, 98, 20, app.uiState())
+	after := len(app.chatFolds().settled)
+	if after <= before {
+		t.Fatalf("unfolding added no rows: %d after %d", after, before)
+	}
+	for range 200 {
+		renderChat(t, app, 98, 20, app.uiState())
+		if app.chatFolds().fillUnit == 0 {
+			break
+		}
+	}
+	if final := len(app.chatFolds().settled); final != after {
+		t.Fatalf("the bar's total dipped while the fill caught up: %d rows on the toggle's frame, %d settled", after, final)
+	}
+}

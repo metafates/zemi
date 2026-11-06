@@ -849,9 +849,10 @@ type chatFolds struct {
 	settledPrev blockKind
 	fillUnit    int
 	built       map[int][][]hostapi.Segment
-	builtFrom   settledKey // the state the builds belong to, with rows aside
-	builtSpan   [][2]int   // each built unit's transcript span
-	ver         int        // the folds' version: any change draws the rows again
+	builtFrom   settledKey     // the state the builds belong to, with rows aside
+	builtSpan   [][2]int       // each built unit's transcript span
+	ver         int            // the folds' version: any change draws the rows again
+	dirty       map[int64]bool // fold keys toggled since the last build: their unit rebuilds at once
 }
 
 // foldSet is one view's folds: the session's chat and a run's transcript
@@ -908,6 +909,7 @@ func chatWidget(h *hostapi.Host) *widget {
 		now: time.Now, railRise: anim.NewRise[string](_riseDuration, nil),
 		rowRamps: map[int64]*rowRamp{},
 		liveRise: anim.NewRise[string](_riseDuration, nil),
+		dirty:    map[int64]bool{},
 	}
 	f.railRise.Now = f.clock
 	f.liveRise.Now = f.clock
@@ -980,6 +982,17 @@ func (f *chatFolds) reset(st *hostapi.ScreenState) {
 	})
 }
 
+// touched reports whether a fold toggled since the last build sits on the
+// unit's rows [first, last] (window indexes, 0-based), so the unit rebuilds.
+func (f *chatFolds) touched(cut int64, first, last int) bool {
+	for k := cut + int64(first) + 1; k <= cut+int64(last)+1; k++ {
+		if f.dirty[k] {
+			return true
+		}
+	}
+	return false
+}
+
 // toggle opens or closes the fold a click names.
 func (f *chatFolds) toggle(kind string, key int64) {
 	f.mu.Lock()
@@ -1002,6 +1015,7 @@ func (f *chatFolds) toggle(kind string, key int64) {
 	} else {
 		set[key] = true
 	}
+	f.dirty[key] = true
 	f.ver++
 	// what was opened in a folded run has no row left to close it by
 	if kind == "turn" && !set[key] {
@@ -2002,19 +2016,34 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 			f.fillUnit = len(units) // a new state rebuilds from the tail
 			// an appended transcript row keeps every build but the tail unit it
 			// grew into or follows; dropping them would dip the bar's total
-			// until the fill caught back up
+			// until the fill caught back up. A tail that moved (a turn's first
+			// call landing, the reply it closes starting to stream) only moves
+			// the mode of the run it names, and a fold toggle one unit: those
+			// rebuild at once, still without dipping the total.
+			// a folds version that only toggles wrote (a click) rides the same
+			// rule: the touched unit rebuilds, the builds beside it stand
 			now, prev := key, f.builtFrom
 			now.rows, prev.rows = 0, 0
+			tailPrev, repPrev := prev.tail, prev.replying
+			now.tail, prev.tail, now.replying, prev.replying = 0, 0, false, false
+			now.folds, prev.folds = 0, 0
 			if now != prev {
 				f.built = map[int][][]hostapi.Segment{}
 				f.builtSpan = nil
 			} else {
+				livePrev := 0
+				if repPrev {
+					livePrev = tailPrev
+				}
 				for k, u := range units {
 					if k >= len(f.builtSpan) || f.builtSpan[k] != [2]int{u.first, u.last} {
 						delete(f.built, k)
+					} else if f.touched(b.st.TranscriptCut, u.first, u.last) || u.first+1 == livePrev || u.first+1 == liveFirst {
+						f.built[k] = unitLines(k)
 					}
 				}
 			}
+			clear(f.dirty)
 		}
 		// a row mid-rise rebuilds its unit at this frame's alpha, so the
 		// rise moves over the settled rows the cache would freeze
