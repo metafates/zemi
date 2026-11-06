@@ -11,6 +11,10 @@
 //	c := anim.NewCurtain(160 * time.Millisecond)
 //	out, _ := c.Draw(rows, now) // out is what the screen shows
 //
+// Words that change in place (a pill's counts) dip through the same
+// curtain: Dip sinks the drawn rows and the next Draw's rows rise once it
+// lands, so a value never swaps mid-fade.
+//
 // A curtain whose first paint must wait out a delay (the chat view's boot,
 // the scrollbar's) stamps it with Boot instead of drawing into a JumpIn.
 // An element that appears and may go away within one widget's rows (a rail
@@ -143,11 +147,29 @@ type Curtain struct {
 	fade    Fade
 	rows    [][]hostapi.Segment // the rows a sink keeps drawing
 	sinking bool
+	dip     bool // a change's sink in flight: the kept rows sink, the next draw's rise
 	drawn   bool // the curtain ever drew rows: it has owned its seat
 }
 
 // NewCurtain is a Curtain easing over dur.
 func NewCurtain(dur time.Duration) *Curtain { return &Curtain{Dur: dur, fade: Fade{Dur: dur}} }
+
+// Dip sinks the drawn rows over dur and the next Draw's rows rise once it
+// lands, still over dur: an update that changes what a widget says dips it
+// instead of swapping its bytes. A dur of 0 or less reads Dur. One on a
+// hidden or sinking curtain does nothing; one mid-dip re-arms the sink from
+// where it stands.
+func (c *Curtain) Dip(dur time.Duration, now time.Time) {
+	if !c.fade.Shown() || c.sinking {
+		return
+	}
+	if dur <= 0 {
+		dur = c.Dur
+	}
+	c.fade.Delay = 0 // a change's rise is not a boot's first paint: it starts at once
+	c.dip, c.fade.Dur = true, dur
+	c.fade.Set(false, now) // the sink starts where the rows stand
+}
 
 // Owned reports a curtain that ever drew rows: the seat it took.
 func (c *Curtain) Owned() bool { return c.drawn }
@@ -169,6 +191,23 @@ func (c *Curtain) Boot(delay time.Duration, now time.Time) {
 // sink covered behind it draws from the next frame on.
 func (c *Curtain) Draw(rows [][]hostapi.Segment, now time.Time) (out [][]hostapi.Segment, settled bool) {
 	if len(rows) > 0 {
+		if c.dip {
+			if a := c.fade.Alpha(now); a > 0 && !c.fade.Shown() && len(c.rows) > 0 {
+				c.sinking = true
+				return FadedRows(c.rows, 1-a, nil), false // the old words, sinking
+			}
+			// the old words landed: the new ones rise, and a change mid-rise
+			// sinks them from where they stand
+			c.sinking, c.drawn, c.rows = false, true, rows
+			if !c.fade.Shown() {
+				c.fade.Set(true, now)
+			}
+			if a := c.fade.Alpha(now); a < 1 {
+				return FadedRows(rows, 1-a, nil), false
+			}
+			c.dip, c.fade.Dur = false, c.Dur
+			return rows, false
+		}
 		c.sinking, c.drawn = false, true
 		if !c.fade.Shown() {
 			if c.JumpIn {

@@ -232,3 +232,49 @@ func TestStatusRise(t *testing.T) {
 		t.Fatal("the finished fall kept the tick awake")
 	}
 }
+
+// TestContextDip: the ctx pill dips to a new count — the old words sink
+// whole and the new rise once they land — while a re-render that says the
+// same words does not dip.
+func TestContextDip(t *testing.T) {
+	_, host := statusApp(t)
+	app := &App{
+		host:    host,
+		widgets: statuslineWidgets(),
+		rises:   map[string]*anim.Curtain{},
+		caches:  map[string]*widgetCache{},
+		now:     func() time.Time { return time.UnixMilli(500) },
+	}
+	const id = "statusline.context"
+	first := [][]hostapi.Segment{{{Text: "1k/2k ctx", HL: "Dim"}}}
+	draw := func(gen int64, lines [][]hostapi.Segment, at time.Time) hostapi.Segment {
+		app.now = func() time.Time { return at }
+		app.onWidgetRendered(widgetRender{id: id, lines: lines, gen: gen, seq: gen, width: 80, height: 14})
+		return app.caches[id].lines[0][0]
+	}
+	up := time.UnixMilli(500).Add(_barDelay + _riseDuration)
+
+	if got := draw(1, first, time.UnixMilli(500)); got.Fade != 1 {
+		t.Fatalf("the pill's first draw drew at fade %v, want fully sunk", got.Fade)
+	}
+	if got := draw(2, first, up); got.Text != "1k/2k ctx" || got.Fade != 0 {
+		t.Fatalf("the risen pill did not draw clean: %+v", got)
+	}
+	if got := draw(3, first, up); got.Text != "1k/2k ctx" || got.Fade != 0 {
+		t.Fatalf("an unchanged pill dipped: %+v", got)
+	}
+
+	second := [][]hostapi.Segment{{{Text: "2k/2k ctx", HL: "Dim"}}}
+	if got := draw(4, second, up); got.Text != "1k/2k ctx" || got.Fade != 0 {
+		t.Fatalf("the dip did not sink the old count whole: %+v", got)
+	}
+	if !app.fadesRising() || app.tickInterval() != _riseTick {
+		t.Fatal("the dip did not keep the tick awake")
+	}
+	if got := draw(5, second, up.Add(_dipDuration)); got.Text != "2k/2k ctx" || got.Fade != 1 {
+		t.Fatalf("the dip did not hand over to the new count: %+v", got)
+	}
+	if got := draw(6, second, up.Add(2*_dipDuration)); got.Fade != 0 {
+		t.Fatalf("the dipped pill kept a fade of %v", got.Fade)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"runtime/debug"
 	"slices"
+	"time"
 
 	"github.com/metafates/zemi/internal/hostapi"
 )
@@ -23,6 +24,9 @@ type widget struct {
 	// eases routes the widget's lines through a curtain: appearing rises out
 	// of the surface, leaving sinks on the rows it kept
 	eases bool
+	// dip dips the widget's lines through its curtain when their words
+	// change: the old words sink, the new rise after. 0 swaps the bytes.
+	dip time.Duration
 	// solo marks widgets that share their region's seat (the chat and the
 	// splash): one yields while another still draws, so the region hands
 	// over through the outgoing one's sink

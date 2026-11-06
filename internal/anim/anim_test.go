@@ -118,6 +118,53 @@ func TestCurtain(t *testing.T) {
 	}
 }
 
+// TestCurtainDip: a dip sinks the drawn rows — the old words, never the new
+// ones — and the next draw's rows rise once it lands, both over the dip's
+// own speed.
+func TestCurtainDip(t *testing.T) {
+	now := time.UnixMilli(0)
+	old := [][]hostapi.Segment{{{Text: "1k ctx", HL: "Dim"}}}
+	next := [][]hostapi.Segment{{{Text: "2k ctx", HL: "Dim"}}}
+	c := NewCurtain(100 * time.Millisecond)
+	if got, _ := c.Draw(old, now); got == nil || got[0][0].Fade != 1 {
+		t.Fatal("the first draw is not sunk")
+	}
+	if got, _ := c.Draw(old, now.Add(2*c.Dur)); got == nil || got[0][0].Fade != 0 {
+		t.Fatal("the risen curtain did not draw its rows clean")
+	}
+
+	dip := 80 * time.Millisecond
+	c.Dip(dip, now.Add(2*c.Dur))
+	if got, _ := c.Draw(next, now.Add(2*c.Dur)); got == nil || got[0][0].Text != "1k ctx" || got[0][0].Fade != 0 {
+		t.Fatalf("the dip's sink did not draw the old words whole: %v", got)
+	}
+	if got, _ := c.Draw(next, now.Add(2*c.Dur).Add(dip/2)); got == nil || got[0][0].Text != "1k ctx" || got[0][0].Fade < 0.4 || got[0][0].Fade > 0.6 {
+		t.Fatalf("the dip's sink did not ride mid-ramp: %v", got)
+	}
+	if got, _ := c.Draw(next, now.Add(2*c.Dur).Add(dip)); got == nil || got[0][0].Text != "2k ctx" || got[0][0].Fade != 1 {
+		t.Fatalf("the dip did not hand over to the new words: %v", got)
+	}
+	if got, _ := c.Draw(next, now.Add(2*c.Dur).Add(dip+dip/2)); got == nil || got[0][0].Fade < 0.4 || got[0][0].Fade > 0.6 {
+		t.Fatalf("the new words did not ride the rise: %v", got)
+	}
+	if got, _ := c.Draw(next, now.Add(2*c.Dur).Add(2*dip)); got == nil || got[0][0].Fade != 0 {
+		t.Fatal("the dipped curtain did not settle clean")
+	}
+	if c.fade.Dur != c.Dur {
+		t.Fatalf("the dip left the curtain's ramp at %v", c.fade.Dur)
+	}
+
+	// a dip on a hidden curtain does nothing
+	c.Draw(nil, now.Add(9*c.Dur))
+	if got, _ := c.Draw(nil, now.Add(9*c.Dur).Add(c.Dur)); got != nil {
+		t.Fatal("the sink did not ride out before the second dip")
+	}
+	c.Dip(dip, now.Add(9*c.Dur).Add(c.Dur))
+	if got, _ := c.Draw(nil, now.Add(9*c.Dur).Add(c.Dur)); got != nil {
+		t.Fatal("a dip on a hidden curtain sank rows")
+	}
+}
+
 // TestSpread: rows a ramp already carries ride it, growth past it joins the
 // newest ramp while it rises or starts the next one, and Retain drops the
 // keys keep refuses.

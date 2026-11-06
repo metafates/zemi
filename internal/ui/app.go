@@ -46,6 +46,7 @@ const (
 	_idleInterval     = 250 * time.Millisecond // the tick with nothing moving on its own; a bump wakes it
 	_frameMS          = 50                     // the frame clock: the snail's spinner and shimmer step once per tick
 	_riseDuration     = 160 * time.Millisecond // how long a statusline pill's appear or disappear takes
+	_dipDuration      = 80 * time.Millisecond  // the ctx pill's out-and-back on a new count: fast, it changes while a turn streams
 	_barDelay         = 120 * time.Millisecond // how long the boot's first paints (the pills', the scrollbar's, the chat's) wait before they rise
 	_riseTick         = 16 * time.Millisecond  // the tick while one runs, so the ramp reads smooth
 	_caretIdle        = time.Second            // how long the composer sits untouched before its caret blinks
@@ -1102,7 +1103,34 @@ func (a *App) widgetFaded(msg widgetRender) [][]hostapi.Segment {
 			}
 		}
 	}
+	if w.dip > 0 && len(msg.lines) > 0 {
+		if old := a.caches[msg.id]; old != nil && linesDiffer(old.lines, msg.lines) {
+			if c := a.rises[w.id]; c != nil && c.Shown() && !c.Sinking() {
+				c.Dip(w.dip, a.now())
+				a.wakeTick()
+			}
+		}
+	}
 	return a.ride(w.id, msg.lines)
+}
+
+// linesDiffer reports whether a render says what the cached one did not: a
+// dip fires on the words a widget says, never on how they are styled.
+func linesDiffer(prev, next [][]hostapi.Segment) bool {
+	if len(prev) != len(next) {
+		return true
+	}
+	for i, row := range prev {
+		if len(row) != len(next[i]) {
+			return true
+		}
+		for j, s := range row {
+			if s.Text != next[i][j].Text {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ride draws a widget's rows through its curtain, creating it on first use.
