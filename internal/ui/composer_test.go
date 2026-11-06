@@ -283,7 +283,7 @@ func TestComposerRowMoves(t *testing.T) {
 		{"a slash draft wraps two cells short", "/" + nine + nine, "up", "/" + nine + nine, 11, 4},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			app.composerRows(10, "")
+			_, _, _ = app.composerRows(10, "")
 			app.composer.text, app.composer.cursor = c.text, c.cursor
 			app.composer.histIdx = len(app.composer.history) // each case starts at the draft
 			app.composerKey(c.key, tea.KeyPressMsg{})
@@ -390,7 +390,7 @@ func TestComposerHiddenRows(t *testing.T) {
 		},
 	} {
 		app.composer.cursor = c.cursor
-		rows := app.composerRows(40, "")
+		rows, _, _ := app.composerRows(40, "")
 		got := make([]float64, len(rows))
 		for i, r := range rows {
 			got[i] = r[0].Fade
@@ -401,14 +401,14 @@ func TestComposerHiddenRows(t *testing.T) {
 	}
 }
 
-// TestComposerPlaceholder: an empty draft shows the placeholder dim under
-// the cursor and left out of a copy; the first typed rune takes the cell the
-// cursor was on.
+// TestComposerPlaceholder: an empty draft shows the placeholder dim and left
+// out of a copy, the caret on its first cell; the first typed rune takes the
+// cell the caret was on. A box over the composer has the keys: no caret.
 func TestComposerPlaceholder(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
 	for _, c := range []struct {
 		name, text, want string
-		cursor           int  // the cursor cell's column, -1 for none
+		cursor           int  // the caret cell's column, -1 for none
 		modal            bool // a box over the composer has the keys
 	}{
 		{"empty", "", "Ask anything", 0, false},
@@ -420,19 +420,19 @@ func TestComposerPlaceholder(t *testing.T) {
 		if c.modal {
 			app.openOverlay(hostapi.Overlay{ID: "box", Title: "box"})
 		}
-		segs := app.composerRows(40, "Ask anything")[0]
-		cursor, col := -1, 0
-		for _, s := range segs {
-			if s.HL == hostapi.ChromeCursor {
-				cursor = col
-			}
-			if c.text == "" && c.want != "" && (!s.NoCopy || s.HL != "Dim" && s.HL != hostapi.ChromeCursor) {
-				t.Errorf("%s: placeholder segment %+v copies or reads as text", c.name, s)
-			}
-			col += ansi.StringWidth(s.Text)
+		rows, cell, ok := app.composerRows(40, "Ask anything")
+		if got := strings.TrimRight(hostapi.SegsText(rows[0]), " "); got != c.want {
+			t.Errorf("%s: row %q, want %q", c.name, got, c.want)
 		}
-		if got := strings.TrimRight(hostapi.SegsText(segs), " "); got != c.want || cursor != c.cursor {
-			t.Errorf("%s: row %q, cursor at %d; want %q at %d", c.name, got, cursor, c.want, c.cursor)
+		if col := -1; ok && cell.X != c.cursor || !ok && c.cursor != col {
+			t.Errorf("%s: caret at %d, want %d", c.name, cell.X, c.cursor)
+		}
+		if c.text == "" && c.want != "" {
+			for _, s := range rows[0] {
+				if !s.NoCopy || s.HL != "Dim" {
+					t.Errorf("%s: placeholder segment %+v copies or reads as text", c.name, s)
+				}
+			}
 		}
 		if c.modal {
 			app.cancelOverlay(app.overlays[len(app.overlays)-1].o)
@@ -446,7 +446,7 @@ func TestComposerPlaceholder(t *testing.T) {
 func TestComposerGutter(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
 	app.composer.text = "one\ntwo"
-	rows := app.composerRows(40, "")
+	rows, _, _ := app.composerRows(40, "")
 	if len(rows) != 2 {
 		t.Fatalf("a two-line draft drew %d rows", len(rows))
 	}
@@ -456,7 +456,7 @@ func TestComposerGutter(t *testing.T) {
 		}
 	}
 	app.composer.text = "/ls\ntwo"
-	rows = app.composerRows(40, "")
+	rows, _, _ = app.composerRows(40, "")
 	if got := rows[0][0]; got.Text != "/ " || got.HL != "PromptCommand" || hostapi.SegsText(rows[0]) != "/ ls" {
 		t.Fatalf("command prompt %+v", rows[0])
 	}
@@ -473,7 +473,8 @@ func TestComposerGutter(t *testing.T) {
 		{"slash", "/" + strings.Repeat("a", 60), 38},
 	} {
 		app.composer.text = c.text
-		if got := hostapi.SegsWidth(app.composerRows(40, "")[0]); got != c.want {
+		row, _, _ := app.composerRows(40, "")
+		if got := hostapi.SegsWidth(row[0]); got != c.want {
 			t.Fatalf("the %s row is %d cells wide, want %d", c.name, got, c.want)
 		}
 	}

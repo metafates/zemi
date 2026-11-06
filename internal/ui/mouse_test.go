@@ -197,8 +197,8 @@ func TestComposerCursorColumn(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 12)
 	app.composer.text, app.composer.cursor = "hello world", 2
-	if segs := app.composerRows(60, "")[0]; segs[0].Text != "he" || segs[1].Text != "l" || segs[1].HL != "Host:Cursor" {
-		t.Fatalf("block cursor not on its column: %+v", segs)
+	if _, cell, ok := app.composerRows(60, ""); !ok || cell.X != 2 || cell.Y != 0 {
+		t.Fatalf("caret cell %+v ok=%v, want column 2", cell, ok)
 	}
 }
 

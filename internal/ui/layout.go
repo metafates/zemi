@@ -303,10 +303,11 @@ func (a *App) measure(n *node, width int) int {
 		rows := a.regionLines(n.Region, regionWidth(n, width), 0)
 		return len(rows)
 	case _layoutComposer:
+		rows, _, _ := a.composerRows(width, n.Placeholder)
 		if n.Frame {
-			return len(a.composerRows(frameInner(width), n.Placeholder)) + 2
+			return len(rows) + 2
 		}
-		return len(a.composerRows(width, n.Placeholder))
+		return len(rows)
 	case _layoutBar:
 		return 1
 	case _layoutBox, _layoutSpacer:
@@ -407,11 +408,19 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 			}
 		}
 	case n.Kind == _layoutComposer && n.Frame:
-		rows = a.composerFrame(n, w)
+		var cell uv.Position
+		rows, cell, a.caretOn = a.composerFrame(n, w)
+		if a.caretOn {
+			a.caret = cell.Add(l.rect.Min)
+		}
 	case n.Kind == _layoutComposer:
 		// the composer is on the panel, its rows padded to the node so the
 		// whole block is one surface, as the frame's own rows are
-		rows = a.composerRows(w, n.Placeholder)
+		var cell uv.Position
+		rows, cell, a.caretOn = a.composerRows(w, n.Placeholder)
+		if a.caretOn {
+			a.caret = cell.Add(l.rect.Min)
+		}
 		for i := range rows {
 			rows[i] = padSegs(rows[i], w)
 		}

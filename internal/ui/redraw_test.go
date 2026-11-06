@@ -38,6 +38,30 @@ func TestProgressReport(t *testing.T) {
 	}
 }
 
+// TestComposerTerminalCursor: the view carries the terminal's own cursor at
+// the composer caret while the composer holds the keys, and hides it when
+// the chat or a modal takes them.
+func TestComposerTerminalCursor(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 60, 12)
+	app.composer.text, app.composer.cursor = "hi", 1
+	cur := app.View().Cursor
+	// the caret rides the composer frame's origin: two border cells in, past
+	// the top rule, on the rune the draft's cursor is at
+	if cur == nil || cur.Shape != tea.CursorBar || cur.X != 3 || cur.Y != 9 {
+		t.Fatalf("a keyed composer should draw a bar caret at 3,9, got %+v", cur)
+	}
+	app.chatFocus = true
+	if cur = app.View().Cursor; cur != nil {
+		t.Fatalf("the chat's keys should hide the caret, got %+v", cur)
+	}
+	app.chatFocus = false
+	app.openOverlay(hostapi.Overlay{ID: "box", Title: "box"})
+	if cur = app.View().Cursor; cur != nil {
+		t.Fatalf("a modal's keys should hide the caret, got %+v", cur)
+	}
+}
+
 // TestRedrawAfterCallbacks: a one-shot timer's change reaches the screen
 // with no other redraw, zemi.ui.redraw asks for one, and a burst of
 // refreshes waits in the hook queue as one.

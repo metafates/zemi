@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
@@ -415,27 +416,29 @@ func draftWrap(w int, glyph string) int {
 // panel. A plain draft starts at the frame's inner edge; a slash (/) draft
 // keeps its glyph on the first row and the gutter it opens down the
 // others. An empty draft shows placeholder dim under the cursor, where typing
-// replaces it without moving a cell.
-func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
+// replaces it without moving a cell. When the composer holds the keys it
+// also returns the caret's cell relative to its first row, for the
+// terminal's own cursor; without the keys the cursor is not drawn at all.
+func (a *App) composerRows(w int, placeholder string) (rows [][]hostapi.Segment, cell uv.Position, ok bool) {
 	glyph, promptHL, _ := a.draftMode()
 	wrap := draftWrap(w, glyph)
 	a.composerW = w
-	cursorRow, cursorCol, rows, soft := a.wrapComposer(wrap)
+	cursorRow, cursorCol, all, soft := a.wrapComposer(wrap)
 	start := max(0, cursorRow-_composerMaxRows+1)
-	if cursorRow < len(rows)-1 {
+	if cursorRow < len(all)-1 {
 		// a row of headroom, so the bottom ramp lands below the live cursor
 		start = max(0, cursorRow-_composerMaxRows+2)
 	}
-	focused := a.topChrome() != _noModal || a.chatFocus // the chat cursor takes every key: the composer draws no cursor
+	ok = a.composerHoldsKeys()
 	var out [][]hostapi.Segment
-	for i := start; i < len(rows) && len(out) < _composerMaxRows; i++ {
-		text, col := rows[i], cursorCol
+	for i := start; i < len(all) && len(out) < _composerMaxRows; i++ {
+		text := all[i]
 		var gutter []hostapi.Segment
 		switch {
 		case glyph == "":
 		case i == 0:
 			// the glyph stands for the draft's own first character, so the row leaves it out
-			text, col = text[1:], max(col-1, 0)
+			text = text[1:]
 			gutter = []hostapi.Segment{{Text: glyph + " ", HL: promptHL, NoCopy: true}}
 		default:
 			gutter = []hostapi.Segment{{Text: "  ", NoCopy: true}}
@@ -446,16 +449,8 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 			if a.composerNote != "" {
 				placeholder = a.composerNote
 			}
-			hint := []hostapi.Segment{{Text: placeholder, HL: "Dim"}}
-			if !focused {
-				hint = cursorSegs([]rune(placeholder), 0, "Dim")
-			}
-			for j := range hint {
-				hint[j].NoCopy = true
-			}
-			segs = truncateSegs(hint, max(wrap, 1)) // a row never comes out empty
-		case i == cursorRow && !focused:
-			segs = cursorSegs(text, min(col, len(text)), "Normal")
+			segs = []hostapi.Segment{{Text: placeholder, HL: "Dim", NoCopy: true}}
+			segs = truncateSegs(segs, max(wrap, 1)) // a row never comes out empty
 		default:
 			segs = []hostapi.Segment{{Text: string(text), HL: "Normal"}}
 		}
@@ -465,8 +460,18 @@ func (a *App) composerRows(w int, placeholder string) [][]hostapi.Segment {
 		segs[len(segs)-1].Soft = soft[i] // a wrapped row copies as one line
 		out = append(out, segs)
 	}
-	edgeRamp(out, start, len(rows)-start-len(out), _boxFade, func(i int) bool { return i == cursorRow-start })
-	return out
+	edgeRamp(out, start, len(all)-start-len(out), _boxFade, func(i int) bool { return i == cursorRow-start })
+	if ok {
+		col := cursorCol
+		if glyph != "" {
+			if cursorRow == 0 {
+				col = max(col-1, 0) // the glyph stands for the draft's first rune
+			}
+			col += 2 // the gutter
+		}
+		cell = uv.Position{X: col, Y: cursorRow - start}
+	}
+	return out, cell, ok
 }
 
 // draftMode is what a draft's first character turns the composer into: a "/"
@@ -478,6 +483,12 @@ func (a *App) draftMode() (glyph, promptHL, ruleHL string) {
 	return "", "", ""
 }
 
+// composerHoldsKeys reports whether the composer has the keys, so the
+// terminal's cursor marks its caret; the chat cursor or a modal takes them.
+func (a *App) composerHoldsKeys() bool {
+	return a.topChrome() == _noModal && !a.chatFocus
+}
+
 // frameInner is the cells a row inside the composer frame may use: the two
 // border columns and a space beside each.
 func frameInner(w int) int { return max(w-4, 1) }
@@ -486,7 +497,7 @@ func frameInner(w int) int { return max(w-4, 1) }
 // the node's top region: the mascot and the turn's status. Agent state
 // changes what the rule says and never how many rows the frame takes, so
 // nothing above it reflows.
-func (a *App) composerFrame(n *node, w int) [][]hostapi.Segment {
+func (a *App) composerFrame(n *node, w int) ([][]hostapi.Segment, uv.Position, bool) {
 	hl := "Rule"
 	if _, _, rule := a.draftMode(); rule != "" {
 		hl = rule // a command draft tints the whole frame, not just its glyph
@@ -502,11 +513,16 @@ func (a *App) composerFrame(n *node, w int) [][]hostapi.Segment {
 		}
 	}
 	rows := [][]hostapi.Segment{rule("┌", "┐", hl, top, w)}
-	for _, r := range a.composerRows(inner, n.Placeholder) {
+	inner2, cell, ok := a.composerRows(inner, n.Placeholder)
+	for _, r := range inner2 {
 		row := append([]hostapi.Segment{{Text: "│ ", HL: hl, NoCopy: true, Line: true}}, truncateSegs(r, inner)...)
 		rows = append(rows, append(padSegs(row, w-2), hostapi.Segment{Text: " │", HL: hl, NoCopy: true, Line: true}))
 	}
-	return onPanel(append(rows, rule("└", "┘", hl, nil, w)))
+	if ok {
+		// the top rule, then the border and its air
+		cell = cell.Add(uv.Position{X: 2, Y: 1})
+	}
+	return onPanel(append(rows, rule("└", "┘", hl, nil, w))), cell, ok
 }
 
 // rule draws one side of the composer frame across w cells: the corners, the

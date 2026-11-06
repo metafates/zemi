@@ -119,6 +119,11 @@ type App struct {
 	// paint bands, like highlight; 0 none).
 	chatFocus bool
 	chatSel   int
+	// caret is the composer cursor's cell on the last composed frame; the
+	// terminal's own cursor draws there while caretOn, so no replica is
+	// painted (like neovim's TUI caret).
+	caret   uv.Position
+	caretOn bool
 	// chatSelMemo is the message the cursor held when the chat last had the
 	// keys: tab re-selects it rather than re-deriving one from the view.
 	chatSelMemo int
@@ -605,6 +610,18 @@ func (a *App) View() tea.View {
 	v.WindowTitle = a.windowTitle()
 	if a.progress {
 		v.ProgressBar = &tea.ProgressBar{State: tea.ProgressBarIndeterminate, Value: a.beat}
+	}
+	// the composer's caret is the terminal's own, the way neovim's TUI drives
+	// it: a steady bar shown over the frame, hidden whenever the composer
+	// lacks the keys or something covers the cell
+	// the terminal's own cursor draws the composer's caret, the way neovim's
+	// TUI drives it: a steady bar over the frame, hidden whenever the
+	// composer lacks the keys or something covers the cell. The keys are
+	// checked here too, so a cached frame never dangles a stale caret.
+	if a.caretOn && a.composerHoldsKeys() && !a.caret.In(a.popRect) {
+		v.Cursor = tea.NewCursor(a.caret.X, a.caret.Y)
+		v.Cursor.Shape = tea.CursorBar
+		v.Cursor.Blink = false
 	}
 	return v
 }
@@ -1351,6 +1368,7 @@ func (a *App) compose(w, h int) string {
 
 	a.syncChatScroll()
 	lay := a.layout(w, h)
+	a.caretOn = false // no composer this frame draws no cursor
 	stage := lay.stage
 	a.scrollIDs, a.scrollDef = a.scrollIDs[:0], lay.scroll
 	a.syncFollow()
