@@ -245,6 +245,26 @@ func TestPendingRowLabel(t *testing.T) {
 	}
 }
 
+func TestPendingRowPathLabel(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHost(t)
+	s := &streamAdapter{h: h}
+	s.ToolCallPending("1", "write")
+	label := func() string {
+		h.agents.mu.Lock()
+		defer h.agents.mu.Unlock()
+		return h.agents.tools[0].Label
+	}
+	for _, c := range []struct{ delta, want string }{
+		{`{"path": "internal/st`, ""},
+		{`ore/store.go", "content"`, "internal/store/store.go"},
+	} {
+		if s.ToolInputDelta("1", c.delta); label() != c.want {
+			t.Fatalf("after %q: label %q, want %q", c.delta, label(), c.want)
+		}
+	}
+}
+
 // TestStreamedInputCountsEveryDelta: the streamed size keeps counting after
 // the label landed and past the 1024-byte cap the label search stops at.
 func TestStreamedInputCountsEveryDelta(t *testing.T) {

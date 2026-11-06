@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -461,8 +462,11 @@ func (s *streamAdapter) ToolInputDelta(id, delta string) {
 	t := &ag.tools[i]
 	t.partial += delta
 	var label string
-	if m := _aboutArg.FindStringSubmatch(t.partial); m != nil && json.Unmarshal([]byte(m[1]), &label) == nil {
-		t.Label = clipLine(label, 80)
+	for _, re := range []*regexp.Regexp{_aboutArg, _pathArg} {
+		if m := re.FindStringSubmatch(t.partial); m != nil && json.Unmarshal([]byte(m[1]), &label) == nil {
+			t.Label = clipLine(label, 80)
+			break
+		}
 	}
 	labelled := t.Label != ""
 	ag.mu.Unlock()

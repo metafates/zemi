@@ -1525,6 +1525,10 @@ func toolLabel(input string) string {
 // _aboutArg is a call's leading "about" argument in input that is still streaming.
 var _aboutArg = regexp.MustCompile(`^\s*\{\s*"about"\s*:\s*("(?:[^"\\]|\\.)*")`)
 
+// _pathArg is a call's leading "path": write and its kin name the file before
+// their long body, so the row reads as a path while that body streams.
+var _pathArg = regexp.MustCompile(`^\s*\{\s*"path"\s*:\s*("(?:[^"\\]|\\.)*")`)
+
 // toolSummary picks the argument a person reads first (a command, path or
 // query) out of a tool's JSON input; anything else stays raw.
 func toolSummary(tool, input string) string {
