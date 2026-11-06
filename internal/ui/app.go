@@ -629,10 +629,23 @@ func (a *App) View() tea.View {
 	a.caretKeys = holds
 	if a.caretOn && holds && !a.caret.In(a.popRect) {
 		v.Cursor = tea.NewCursor(a.caret.X, a.caret.Y)
-		v.Cursor.Shape = tea.CursorBar
+		v.Cursor.Shape = cursorShape(a.host.Settings.Str(config.KeyUICursor))
 		v.Cursor.Blink = a.now().Sub(a.caretAt) >= _caretIdle
 	}
 	return v
+}
+
+// cursorShape maps a ui.cursor value to the terminal's DECSCUSR shape; an
+// unlisted value reads as the bar default.
+func cursorShape(v string) tea.CursorShape {
+	switch v {
+	case "block":
+		return tea.CursorBlock
+	case "underline":
+		return tea.CursorUnderline
+	default:
+		return tea.CursorBar
+	}
 }
 
 // progressTick keeps the view's OSC 9;4 report, which ghostty, WezTerm and

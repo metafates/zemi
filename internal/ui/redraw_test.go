@@ -13,6 +13,7 @@ import (
 	"charm.land/fantasy"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -83,6 +84,30 @@ func TestComposerCaretBlinks(t *testing.T) {
 	app.now = func() time.Time { return clock.Add(2 * _caretIdle) }
 	if cur := app.View().Cursor; cur == nil || !cur.Blink {
 		t.Fatalf("an idle caret should blink again, got %+v", cur)
+	}
+}
+
+// TestComposerCaretShape: ui.cursor picks the caret's DECSCUSR shape.
+func TestComposerCaretShape(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		set   string
+		shape tea.CursorShape
+	}{
+		{"", tea.CursorBar},
+		{"bar", tea.CursorBar},
+		{"block", tea.CursorBlock},
+		{"underline", tea.CursorUnderline},
+	} {
+		app, _ := bootAgentApp(t, 60, 12)
+		if tc.set != "" {
+			if err := app.host.SetConfig(config.KeyUICursor, tc.set); err != nil {
+				t.Fatalf("ui.cursor %q: %v", tc.set, err)
+			}
+		}
+		if cur := app.View().Cursor; cur == nil || cur.Shape != tc.shape {
+			t.Fatalf("ui.cursor %q: got %+v, want shape %v", tc.set, cur, tc.shape)
+		}
 	}
 }
 
