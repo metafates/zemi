@@ -258,6 +258,7 @@ func TestPendingRowPathLabel(t *testing.T) {
 	for _, c := range []struct{ delta, want string }{
 		{`{"path": "internal/st`, ""},
 		{`ore/store.go", "content"`, "internal/store/store.go"},
+		// the model may stream the body first and the path last
 	} {
 		if s.ToolInputDelta("1", c.delta); label() != c.want {
 			t.Fatalf("after %q: label %q, want %q", c.delta, label(), c.want)
@@ -270,6 +271,19 @@ func TestPendingRowPathLabel(t *testing.T) {
 	want := "x/y.go"
 	if got := h.agents.tools[1].Label; got != want {
 		t.Errorf("project path label = %q, want %q", got, want)
+	}
+	h.agents.mu.Unlock()
+
+	// content streams before the path: the row still names the file as the
+	// path arrives, however long the body before it ran
+	s.ToolCallPending("3", "write")
+	s.ToolInputDelta("3", `{"content": "`+strings.Repeat("b", 3000)+`"`)
+	s.ToolInputDelta("3", `, "path": "notes/la`)
+	s.ToolInputDelta("3", `st.md"}`)
+	h.agents.mu.Lock()
+	want = "notes/last.md"
+	if got := h.agents.tools[2].Label; got != want {
+		t.Errorf("late path label = %q, want %q", got, want)
 	}
 	h.agents.mu.Unlock()
 }
