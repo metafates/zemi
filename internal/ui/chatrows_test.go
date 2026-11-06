@@ -236,6 +236,27 @@ func TestViewedRunThinksLive(t *testing.T) {
 	}
 }
 
+// TestWriteRowCountsStreamedBytes: a write call still streaming its input
+// shows the size read so far, and drops it once the call runs.
+func TestWriteRowCountsStreamedBytes(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 80, 24)
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
+		{Name: "write", Status: "wait", Streamed: 1234},
+	}})
+	got := frameText(renderAt(t, app, "chat", host.ScreenState(78, 24, app.uiState())))
+	if !strings.Contains(got, "1.2 kB") {
+		t.Fatalf("the streaming write row does not show the size read:\n%s", got)
+	}
+	host.SeedStream(hostapi.StreamSnapshot{Active: true, Tools: []hostapi.StreamTool{
+		{Name: "write", Status: "run", Input: "cmd/serve.go", Streamed: 1234, Started: time.Now().Add(-2 * time.Second)},
+	}})
+	got = frameText(renderAt(t, app, "chat", host.ScreenState(78, 24, app.uiState())))
+	if strings.Contains(got, "1.2 kB") {
+		t.Fatalf("a started write keeps the streamed size:\n%s", got)
+	}
+}
+
 // rowsAfterPending is the chat's report of the rows it drew below its pending
 // row, which the rule reads.
 func rowsAfterPending() int {

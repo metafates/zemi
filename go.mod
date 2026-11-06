@@ -15,6 +15,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/charmbracelet/x/exp/golden v0.0.0-20250806222409-83e3a29d542f
 	github.com/charmbracelet/x/term v0.2.2
+	github.com/dustin/go-humanize v1.1.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/lucasb-eyer/go-colorful v1.4.1
 	github.com/pressly/goose/v3 v3.29.0
@@ -65,7 +66,6 @@ require (
 	github.com/coder/websocket v1.8.15 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/dlclark/regexp2/v2 v2.12.0 // indirect
-	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"charm.land/fantasy"
+	"github.com/dustin/go-humanize"
 
 	"github.com/metafates/zemi/internal/anim"
 	"github.com/metafates/zemi/internal/hostapi"
@@ -64,25 +65,26 @@ const (
 // entry is one row the chat draws: a settled transcript row or a live call,
 // in one shape, since a rail draws the two alike.
 type entry struct {
-	kind    hostapi.RowKind
-	role    fantasy.MessageRole
-	tool    string
-	id      string // a live call's id, the rise one ramp per action
-	text    string
-	input   string
-	label   string
-	status  hostapi.CallStatus
-	detail  string
-	run     string
-	job     string
-	diff    string
-	output  string
-	live    bool          // a call of the turn running now
-	elapsed time.Duration // a live call's run, a reply's turn
-	thought time.Duration // a thought's, or the turn's on its reply
-	out     int64         // a reply: the tokens it wrote
-	model   string        // a reply: the model that wrote it
-	ended   int64         // a reply: when the turn ended, unix seconds
+	kind     hostapi.RowKind
+	role     fantasy.MessageRole
+	tool     string
+	id       string // a live call's id, the rise one ramp per action
+	text     string
+	input    string
+	label    string
+	status   hostapi.CallStatus
+	detail   string
+	run      string
+	job      string
+	diff     string
+	output   string
+	streamed int           // input bytes streamed while the call is pending
+	live     bool          // a call of the turn running now
+	elapsed  time.Duration // a live call's run, a reply's turn
+	thought  time.Duration // a thought's, or the turn's on its reply
+	out      int64         // a reply: the tokens it wrote
+	model    string        // a reply: the model that wrote it
+	ended    int64         // a reply: when the turn ended, unix seconds
 }
 
 // entryOf is a transcript row as the chat draws it.
@@ -104,7 +106,7 @@ func entryOfCall(t hostapi.AgentTool) entry {
 	s := t.Stream
 	return entry{
 		kind: hostapi.RowTool, tool: s.Name, input: s.Input, label: s.Label, status: s.Status,
-		detail: s.Detail, run: s.Run, job: s.Job, diff: s.Diff, output: s.Output,
+		detail: s.Detail, run: s.Run, job: s.Job, diff: s.Diff, output: s.Output, streamed: s.Streamed,
 		live: true, elapsed: t.Elapsed, id: s.ID,
 	}
 }
@@ -1292,6 +1294,10 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 	}
 	if t.status == hostapi.CallRun && !asked && t.elapsed >= time.Second {
 		add(duration(t.elapsed.Seconds(), true))
+	}
+	// the input still streams: the size read so far is the row's whole story
+	if t.status == hostapi.CallWait && t.input == "" && t.streamed > 0 && t.tool == string(tools.ToolWrite) {
+		add(humanize.Bytes(uint64(t.streamed)))
 	}
 	sw := segsCells(tail)
 	verbText, rest := headText(name, label, input, t.status)

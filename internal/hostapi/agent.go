@@ -58,22 +58,23 @@ type PermRequest struct {
 
 // StreamTool is one tool call in the live stream view (DESIGN §6.3).
 type StreamTool struct {
-	ID      string
-	Label   string // the model's short description of a command
-	Started time.Time
-	Detail  string // live progress line (subagents, workflows, a shell command's last output line)
-	Tail    string // a running shell call's output tail, what its view reads
-	Run     string // agent tool: the run id, so the row can open its transcript
-	Diff    string // file tools: the change as "- "/"+ " lines
-	Output  string // the last lines of the result (shortOutput)
-	Name    string
-	Input   string
-	Raw     string // the call's raw args JSON: the log's tool row holds it, where the digest cannot rebuild the label
-	Status  CallStatus
-	Job     string        // shell and job_start calls: the job the work went to
-	Out     tools.Outcome // what the tool reported beyond its text, read when it ends
-	logged  bool          // the pair reached the log at its step's StepDone; the cut path must not log it twice
-	partial string        // the head of the streaming input, until Label is known
+	ID       string
+	Label    string // the model's short description of a command
+	Started  time.Time
+	Detail   string // live progress line (subagents, workflows, a shell command's last output line)
+	Tail     string // a running shell call's output tail, what its view reads
+	Run      string // agent tool: the run id, so the row can open its transcript
+	Diff     string // file tools: the change as "- "/"+ " lines
+	Output   string // the last lines of the result (shortOutput)
+	Name     string
+	Input    string
+	Streamed int    // input bytes streamed while the call is pending, what a write's row shows
+	Raw      string // the call's raw args JSON: the log's tool row holds it, where the digest cannot rebuild the label
+	Status   CallStatus
+	Job      string        // shell and job_start calls: the job the work went to
+	Out      tools.Outcome // what the tool reported beyond its text, read when it ends
+	logged   bool          // the pair reached the log at its step's StepDone; the cut path must not log it twice
+	partial  string        // the head of the streaming input, until Label is known
 }
 
 // agentHost owns the live chat: the model slots config registered, the

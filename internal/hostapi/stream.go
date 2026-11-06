@@ -443,12 +443,18 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 }
 
 // ToolInputDelta labels a pending row as soon as "about" has streamed: a
-// long command or heredoc takes seconds to arrive after it.
+// long command or heredoc takes seconds to arrive after it. Every delta
+// also counts the input streamed so far, what a write's rail row shows.
 func (s *streamAdapter) ToolInputDelta(id, delta string) {
 	ag := s.h.agents
 	ag.mu.Lock()
 	i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id })
-	if i < 0 || ag.tools[i].Label != "" || len(ag.tools[i].partial) > 1024 {
+	if i < 0 {
+		ag.mu.Unlock()
+		return
+	}
+	ag.tools[i].Streamed += len(delta)
+	if ag.tools[i].Label != "" || len(ag.tools[i].partial) > 1024 {
 		ag.mu.Unlock()
 		return
 	}

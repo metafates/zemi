@@ -245,6 +245,22 @@ func TestPendingRowLabel(t *testing.T) {
 	}
 }
 
+// TestStreamedInputCountsEveryDelta: the streamed size keeps counting after
+// the label landed and past the 1024-byte cap the label search stops at.
+func TestStreamedInputCountsEveryDelta(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHost(t)
+	s := &streamAdapter{h: h}
+	s.ToolCallPending("1", "write")
+	s.ToolInputDelta("1", `{"about":"the config","content":"`)
+	s.ToolInputDelta("1", strings.Repeat("x", 2048))
+	h.agents.mu.Lock()
+	defer h.agents.mu.Unlock()
+	if got := h.agents.tools[0].Streamed; got != len(`{"about":"the config","content":"`)+2048 {
+		t.Errorf("Streamed = %d, want every delta counted", got)
+	}
+}
+
 func TestToolSummary(t *testing.T) {
 	for _, c := range []struct{ tool, in, want string }{
 		{"", `{"items":[{"content":"a","status":"done"},{"content":"b","status":"pending"}]}`, "2 todos, 1 done"},
