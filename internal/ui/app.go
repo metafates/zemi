@@ -125,9 +125,11 @@ type App struct {
 	// painted (like neovim's TUI caret).
 	caret      uv.Position
 	caretOn    bool
-	caretAt    time.Time // the last input that changed the draft
-	caretKeys  bool      // whether the composer held the keys on the last frame
-	caretTyped string    // the draft as of the last steadying keystroke
+	caretAt    time.Time   // the last input that changed the draft or moved the caret
+	caretKeys  bool        // whether the composer held the keys on the last frame
+	caretTyped string      // the draft as of the last steadying keystroke
+	caretPos   uv.Position // the caret cell as of the last frame with the keys
+	caretSeen  bool        // caretPos holds a real cell; the first frame never steadies
 	// chatSelMemo is the message the cursor held when the chat last had the
 	// keys: tab re-selects it rather than re-deriving one from the view.
 	chatSelMemo int
@@ -619,18 +621,25 @@ func (a *App) View() tea.View {
 	// TUI drives it: a steady bar while the user types, a blinking one once
 	// they stop, hidden whenever the composer lacks the keys or something
 	// covers the cell. The keys are checked here too, so a cached frame never
-	// dangles a stale caret. Only a changed draft steadies the caret —
-	// scrolling and other actions leave it blinking.
+	// dangles a stale caret. Only a changed draft or a moved caret steadies
+	// it — scrolling and other actions leave it blinking.
 	holds := a.composerHoldsKeys()
-	if holds && a.caretOn && a.caretTyped != a.composer.text {
-		a.caretAt = a.now()
-		a.caretTyped = a.composer.text
+	if holds && a.caretOn {
+		switch {
+		case a.caretTyped != a.composer.text:
+			a.caretAt = a.now()
+			a.caretTyped = a.composer.text
+		case a.caretSeen && a.caret != a.caretPos:
+			a.caretAt = a.now()
+		}
+		a.caretPos, a.caretSeen = a.caret, true
 	}
 	a.caretKeys = holds
 	if a.caretOn && holds && !a.caret.In(a.popRect) {
 		v.Cursor = tea.NewCursor(a.caret.X, a.caret.Y)
 		v.Cursor.Shape = cursorShape(a.host.Settings.Str(config.KeyUICursor))
-		v.Cursor.Blink = a.now().Sub(a.caretAt) >= _caretIdle
+		v.Cursor.Blink = a.host.Settings.Bool(config.KeyUICursorBlink) &&
+			a.now().Sub(a.caretAt) >= _caretIdle
 	}
 	return v
 }

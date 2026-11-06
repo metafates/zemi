@@ -85,6 +85,16 @@ func TestComposerCaretBlinks(t *testing.T) {
 	if cur := app.View().Cursor; cur == nil || !cur.Blink {
 		t.Fatalf("an idle caret should blink again, got %+v", cur)
 	}
+	app.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if cur := app.View().Cursor; cur == nil || cur.Blink {
+		t.Fatalf("moving the caret should steady it, got %+v", cur)
+	}
+	if err := app.host.SetConfig(config.KeyUICursorBlink, false); err != nil {
+		t.Fatalf("ui.cursor-blink: %v", err)
+	}
+	if cur := app.View().Cursor; cur == nil || cur.Blink {
+		t.Fatalf("ui.cursor-blink false should keep the caret steady, got %+v", cur)
+	}
 }
 
 // TestComposerCaretShape: ui.cursor picks the caret's DECSCUSR shape.
