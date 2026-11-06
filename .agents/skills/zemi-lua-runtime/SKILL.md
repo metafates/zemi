@@ -19,7 +19,7 @@ description: "Load before changing internal/lua or its Lua sandbox, a zemi.* nam
    (generation). All registrations (keymaps, events, timers, jobs, Lua tools) are
    generation-tagged (`hostapi.Gen`) and purged before replay,
    so never keep a pointer into an old generation. `ForceReload` refuses an init.lua that does
-   not parse (the old generation stays), and `tool.pre` and `permission.request` vetoes wait out a reload, so a turn is never checked
+   not parse (the old generation stays), and a `tool.pre` veto waits out a reload, so a turn is never checked
    against half a config.
 3. **UI single-writer.** All `ui.App` state mutates on the bubbletea Update goroutine; work
    from other goroutines is funneled through a hook channel (internal/ui/hooks.go). hostapi
@@ -38,7 +38,7 @@ description: "Load before changing internal/lua or its Lua sandbox, a zemi.* nam
    drops the resume values of a Go function reached by a tail call. A keymap or command returns
    once it suspends (`StartTask`), so the next key runs; a purged generation ends every waiting
    task at once.
-5. **Vetoable events** (`permission.request`, `app.quit`, `composer.submit`, `tool.pre`) have a
+5. **Vetoable events** (`app.quit`, `composer.submit`, `tool.pre`) have a
    50 ms Lua-handler deadline and then take a logged default (fail-closed for permission asks).
    While the runtime is hot those handlers cannot run, so both deny until `/reload`.
 6. **No bare goroutines in hostapi.** Start them with `h.GoSafe(where, fn)`: a panic is logged
@@ -92,8 +92,8 @@ enforce the one collision rule left (`mayReplace`, which every add and remove ru
 registration wins**, except that one plugin can neither replace nor remove another's command,
 keymap, event handler, tool, completion source, health row or config watch. No
 origin can emit host-owned events. A plugin's manifest (`uses`) is the capability model: a gated
-call a plugin makes without its declared word is refused, and registering a
-`permission.request` handler or calling `zemi.perm.ask` needs `perm`. When adding a registry,
+call a plugin makes without its declared word is refused.
+When adding a registry,
 follow `internal/hostapi/registry.go`.
 ## Skills (internal/skill, internal/hostapi/skills.go)
 

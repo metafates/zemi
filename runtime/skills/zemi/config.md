@@ -61,8 +61,7 @@ A slot is a target as well: `zemi.model.add(name, { desc, model, classify = true
 ## Permissions
 
 There are no permission modes and no rules: model tool calls run, and the user stays aware
-through the ask overlay, which only a plugin opens - a `permission.request` handler returning
-`{ decision = "ask" }`, or its own `zemi.perm.ask` - with `perm` in the manifest's `uses`
+through the ask overlay, which a `tool.pre` handler opens by returning `{ decision = "ask" }`
 (`plugins.md`). The permission system keeps the user aware of what the agent does; it is not
 isolation. A run that must not touch the machine goes in a container or a VM.
 

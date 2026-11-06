@@ -89,7 +89,7 @@ the turn via the request counter (`last`) or the events, never `wait` alone.
 (default 140x40), `--untrusted` (drops `--trust`; the boot then
 stops at the trust overlay, which `up` reports and both backends see as a permission
 ask, so `ask y` answers it on either), `--asks` (installs a
-gate plugin whose `permission.request` handler returns
+gate plugin whose `tool.pre` handler returns
 `{decision = "ask"}`, since zemi never asks by design - DESIGN §9), `--rex` (the Rex
 backend below). A running lab can be made to ask without a reboot: drop the same two files
 into `$TREE/data/plugins/local/askgate/.zemi/` (plugin.json + init.lua; their contents are

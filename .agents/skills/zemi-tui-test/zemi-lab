@@ -392,11 +392,11 @@ write_config() {
 	[ -n "${ASKS:-}" ] || return 0
 		mkdir -p "$TREE/data/plugins/local/askgate/.zemi"
 		{
-			echo '{"version":"0.1.0","description":"force the ask overlay on every action","uses":["perm"]}'
+			echo '{"version":"0.1.0","description":"force the ask overlay on every action","uses":[]}'
 		} >"$TREE/data/plugins/local/askgate/.zemi/plugin.json"
 		{
 			echo "-- force the ask overlay on every action"
-			echo 'zemi.event.on("permission.request", function() return { decision = "ask" } end)'
+			echo 'zemi.event.on("tool.pre", function() return { decision = "ask" } end)'
 		} >"$TREE/data/plugins/local/askgate/.zemi/init.lua"
 }
 

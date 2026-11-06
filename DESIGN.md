@@ -205,15 +205,15 @@ Contracts that make this safe:
   the accepted cost of no-kill cancellation. Reload purges every
   registration of the dead generation (keymaps, widgets, event handlers,
   overrides, timers, jobs) before replay, so no callback can fire into a
-  dropped `LState`. `tool.pre` and `permission.request` vetoes wait for a running
+  dropped `LState`. A `tool.pre` veto waits for a running
   reload, so no tool call is checked against half a config.
-- **Vetoable events never block.** `permission.request`, `app.quit`, and
+- **Vetoable events never block.** `tool.pre`, `app.quit`, and
   `composer.submit` handlers must answer without waiting on async work. At
   the 50 ms deadline the host cancels the handler's context (the
   catchable error fails it) and takes the event's default decision,
-  logged: `permission.request` takes silence (a timeout, an abandoned
-  handler, or no handler at all) as no veto, so the request runs unless
-  the overlay leg denies it (§9); the timeout is only logged.
+  logged: `tool.pre` takes silence (a timeout, an abandoned
+  handler, or no handler at all) as no decision, so the call runs unless
+  the ask leg holds it (§9); the timeout is only logged.
   `app.quit` and `composer.submit` default to proceed (a wedged plugin
   must not hold the user's quit or a typed message hostage; any origin's
   `app.quit` denial is honored, so the quit waits for its handlers to
@@ -221,11 +221,11 @@ Contracts that make this safe:
   vetoables follow the same deadline, defaulting to proceed for
   `tool.pre` (absence of denial is the pass) and to shipped-sections-only
   for `agent.assemble`. While the runtime is hot, registered
-  `permission.request` and `tool.pre` handlers cannot run, so both deny
+  `tool.pre` handlers cannot run, so they deny
   until `/reload` instead of passing unchecked. A model
   tool call that needs an ask has a second leg: the Go-owned overlay (§8)
   blocks the agent worker goroutine (never the interpreter) until the
-  user answers, with no deadline; the veto runs first, at the gate, and
+  user answers, with no deadline; a `tool.pre` ask verdict arms it, and
   an explicit veto deny wins over everything after it (§9). The
   fail-closed rule is for asks that have no overlay leg: an ask nobody
   can answer (no UI, a Lua call with no asker) denies as ByNobody
@@ -764,7 +764,7 @@ the binary's API version is `zemi.api.version`.
   a watch on a path outside the schema and a tool spec the
   provider would reject are all misuse, not runtime failure. Where the
   wrong shape is a decision zemi must take anyway, it takes the closed one:
-  a `tool.pre` or `permission.request` handler returning something that is
+  a `tool.pre` handler returning something that is
   not a `zemi.Veto` denies.
 - **Frozen namespaces**: all `zemi.*` tables are read-only; the API only
   changes through versioned Go changes, visible in `zemi.api.version`.
@@ -898,8 +898,8 @@ Event catalogue (each emitted on the interpreter thread):
 - prompt: `agent.assemble` (returns a section to add, §6.3; runs when the
   prompt is built, not per send, §6.3)
 - stream: `agent.text_delta`, `agent.reasoning_delta`
-- tools: `tool.pre` (vetoable: `deny|rewrite|halt`), `tool.post`, `tool.denied`
-- permission: `permission.request` (vetoable), `permission.resolved`
+- tools: `tool.pre` (vetoable: `deny|rewrite|halt|ask`), `tool.post`, `tool.denied`
+- permission: `permission.resolved`
 - ui: `ui.resize`, `composer.change`, `composer.submit` (vetoable)
 - session: `session.reset` (a /reset wiped the chat)
 - io: `job.exit`, `lsp.request`
@@ -936,10 +936,17 @@ otherwise return a decision table:
   decision: absence of denial is the only pass, so a Lua hook can never
   pre-approve a permission (crush's `allow` does pre-approve; zemi
   deliberately diverges).
-- `permission.request`, `app.quit`, `composer.submit`:
-  `{ decision = "deny", reason = "..." }` or nil; `permission.request`
-  also takes `{ decision = "ask" }`, which runs the ask path, and
-  `composer.submit` a rewrite, `{ decision = "rewrite", text = "..." }`,
+- `tool.pre`: `{ decision = "deny", reason = "..." }` or nil; it also
+  takes `{ decision = "halt" }`, which ends the turn after this tool call
+  (fantasy `StopTurn`), `{ decision = "rewrite", input = ... }`, which
+  re-enters the rewritten input at the gate, and `{ decision = "ask" }`,
+  which runs the ask path for the call's action. There is no `allow`
+  decision: absence of denial is the only pass, so a Lua hook can never
+  pre-approve a permission (crush's `allow` does pre-approve; zemi
+  deliberately diverges).
+- `app.quit`, `composer.submit`:
+  `{ decision = "deny", reason = "..." }` or nil; `composer.submit`
+  also takes a rewrite, `{ decision = "rewrite", text = "..." }`,
   which sends the rewritten line. Lua can deny;
   it can never grant.
 
@@ -1774,8 +1781,7 @@ whose rows join the Go checks in `/health` and `zemi health`, and `list`, which 
 those rows back from Lua),
 `zemi.workflow` (`run`, `list`; inside a workflow script `agent`, `parallel`, `pipeline`,
 `phase`, `log` and `args` instead), `zemi.lsp` (`add`, `del`, `list`),
-`zemi.mcp` (`add`, `del`, `list`, `enable`), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`),
-and `zemi.perm` (`ask`, a plugin needs `perm` in its uses, §9).
+`zemi.mcp` (`add`, `del`, `list`, `enable`), `zemi.errors` (`list`), `zemi.project` (`trusted`, `root`).
 
 `zemi.skills.enable` is open to any origin: the enabled set is the
 user's to change, and the capability model that matters is the manifest's
@@ -2511,26 +2517,20 @@ view; a reset's wipe drops the row with the chat.
   Reads (`fs.read`) settle on their own.
 - Subjects label the ask and the `tool.denied` event.
   A request carries tool, subject, arg, reason, preview, description,
-  agent, owner, script; the pipeline fills read-only and the script
+  agent, script; the pipeline fills read-only and the script
   name.
 - The gate (tools.Pipeline.Check): a read-only agent's action denies,
   except a write in its scratchpad; job_kill asks the gate nothing, so it
-  denies by itself; then the veto settles: a denial
-  refuses, an ask decision runs the ask path; what survives runs.
-- The vetoable `permission.request` event runs at the gate, once per
-  action request; a handler denies, or returns `decision = "ask"` to
-  run the ask path. 50 ms, silence on timeout (§4). A rewritten tool input
-  re-enters at the gate. Registering a handler and `zemi.perm.ask` both
-  need the manifest's `perm` word: steering the gate is a declared
-  capability, and enabling the plugin is the consent. A plugin recipe
-  that restores a nervous gate is a `permission.request` handler
-  returning `{ decision = "ask" }`.
+  denies by itself; then the run's armed ask settles, and what survives
+  runs.
+- A `tool.pre` handler may return `decision = "ask"` to arm the ask leg:
+  the call's action goes to the overlay. 50 ms, silence on timeout (§4). A
+  rewritten tool input re-enters at the gate. A plugin recipe that
+  restores a nervous gate is a `tool.pre` handler returning
+  `{ decision = "ask" }`; disabling the plugin reloads the Lua generation,
+  so its ask hooks stop with it.
 - Asks reach the user one at a time (`Host.askMu`); no Lua runs under
   the ask lock. An ask nobody can answer fails closed (`ByNobody`).
-- `zemi.perm.ask({subject=, arg=, reason=, preview=})` is a plugin's own
-  ask from a task: the shipped overlay, `permission.resolved`, an
-  unanswered ask failing closed. `:wait()` answers allow, deny or told (the user denied
-  and said what to do instead).
 - Host-API calls from Lua never open the overlay (§6.5): the gate
   settles them, a read-only agent's writes deny, everything else runs.
   A plugin's declared capability (`uses`) is checked before the gate -

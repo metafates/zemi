@@ -460,7 +460,6 @@ function zemi.command.list() end
 ---| "tool.pre"
 ---| "tool.post"
 ---| "tool.denied"
----| "permission.request"
 ---| "permission.resolved"
 ---| "ui.resize"
 ---| "composer.change"
@@ -529,14 +528,8 @@ function zemi.command.list() end
 ---@field tool string
 ---@field subject string
 ---@field arg string
----@field by string Who decided, such as "user" or "event".
+---@field by string Who decided, such as "user" or "read-only agent".
 ---@field reason string
-
----@class zemi.ev.PermissionRequest: zemi.Event
----@field subject string The action's subject: "tool.shell" for a shell command, "fs.read", "fs.write", "lua.http.<method>".
----@field arg string The path, url or command the subject is about.
----@field reason? string
----@field agent? string The subagent asking, such as "explore agent"; "" for the main agent.
 
 ---@class zemi.ev.PermissionResolved: zemi.Event
 ---@field subject string
@@ -566,17 +559,12 @@ function zemi.command.list() end
 ---@field kind "diagnostics"
 
 --- What a vetoable handler returns to veto: `decision = "deny"` with a
---- reason. Any other return lets the event through; on `permission.request`
---- a `zemi.PermVeto` may also hand the request to the ask path, and on
---- `composer.submit` a `zemi.SubmitVeto` may rewrite the text instead.
+--- reason. Any other return lets the event through; on `tool.pre` a
+--- `zemi.ToolVeto` may halt, rewrite or ask, and on `composer.submit` a
+--- `zemi.SubmitVeto` may rewrite the text instead.
 ---@class zemi.Veto
 ---@field decision "deny"
 ---@field reason? string
-
---- What a `permission.request` handler returns: "deny" refuses the request,
---- "ask" runs zemi's ask path (the overlay) for it, nil lets it run.
----@class zemi.PermVeto: zemi.Veto
----@field decision "deny"|"ask"
 
 --- What a `composer.submit` handler returns: "deny" refuses the send,
 --- "rewrite" sends `text` in the place of what was typed, nil sends as is.
@@ -592,14 +580,12 @@ function zemi.command.list() end
 ---@class zemi.event
 zemi.event = {}
 
---- Subscribe to an event. Vetoable events (`permission.request`,
---- `app.quit`, `composer.submit`, `tool.pre`) give the handler 50 ms and
---- then take their logged default; return `{ decision = "deny", reason = "..." }`
---- to veto one (`tool.pre` also takes "halt" and "rewrite", see zemi.ToolOverride),
---- and on `permission.request` `{ decision = "ask" }` to run zemi's ask path.
+--- Subscribe to an event. Vetoable events (`app.quit`, `composer.submit`,
+--- `tool.pre`) give the handler 50 ms and then take their logged default;
+--- return `{ decision = "deny", reason = "..." }` to veto one (`tool.pre`
+--- also takes "halt", "rewrite" and "ask", see zemi.ToolOverride).
 --- A `tool.post` handler runs as a task and may return `{ output = "..." }`
 --- to replace what the model gets.
---- A plugin needs `perm` in its `uses` to subscribe to `permission.request`.
 ---
 --- ```lua
 --- zemi.event.on("composer.submit", function(ev)
@@ -619,7 +605,6 @@ zemi.event = {}
 ---@overload fun(name: "agent.step", fn: (fun(ev: zemi.ev.AgentStep): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "tool.post", fn: (fun(ev: zemi.ev.ToolPost): zemi.ToolPostResult?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "tool.denied", fn: (fun(ev: zemi.ev.ToolDenied): any), opts?: zemi.EventOpts): string
----@overload fun(name: "permission.request", fn: (fun(ev: zemi.ev.PermissionRequest): zemi.PermVeto?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "permission.resolved", fn: (fun(ev: zemi.ev.PermissionResolved): any), opts?: zemi.EventOpts): string
 ---@overload fun(name: "app.quit", fn: (fun(ev: zemi.Event): zemi.Veto?), opts?: zemi.EventOpts): string
 ---@overload fun(name: "ui.resize", fn: (fun(ev: zemi.ev.Resize): any), opts?: zemi.EventOpts): string
@@ -1522,35 +1507,6 @@ function zemi.composer.paste() end
 --- it).
 function zemi.composer.edit() end
 
--- zemi.perm
-
----@class zemi.PermAskSpec
----@field subject string What the ask is about, as the overlay titles it: a gate subject like "fs.write" or "net.github.com", or the plugin's own word.
----@field arg? string What the ask acts on: a path, a URL, a command.
----@field reason? string Why the plugin asks; the overlay's why row.
----@field preview? string A diff or code the overlay shows under the ask.
-
----@class zemi.PermAnswer
----@field decision "allow"|"deny"|"told" `told`: the user denied and told zemi what to do instead.
-
----@class zemi.PermAskHandle
----@field wait fun(self: zemi.PermAskHandle): zemi.PermAnswer|nil, string|nil Suspends the task until the user answers; raises outside a task, like `zemi.JobHandle.wait`.
-
----@class zemi.perm
-zemi.perm = {}
-
---- Ask the user through zemi's permission overlay. Only from a task; a
---- plugin needs the manifest's `uses` naming `perm`. An ask nobody can
---- answer denies.
----
---- ```lua
---- local ans = zemi.perm.ask({ subject = "fs.write", arg = path, reason = "cache refresh" }):wait()
---- if ans.decision ~= "allow" then return nil, "refused" end
---- ```
----@param spec zemi.PermAskSpec
----@return zemi.PermAskHandle
-function zemi.perm.ask(spec) end
-
 -- zemi.tool
 
 ---@class zemi.ToolSpec An unknown field raises.
@@ -1580,10 +1536,11 @@ function zemi.perm.ask(spec) end
 ---| "deny"
 ---| "halt"
 ---| "rewrite"
+---| "ask"
 
 --- What a `tool.pre` handler returns: "deny" refuses the call, "halt" also
---- ends the turn, "rewrite" merges `input` into the call's input. nil lets
---- the call through.
+--- ends the turn, "rewrite" merges `input` into the call's input, "ask"
+--- puts the call's action to the user. nil lets the call through.
 ---@class zemi.ToolVeto
 ---@field decision zemi.ToolVerdict
 ---@field reason? string
@@ -1613,7 +1570,7 @@ zemi.tool = {}
 --- named `about` labels the call's row. It is gated as subject
 --- `tool.<name>` with the name as the argument: a plugin's tool settles
 --- where its manifest declares `tool`, and any other one runs unless a
---- `permission.request` handler denies it or hands it to the ask overlay.
+--- `tool.pre` handler denies it or hands it to the ask overlay.
 ---
 --- ```lua
 --- zemi.tool.add({

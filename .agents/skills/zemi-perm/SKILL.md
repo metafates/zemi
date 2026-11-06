@@ -1,6 +1,6 @@
 ---
 name: zemi-perm
-description: "Load before changing the tool pipeline or its gate in internal/tools, the ask and the veto in internal/hostapi, or internal/proc, or before judging a permission ask: the gate, the veto, the ask overlay, the process layer."
+description: "Load before changing the tool pipeline or its gate in internal/tools, the ask in internal/hostapi, or internal/proc, or before judging a permission ask: the gate, the tool.pre ask, the ask overlay, the process layer."
 ---
 
 # Permissions and the process layer
@@ -9,30 +9,25 @@ description: "Load before changing the tool pipeline or its gate in internal/too
 
 The permission system is UX, not isolation: it exists to keep the user aware of what the agent
 does. A run that must not touch the machine goes in a container or a VM. There are no modes and
-no rules: everything runs, and the two interception points a plugin may ship (with `perm` in its
-manifest's `uses`) sit in the gate:
+no rules: everything runs. A plugin may steer the gate through the vetoable `tool.pre` event,
+no manifest word needed:
 
-- the vetoable `permission.request` event, once per action request: `{ decision = "deny", reason }`
-  refuses, `{ decision = "ask", reason }` runs the ask path, nil runs;
-- `zemi.perm.ask({subject=, arg=, reason=, preview=})`, a plugin's own ask from a task, whose
-  handle's `:wait()` returns `{ decision = "allow" | "deny" | "told" }`.
-
-Both need the manifest's `perm` word: steering the gate is a declared capability, and enabling
-the plugin is the consent.
+- a `tool.pre` handler's `{ decision = "ask" }` puts the call's action to the user; "deny"
+  refuses, "halt" ends the turn, "rewrite" replaces the input.
 
 ## Tool pipeline (internal/tools/tools.go)
 
 Every model tool call runs: JSON unmarshal -> schema validation -> `tool.pre` Lua events (deny
-/ halt / rewrite) -> permission gate -> run -> `tool.post` handlers, then an override's `post`.
-A rewritten input re-enters at the permission gate; errors become tool-error responses, not
-panics; a denied result names who decided and why. Host-implemented tools (`agent`,
-`workflow`, `lua`, MCP and Lua tools) run the events through `preCheck` and call the gate
+/ halt / rewrite / ask) -> permission gate -> run -> `tool.post` handlers, then an override's `post`.
+A rewritten input re-enters at the permission gate; an ask verdict arms the run's gate copy
+(`Pipeline.forceAsk`, via `ForceAsk` on host-gated tools' `preGate`); errors become tool-error
+responses, not panics; a denied result names who decided and why. Host-implemented tools (`agent`,
+`workflow`, `lua`, MCP and Lua tools) run the events through `preCheck`/`preGate` and call the gate
 themselves.
 
 The gate (`Pipeline.Check`), in order: a read-only agent (`AgentDef.ReadOnly`) denies every action - writes, commands, Lua tools - while its reads and
-its pad writes pass; then the veto (`Pipeline.Veto`, only when an asker exists - a gate
-without one cannot survive the veto's interpreter round-trip); then the ask path for an ask
-decision, and everything else runs.
+its pad writes pass; then the ask path when the run's `forceAsk` is armed and an asker exists,
+and everything else runs.
 
 An ask nobody can answer (no UI) denies fail-closed (`tools.ByNobody`). Asks reach the user one at a
 time under `Host.askMu`; no Lua runs under the lock.
@@ -43,9 +38,9 @@ tool, `fs.read`, `fs.write`, `mcp.<server>`, and
 `lua.job.start`, `lua.http.<method>`, ...). The overlay offers three answers: y (yes, once),
 n (no), t (no, and tell zemi - denies the waiting asks and stops the turn).
 
-The veto handler has 50 ms (`lua.VetoDeadline`) and then the logged default applies - no
-veto, so the request runs; while the runtime is hot it denies. `permission.resolved` reports
-the outcome either way.
+The `tool.pre` handler has 50 ms (`lua.VetoDeadline`) and then the logged default applies - no
+decision, so the call runs; while the runtime is hot it denies. `permission.resolved` reports
+each settled ask.
 
 The Lua tool's script asks once, as one action, the whole script the preview; once approved, a
 `zemi.job.start` it makes rides that approval, and its `zemi.tool.call` gates each call like the
