@@ -636,8 +636,7 @@ func (a *App) View() tea.View {
 	if a.caretOn && holds && !a.caret.In(a.popRect) {
 		v.Cursor = tea.NewCursor(a.caret.X, a.caret.Y)
 		v.Cursor.Shape = cursorShape(a.host.Settings.Str(config.KeyUICursor))
-		v.Cursor.Blink = a.host.Settings.Bool(config.KeyUICursorBlink) &&
-			a.now().Sub(a.caretAt) >= _caretIdle
+		v.Cursor.Blink = a.now().Sub(a.caretAt) >= _caretIdle
 	}
 	return v
 }
