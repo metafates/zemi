@@ -303,10 +303,11 @@ func (a *App) measure(n *node, width int) int {
 		rows := a.regionLines(n.Region, regionWidth(n, width), 0)
 		return len(rows)
 	case _layoutComposer:
-		rows, _, _ := a.composerRows(width, n.Placeholder)
+		rows, _, _ := a.composerRows(frameInner(width), n.Placeholder)
 		if n.Frame {
 			return len(rows) + 2
 		}
+		rows, _, _ = a.composerRows(width, n.Placeholder)
 		return len(rows)
 	case _layoutBar:
 		return 1

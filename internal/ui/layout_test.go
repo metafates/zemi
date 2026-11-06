@@ -14,6 +14,25 @@ func cells(n int) Size   { return Size{Kind: _sizeCells, N: n} }
 func percent(n int) Size { return Size{Kind: _sizePercent, N: n} }
 func fill(n int) Size    { return Size{Kind: _sizeFill, N: n} }
 
+// TestComposerMeasureFitsTheFrame: a framed composer is measured at the
+// width its frame actually draws at, so a multiline draft never clips the
+// bottom border.
+func TestComposerMeasureFitsTheFrame(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 60, 12)
+	n := &node{Kind: _layoutComposer, Frame: true, Top: _regionWorking}
+	w := 40
+	// 36 cells wrap on one row at the frame's full width, two at frameInner's
+	app.composer.text, app.composer.cursor = strings.Repeat("a", 36)+" b", 38
+	frameRows, _, _ := app.composerFrame(n, w)
+	if got, want := app.measure(n, w), len(frameRows); got != want {
+		t.Fatalf("measure at %d: %d rows, the frame draws %d", w, got, want)
+	}
+	if last := frameRows[len(frameRows)-1]; !strings.HasPrefix(hostapi.SegsText(last), "└") {
+		t.Fatalf("the frame's last row lost its bottom border: %q", hostapi.SegsText(last))
+	}
+}
+
 var _contentSize = Size{Kind: _sizeContent}
 
 func TestSpan(t *testing.T) {

@@ -123,10 +123,11 @@ type App struct {
 	// caret is the composer cursor's cell on the last composed frame; the
 	// terminal's own cursor draws there while caretOn, so no replica is
 	// painted (like neovim's TUI caret).
-	caret     uv.Position
-	caretOn   bool
-	caretAt   time.Time // the last input while the composer held the keys
-	caretKeys bool      // whether the composer held the keys on the last frame
+	caret      uv.Position
+	caretOn    bool
+	caretAt    time.Time // the last input that changed the draft
+	caretKeys  bool      // whether the composer held the keys on the last frame
+	caretTyped string    // the draft as of the last steadying keystroke
 	// chatSelMemo is the message the cursor held when the chat last had the
 	// keys: tab re-selects it rather than re-deriving one from the view.
 	chatSelMemo int
@@ -466,7 +467,6 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		if a.recapStop != nil {
 			a.recapStop()
 		}
-		a.caretAt = a.now() // the user being at the keys keeps the caret steady
 	}
 	switch msg := msg.(type) {
 	case frameTickMsg:
@@ -616,16 +616,15 @@ func (a *App) View() tea.View {
 		v.ProgressBar = &tea.ProgressBar{State: tea.ProgressBarIndeterminate, Value: a.beat}
 	}
 	// the terminal's own cursor draws the composer's caret, the way neovim's
-	// TUI drives it: a steady bar over the frame while the user types, a
-	// blinking one once the composer sits idle, hidden whenever the composer
-	// lacks the keys or something covers the cell. The keys are checked here
-	// too, so a cached frame never dangles a stale caret, and their return
-	// counts as fresh input.
+	// TUI drives it: a steady bar while the user types, a blinking one once
+	// they stop, hidden whenever the composer lacks the keys or something
+	// covers the cell. The keys are checked here too, so a cached frame never
+	// dangles a stale caret. Only a changed draft steadies the caret —
+	// scrolling and other actions leave it blinking.
 	holds := a.composerHoldsKeys()
-	// caretAt zero (fresh start, nothing typed yet) keeps the blink so the
-	// caret already blinks on boot; any real input steadies it.
-	if holds && !a.caretKeys && !a.caretAt.IsZero() {
+	if holds && a.caretOn && a.caretTyped != a.composer.text {
 		a.caretAt = a.now()
+		a.caretTyped = a.composer.text
 	}
 	a.caretKeys = holds
 	if a.caretOn && holds && !a.caret.In(a.popRect) {

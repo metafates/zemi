@@ -67,9 +67,8 @@ func TestComposerTerminalCursor(t *testing.T) {
 func TestComposerCaretBlinks(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 60, 12)
-	app.composer.text, app.composer.cursor = "hi", 1
 	if cur := app.View().Cursor; cur == nil || !cur.Blink {
-		t.Fatalf("a caret on a fresh start should blink already, got %+v", cur)
+		t.Fatalf("an untouched composer should blink, got %+v", cur)
 	}
 	clock := time.Now()
 	app.now = func() time.Time { return clock }
@@ -77,10 +76,13 @@ func TestComposerCaretBlinks(t *testing.T) {
 	if cur := app.View().Cursor; cur == nil || cur.Blink {
 		t.Fatalf("typing should steady the caret, got %+v", cur)
 	}
-	app.now = func() time.Time { return clock }
-	app.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	app.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown, Y: 5})
 	if cur := app.View().Cursor; cur == nil || cur.Blink {
-		t.Fatalf("typing should steady the caret again, got %+v", cur)
+		t.Fatalf("scrolling should leave the caret steady, got %+v", cur)
+	}
+	app.now = func() time.Time { return clock.Add(2 * _caretIdle) }
+	if cur := app.View().Cursor; cur == nil || !cur.Blink {
+		t.Fatalf("an idle caret should blink again, got %+v", cur)
 	}
 }
 
