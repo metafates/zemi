@@ -789,7 +789,7 @@ func TestGoldenPermission(t *testing.T) {
 			Description: "Install dependencies and build the site",
 		}},
 		{"plugin-tool-80x30", 80, 30, hostapi.PermRequest{
-			Tool: "jira_create", Subject: "tool.jira_create", Arg: "jira_create", Owner: "plugin:jira",
+			Tool: "jira_create", Subject: "tool.jira_create", Arg: "jira_create",
 			Preview: `{"project":"ZEM","type":"Task","summary":"Permission prompt lists the programs a command runs","labels":["ui","permissions"]}`,
 			Reason:  "zemi cannot tell what this tool does",
 		}},
@@ -819,9 +819,9 @@ func TestGoldenPermission(t *testing.T) {
 func TestPermissionDenyOneAtATime(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 70, 16)
-	// the ask-everything policy a plugin's veto makes
+	// the ask-everything policy a plugin's tool.pre handler makes
 	pipe := host.PipelineFor()
-	pipe.Veto = func(tools.Request) (string, string) { return tools.VetoAsk, "" }
+	pipe.ForceAsk()
 	res := make(chan bool, 2)
 	for _, req := range []tools.Request{{Subject: "fs.write", Arg: "/etc/hosts", Reason: "edit hosts"}, {Subject: "tool.shell", Arg: "make test"}} {
 		go func() { res <- pipe.Check(req).Allowed }()
@@ -855,9 +855,9 @@ func TestPermissionDenyOneAtATime(t *testing.T) {
 func TestPermissionTellNarrow(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 30, 30)
-	// the ask-everything policy a plugin's veto makes
+	// the ask-everything policy a plugin's tool.pre handler makes
 	pipe := host.PipelineFor()
-	pipe.Veto = func(tools.Request) (string, string) { return tools.VetoAsk, "" }
+	pipe.ForceAsk()
 	res := make(chan bool, 2)
 	for _, arg := range []string{"make test", "make lint"} {
 		go func() { res <- pipe.Check(tools.Request{Subject: "tool.shell", Arg: arg}).Allowed }()
@@ -932,7 +932,7 @@ func TestPermissionBoxFits(t *testing.T) {
 		},
 		{
 			"title beats a long badge", 80, 24,
-			hostapi.PermRequest{Subject: "tool.shell", Arg: "rm -rf build", Owner: "plugin:" + strings.Repeat("x", 80), Agent: "workflow 7c25f526  general agent"},
+			hostapi.PermRequest{Subject: "tool.shell", Arg: "rm -rf build", Script: "lua script " + strings.Repeat("x", 80), Agent: "workflow 7c25f526  general agent"},
 			[]string{"Run this command?", "workflow 7c2"},
 		},
 		{
@@ -1717,10 +1717,8 @@ func TestAskGuardUnderDraft(t *testing.T) {
 	}
 }
 
-// TestPermissionAnswersUnderADraft: with a draft under the ask the answer
-// keys arm — a second press answers (the affirmative is reachable from the
-// keyboard), prose letters drop the arm, and the draft rides out the answer
-// intact.
+// TestPermissionAnswersUnderADraft: an ask under a draft keeps its keys —
+// a single y answers, and the draft rides out the answer intact.
 func TestPermissionAnswersUnderADraft(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
@@ -1740,54 +1738,25 @@ func TestPermissionAnswersUnderADraft(t *testing.T) {
 		app.Update(tea.KeyPressMsg{Code: rune(key[0]), Text: key})
 	}
 	now = opened.Add(_permGrace + time.Millisecond)
-	typeKey("hold this draft")
-	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"}) // the y types and arms
-	if app.composer.text != "hold this drafty" {
-		t.Fatalf("the arm's first press types: %q", app.composer.text)
-	}
-	now = now.Add(_permGrace + time.Millisecond)
-	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"}) // a human's second press answers
+	typeKey("hold a ladder")                          // letters the ask does not use still draft
+	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"}) // the ask's y answers
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("a second y under a draft must answer the ask")
+		t.Fatal("a y under a draft must answer the ask")
 	}
 	if !allowed {
-		t.Fatal("the armed y approved")
+		t.Fatal("the y approved")
 	}
-	if app.composer.text != "hold this drafty" {
+	if app.composer.text != "hold a ladder" {
 		t.Fatalf("the draft must ride out the answer: %q", app.composer.text)
-	}
-
-	// a paste's adjacent yy types whole and never answers: the arm needs a
-	// human's pause between its presses. A second app, so the ask runs
-	// inline (a program would queue it where the test never pumps).
-	app2, _ := bootAgentApp(t, 80, 20)
-	done2 := make(chan struct{})
-	go func() {
-		app2.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "make deploy"})
-		close(done2)
-	}()
-	waitPrompt(t, app2, func() bool { return app2.permAsk != nil })
-	app2.composer.text, app2.composer.cursor = "paste ", 6
-	app2.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	app2.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	if app2.permAsk == nil || app2.composer.text != "paste yy" {
-		t.Fatalf("a paste's yy must type, not answer: ask=%v text=%q", app2.permAsk != nil, app2.composer.text)
-	}
-	app2.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	select {
-	case <-done2:
-	case <-time.After(2 * time.Second):
-		t.Fatal("esc must deny the paste's ask")
 	}
 }
 
-// TestPermissionProseTypesUnderTheAsk: past the grace an ask's choice keys
-// answer only while the draft is empty: prose types into the draft the box
-// keeps, a stray "y" in it does not approve, enter sends the draft and the
-// box keeps waiting, and esc still denies. With an empty draft a choice's
-// key answers as before, and enter picks the highlighted `No`.
+// TestPermissionProseTypesUnderTheAsk: past the grace an ask's keys answer
+// even under a draft — the ask owns its keys — while letters it does not
+// use type into the draft the box keeps, and enter answers the highlighted
+// choice.
 func TestPermissionProseTypesUnderTheAsk(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
@@ -1807,38 +1776,21 @@ func TestPermissionProseTypesUnderTheAsk(t *testing.T) {
 		app.Update(tea.KeyPressMsg{Code: rune(key[0]), Text: key})
 	}
 	now = opened.Add(_permGrace + time.Millisecond)
-	typeKey("you bet, run it") // the arm's first press types: prose keeps its letters
-	if app.permAsk == nil || app.composer.text != "you bet, run it" {
+	typeKey("hold a ladder") // letters the ask spares draft whole
+	if app.permAsk == nil || app.composer.text != "hold a ladder" {
 		t.Fatalf("prose under the ask must draft whole: ask=%v text=%q", app.permAsk != nil, app.composer.text)
 	}
-	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
-	if app.permAsk == nil || app.composer.text != "you bet, run ity" {
-		t.Fatalf("a stray y types and arms: ask=%v text=%q", app.permAsk != nil, app.composer.text)
-	}
-	typeKey("x") // any other key drops the arm
-	if app.permAsk == nil || app.composer.text != "you bet, run ityx" {
-		t.Fatalf("prose keeps drafting under the ask: ask=%v text=%q", app.permAsk != nil, app.composer.text)
-	}
-	now = now.Add(_permGrace + time.Millisecond)
-	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"}) // the arm was dropped: this y arms again
-	if app.permAsk == nil {
-		t.Fatal("a y past a dropped arm must arm again, not answer")
-	}
-	app.composerKey("enter", tea.KeyPressMsg{}) // no model: the send fails, the text is kept
-	if app.permAsk == nil || len(app.composer.history) != 1 {
-		t.Fatalf("enter with a draft must send it and keep the ask: ask=%v history=%v", app.permAsk != nil, app.composer.history)
-	}
-	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter}) // enter answers the highlighted `No`
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("esc must deny past the grace")
+		t.Fatal("enter under a draft must answer the ask")
 	}
 	if allowed {
-		t.Fatal("esc denied the ask")
+		t.Fatal("enter picked the highlighted No")
 	}
-	if app.composer.text != "you bet, run ityxy" {
-		t.Fatalf("the draft must survive the deny: %q", app.composer.text)
+	if app.composer.text != "hold a ladder" {
+		t.Fatalf("the draft must survive the answer: %q", app.composer.text)
 	}
 }
 

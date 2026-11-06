@@ -229,40 +229,15 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if a.askGuard(pa.opened, pa.answer == nil) {
 			return nil
 		}
-		// the ask's keys answer only while the draft is empty: past the
-		// grace a stray "y" from prose the user is typing must not approve,
-		// and a stray move key must not walk the selection onto the risky
-		// answer. A draft takes every key it edits and enter sends it, the
-		// box keeps waiting; esc still denies.
+		// the ask's keys answer, draft or not: the box is on stage until it
+		// is answered. A draft keeps every key it edits that the ask does
+		// not use; esc still denies.
 		if key == "esc" {
 			a.answerPerm(false, tools.ByUser)
 			return nil
 		}
-		if !a.composer.empty() {
-			// a draft under the box: the answer keys type their letter and
-			// arm — prose keeps its y/n/t — and a second press past a paste's
-			// pace answers. The deny keys arm too: an accidental deny from
-			// prose loses the ask just as an accidental approve breaks it.
-			switch key {
-			case "y", "n", "t":
-				if pa.answerArmed == key && a.now().Before(pa.answerUntil) &&
-					a.now().Sub(pa.armedAt) >= _permGrace {
-					a.askSwallow = a.now() // the paste behind the second press eats whole
-					for _, c := range pa.choices() {
-						if c.key == key {
-							a.choosePerm(c)
-							return nil
-						}
-					}
-					return nil
-				}
-				pa.answerArmed, pa.answerUntil, pa.armedAt = key, a.now().Add(2*time.Second), a.now()
-				a.frameDirty = true // the footer's twice-to-answer hint draws
-				return a.composerKey(key, msg)
-			}
-			pa.answerArmed = ""
-			return a.composerKey(key, msg)
-		}
+		// the ask's keys answer, draft or not: the box is on stage until it
+		// is answered, and only keys it does not use reach the draft
 		choices := pa.choices()
 		if pa.view.overflows() && scrollKey(&pa.view, key, false) || moveSel(&pa.sel, len(choices), len(choices), key) {
 			a.bump()

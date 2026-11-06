@@ -39,12 +39,6 @@ type permAskPrompt struct {
 	sel    int       // highlighted choice
 	view   viewport  // the command or preview
 	size   boxSize
-	// a draft under the box arms the answer keys: the first press types its
-	// letter and arms, a second past a human's pause answers, any other key
-	// disarms — a paste's adjacent presses never answer
-	answerArmed string
-	answerUntil time.Time
-	armedAt     time.Time
 }
 
 // _permGrace swallows keys right after a prompt opens: someone typing a
@@ -130,7 +124,7 @@ func (a *App) AskPermission(req hostapi.PermRequest) (bool, string) {
 	req.Subject, req.Arg = sanitize.String(req.Subject), sanitize.String(req.Arg)
 	req.Reason, req.Preview = sanitize.String(req.Reason), sanitize.String(req.Preview)
 	req.Description = sanitize.String(req.Description)
-	req.Agent, req.Owner = sanitize.Line(req.Agent), sanitize.Line(req.Owner)
+	req.Agent = sanitize.Line(req.Agent)
 	// a tool's input reads as its fields, one per line
 	if strings.HasPrefix(req.Preview, "{") {
 		if out, err := jsontext.AppendFormat(nil, req.Preview, jsontext.WithIndent("  ")); err == nil {
@@ -947,15 +941,6 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 		btns = append(btns, c.promptChoice)
 	}
 	hints := []hintPair{_pickHint, {key: "esc", verb: "deny"}}
-	if !a.composer.empty() {
-		// a draft under the box: enter sends the draft and the answers arm,
-		// so the footer says the dance the keys actually do
-		hints = []hintPair{
-			{key: "enter", verb: "sends the draft"},
-			{key: "y/n/t", verb: "twice answers"},
-			{key: "esc", verb: "deny"},
-		}
-	}
 	placeholder := _oneRow
 	if len(content) == 0 {
 		placeholder = nil
@@ -1011,7 +996,7 @@ func (a *App) permBox(pa *permAskPrompt, w, h int) [][]hostapi.Segment {
 	content = pa.view.window(content, fit, _boxFade)
 	// who asks, whose code runs, and how many asks wait (an upper bound: a
 	// waiting ask may settle without a prompt)
-	badge := []string{req.Agent, req.Owner, req.Script}
+	badge := []string{req.Agent, req.Script}
 	if n := a.host.AsksWaiting(); n > 1 {
 		badge = append(badge, fmt.Sprintf("1 of %d", n))
 	}
