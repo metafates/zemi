@@ -235,7 +235,7 @@ func TestReportNoticeWhereRead(t *testing.T) {
 	if err != nil || len(rows) != 3 || rows[0].Kind != store.KindWork {
 		t.Fatalf("log tail: %+v, %v", rows, err)
 	}
-	built := logRows(rows)
+	built := logRows(nil, rows)
 	if len(built) != 3 || built[0].Text != want || built[0].Status != CallOK || built[0].Run != "r1" || built[0].Tool != "explore" || built[1].Text != "Counting tests   done" || built[2].Tool != "explore" {
 		t.Fatalf("rebuilt rows: %+v", built)
 	}

@@ -260,7 +260,7 @@ func TestNoticesPersist(t *testing.T) {
 		t.Fatalf("notice rows = %+v, %v", rows, err)
 	}
 	// a rebuilt window draws the same rows, detail included
-	tr := logRows(rows[1:])
+	tr := logRows(nil, rows[1:])
 	if len(tr) != 2 || tr[0].Kind != RowNotice || tr[0].Text != "Recap: working on the import" ||
 		tr[0].Detail != "turn off in /config" || tr[1].Text != "Goal met: the tests pass" {
 		t.Fatalf("rebuilt rows = %+v", tr)
@@ -563,7 +563,7 @@ func TestLogHoldsTheThought(t *testing.T) {
 	if err := json.Unmarshal([]byte(rows[1].MetaJSON), &meta); err != nil || meta.MS < 50 {
 		t.Fatalf("thought row meta = %q (%v), want the stretch's wall time", rows[1].MetaJSON, err)
 	}
-	tr := logRows(rows)
+	tr := logRows(nil, rows)
 	if len(tr) != 3 || tr[1].Kind != RowReasoning || tr[1].Text != "pondering the ask." ||
 		tr[1].Stat == nil || tr[1].Stat.ThoughtMS < 50 || tr[1].Seq != rows[1].Seq {
 		t.Fatalf("rebuilt rows = %+v", tr)
@@ -669,7 +669,7 @@ func TestResumedWindowKeepsTheTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.SetTranscript(logRows(rows))
+	h.SetTranscript(logRows(nil, rows))
 	tr := h.Session().Transcript
 	reply := tr[len(tr)-1]
 	if reply.Stat == nil || reply.Stat.Model != "acme-gateway/big" ||
@@ -730,7 +730,7 @@ func TestResumedWindowNamesADeadTail(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			h.SetTranscript(logRows(rows))
+			h.SetTranscript(logRows(nil, rows))
 			h.markDeadTail()
 			tr := h.Session().Transcript
 			last := tr[len(tr)-1]
@@ -763,7 +763,7 @@ func TestResumedZoomAndDateRowsKeepTheirHeads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.SetTranscript(logRows(rows))
+	h.SetTranscript(logRows(nil, rows))
 	tr := h.Session().Transcript
 	if len(tr) != 3 {
 		t.Fatalf("the rebuilt window holds %d rows, want the three calls: %+v", len(tr), tr)
@@ -825,7 +825,7 @@ func TestResumedWindowKeepsTheFailuresAndCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.SetTranscript(logRows(rows))
+	h.SetTranscript(logRows(nil, rows))
 	tr := h.Session().Transcript
 	var gotErr, gotShell *ChatMessage
 	for i := range tr {
@@ -928,7 +928,7 @@ func TestTurnStatSkipsPromptWait(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.SetTranscript(logRows(rows))
+	h.SetTranscript(logRows(nil, rows))
 	tr := h.Session().Transcript
 	stat := tr[len(tr)-1].Stat
 	if stat == nil || stat.ElapsedMS != 1500 {

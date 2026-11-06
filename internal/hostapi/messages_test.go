@@ -60,7 +60,7 @@ func TestLogRowsPairsParallelCalls(t *testing.T) {
 		return store.LogEntry{Seq: seq, Kind: store.KindEcho, Text: out, MetaJSON: `{"tool":"shell","ok":true,"id":"` + id + `"}`}
 	}
 	user := func(seq int64) store.LogEntry { return store.LogEntry{Seq: seq, Kind: store.KindUser, Text: "next"} }
-	tr := logRows([]store.LogEntry{
+	tr := logRows(nil, []store.LogEntry{
 		tool(0, "a"), tool(1, "b"), echo(2, "b", "second"), echo(3, "a", "first"), user(4),
 	})
 	if len(tr) != 3 || tr[0].Output != "first" || tr[1].Output != "second" {
@@ -74,13 +74,13 @@ func TestLogRowsPairsParallelCalls(t *testing.T) {
 	legacyEcho := func(seq int64, out string) store.LogEntry {
 		return store.LogEntry{Seq: seq, Kind: store.KindEcho, Text: out, MetaJSON: `{"tool":"shell","ok":true}`}
 	}
-	tr = logRows([]store.LogEntry{legacy(0), legacy(1), legacyEcho(2, "one"), legacyEcho(3, "two"), user(4)})
+	tr = logRows(nil, []store.LogEntry{legacy(0), legacy(1), legacyEcho(2, "one"), legacyEcho(3, "two"), user(4)})
 	if len(tr) != 3 || tr[0].Output != "one" || tr[1].Output != "two" {
 		t.Fatalf("legacy rows drew %+v", tr)
 	}
 	// one id on every call, the shape a fake model logs: each call still
 	// reads its own echo, the oldest past it, in log order
-	tr = logRows([]store.LogEntry{
+	tr = logRows(nil, []store.LogEntry{
 		tool(0, "t1"), echo(1, "t1", "one"), tool(2, "t1"), echo(3, "t1", "two"), user(4),
 	})
 	if len(tr) != 3 || tr[0].Output != "one" || tr[1].Output != "two" {
@@ -123,7 +123,7 @@ func TestStampPairsASplitMessage(t *testing.T) {
 	marked := func(seq int64, text string) store.LogEntry {
 		return store.LogEntry{Seq: seq, Kind: store.KindUser, Text: text, MetaJSON: `{"split":true}`}
 	}
-	folded := logRows([]store.LogEntry{marked(0, full[:8000]), marked(1, full[8000:])})
+	folded := logRows(nil, []store.LogEntry{marked(0, full[:8000]), marked(1, full[8000:])})
 	if len(folded) != 1 || folded[0].Text != full {
 		t.Fatalf("the rebuild folds the split's siblings: %+v", folded)
 	}
@@ -138,7 +138,7 @@ func TestStampPairsASplitToolInput(t *testing.T) {
 	h, _ := newTestHostDB(t)
 	full := `{"path":"/tmp/plan.md","content":"` + strings.Repeat("x", 9000) + `"}`
 	meta := withSplit(`{"id":"call-1","tool":"write"}`)
-	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Text: toolSummary("write", full)})
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Text: toolSummary(nil, "write", full)})
 	if _, err := h.DB.AppendLog(store.KindTool, full[:8000], meta, "", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestStampPairsASplitToolInput(t *testing.T) {
 		t.Fatalf("the cursor walked past the sibling: %d", from)
 	}
 	// a later call pairs with its own row: the sibling rides the first chunk
-	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Text: toolSummary("read", `{"path":"/tmp/x"}`)})
+	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Text: toolSummary(nil, "read", `{"path":"/tmp/x"}`)})
 	read, err := h.DB.AppendLog(store.KindTool, `{"path":"/tmp/x"}`, `{"id":"call-2","tool":"read"}`, "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -172,7 +172,7 @@ func TestStampPairsASplitToolInput(t *testing.T) {
 			MetaJSON: `{"id":"` + id + `","split":true,"tool":"write"}`,
 		}
 	}
-	folded := logRows([]store.LogEntry{unit(0, "a", "A1"), unit(1, "a", "A2"), unit(2, "b", "B1"), unit(3, "b", "B2")})
+	folded := logRows(nil, []store.LogEntry{unit(0, "a", "A1"), unit(1, "a", "A2"), unit(2, "b", "B1"), unit(3, "b", "B2")})
 	if len(folded) != 2 || folded[0].Text != "A1A2" || folded[1].Text != "B1B2" {
 		t.Fatalf("the rebuild folds each call's chunks, side by side apart: %+v", folded)
 	}
@@ -204,7 +204,7 @@ func TestTheSettleKeepsAFoldedReplyWhole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	folded := logRows(rows)
+	folded := logRows(nil, rows)
 	if len(folded) != 1 || folded[0].Text != full {
 		t.Fatalf("the settled reply still folds into one row: %+v", folded)
 	}
@@ -224,11 +224,11 @@ func TestLogRowsBrowseKeepsUnpairedEchoes(t *testing.T) {
 		{Seq: 0, Kind: store.KindEcho, Text: "\n<file path=\"task.txt\">\nwords\n</file>", MetaJSON: `{"tool":"attach","ok":true}`},
 		{Seq: 1, Kind: store.KindUser, Text: "read @task.txt"},
 	}
-	tr := logRows(rows)
+	tr := logRows(nil, rows)
 	if len(tr) != 1 {
 		t.Fatalf("the transcript folds the attach echo: %+v", tr)
 	}
-	browse := logRowsFor(rows, true)
+	browse := logRowsFor(nil, rows, true)
 	if len(browse) != 2 || browse[0].Kind != RowNotice || browse[0].Text != `<file path="task.txt">` || browse[0].Detail != rows[0].Text || browse[1].Seq != 1 {
 		t.Fatalf("the browser draws the unpaired echo in place: %+v", browse)
 	}

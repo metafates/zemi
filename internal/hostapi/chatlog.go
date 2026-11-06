@@ -684,7 +684,7 @@ func (h *Host) zoomRun(run string, page int, own string) (fantasy.ToolResponse, 
 	if err != nil {
 		return fantasy.ToolResponse{}, err
 	}
-	_, tr := historyFrom(rows)
+	_, tr := historyFrom(h.relPath, rows)
 	if len(tr) == 0 {
 		return fantasy.NewTextResponse(pageText("run "+run, own, -1, page)), nil
 	}

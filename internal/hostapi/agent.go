@@ -1530,8 +1530,13 @@ var _aboutArg = regexp.MustCompile(`^\s*\{\s*"about"\s*:\s*("(?:[^"\\]|\\.)*")`)
 var _pathArg = regexp.MustCompile(`^\s*\{\s*"path"\s*:\s*("(?:[^"\\]|\\.)*")`)
 
 // toolSummary picks the argument a person reads first (a command, path or
-// query) out of a tool's JSON input; anything else stays raw.
-func toolSummary(tool, input string) string {
+// query) out of a tool's JSON input; anything else stays raw. Paths read
+// through rel (a Host's relPath: project-relative inside, as given outside);
+// nil keeps them raw.
+func toolSummary(rel func(string) string, tool, input string) string {
+	if rel == nil {
+		rel = func(p string) string { return p }
+	}
 	var m map[string]any
 	if json.Unmarshal([]byte(input), &m) != nil {
 		return input
@@ -1593,7 +1598,10 @@ func toolSummary(tool, input string) string {
 	}
 	if tools.ToolName(tool) == tools.ToolLua { // the about is its label, and a script reads as nothing short
 		path, _ := m["path"].(string)
-		return path
+		if path == "" {
+			return ""
+		}
+		return rel(path)
 	}
 	if name := tools.ToolName(tool); name == tools.ToolZoom || name == tools.ToolDate { // the line it names, in the id+n shape the chat's summaries use
 		var in zoomArgs // date's input is its id alone, which zoomArgs carries the same way
@@ -1617,6 +1625,9 @@ func toolSummary(tool, input string) string {
 		for _, k := range []string{"symbol", "path", "id"} {
 			if v, ok := m[k]; ok {
 				if s := fmt.Sprint(v); s != "" {
+					if k == "path" {
+						s = rel(s)
+					}
 					return action + " " + s
 				}
 			}
@@ -1638,6 +1649,9 @@ func toolSummary(tool, input string) string {
 	}
 	for _, k := range []string{"path", "pattern", "url", "query", "question", "name", "text", "description", "id"} {
 		if s, ok := m[k].(string); ok && s != "" {
+			if k == "path" {
+				s = rel(s)
+			}
 			return s
 		}
 	}

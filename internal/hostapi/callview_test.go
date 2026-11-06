@@ -181,7 +181,7 @@ func TestCallViewShowsTheSteerMessage(t *testing.T) {
 	raw := fmt.Sprintf(`{"send_to":"r9","prompt":%q}`, prompt)
 	const canned = "Queued for agent r9: it reads the message at its next step. Its report still arrives when it finishes."
 	live := StreamTool{
-		ID: "call_1", Name: "agent", Run: "r9", Raw: raw, Input: toolSummary("agent", raw),
+		ID: "call_1", Name: "agent", Run: "r9", Raw: raw, Input: toolSummary(nil, "agent", raw),
 		Label: toolLabel(raw), Status: CallOK, Output: canned,
 	}
 	for _, c := range []struct {
@@ -201,7 +201,7 @@ func TestCallViewShowsTheSteerMessage(t *testing.T) {
 		}},
 		{"a call rebuilt from the log", func(t *testing.T, h *Host) ChatMessage {
 			echo := `{"tool":"agent","ok":true,"id":"call_1"}`
-			tr := logRows([]store.LogEntry{
+			tr := logRows(nil, []store.LogEntry{
 				{Seq: 0, Kind: store.KindTool, Text: raw, MetaJSON: `{"tool":"agent","id":"call_1"}`},
 				{Seq: 1, Kind: store.KindEcho, Text: canned, MetaJSON: echo},
 			})
@@ -217,7 +217,7 @@ func TestCallViewShowsTheSteerMessage(t *testing.T) {
 			if m.Prompt != prompt {
 				t.Fatalf("the row holds prompt %q, want the message sent", m.Prompt)
 			}
-			if m.Text != toolSummary("agent", raw) || len([]rune(m.Text)) >= len([]rune(prompt)) {
+			if m.Text != toolSummary(nil, "agent", raw) || len([]rune(m.Text)) >= len([]rune(prompt)) {
 				t.Fatalf("the row's summary = %q, want 80 runes of the message", m.Text)
 			}
 			if m.Output != canned {

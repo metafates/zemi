@@ -112,7 +112,7 @@ func (s *streamAdapter) ToolCallPending(id, name string) {
 
 func (s *streamAdapter) ToolCallStart(id, name, input string) {
 	s.h.Log.Debug("tool call start", "origin", "agent", "tool", name, "id", id)
-	row := StreamTool{ID: id, Name: name, Input: toolSummary(name, input), Raw: input, Label: toolLabel(input), Status: CallWait, Diff: inputDiff(name, input)}
+	row := StreamTool{ID: id, Name: name, Input: toolSummary(s.h.relPath, name, input), Raw: input, Label: toolLabel(input), Status: CallWait, Diff: inputDiff(name, input)}
 	ag := s.h.agents
 	ag.mu.Lock()
 	i := slices.IndexFunc(ag.tools, func(t StreamTool) bool { return t.ID == id })
@@ -464,6 +464,9 @@ func (s *streamAdapter) ToolInputDelta(id, delta string) {
 	var label string
 	for _, re := range []*regexp.Regexp{_aboutArg, _pathArg} {
 		if m := re.FindStringSubmatch(t.partial); m != nil && json.Unmarshal([]byte(m[1]), &label) == nil {
+			if re == _pathArg { // a path reads relative to the project, like every rail row names it
+				label = s.h.relPath(label)
+			}
 			t.Label = clipLine(label, 80)
 			break
 		}

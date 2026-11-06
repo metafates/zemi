@@ -351,7 +351,7 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		runner.Continue(prev)
 	case sid != "":
 		// a run this process forgot: its rows are the history
-		runner.History, _ = historyFrom(rows)
+		runner.History, _ = historyFrom(h.relPath, rows)
 	case h.DB != nil:
 		// the run id is the session id, so send_to finds the rows of a run
 		// the process no longer holds (a resume, or one past maxKeptRuns)
@@ -864,12 +864,12 @@ func (s *subagentHooks) ToolCallStart(id, name, input string) {
 	run.retryAt = time.Time{}
 	n := run.calls - s.base
 	run.rows[id] = len(run.tr)
-	run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: tools.ToolName(name), Text: toolSummary(name, input), Label: toolLabel(input), Prompt: steerPrompt(name, input), Status: CallWait, Diff: diff})
+	run.tr = append(run.tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: tools.ToolName(name), Text: toolSummary(s.h.relPath, name, input), Label: toolLabel(input), Prompt: steerPrompt(name, input), Status: CallWait, Diff: diff})
 	run.touch()
 	run.mu.Unlock()
 	// one line: the widget wraps, and a long command would push the chat around
 	s.report(fmt.Sprintf("%s   %d tool %s   %s %s", s.def.Name, n, Plural(n, "call", "calls"), name,
-		clipLine(toolSummary(name, input), 60)))
+		clipLine(toolSummary(s.h.relPath, name, input), 60)))
 	s.h.refreshViewed(run)
 }
 

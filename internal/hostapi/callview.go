@@ -390,7 +390,7 @@ func (h *Host) logCallRow(seq int64) (ChatMessage, bool) {
 	if err != nil || len(rows) == 0 || rows[0].Seq != seq {
 		return ChatMessage{}, false
 	}
-	for _, m := range logRows(rows) {
+	for _, m := range logRows(h.relPath, rows) {
 		if m.Seq == seq {
 			if m.Kind != RowTool && m.Kind != RowReasoning {
 				return ChatMessage{}, false

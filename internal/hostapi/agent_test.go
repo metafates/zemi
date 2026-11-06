@@ -1155,7 +1155,7 @@ func TestTurnDoneLogsTheCutCall(t *testing.T) {
 		t.Fatalf("the log holds no cut call's rows: %v", rows)
 	}
 	var rebuilt ChatMessage
-	for _, m := range logRows(rows) {
+	for _, m := range logRows(nil, rows) {
 		if m.Kind == RowTool {
 			rebuilt = m
 		}
@@ -1186,7 +1186,7 @@ func TestTurnDoneLogsASettledCutCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	var rebuilt ChatMessage
-	for _, m := range logRows(rows) {
+	for _, m := range logRows(nil, rows) {
 		if m.Kind == RowTool {
 			rebuilt = m
 		}
@@ -1255,7 +1255,7 @@ func TestTurnDoneLogsTheRawArgs(t *testing.T) {
 		t.Fatalf("the log holds %q, want the raw args the live rail's label came from", toolRow.Text)
 	}
 	var rebuilt ChatMessage
-	for _, m := range logRows(rows) {
+	for _, m := range logRows(nil, rows) {
 		if m.Kind == RowTool {
 			rebuilt = m
 		}
@@ -1297,7 +1297,7 @@ func TestTurnDoneLogsTheCutThought(t *testing.T) {
 	if len(texts) != 2 || texts[0] != "thinking it over." || texts[1] != "still thinking." {
 		t.Fatalf("the log holds thoughts %q, want this step's two and not the earlier turn's", texts)
 	}
-	tr := logRows(rows)
+	tr := logRows(nil, rows)
 	var ms []int64
 	for _, m := range tr {
 		if m.Kind == RowReasoning {
@@ -2112,7 +2112,7 @@ func TestLateReasoningKeepsReplyWhole(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, tr := historyFrom([]*store.Message{{Role: "assistant", PartsJSON: string(raw)}})
+			_, tr := historyFrom(nil, []*store.Message{{Role: "assistant", PartsJSON: string(raw)}})
 			return rowsOf(tr)
 		},
 	} {

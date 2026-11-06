@@ -1227,7 +1227,7 @@ func (h *Host) loadRun(id string) (*agentRun, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, tr := historyFrom(rows)
+	_, tr := historyFrom(h.relPath, rows)
 	run := &agentRun{
 		id: id, agent: sess.Agent, description: sess.Title, parent: sess.ParentID, cancel: func() {},
 		started: time.UnixMilli(sess.CreatedAt), finished: time.UnixMilli(sess.UpdatedAt),

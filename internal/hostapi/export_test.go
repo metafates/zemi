@@ -263,6 +263,15 @@ func TestPendingRowPathLabel(t *testing.T) {
 			t.Fatalf("after %q: label %q, want %q", c.delta, label(), c.want)
 		}
 	}
+	// a path inside the project streams in absolute and reads relative
+	s.ToolCallPending("2", "write")
+	s.ToolInputDelta("2", `{"path": "`+h.Dirs.ProjectDir+`/x/y.go", "content"`)
+	h.agents.mu.Lock()
+	want := "x/y.go"
+	if got := h.agents.tools[1].Label; got != want {
+		t.Errorf("project path label = %q, want %q", got, want)
+	}
+	h.agents.mu.Unlock()
 }
 
 // TestStreamedInputCountsEveryDelta: the streamed size keeps counting after
@@ -282,44 +291,53 @@ func TestStreamedInputCountsEveryDelta(t *testing.T) {
 }
 
 func TestToolSummary(t *testing.T) {
-	for _, c := range []struct{ tool, in, want string }{
-		{"", `{"items":[{"content":"a","status":"done"},{"content":"b","status":"pending"}]}`, "2 todos, 1 done"},
-		{"", `{"command":"python3","args":["-m","http.server","8765"]}`, "python3 -m http.server 8765"},
-		{"", `{"id":"job-1"}`, "job-1"},
-		{"", `{"questions":[{"question":"Which color?","options":[]},{"question":"Size?"}]}`, "Which color? +1 more"},
-		{"", `{"plan":"\n# Goal\n\n1. write x.txt"}`, "Goal"},
-		{"", `{"plan":"# Plan\n1. x"}`, ""},
-		{"", `{"plan":"# Plan: add caching\n1. x"}`, "add caching"},
-		{"", `{"plan":"# Planning notes"}`, "Planning notes"},
-		{"", `{"plan":"# Plan: ȺȺȺȺȺ İş"}`, "ȺȺȺȺȺ İş"},
-		{"", `{"action":"text"}`, "text"},
-		{"", `{"action":"close","id":2}`, "close 2"},
-		{"", `{"action":"definition","path":"/p/a.go","symbol":"Run"}`, "definition Run"},
-		{"", `{"agent":"explore","prompt":"look\n around"}`, "explore: look around"},
-		{"", `{"agent":"explore","description":"Look around","prompt":"x"}`, "Look around"},
-		{"", `{"wait":"all"}`, "all"},
-		{"", `{}`, ""},
-		{"", `{"limit":5,"filter":{"a":"b"},"q":"open","z":"x"}`, "open"},
-		{"", `{"limit":5}`, `{"limit":5}`},
-		{"", `{"send_to":"dc11086e","prompt":"second question"}`, "to dc11086e: second question"},
-		{string(tools.ToolWorkflow), `{"script":"local wf = zemi.workflow\nreturn 1"}`, "workflow"},
-		{string(tools.ToolWorkflow), `{"script":"-- scan the tree\nreturn 1"}`, "scan the tree"},
-		{string(tools.ToolWorkflow), `{"run":"abc123","action":"rerun","description":"slow scan again"}`, "slow scan again"},
-		{string(tools.ToolWorkflow), `{"run":"abc123","action":"stop"}`, "stop abc123"},
-		{string(tools.ToolWorkflow), `{"run":"abc123","action":"wait"}`, "wait abc123"},
-		{string(tools.ToolWorkflow), `{"run":"abc123"}`, "status abc123"},
-		{string(tools.ToolLua), `{"about":"Check the plugin","script":"return 1"}`, ""},
-		{string(tools.ToolLua), `{"about":"Run the check","path":"x.lua"}`, "x.lua"},
-		{string(tools.ToolZoom), `{"id":16032}`, "16032"},
-		{string(tools.ToolZoom), `{"id":16032,"n":8}`, "16032+8"},
-		{string(tools.ToolZoom), `{"id":16032,"n":1,"page":1}`, "16032 page 2"},
-		{string(tools.ToolZoom), `{"id":16032,"page":1}`, "16032 page 2"},
-		{string(tools.ToolZoom), `{"id":16032,"n":2,"page":1}`, "16032+2"},
-		{string(tools.ToolZoom), `{"id":1603200}`, "1603200"},
-		{string(tools.ToolZoom), `{"id":"16032"}`, "16032"},
-		{string(tools.ToolDate), `{"id":16032}`, "16032"},
+	// rel stands in for Host.relPath: a path inside "/p" maps relative, the rest read as given
+	rel := func(p string) string { return strings.TrimPrefix(p, "/p/") }
+	for _, c := range []struct {
+		rel      func(string) string
+		tool, in string
+		want     string
+	}{
+		{rel: nil, tool: "", in: `{"items":[{"content":"a","status":"done"},{"content":"b","status":"pending"}]}`, want: "2 todos, 1 done"},
+		{nil, "", `{"command":"python3","args":["-m","http.server","8765"]}`, "python3 -m http.server 8765"},
+		{nil, "", `{"id":"job-1"}`, "job-1"},
+		{nil, "", `{"questions":[{"question":"Which color?","options":[]},{"question":"Size?"}]}`, "Which color? +1 more"},
+		{nil, "", `{"plan":"\n# Goal\n\n1. write x.txt"}`, "Goal"},
+		{nil, "", `{"plan":"# Plan\n1. x"}`, ""},
+		{nil, "", `{"plan":"# Plan: add caching\n1. x"}`, "add caching"},
+		{nil, "", `{"plan":"# Planning notes"}`, "Planning notes"},
+		{nil, "", `{"plan":"# Plan: ȺȺȺȺȺ İş"}`, "ȺȺȺȺȺ İş"},
+		{nil, "", `{"action":"text"}`, "text"},
+		{nil, "", `{"action":"close","id":2}`, "close 2"},
+		{nil, "", `{"action":"definition","path":"/p/a.go","symbol":"Run"}`, "definition Run"},
+		{nil, "", `{"agent":"explore","prompt":"look\n around"}`, "explore: look around"},
+		{nil, "", `{"agent":"explore","description":"Look around","prompt":"x"}`, "Look around"},
+		{nil, "", `{"wait":"all"}`, "all"},
+		{nil, "", `{}`, ""},
+		{nil, "", `{"limit":5,"filter":{"a":"b"},"q":"open","z":"x"}`, "open"},
+		{nil, "", `{"limit":5}`, `{"limit":5}`},
+		{nil, "", `{"send_to":"dc11086e","prompt":"second question"}`, "to dc11086e: second question"},
+		{nil, string(tools.ToolWorkflow), `{"script":"local wf = zemi.workflow\nreturn 1"}`, "workflow"},
+		{nil, string(tools.ToolWorkflow), `{"script":"-- scan the tree\nreturn 1"}`, "scan the tree"},
+		{nil, string(tools.ToolWorkflow), `{"run":"abc123","action":"rerun","description":"slow scan again"}`, "slow scan again"},
+		{nil, string(tools.ToolWorkflow), `{"run":"abc123","action":"stop"}`, "stop abc123"},
+		{nil, string(tools.ToolWorkflow), `{"run":"abc123","action":"wait"}`, "wait abc123"},
+		{nil, string(tools.ToolWorkflow), `{"run":"abc123"}`, "status abc123"},
+		{nil, string(tools.ToolLua), `{"about":"Check the plugin","script":"return 1"}`, ""},
+		{nil, string(tools.ToolLua), `{"about":"Run the check","path":"x.lua"}`, "x.lua"},
+		{nil, string(tools.ToolZoom), `{"id":16032}`, "16032"},
+		{nil, string(tools.ToolZoom), `{"id":16032,"n":8}`, "16032+8"},
+		{nil, string(tools.ToolZoom), `{"id":16032,"n":1,"page":1}`, "16032 page 2"},
+		{nil, string(tools.ToolZoom), `{"id":16032,"page":1}`, "16032 page 2"},
+		{nil, string(tools.ToolZoom), `{"id":16032,"n":2,"page":1}`, "16032+2"},
+		{nil, string(tools.ToolZoom), `{"id":1603200}`, "1603200"},
+		{nil, string(tools.ToolZoom), `{"id":"16032"}`, "16032"},
+		{nil, string(tools.ToolDate), `{"id":16032}`, "16032"},
+		{rel, "", `{"path":"/p/a.go"}`, "a.go"},
+		{rel, "", `{"path":"/elsewhere/b.go"}`, "/elsewhere/b.go"},
+		{rel, string(tools.ToolLua), `{"about":"Run the check","path":"/p/main.lua"}`, "main.lua"},
 	} {
-		if got := toolSummary(c.tool, c.in); got != c.want {
+		if got := toolSummary(c.rel, c.tool, c.in); got != c.want {
 			t.Errorf("toolSummary(%s, %s) = %q, want %q", c.tool, c.in, got, c.want)
 		}
 	}

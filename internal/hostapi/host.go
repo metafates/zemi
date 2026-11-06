@@ -835,7 +835,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		// its head can sit on a turn start, not an answer's shed remains.
 		if rows, err := h.DB.LogTail(_chatWindowRows * 3); err == nil {
 			h.trHeadNote.Store(len(rows) > 0 && systemNote(rows[0]))
-			h.session.Transcript = alignTrim(logRows(rows))
+			h.session.Transcript = alignTrim(logRows(h.relPath, rows))
 			h.stampReset(h.session.Transcript)
 			h.markDeadTail()
 		}

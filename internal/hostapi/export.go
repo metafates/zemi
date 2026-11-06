@@ -270,7 +270,7 @@ func exportLog(b *strings.Builder, rows []store.LogEntry, level int, full bool) 
 				fmt.Fprintf(b, "\n**%s**\n", sanitize.String(name))
 				b.WriteString(codeFence("", text))
 			} else {
-				head := sanitize.Line(toolSummary(name, row.Text))
+				head := sanitize.Line(toolSummary(nil, name, row.Text))
 				fmt.Fprintf(b, "- `%s` %s\n", sanitize.String(name), clipLine(head, 120))
 			}
 		case store.KindEcho:

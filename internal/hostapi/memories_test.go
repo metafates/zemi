@@ -241,7 +241,7 @@ func TestMemoriesWindowReach(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.SetTranscript(logRows(rows)) // window seqs 0..5
+	h.SetTranscript(logRows(nil, rows)) // window seqs 0..5
 
 	o := h.memoriesOverlay()
 	for _, c := range []struct {
@@ -273,7 +273,7 @@ func TestMemoriesWindowReach(t *testing.T) {
 
 	// the window cut down to its tail: the merged lines past it say so, the
 	// tail's own lines read clean
-	h.SetTranscript(logRows(rows[4:]))
+	h.SetTranscript(logRows(nil, rows[4:]))
 	o = h.memoriesOverlay()
 	if it := o.Items[0]; it.Desc != "older than the chat window" || it.Run != "memories zoom 1 0" {
 		t.Errorf("a merged line past the window = %+v", it)
@@ -282,7 +282,7 @@ func TestMemoriesWindowReach(t *testing.T) {
 		t.Errorf("the tail's leaf = %+v", it)
 	}
 	// a leaf past the window still reads its messages
-	h.SetTranscript(logRows(rows[5:]))
+	h.SetTranscript(logRows(nil, rows[5:]))
 	o = h.memoriesOverlay()
 	if it := o.Items[2]; it.Desc != "older than the chat window" ||
 		it.Run != "memories view 0 4" || it.Verb != VerbOpen {

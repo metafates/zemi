@@ -77,7 +77,7 @@ func (h *Host) setTranscriptFromLog() {
 		h.Log.Warn("chat window not rebuilt", "origin", "reset", "error", err)
 		return
 	}
-	h.SetTranscript(logRows(rows))
+	h.SetTranscript(logRows(h.relPath, rows))
 }
 
 // SetTranscript replaces the chat, which opens at its tail: the swap a
@@ -251,15 +251,15 @@ func systemNote(row store.LogEntry) bool {
 // or agent message its text, a tool call and its echo one row, a work report
 // a notice naming the run, a thought, an error or a shell command its own row.
 // Notes draw nothing: zoom reaches them.
-func logRows(rows []store.LogEntry) []ChatMessage {
-	return logRowsFor(rows, false)
+func logRows(rel func(string) string, rows []store.LogEntry) []ChatMessage {
+	return logRowsFor(rel, rows, false)
 }
 
 // logRowsFor builds the transcript rows a log range draws. browse adds the
 // echoes nothing consumed — an attachment's content, a shell command's full
 // output — as dim rows: the transcript folds them into the row they belong
 // to, the browser is where the log's whole truth lives.
-func logRowsFor(rows []store.LogEntry, browse bool) []ChatMessage {
+func logRowsFor(rel func(string) string, rows []store.LogEntry, browse bool) []ChatMessage {
 	// the echo each tool row answers: by the call id both metas carry, else
 	// the oldest unconsumed echo of the same name, the order parallel calls
 	// of one tool answer in; a repeated id answers in log order, so the
@@ -376,7 +376,7 @@ func logRowsFor(rows []store.LogEntry, browse bool) []ChatMessage {
 			}
 			tr = append(tr, ChatMessage{
 				Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: tools.ToolName(name),
-				Text: toolSummary(name, row.Text), Label: toolLabel(row.Text), Prompt: steerPrompt(name, row.Text),
+				Text: toolSummary(rel, name, row.Text), Label: toolLabel(row.Text), Prompt: steerPrompt(name, row.Text),
 				Status: cmp.Or(status, CallOK),
 				Diff:   diff, Run: run, Job: job, Output: out, Seq: row.Seq,
 			})
@@ -475,7 +475,7 @@ func stampMS(stamp string) int64 {
 // transcript rows, the rows the live run drew. Rows that are not fantasy
 // messages are tool telemetry: a call's diff, run and summary, a step's
 // thought time, a turn's tokens and duration.
-func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
+func historyFrom(rel func(string) string, rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 	var history []fantasy.Message
 	var tr []ChatMessage
 	toolRow := map[string]int{} // tool call id -> transcript index
@@ -573,7 +573,7 @@ func historyFrom(rows []*store.Message) ([]fantasy.Message, []ChatMessage) {
 				rm := meta[p.ToolCallID]
 				tr = append(tr, ChatMessage{
 					Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: tools.ToolName(p.ToolName),
-					Text: toolSummary(p.ToolName, p.Input), Label: toolLabel(p.Input), Prompt: steerPrompt(p.ToolName, p.Input),
+					Text: toolSummary(rel, p.ToolName, p.Input), Label: toolLabel(p.Input), Prompt: steerPrompt(p.ToolName, p.Input),
 					Status: cmp.Or(rm.Status, CallOK),
 					Diff:   tc.Diff, Run: cmp.Or(tc.Run, rm.Run), Job: rm.Job, Detail: tc.Detail,
 				})

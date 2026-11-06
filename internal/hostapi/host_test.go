@@ -949,7 +949,7 @@ func TestHistoryRowFacts(t *testing.T) {
 		{"a row older than the column", "", rowMeta{Status: CallOK}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			_, tr := historyFrom([]*store.Message{{Role: "assistant", PartsJSON: string(parts), RowMeta: c.meta}})
+			_, tr := historyFrom(nil, []*store.Message{{Role: "assistant", PartsJSON: string(parts), RowMeta: c.meta}})
 			if len(tr) != 1 {
 				t.Fatalf("%d rows: %+v", len(tr), tr)
 			}
