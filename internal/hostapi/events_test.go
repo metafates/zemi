@@ -19,7 +19,6 @@ import (
 	glua "github.com/yuin/gopher-lua"
 
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -59,7 +58,9 @@ func TestHostToolEvents(t *testing.T) {
 		zemi.state.set("wpost", tostring(ev.ok))
 	end)`)
 	askEverything(t, r)
-	resp, err := h.workflowTool(h.PipelineFor()).Run(t.Context(),
+	pipe := h.PipelineFor()
+	pipe.ForceAsk()
+	resp, err := h.workflowTool(pipe).Run(t.Context(),
 		fantasy.ToolCall{ID: "1", Name: "workflow", Input: `{"description":"d","script":"return 1"}`})
 	if err != nil || !resp.IsError {
 		t.Fatalf("denied workflow = %+v, %v", resp, err)
@@ -263,12 +264,7 @@ func TestToolPostOnceOverlap(t *testing.T) {
 // TestVetoShape pins the zemi.Veto table runtime/types/zemi.lua documents.
 func TestVetoShape(t *testing.T) {
 	h, r := newTestHost(t)
-	runUser(t, r, `
-		zemi.event.on("permission.request", function() return { decision = "deny", reason = "nope" } end)
-		zemi.event.on("tool.pre", function() return { decision = "halt", reason = "stop" } end)`)
-	if res := h.EmitVetoable(t.Context(), "permission.request", map[string]any{}); !res.Denied || res.Reason != "nope" {
-		t.Errorf("permission.request = %+v, want denied with reason nope", res)
-	}
+	runUser(t, r, `zemi.event.on("tool.pre", function() return { decision = "halt", reason = "stop" } end)`)
 	if d, reason, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"}); d != "halt" || reason != "stop" {
 		t.Errorf("tool.pre = %q %q, want halt stop", d, reason)
 	}
@@ -282,13 +278,9 @@ func TestVetoBadShapeFailsClosed(t *testing.T) {
 		t.Run(ret, func(t *testing.T) {
 			h, r := newTestHost(t)
 			runUser(t, r, `
-				zemi.event.on("permission.request", function() return `+ret+` end)
 				zemi.event.on("app.quit", function() return `+ret+` end)
 				zemi.event.on("tool.pre", function() return `+ret+` end)`)
-			if res := h.EmitVetoable(t.Context(), "permission.request", map[string]any{}); !res.Denied {
-				t.Errorf("permission.request = %+v, want denied", res)
-			}
-			if res := h.EmitVetoable(t.Context(), "app.quit", map[string]any{}); res.Denied {
+			if res := h.EmitVetoable(t.Context(), EventAppQuit, map[string]any{}); res.Denied {
 				t.Errorf("app.quit = %+v, want proceed", res)
 			}
 			if d, _, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"}); d != "deny" {
@@ -298,94 +290,40 @@ func TestVetoBadShapeFailsClosed(t *testing.T) {
 	}
 }
 
-// TestVetoCrashFailsClosed: a handler that raises instead of returning is
-// the bad shape's sibling - permission.request denies on it, an event with
-// no closed side keeps its default.
+// TestVetoCrashFailsClosed: a handler that raises instead of returning
+// keeps each event's default - tool.pre and app.quit proceed, the error
+// lands in the log (tools.Tool.Run denies only when the whole hook cannot
+// run, the hot runtime).
 func TestVetoCrashFailsClosed(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
-		zemi.event.on("permission.request", function() error("boom") end)
+		zemi.event.on("tool.pre", function() error("boom") end)
 		zemi.event.on("app.quit", function() error("boom") end)`)
-	if res := h.EmitVetoable(t.Context(), EventPermissionRequest, map[string]any{}); !res.Denied || !strings.Contains(res.Reason, "boom") {
-		t.Errorf("permission.request = %+v, want denied with the crash as reason", res)
+	if d, _, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"}); d != "" {
+		t.Errorf("tool.pre = %q, want proceed", d)
 	}
 	if res := h.EmitVetoable(t.Context(), EventAppQuit, map[string]any{}); res.Denied {
 		t.Errorf("app.quit = %+v, want proceed", res)
 	}
 }
 
-// TestVetoAskLeg: a permission.request handler may return { decision =
-// "ask" } to run the ask path; a denial from any handler outranks it.
-func TestVetoAskLeg(t *testing.T) {
+// TestPreAsk: a tool.pre handler may return { decision = "ask" } to put
+// the call's action to the user; the gate answers it (tools_test.go pins
+// the ask leg itself, headless it fails closed).
+func TestPreAsk(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
-		zemi.event.on("permission.request", function(ev)
-			if ev.subject == "tool.shell" then return { decision = "ask", reason = "nervous" } end
+		zemi.event.on("tool.pre", function(ev)
+			if ev.tool == "shell" then return { decision = "ask" } end
 			return nil
 		end)`)
-	if res := h.EmitVetoable(t.Context(), EventPermissionRequest, map[string]any{"subject": "tool.shell"}); !res.Ask || res.Denied {
-		t.Errorf("= %+v, want ask", res)
+	hook := h.toolPreHook()
+	if d, _, _ := hook("shell", map[string]any{"command": "ls"}); d != "ask" {
+		t.Errorf("tool.pre(shell) = %q, want ask", d)
 	}
-	if res := h.EmitVetoable(t.Context(), EventPermissionRequest, map[string]any{"subject": "fs.read"}); res.Ask || res.Denied {
-		t.Errorf("= %+v, want no opinion", res)
+	if d, _, _ := hook("edit", map[string]any{}); d != "" {
+		t.Errorf("tool.pre(edit) = %q, want no opinion", d)
 	}
-	runUser(t, r, `zemi.event.on("permission.request", function() return { decision = "deny", reason = "no" } end, { id = "denier" })`)
-	res := h.EmitVetoable(t.Context(), EventPermissionRequest, map[string]any{"subject": "tool.shell"})
-	if !res.Denied || res.Ask {
-		t.Errorf("= %+v, want the denial to outrank the ask", res)
-	}
-	if res := h.EmitVetoable(t.Context(), EventAppQuit, map[string]any{}); res.Denied || res.Ask {
-		t.Errorf("app.quit = %+v, want proceed", res)
-	}
-}
-
-// TestVetoReasonReachesTheDenial: the reason a permission.request handler
-// denies with rides the verdict the gate logs and the denial text the model
-// gets, truncated like the gate's other text.
-func TestVetoReasonReachesTheDenial(t *testing.T) {
-	for _, c := range []struct {
-		name   string
-		reason string
-		want   string
-	}{
-		{"the handler's reason rides the denial", "edited", "permission denied (event): tool.shell: edited"},
-		{"no reason reads as before", "", "permission denied (event): tool.shell"},
-		{"a long reason truncates", strings.Repeat("x", 300), "permission denied (event): tool.shell: " + strings.Repeat("x", 200) + "..."},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			h, r := newTestHost(t)
-			runUser(t, r, `zemi.event.on("permission.request", function()
-				return { decision = "deny", reason = `+strconv.Quote(c.reason)+` }
-			end)`)
-			v := h.PipelineFor().Check(tools.Request{Tool: string(tools.ToolShell), Subject: perm.SubjectShell, Arg: "echo three"})
-			if v.Allowed || v.DecidedBy != tools.ByEvent {
-				t.Fatalf("Check = %+v, want an event denial", v)
-			}
-			if got := tools.DeniedText(v, perm.SubjectShell); got != c.want {
-				t.Fatalf("denial text = %q, want %q", got, c.want)
-			}
-		})
-	}
-}
-
-// TestVetoAtTheGate: the veto runs once per Check, the ask it settles does
-// not run it again, and a host-API call from Lua (no asker) runs it never.
-func TestVetoAtTheGate(t *testing.T) {
-	h, r := newTestHostDB(t)
-	seedSession(t, h)
-	runUser(t, r, `
-		zemi.event.on("permission.request", function()
-			zemi.state.set("seen", (zemi.state.get("seen") or 0) + 1)
-			return { decision = "ask" }
-		end)`)
-	v := h.PipelineFor().Check(tools.Request{Tool: string(tools.ToolShell), Subject: perm.SubjectShell, Arg: "ls"})
-	if v.Allowed || v.DecidedBy != tools.ByNobody {
-		t.Errorf("headless ask = %+v, want ByNobody", v)
-	}
-	runUser(t, r, `assert(zemi.state.get("seen") == 1, "the veto ran " .. zemi.state.get("seen") .. " times")`)
-	runUser(t, r, `
-		assert(zemi.fs.write("gate-runs.txt", "x"), "the Lua gate runs")
-		assert(zemi.state.get("seen") == 1, "the Lua gate ran the veto")`)
 }
 
 // TestVetoCountedOnly: the gate's veto event with no handler listening
@@ -393,27 +331,26 @@ func TestVetoAtTheGate(t *testing.T) {
 // model action for the plugin-free majority.
 func TestVetoCountedOnly(t *testing.T) {
 	h, _ := newTestHost(t)
-	if res := h.EmitVetoable(t.Context(), EventPermissionRequest, map[string]any{}); res.Denied || res.Ask {
+	if res := h.EmitVetoable(t.Context(), EventToolPre, map[string]any{}); res.Denied {
 		t.Errorf("= %+v, want silence", res)
 	}
 	h.evlog.mu.Lock()
 	defer h.evlog.mu.Unlock()
-	if h.evlog.counts[EventPermissionRequest] != 1 {
-		t.Errorf("count = %d, want 1", h.evlog.counts[EventPermissionRequest])
+	if h.evlog.counts[EventToolPre] != 1 {
+		t.Errorf("count = %d, want 1", h.evlog.counts[EventToolPre])
 	}
 	for _, e := range h.evlog.entries {
-		if e.name == EventPermissionRequest {
+		if e.name == EventToolPre {
 			t.Fatal("the handlerless veto kept a recent entry")
 		}
 	}
 }
 
 // TestHotRuntimeVetoesFailClosed: while the runtime is hot the deny hooks
-// cannot run, so permission.request and tool.pre deny and app.quit proceeds.
+// cannot run, so tool.pre denies and app.quit proceeds.
 func TestHotRuntimeVetoesFailClosed(t *testing.T) {
 	h, r := newTestHost(t)
 	runUser(t, r, `
-		zemi.event.on("permission.request", function() end)
 		zemi.event.on("app.quit", function() end)
 		zemi.event.on("tool.pre", function() end)`)
 	if _, err := r.Do(t.Context(), lua.ClassIO, 10*time.Millisecond, 10*time.Millisecond, "test", func(*glua.LState) ([]any, error) {
@@ -421,9 +358,6 @@ func TestHotRuntimeVetoesFailClosed(t *testing.T) {
 		return nil, nil
 	}); !r.IsHot() {
 		t.Fatalf("runtime not hot: %v", err)
-	}
-	if res := h.EmitVetoable(t.Context(), "permission.request", map[string]any{}); !res.Denied {
-		t.Errorf("permission.request while hot = %+v, want denied", res)
 	}
 	if res := h.EmitVetoable(t.Context(), "app.quit", map[string]any{}); res.Denied {
 		t.Errorf("app.quit while hot = %+v, want proceed", res)

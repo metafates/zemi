@@ -105,9 +105,6 @@ type Request struct {
 	// Agent is the subagent asking, as the prompt names it, "" for the main
 	// agent; set by its pipeline's asker
 	Agent string
-	// Owner is whose code a Lua tool runs, as an overlay badge names it
-	// ("plugin:jira"), "" for the user's and zemi's own
-	Owner string
 }
 
 // Verdict is the pipeline outcome for one permission request.
@@ -123,16 +120,6 @@ const (
 	ByNobody   = "nobody" // an ask with no UI to answer it
 	ByUser     = "user"
 	ByReadOnly = "read-only agent"
-	// ByEvent is a verdict the permission.request veto decided
-	ByEvent = "event"
-)
-
-// What a Veto hook answers with: deny the request, or run the ask path
-// (the overlay). "" never happens at the gate: Check treats the veto's
-// silence as "run".
-const (
-	VetoDeny = "deny"
-	VetoAsk  = "ask"
 )
 
 // DeniedText and stopTurn build their user-stop wordings from these.
@@ -170,9 +157,10 @@ const (
 	PreDeny    PreVerdict = "deny"
 	PreHalt    PreVerdict = "halt"
 	PreRewrite PreVerdict = "rewrite"
+	PreAsk     PreVerdict = "ask" // hand the call to the ask overlay
 )
 
-var PreVerdicts = []PreVerdict{PreDeny, PreHalt, PreRewrite}
+var PreVerdicts = []PreVerdict{PreDeny, PreHalt, PreRewrite, PreAsk}
 
 // VerdictResponse is the result a deny or a halt leaves the model; done is
 // false for any other verdict, which lets the call on. A halt is a result,
@@ -197,18 +185,13 @@ type PreHook func(tool string, input map[string]any) (decision PreVerdict, reaso
 // caller's concern (one overlay at a time, host-side).
 type Asker func(req Request) (allowed bool, decidedBy string)
 
-// Pipeline wires tools to the host hooks: the veto and the ask settle
-// every action, everything else runs.
+// Pipeline wires tools to the host hooks: a read-only agent's actions deny,
+// a tool.pre ask or the ask path covers the rest, everything else runs.
 type Pipeline struct {
 	Pre PreHook // nil = no tool.pre events
-	Ask Asker   // nil = no overlay to ask: the veto is skipped and actions run
-	// Veto runs the permission.request event for an action request and
-	// answers "deny" (with the handler's reason), "ask" or "". Fired only
-	// when Ask is set: a gate without an asker (a Lua call from the actor
-	// goroutine) cannot survive the veto's own interpreter round-trip.
-	Veto func(req Request) (decision, reason string)
+	Ask Asker   // nil = no overlay to ask: a tool.pre ask runs the action
 	// Log records every gate decision: allowed by default at debug, a user
-	// or event decision at info, a refusal at warn; nil = silent.
+	// decision at info, a refusal at warn; nil = silent.
 	Log *slog.Logger
 	// Post runs the tool.post events after a call the gate let through or
 	// refused, and returns the output the model gets; nil = none.
@@ -265,6 +248,11 @@ type Pipeline struct {
 	// recipe's scrub); nil = nothing.
 	AfterWrite func(path string) string
 
+	// forceAsk is a tool.pre ask verdict: every action this run's gate sees
+	// goes to the asker. Set by Tool.Run from the Pre hook's verdict; tests
+	// arm it with ForceAsk.
+	forceAsk bool
+
 	// Denied reports a call the gate refused (the tool.denied event); nil
 	// = silent.
 	Denied func(tool string, req Request, v Verdict)
@@ -296,6 +284,10 @@ type Pipeline struct {
 	changed []string
 }
 
+// ForceAsk arms the ask leg for this pipeline's later checks, the way a
+// tool.pre ask verdict arms one run's copy.
+func (p *Pipeline) ForceAsk() { p.forceAsk = true }
+
 // PathSubject reports a subject whose argument is a file path.
 func PathSubject(subject string) bool {
 	return subject == perm.SubjectRead || subject == perm.SubjectWrite
@@ -313,9 +305,8 @@ func (p *Pipeline) CheckDenied(req Request) Verdict {
 }
 
 // Check decides one request and logs the decision: a read-only agent's
-// actions deny, its writes in the scratchpad aside; the permission.request
-// veto settles next (a denial refuses, an ask decision runs the ask path);
-// what survives runs.
+// actions deny, its writes in the scratchpad aside; a tool.pre ask decision
+// puts an action to the user; what survives runs.
 func (p *Pipeline) Check(req Request) Verdict {
 	req.ReadOnly, req.Script = p.ReadOnly != nil && p.ReadOnly(), p.Script
 	v := p.check(req)
@@ -347,21 +338,15 @@ func (p *Pipeline) check(req Request) Verdict {
 		}
 		return _readOnlyVerdict
 	}
-	if p.Ask != nil && p.Veto != nil {
-		decision, reason := p.Veto(req)
-		switch decision {
-		case VetoDeny:
-			return Verdict{DecidedBy: ByEvent, Reason: truncLine(reason)}
-		case VetoAsk:
-			return p.resolveAsk(req)
-		}
+	if p.forceAsk && p.Ask != nil {
+		return p.resolveAsk(req)
 	}
 	return Verdict{Allowed: true, DecidedBy: ByDefault}
 }
 
-// Action reports a request that changes something: the veto and the ask
-// path cover these, and a read-only agent denies them. Everything else (a
-// file read, a listing, a search) settles on its own.
+// Action reports a request that changes something: a read-only agent denies
+// these. Everything else (a file read, a listing, a search) settles on its
+// own.
 func (r Request) Action() bool {
 	return r.Subject != perm.SubjectRead && !r.Read
 }
@@ -435,16 +420,20 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 		if resp, done := VerdictResponse(decision, reason); done {
 			return resp, nil
 		}
-		if decision == PreRewrite && rewritten != nil {
-			// The rewritten input re-enters at the permission gate below
-			// (never skips it); a per-run pipeline copy keeps
-			// concurrent tools race-free.
-			if err := Validate(t.info, rewritten, false); err != nil {
-				return fantasy.NewTextErrorResponse("rewrite invalid: " + err.Error()), nil
-			}
-			input = rewritten
+		if decision == PreAsk || decision == PreRewrite && rewritten != nil {
+			// A tool.pre ask sends every action of this call to the user; a
+			// rewritten input re-enters at the permission gate below (never
+			// skips it). A per-run pipeline copy keeps concurrent tools
+			// race-free.
 			rp := *t.pipe
+			rp.forceAsk = rp.forceAsk || decision == PreAsk
 			pipe = &rp
+			if decision == PreRewrite && rewritten != nil {
+				if err := Validate(t.info, rewritten, false); err != nil {
+					return fantasy.NewTextErrorResponse("rewrite invalid: " + err.Error()), nil
+				}
+				input = rewritten
+			}
 		}
 	}
 	start, run := time.Now(), *pipe
@@ -505,9 +494,6 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 			what += " " + req.Arg
 		}
 		if !v.Allowed {
-			if v.DecidedBy == ByUser {
-				run.outcome(ctx, Outcome{Stopped: true})
-			}
 			return fantasy.NewTextErrorResponse(DeniedText(v, what)), nil
 		}
 	}
@@ -806,10 +792,10 @@ func All(p *Pipeline) []fantasy.AgentTool {
 
 	// pathReq is the subjects func of a tool that makes one request about the
 	// path its input names: how the input names it (searchRoot where a search
-	// may name none) and why, for the ask.
-	pathReq := func(subject string, arg func(map[string]any) string, reason string) func(*Pipeline, map[string]any) ([]Request, error) {
+	// may name none).
+	pathReq := func(subject string, arg func(map[string]any) string) func(*Pipeline, map[string]any) ([]Request, error) {
 		return func(_ *Pipeline, in map[string]any) ([]Request, error) {
-			return []Request{{Subject: subject, Arg: arg(in), Reason: reason}}, nil
+			return []Request{{Subject: subject, Arg: arg(in)}}, nil
 		}
 	}
 	pathIn := func(in map[string]any) string { return str(in["path"]) }
@@ -838,7 +824,7 @@ Chain dependent steps with &&.`,
 
 		gated(mk(ToolRead, readDesc+" Each line starts with its number and a tab, which are not part of the file. Do not read lines you already have again unless something other than your own edits changed the file.", true,
 			readArgs{},
-			pathReq(perm.SubjectRead, pathIn, ""),
+			pathReq(perm.SubjectRead, pathIn),
 			typed(runRead))),
 
 		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read first, and not changed since. To change part of a file use edit.", false,
@@ -853,12 +839,12 @@ Chain dependent steps with &&.`,
 
 		mk(ToolGlob, "List files matching a glob under path, newest first, skipping .gitignored ones. A pattern without / matches names at any depth; one with / is relative to path.", true,
 			globArgs{},
-			pathReq(perm.SubjectRead, searchRoot, ""),
+			pathReq(perm.SubjectRead, searchRoot),
 			typed(runGlob)),
 
 		mk(ToolGrep, "Search file contents under path, skipping .gitignored, binary and over 4 MB files, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case). Returns up to 100 matching lines as path:line: text.", true,
 			grepArgs{},
-			pathReq(perm.SubjectRead, searchRoot, ""),
+			pathReq(perm.SubjectRead, searchRoot),
 			typed(runGrep)),
 
 		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees; never a single step. Pass the whole list every time, with exactly one item in_progress while work remains, and mark an item done in the same response as the next step's first calls. Work that arrives mid-turn joins the list: add it when you take it on, not once it is done. An item left in_progress when the turn ends goes back to pending, so mark the next one in_progress to pick it up. A turn does not end with open items: before your final message every item is done, or the list rewritten to match what happened. Do not repeat the list in your reply.",
@@ -968,9 +954,7 @@ func changePreview(in map[string]any) string {
 
 // shellRequests routes the whole command through the tool.shell subject.
 func shellRequests(_ *Pipeline, in map[string]any) ([]Request, error) {
-	return []Request{{
-		Subject: perm.SubjectShell, Arg: str(in["command"]), Description: str(in["about"]),
-	}}, nil
+	return []Request{{Subject: perm.SubjectShell, Arg: str(in["command"])}}, nil
 }
 
 // ShellQuote quotes s as one sh word, leaving words sh would not split or

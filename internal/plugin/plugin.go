@@ -136,16 +136,13 @@ const (
 	CapHTTP     = "http"
 	CapJob      = "job"
 	CapModel    = "model"
-	CapPerm     = "perm"
 	CapTool     = "tool"
 	CapWorkflow = "workflow"
 )
 
 // Uses is the vocabulary a manifest's "uses" draws from, one word per host
-// capability a plugin may call: what switching the plugin on grants. CapPerm
-// is the consent to steer the permission gate (a permission.request handler,
-// zemi.perm.ask).
-var Uses = []string{CapAgent, CapFSWrite, CapHTTP, CapJob, CapModel, CapPerm, CapTool, CapWorkflow}
+// capability a plugin may call: what switching the plugin on grants.
+var Uses = []string{CapAgent, CapFSWrite, CapHTTP, CapJob, CapModel, CapTool, CapWorkflow}
 
 // CheckUses refuses a uses list naming something outside the vocabulary: the
 // plugin does not load, and the error carries the names that would.

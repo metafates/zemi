@@ -221,7 +221,7 @@ func TestPluginOwnership(t *testing.T) {
 			r.owner = owner
 			return ops{
 				func(o lua.Origin, p string) error {
-					_, err := r.Add(&EventHandler{ID: "x", Event: "permission.request", Fn: _noopFn, Origin: o, Path: p})
+					_, err := r.Add(&EventHandler{ID: "x", Event: "tool.pre", Fn: _noopFn, Origin: o, Path: p})
 					return err
 				},
 				func(o lua.Origin, p string) (bool, error) { return r.Remove("x", o, p) },

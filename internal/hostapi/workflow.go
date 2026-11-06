@@ -1542,7 +1542,8 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	if resp, stop := h.preCheck(string(tools.ToolWorkflow), call.Input); stop {
+	resp, gpipe, stop := h.preGate(string(tools.ToolWorkflow), call.Input, *t.pipe)
+	if stop {
 		return resp, nil
 	}
 	defer h.postNotify(ctx, t.pipe.Pad, string(tools.ToolWorkflow), call.Input, &reply, time.Now())
@@ -1603,7 +1604,7 @@ func (t *workflowTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fa
 	}
 	// The script decides how many agents run and what they are told, so the
 	// user sees it before it starts (tools inside stay gated one by one).
-	if v := t.pipe.CheckDenied(tools.Request{Tool: string(tools.ToolWorkflow), Subject: perm.SubjectWorkflow, Arg: arg, Description: in.Description, Preview: spec.src}); !v.Allowed {
+	if v := gpipe.CheckDenied(tools.Request{Tool: string(tools.ToolWorkflow), Subject: perm.SubjectWorkflow, Arg: arg, Description: in.Description, Preview: spec.src}); !v.Allowed {
 		return fantasy.NewTextErrorResponse(tools.DeniedText(v, string(tools.ToolWorkflow)+" "+arg)), nil
 	}
 	spec.done = h.deliverFlow("")
@@ -1666,6 +1667,8 @@ func flowSource(pad, id string) (string, error) {
 // tool's script is: the model may have rewritten it since the user saw it.
 func (h *Host) approveRerun(id string) (string, error) {
 	pipe := h.PipelineFor()
+	// the ask is the point of the rerun: show the script for approval
+	pipe.ForceAsk()
 	src, err := flowSource(pipe.Pad, id)
 	if err != nil {
 		return "", err

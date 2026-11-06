@@ -821,7 +821,8 @@ func (t *mcpTool) Info() fantasy.ToolInfo {
 
 func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy.ToolResponse, err error) {
 	h, name, tool := t.h, t.srv.name, mcpToolName(t.srv.name, t.tool.Name)
-	if resp, stop := h.preCheck(tool, call.Input); stop {
+	resp, gpipe, stop := h.preGate(tool, call.Input, *t.pipe)
+	if stop {
 		return resp, nil
 	}
 	defer h.postNotify(ctx, t.pipe.Pad, tool, call.Input, &reply, time.Now())
@@ -830,7 +831,7 @@ func (t *mcpTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantasy
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
 	req := tools.Request{Tool: tool, Subject: "mcp." + name, Arg: t.tool.Name, Preview: call.Input, Description: t.tool.Description, Read: t.tool.ReadOnly()}
-	if v := t.pipe.CheckDenied(req); !v.Allowed {
+	if v := gpipe.CheckDenied(req); !v.Allowed {
 		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "mcp."+name+" "+t.tool.Name)), nil
 	}
 	// by name, not t.srv: a restart or reload mid-turn replaced the server

@@ -1363,9 +1363,6 @@ type VetoResult struct {
 	Denied   bool
 	Reason   string
 	TimedOut bool
-	// Ask is a handler's { decision = "ask" }: the gate runs the ask path
-	// for it. A denial outranks it.
-	Ask bool
 	// Text is a composer.submit handler's { decision = "rewrite", text = ... }:
 	// what the user typed is replaced with it, pre-send.
 	Text string
@@ -1389,17 +1386,13 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 	h.recordEvent(name, "host", payload)
 	type outcome struct {
 		denied bool
-		ask    bool
 		reason string
 		timed  bool
 		text   string
 	}
 	outcomes := make([]outcome, len(handlers))
 	allowed := []string{"deny"}
-	switch name {
-	case EventPermissionRequest:
-		allowed = append(allowed, "ask")
-	case EventComposerSubmit:
+	if name == EventComposerSubmit {
 		allowed = append(allowed, "rewrite")
 	}
 	ev := eventTable(name, "host", payload)
@@ -1412,21 +1405,13 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 					outcomes[i].timed = true
 				case err != nil:
 					h.logHandlerError(hd, err)
-					// a crashed handler must not read as consent: fail closed
-					// like the hot runtime below
-					outcomes[i] = outcome{denied: name == EventPermissionRequest, reason: err.Error()}
 				default:
 					tb, decision, bad := vetoDecision(ret, allowed...)
 					switch {
 					case bad != "":
 						h.logHandlerError(hd, errors.New(bad))
-						// a handler that meant to deny and misspelled it must
-						// not read as consent where there is a closed side
-						outcomes[i] = outcome{denied: name == EventPermissionRequest, reason: bad}
 					case decision == "deny":
 						outcomes[i] = outcome{denied: true, reason: glua.LVAsString(tb.RawGetString("reason"))}
-					case decision == "ask":
-						outcomes[i] = outcome{ask: true, reason: glua.LVAsString(tb.RawGetString("reason"))}
 					case decision == "rewrite":
 						outcomes[i] = outcome{text: glua.LVAsString(tb.RawGetString("text"))}
 					}
@@ -1437,10 +1422,6 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 	if errors.Is(err, lua.ErrAbandoned) {
 		return VetoResult{TimedOut: true}
 	}
-	if err != nil && name == EventPermissionRequest {
-		// a hot runtime cannot run the deny hooks: fail closed
-		return VetoResult{Denied: true, Reason: "permission.request hooks could not run (lua runtime unavailable, /reload): " + err.Error()}
-	}
 	var res VetoResult
 	for _, o := range outcomes {
 		if o.timed {
@@ -1449,15 +1430,9 @@ func (h *Host) emitVetoable(ctx context.Context, name string, handlers []*EventH
 		if o.denied && !res.Denied {
 			res.Denied, res.Reason = true, o.reason
 		}
-		if o.ask {
-			res.Ask = true
-		}
 		if res.Text == "" {
 			res.Text = o.text
 		}
-	}
-	if res.Denied {
-		res.Ask = false // deny outranks ask
 	}
 	if res.Denied {
 		h.Log.Info("vetoable event denied", "origin", "events",
@@ -1985,7 +1960,6 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		{"zemi.http", h.httpNamespace(L), nil},
 		{"zemi.job", h.jobNamespace(L), nil},
 		{"zemi.tool", h.toolNamespace(L), nil},
-		{"zemi.perm", h.permNamespace(L), nil},
 		{"zemi.provider", h.providerNamespace(L), nil},
 		{"zemi.model", h.modelNamespace(L), nil},
 		{"zemi.classify", h.classifyNamespace(L), nil},
@@ -2009,7 +1983,7 @@ func (h *Host) installNamespaces(g *lua.Generation) error {
 		}
 	}
 	api := L.NewTable()
-	api.RawSetString("version", glua.LString("0.158.0"))
+	api.RawSetString("version", glua.LString("0.159.0"))
 	return g.SB.RegisterProtectedValue("zemi.api", api)
 }
 

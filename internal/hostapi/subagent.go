@@ -1860,6 +1860,24 @@ func (h *Host) preCheck(tool, input string) (fantasy.ToolResponse, bool) {
 	return tools.VerdictResponse(decision, reason)
 }
 
+// preGate is preCheck for a tool that gates its own call afterwards: an ask
+// verdict arms the gate copy it returns, so the later CheckDenied asks.
+func (h *Host) preGate(tool, input string, pipe tools.Pipeline) (fantasy.ToolResponse, *tools.Pipeline, bool) {
+	var m map[string]any
+	_ = json.Unmarshal([]byte(input), &m)
+	decision, reason, _ := h.toolPreHook()(tool, m)
+	if decision == tools.PreRewrite {
+		return fantasy.NewTextErrorResponse("refused: a tool.pre rewrite is not supported for the " + tool + " tool"), nil, true
+	}
+	if resp, done := tools.VerdictResponse(decision, reason); done {
+		return resp, nil, true
+	}
+	if decision == tools.PreAsk {
+		pipe.ForceAsk()
+	}
+	return fantasy.ToolResponse{}, &pipe, false
+}
+
 // postNotify is preCheck's other half: these tools run outside
 // internal/tools, which runs tool.post for every other one. Deferred on
 // the tool's named result, so every return path reports and a handler's

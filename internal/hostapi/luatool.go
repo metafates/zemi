@@ -119,7 +119,8 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	if err := decodeInput(t.Info(), call.Input, &in); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	if resp, stop := h.preCheck("lua", call.Input); stop {
+	resp, gpipe, stop := h.preGate("lua", call.Input, *t.pipe)
+	if stop {
 		return resp, nil
 	}
 	defer h.postNotify(ctx, t.pipe.Pad, "lua", call.Input, &reply, time.Now())
@@ -134,9 +135,9 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
-		pipe := *t.pipe
-		pipe.Path = path // judged where it is opened, not resolved again
-		if v := pipe.CheckDenied(tools.Request{Tool: "lua", Subject: perm.SubjectRead, Arg: path.String()}); !v.Allowed {
+		gate := *gpipe
+		gate.Path = path // judged where it is opened, not resolved again
+		if v := gate.CheckDenied(tools.Request{Tool: "lua", Subject: perm.SubjectRead, Arg: path.String()}); !v.Allowed {
 			return fantasy.NewTextErrorResponse(tools.DeniedText(v, perm.SubjectRead+" "+in.Path)), nil
 		}
 		f, fi, err := tools.OpenRegular(path)
@@ -168,7 +169,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	if in.Path != "" {
 		arg = in.Path
 	}
-	if v := t.pipe.CheckDenied(tools.Request{Tool: "lua", Subject: perm.SubjectLua, Arg: arg, Description: in.About, Preview: src}); !v.Allowed {
+	if v := gpipe.CheckDenied(tools.Request{Tool: "lua", Subject: perm.SubjectLua, Arg: arg, Description: in.About, Preview: src}); !v.Allowed {
 		return fantasy.NewTextErrorResponse(tools.DeniedText(v, "Lua "+arg)), nil
 	}
 	h.luaApproved.Store(rel, true)

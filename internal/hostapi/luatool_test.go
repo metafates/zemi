@@ -53,12 +53,12 @@ func TestLuaToolDefaultDeny(t *testing.T) {
 		t.Fatal(err)
 	}
 	marker := filepath.Join(t.TempDir(), "made")
-	// ask routes every action to the overlay, as a plugin's
-	// permission.request handler returning { decision = "ask" } would; off
-	// turns it off for the no-policy sections
+	// ask routes every action to the overlay, as a plugin's tool.pre
+	// handler returning { decision = "ask" } would; off turns it off for
+	// the no-policy sections
 	ask := func(on bool) {
 		if on {
-			runUser(t, r, `zemi.state.set("askid", zemi.event.on("permission.request", function() return { decision = "ask" } end))`)
+			runUser(t, r, `zemi.state.set("askid", zemi.event.on("tool.pre", function() return { decision = "ask" } end))`)
 		} else {
 			runUser(t, r, `zemi.event.off(zemi.state.get("askid"))`)
 		}

@@ -79,18 +79,17 @@ func TestResolveSchemaRefs(t *testing.T) {
 }
 
 // testPipeline builds a pipeline: with allow, everything runs ungated; with
-// !allow, a veto hands every action to the overlay, the shape a plugin's
-// ask-everything policy makes, and the asker answers no and records.
+// !allow, a tool.pre ask hands every action to the overlay, the shape a
+// plugin's ask-everything hook makes, and the asker answers no and records.
 func testPipeline(t *testing.T, allow bool) (*Pipeline, *[]Request) {
 	t.Helper()
 	var asked []Request
-	p := &Pipeline{}
+	p := &Pipeline{forceAsk: !allow}
 	if !allow {
 		p.Ask = func(req Request) (bool, string) {
 			asked = append(asked, req)
 			return false, "overlay"
 		}
-		p.Veto = func(Request) (string, string) { return VetoAsk, "" }
 	}
 	return p, &asked
 }
@@ -114,13 +113,13 @@ func TestGateLogsDecisions(t *testing.T) {
 			Request{Tool: string(ToolShell), Subject: perm.SubjectShell, Arg: "ls"},
 			[]string{"level=DEBUG", "by=default", "allowed=true"},
 		},
-		{"a veto denial is a warning", func(p *Pipeline) {
-			p.Ask = func(Request) (bool, string) { return false, "" }
-			p.Veto = func(Request) (string, string) { return VetoDeny, "edited" }
-		}, Request{Tool: string(ToolShell), Subject: perm.SubjectShell, Arg: "ls"}, []string{"level=WARN", "by=event", "allowed=false", "reason=edited"}},
+		{"an ask denial is a warning", func(p *Pipeline) {
+			p.forceAsk = true
+			p.Ask = func(Request) (bool, string) { return false, "overlay" }
+		}, Request{Tool: string(ToolShell), Subject: perm.SubjectShell, Arg: "ls"}, []string{"level=WARN", "by=overlay", "allowed=false"}},
 		{"the user's answer is info", func(p *Pipeline) {
+			p.forceAsk = true
 			p.Ask = func(Request) (bool, string) { return true, ByUser }
-			p.Veto = func(Request) (string, string) { return VetoAsk, "" }
 		}, Request{Tool: string(ToolShell), Subject: perm.SubjectShell, Arg: "ls"}, []string{"level=INFO", "by=user", "allowed=true"}},
 		{
 			"a read-only denial is a warning", func(p *Pipeline) { p.ReadOnly = func() bool { return true } },
@@ -146,36 +145,38 @@ func TestGateLogsDecisions(t *testing.T) {
 	}
 }
 
-// TestVetoGate pins where the permission.request veto sits in Check: after
-// the read-only deny, before the ask, and only when an asker exists (a
-// gate without one cannot run the veto's interpreter round-trip).
-func TestVetoGate(t *testing.T) {
+// TestAskGate pins where a tool.pre ask sits in Check: after the read-only
+// deny, and only when an asker exists (a gate without one cannot run the
+// overlay round-trip, so the action runs).
+func TestAskGate(t *testing.T) {
 	for _, c := range []struct {
 		name       string
 		ask        bool
-		veto       string
-		reason     string
+		readOnly   bool
 		want       Verdict
-		wantVeto   bool
 		wantAskRun bool
 	}{
-		{name: "a veto denies", ask: true, veto: VetoDeny, reason: "edited", want: Verdict{DecidedBy: ByEvent, Reason: "edited"}, wantVeto: true},
-		{name: "a veto ask runs the asker", ask: true, veto: VetoAsk, want: Verdict{DecidedBy: "overlay"}, wantVeto: true, wantAskRun: true},
-		{name: "no opinion runs", ask: true, want: Verdict{Allowed: true, DecidedBy: ByDefault}, wantVeto: true},
-		{name: "no asker skips the veto", veto: VetoDeny, want: Verdict{Allowed: true, DecidedBy: ByDefault}},
+		{name: "an ask runs the asker", ask: true, want: Verdict{DecidedBy: "overlay"}, wantAskRun: true},
+		{name: "no asker runs", want: Verdict{Allowed: true, DecidedBy: ByDefault}},
+		{
+			name: "a read-only agent denies before any ask", ask: true, readOnly: true,
+			want: Verdict{DecidedBy: ByReadOnly, Reason: "the read-only agent may not change anything"},
+		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			p := &Pipeline{}
-			ran, asked := false, false
+			p := &Pipeline{forceAsk: true}
+			asked := false
 			if c.ask {
 				p.Ask = func(Request) (bool, string) { asked = true; return false, "overlay" }
 			}
-			p.Veto = func(Request) (string, string) { ran = true; return c.veto, c.reason }
+			if c.readOnly {
+				p.ReadOnly = func() bool { return true }
+			}
 			if got := p.Check(Request{Subject: perm.SubjectWrite, Arg: "/x"}); got != c.want {
 				t.Fatalf("Check = %+v, want %+v", got, c.want)
 			}
-			if ran != c.wantVeto || asked != c.wantAskRun {
-				t.Fatalf("veto ran = %v, asker ran = %v, want %v/%v", ran, asked, c.wantVeto, c.wantAskRun)
+			if asked != c.wantAskRun {
+				t.Fatalf("asker ran = %v, want %v", asked, c.wantAskRun)
 			}
 		})
 	}

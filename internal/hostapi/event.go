@@ -28,7 +28,6 @@ const (
 	EventToolPre             = "tool.pre"
 	EventToolPost            = "tool.post"
 	EventToolDenied          = "tool.denied"
-	EventPermissionRequest   = "permission.request"
 	EventPermissionResolved  = "permission.resolved"
 	EventUIResize            = "ui.resize"
 	EventComposerChange      = "composer.change"
@@ -46,7 +45,7 @@ var _eventCatalogue = set.Of(
 	EventAgentAssemble, EventAgentSubagentStart, EventAgentSubagentFinish,
 	EventAgentTextDelta, EventAgentReasoningDelta, EventAgentStep,
 	EventToolPre, EventToolPost, EventToolDenied,
-	EventPermissionRequest, EventPermissionResolved,
+	EventPermissionResolved,
 	EventUIResize, EventComposerChange, EventComposerSubmit,
 	EventJobExit,
 	EventSessionReset,
@@ -77,9 +76,6 @@ func (h *Host) eventNamespace(L *glua.LState) *glua.LTable {
 		}
 		if opts := L.OptTable(3, nil); opts != nil {
 			hd.ID, hd.Once = rawString(L, opts, "id"), rawBool(L, opts, "once")
-		}
-		if name == EventPermissionRequest {
-			h.requirePermUse(L, "zemi.event.on")
 		}
 		added, err := h.Events.Add(hd)
 		if err != nil {

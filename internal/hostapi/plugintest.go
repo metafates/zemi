@@ -556,11 +556,9 @@ func (t *PluginTest) emit(L *glua.LState) int {
 		case EventToolPre:
 			d, reason, rewritten := t.h.toolPre(tool, input, hs)
 			return veto(string(d), reason, rewritten), nil
-		case EventPermissionRequest, EventAppQuit, EventComposerSubmit:
+		case EventAppQuit, EventComposerSubmit:
 			if res := t.h.emitVetoable(ctx, name, hs, ev); res.Denied {
 				return veto("deny", res.Reason, nil), nil
-			} else if res.Ask {
-				return veto("ask", "", nil), nil
 			} else if res.Text != "" {
 				return veto("rewrite", "", nil), nil
 			}

@@ -294,12 +294,13 @@ func (a *luaToolAdapter) Run(ctx context.Context, call fantasy.ToolCall) (reply 
 	if err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
 	}
-	if resp, stop := a.h.preCheck(a.t.Name, call.Input); stop {
+	resp, gpipe, stop := a.h.preGate(a.t.Name, call.Input, *a.pipe)
+	if stop {
 		return resp, nil
 	}
 	defer a.h.postNotify(ctx, a.pipe.Pad, a.t.Name, call.Input, &reply, time.Now())
-	req := tools.Request{Tool: a.t.Name, Subject: "tool." + a.t.Name, Arg: a.t.Name, Preview: call.Input, Description: a.t.Desc, Owner: a.h.OriginBadge(a.t.Origin, a.t.Path)}
-	if v := a.pipe.CheckDenied(req); !v.Allowed {
+	req := tools.Request{Tool: a.t.Name, Subject: "tool." + a.t.Name, Arg: a.t.Name, Preview: call.Input, Description: a.t.Desc}
+	if v := gpipe.CheckDenied(req); !v.Allowed {
 		return fantasy.NewTextErrorResponse(tools.DeniedText(v, req.Subject)), nil
 	}
 	out, err := a.h.runLuaTool(ctx, a.t, call.ID, input)
@@ -426,6 +427,7 @@ func (h *Host) toolPre(name string, input map[string]any, handlers []*EventHandl
 	var decision tools.PreVerdict
 	var reason string
 	var rewritten map[string]any
+	ask := false
 	// twice: the deny-only re-run after a rewrite calls every handler again
 	ceiling := lua.VetoCeiling(len(handlers), 2)
 	_, err := h.RT.Do(context.Background(), lua.ClassAgent, ceiling, 0, "tool.pre "+name, func(L *glua.LState) ([]any, error) {
@@ -439,6 +441,8 @@ func (h *Host) toolPre(name string, input map[string]any, handlers []*EventHandl
 			case d == tools.PreDeny || d == tools.PreHalt:
 				decision, reason, rewritten = d, r, nil
 				return nil, nil
+			case d == tools.PreAsk:
+				ask = true
 			case d == tools.PreRewrite && rw != nil:
 				maps.Copy(merged, rw)
 				decision, rewritten = tools.PreRewrite, merged
@@ -453,6 +457,9 @@ func (h *Host) toolPre(name string, input map[string]any, handlers []*EventHandl
 					return nil, nil
 				}
 			}
+		}
+		if decision == "" && ask {
+			decision = tools.PreAsk
 		}
 		return nil, nil
 	})
@@ -484,6 +491,8 @@ func (h *Host) callToolPre(L *glua.LState, hd *EventHandler, tool string, input 
 	switch d {
 	case tools.PreDeny, tools.PreHalt:
 		return d, glua.LVAsString(tb.RawGetString("reason")), nil
+	case tools.PreAsk:
+		return tools.PreAsk, "", nil
 	case tools.PreRewrite:
 		rw, err := lua.ToGo(tb.RawGetString("input"))
 		if err != nil {

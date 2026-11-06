@@ -154,13 +154,13 @@ func runUser(t *testing.T, r *lua.Runtime, src string) {
 }
 
 // askEverything registers the ask-everything permission policy a plugin's
-// permission.request handler makes: every action routes to the overlay.
+// tool.pre handler makes: every action routes to the overlay.
 // _askEverythingOff turns it off again.
 const _askEverythingOff = `zemi.event.off("ask-everything")`
 
 func askEverything(t *testing.T, r *lua.Runtime) {
 	t.Helper()
-	runUser(t, r, `zemi.event.on("permission.request", function() return { decision = "ask" } end, { id = "ask-everything" })`)
+	runUser(t, r, `zemi.event.on("tool.pre", function() return { decision = "ask" } end, { id = "ask-everything" })`)
 }
 
 // waitFor polls cond until it returns nil and fails the test with its last
@@ -195,7 +195,7 @@ func TestNamespaceVersion(t *testing.T) {
 	t.Parallel()
 	_, r := newTestHost(t)
 	runUser(t, r, `
-		assert(zemi.api.version == "0.158.0", "version=" .. tostring(zemi.api.version))
+		assert(zemi.api.version == "0.159.0", "version=" .. tostring(zemi.api.version))
 		assert(not pcall(function() return zemi.test end), "zemi.test outside zemi plugin test")
 		assert(zemi.project.trusted() == false and zemi.project.root() ~= "", "zemi.project")
 		assert(zemi.ui.width("日本") == 4, "zemi.ui.width counts cells")

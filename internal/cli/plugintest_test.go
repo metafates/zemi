@@ -51,10 +51,9 @@ for i = 1, 300 do test("case " .. i, function() end) end
 	}
 	example := map[string]string{}
 	for path, c := range map[string]struct{ at, lang string }{
-		".zemi/init.lua":            {"`.zemi/init.lua`:\n", "lua"},
-		".zemi/plugin.json":         {"`.zemi/plugin.json`: the manifest", "json"},
-		".zemi/lua/branch/init.lua": {"`.zemi/lua/branch/init.lua`:\n", "lua"},
-		".zemi/tests/branch.lua":    {"`.zemi/tests/branch.lua` for the plugin above:\n", "lua"},
+		".zemi/init.lua":         {"`.zemi/init.lua` registers what the plugin is for", "lua"},
+		".zemi/plugin.json":      {"`.zemi/plugin.json`: the manifest", "json"},
+		".zemi/tests/branch.lua": {"`.zemi/tests/branch.lua` for the plugin above:\n", "lua"},
 	} {
 		_, after, _ := strings.Cut(string(skill), c.at)
 		_, block, _ := strings.Cut(after, "```"+c.lang+"\n")
@@ -151,14 +150,13 @@ for i = 1, 300 do test("case " .. i, function() end) end
 			".zemi/tests/a.lua": `zemi.test("spins", function() zemi.test.emit("tool.pre", { tool = "shell", input = {} }) end)`,
 		}, want: "FAIL .zemi/tests/a.lua:1: spins\n  error in event tool.pre during test.emit at .zemi/tests/a.lua:1:\n    .zemi/init.lua:1: context deadline exceeded\n0 passed, 1 failed (1 file, (T))\n"},
 		{name: "an ask verdict surfaces", args: []string{"<plugin>"}, code: 0, plugin: map[string]string{
-			".zemi/init.lua": `zemi.event.on("permission.request", function(ev)
-	if ev.arg == "danger" then return { decision = "ask" } end
+			".zemi/init.lua": `zemi.event.on("tool.pre", function(ev)
+	if ev.input.command == "danger" then return { decision = "ask" } end
 end, { id = "guard" })`,
-			".zemi/plugin.json": `{"uses": ["perm"]}`,
 			".zemi/tests/a.lua": `local test = zemi.test
 test("an ask verdict surfaces", function()
-	test.eq(test.emit("permission.request", { subject = "tool.shell", arg = "danger" }), { decision = "ask" })
-	test.eq(test.emit("permission.request", { subject = "tool.shell", arg = "safe" }), nil)
+	test.eq(test.emit("tool.pre", { tool = "shell", input = { command = "danger" } }), { decision = "ask" })
+	test.eq(test.emit("tool.pre", { tool = "shell", input = { command = "safe" } }), nil)
 end)`,
 		}, want: "1 passed (1 file, (T))\n"},
 		{

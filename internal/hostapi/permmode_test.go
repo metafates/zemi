@@ -2,57 +2,11 @@ package hostapi
 
 import (
 	"runtime"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/tools"
 )
-
-// TestPermAsk: zemi.perm.ask is plugin origin only, needs the manifest's
-// "perm" word, and waits only from a task.
-func TestPermAsk(t *testing.T) {
-	const ask = `zemi.perm.ask({ subject = "fs.write", arg = "x", reason = "why" }):wait()`
-	for _, c := range []struct {
-		name   string
-		origin lua.Origin
-		uses   string
-		owner  string // whose code the overlay names as asking
-		err    string
-	}{
-		{name: "user code asks", origin: lua.OriginUser, uses: `["perm"]`, owner: "user"},
-		{name: "project code asks", origin: lua.OriginProject, uses: `["perm"]`, owner: "project"},
-		{name: "the manifest must declare perm", origin: lua.OriginPlugin, uses: `["job"]`, err: `declares no "perm"`},
-		{name: "a plugin's ask, answered by the user", origin: lua.OriginPlugin, uses: `["perm"]`, owner: "plugin:a"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			h, r := newTestHostPlugin(t, c.uses)
-			seedSession(t, h)
-			h.SetUIHooks(&fakeUI{askAllowed: true, askBy: "user:once"})
-			err := chunkAs(t.Context(), h, r, c.origin, ask)
-			if c.err != "" {
-				if err == nil || !strings.Contains(err.Error(), c.err) {
-					t.Fatalf("err = %v, want %q", err, c.err)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			ui := fakeHooks(t, h)
-			if len(ui.asked) != 1 || ui.asked[0].Subject != "fs.write" || ui.asked[0].Owner != c.owner {
-				t.Fatalf("the overlay saw %+v, want one fs.write ask from %s", ui.asked, c.owner)
-			}
-		})
-	}
-	h, r := newTestHostPlugin(t, `["perm"]`)
-	seedSession(t, h)
-	// no UI to answer: the ask resolves denied instead of hanging the task
-	if err := chunkAs(t.Context(), h, r, lua.OriginPlugin, ask); err != nil {
-		t.Fatal(err)
-	}
-}
 
 // TestAskFIFO: asks reach the user one at a time under askMu, and the user's
 // tell denies the ones waiting behind the prompt.
@@ -85,7 +39,7 @@ func TestAskFIFO(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			h, r := newTestHost(t)
+			h, _ := newTestHost(t)
 			opened := make(chan struct{})
 			ui := &fakeUI{}
 			ui.onAsk = func(PermRequest) (bool, string) {
@@ -105,14 +59,16 @@ func TestAskFIFO(t *testing.T) {
 				return c.by != tools.ByUser, c.by
 			}
 			h.SetUIHooks(ui)
-			// the ask-everything policy a plugin's veto makes
-			askEverything(t, r)
-			pipe := h.PipelineFor()
 			var first tools.Verdict
 			done := make(chan struct{})
-			go func() { first = pipe.Check(c.first); close(done) }()
+			go func() {
+				allowed, by := h.ask(c.first)
+				first = tools.Verdict{Allowed: allowed, DecidedBy: by}
+				close(done)
+			}()
 			<-opened
-			second := pipe.Check(c.second)
+			allowed, secondBy := h.ask(c.second)
+			second := tools.Verdict{Allowed: allowed, DecidedBy: secondBy}
 			<-done
 			if got := [2]bool{first.Allowed, second.Allowed}; got != c.allowed || len(ui.asked) != c.prompts || second.DecidedBy != c.secondBy {
 				t.Fatalf("allowed %v, %d prompts, second by %q", got, len(ui.asked), second.DecidedBy)

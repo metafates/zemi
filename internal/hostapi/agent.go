@@ -47,9 +47,6 @@ type PermRequest struct {
 	// Agent is the subagent asking, as the prompt names it ("explore
 	// agent"), "" for the main agent
 	Agent string
-	// Owner is whose code a Lua tool runs, as an overlay badge names it
-	// ("plugin:jira"), "" for the user's and zemi's own
-	Owner string
 	// Script names the lua tool script a nested call came from, as the badge
 	// says it ("lua script"), "" for a call the model made itself
 	Script string
@@ -2909,7 +2906,6 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 	p := &tools.Pipeline{
 		Pre:        h.toolPreHook(),
 		Ask:        h.askHook(),
-		Veto:       h.vetoHook(),
 		Log:        h.Log,
 		AfterWrite: h.afterWrite,
 		Changes:    h.shellChanges,

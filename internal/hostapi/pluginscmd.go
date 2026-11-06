@@ -126,7 +126,15 @@ func (h *Host) pluginsCommand(line string, confirm bool) error {
 		if err != nil {
 			return err
 		}
-		return pluginsErr(verb, plugin.SetEnabled(h.Dirs, p.Name, !p.Enabled))
+		if err := plugin.SetEnabled(h.Dirs, p.Name, !p.Enabled); err != nil {
+			return pluginsErr(verb, err)
+		}
+		// its handlers live in the Lua generation: reload now, not at the
+		// watch's next tick, so its asks stop (or start) at once
+		if note := h.ReloadIfChanged(); note != "" {
+			h.Notify(slog.LevelInfo, "Plugins", note)
+		}
+		return nil
 	case verb == "open" && len(args) == 2:
 		p, err := h.pluginNamed(args[1])
 		if err != nil {
@@ -541,13 +549,12 @@ func cutLine(s string) string {
 // _pluginGloss is what each declared name grants, for the detail pane: the same
 // words as the skill's table, short enough to sit in one line of prose.
 var _pluginGloss = map[string]string{
-	"model":        "a model or classify call",
-	"agent":        "a message to the agent",
-	"http":         "a fetch",
-	"job":          "a command it starts",
-	"fs.write":     "a file write",
-	"tool":         "a tool it registers being called",
-	plugin.CapPerm: "steering the permission gate",
+	"model":    "a model or classify call",
+	"agent":    "a message to the agent",
+	"http":     "a fetch",
+	"job":      "a command it starts",
+	"fs.write": "a file write",
+	"tool":     "a tool it registers being called",
 }
 
 // pluginDetail is the detail pane's prose: what the plugin ships, the set its

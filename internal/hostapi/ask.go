@@ -1,42 +1,16 @@
-// ask.go is the permission gate's ask half: the permission.request veto the
-// gate runs once per action, and the ask hook that puts what survives it to
-// the user under the ask lock.
+// ask.go is the permission gate's ask half: the ask hook that puts what the
+// gate or a tool.pre handler forces to the user under the ask lock.
 
 package hostapi
 
 import (
-	"context"
-
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// askHook is the tools.Pipeline asker: the Go-owned overlay, behind the
-// veto the gate already ran.
+// askHook is the tools.Pipeline asker: the Go-owned overlay.
 func (h *Host) askHook() tools.Asker {
 	return func(req tools.Request) (bool, string) { return h.ask(req) }
-}
-
-// vetoHook is the tools.Pipeline veto: the permission.request event, once
-// per action request at the gate. "ask" hands the request to the ask path;
-// a denial reports on permission.resolved as an ask would have.
-func (h *Host) vetoHook() func(tools.Request) (string, string) {
-	return func(req tools.Request) (string, string) {
-		var res VetoResult
-		h.outsideReload(func() {
-			res = h.EmitVetoable(context.Background(), EventPermissionRequest,
-				map[string]any{"subject": req.Subject, "arg": req.Arg, "reason": req.Reason, "agent": req.Agent})
-		})
-		switch {
-		case res.Denied:
-			h.resolved(req, false, "event")
-			return tools.VetoDeny, res.Reason
-		case res.Ask:
-			return tools.VetoAsk, ""
-		default:
-			return "", ""
-		}
-	}
 }
 
 // resolved reports one settled request on permission.resolved.
@@ -81,7 +55,7 @@ func (h *Host) ask(req tools.Request) (bool, string) {
 	}
 	pr := PermRequest{
 		Tool: req.Tool, Subject: req.Subject, Arg: h.shownArg(req),
-		Reason: req.Reason, Preview: req.Preview, Description: req.Description, Agent: req.Agent, Owner: req.Owner,
+		Reason: req.Reason, Preview: req.Preview, Description: req.Description, Agent: req.Agent,
 	}
 	// a call a lua tool's script drove: the user read the script, so name it
 	if req.Script != "" {

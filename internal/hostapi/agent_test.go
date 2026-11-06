@@ -623,6 +623,9 @@ func TestPipelineForCheck(t *testing.T) {
 	h, r := newTestHostDB(t)
 	askEverything(t, r)
 	pipe := h.PipelineFor()
+	// the ask policy arms a run's gate (tools.Tool.Run); Check alone needs
+	// the arming done by hand
+	pipe.ForceAsk()
 
 	// No UI: the ask hook fails closed.
 	if v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); v.Allowed || v.DecidedBy != tools.ByNobody {
@@ -631,6 +634,7 @@ func TestPipelineForCheck(t *testing.T) {
 
 	// An asker (the UI overlay) resolves the leftover ask.
 	pipe2 := h.PipelineFor()
+	pipe2.ForceAsk()
 	pipe2.Ask = func(req tools.Request) (bool, string) { return true, "user:once" }
 	if v := pipe2.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); !v.Allowed || v.DecidedBy != "user:once" {
 		t.Fatalf("asked shell: %+v by %q", v, v.DecidedBy)
