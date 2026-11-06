@@ -49,6 +49,7 @@ const (
 	_barDelay         = 120 * time.Millisecond // how long the boot's first paints (the pills', the scrollbar's, the chat's) wait before they rise
 	_riseTick         = 16 * time.Millisecond  // the tick while one runs, so the ramp reads smooth
 	_doneLinger       = 3 * time.Second        // how long the mascot's eyes say how a turn ended
+	_caretIdle        = time.Second            // how long the composer sits untouched before its caret blinks
 	// NOTE: 64 waiting hooks is the burst bound; past it dispatch drops a message, await waits.
 	_hookQueueSize = 64
 )
@@ -122,8 +123,10 @@ type App struct {
 	// caret is the composer cursor's cell on the last composed frame; the
 	// terminal's own cursor draws there while caretOn, so no replica is
 	// painted (like neovim's TUI caret).
-	caret   uv.Position
-	caretOn bool
+	caret     uv.Position
+	caretOn   bool
+	caretAt   time.Time // the last input while the composer held the keys
+	caretKeys bool      // whether the composer held the keys on the last frame
 	// chatSelMemo is the message the cursor held when the chat last had the
 	// keys: tab re-selects it rather than re-deriving one from the view.
 	chatSelMemo int
@@ -463,6 +466,7 @@ func (a *App) update(msg tea.Msg) tea.Cmd {
 		if a.recapStop != nil {
 			a.recapStop()
 		}
+		a.caretAt = a.now() // the user being at the keys keeps the caret steady
 	}
 	switch msg := msg.(type) {
 	case frameTickMsg:
@@ -611,17 +615,21 @@ func (a *App) View() tea.View {
 	if a.progress {
 		v.ProgressBar = &tea.ProgressBar{State: tea.ProgressBarIndeterminate, Value: a.beat}
 	}
-	// the composer's caret is the terminal's own, the way neovim's TUI drives
-	// it: a steady bar shown over the frame, hidden whenever the composer
-	// lacks the keys or something covers the cell
 	// the terminal's own cursor draws the composer's caret, the way neovim's
-	// TUI drives it: a steady bar over the frame, hidden whenever the
-	// composer lacks the keys or something covers the cell. The keys are
-	// checked here too, so a cached frame never dangles a stale caret.
-	if a.caretOn && a.composerHoldsKeys() && !a.caret.In(a.popRect) {
+	// TUI drives it: a steady bar over the frame while the user types, a
+	// blinking one once the composer sits idle, hidden whenever the composer
+	// lacks the keys or something covers the cell. The keys are checked here
+	// too, so a cached frame never dangles a stale caret, and their return
+	// counts as fresh input.
+	holds := a.composerHoldsKeys()
+	if holds && !a.caretKeys {
+		a.caretAt = a.now()
+	}
+	a.caretKeys = holds
+	if a.caretOn && holds && !a.caret.In(a.popRect) {
 		v.Cursor = tea.NewCursor(a.caret.X, a.caret.Y)
 		v.Cursor.Shape = tea.CursorBar
-		v.Cursor.Blink = false
+		v.Cursor.Blink = a.now().Sub(a.caretAt) >= _caretIdle
 	}
 	return v
 }

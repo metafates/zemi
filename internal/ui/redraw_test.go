@@ -62,6 +62,27 @@ func TestComposerTerminalCursor(t *testing.T) {
 	}
 }
 
+// TestComposerCaretBlinks: the caret holds steady while the user is at the
+// keys, blinks once the composer sits idle, and steadies on the next input.
+func TestComposerCaretBlinks(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 60, 12)
+	app.composer.text, app.composer.cursor = "hi", 1
+	if cur := app.View().Cursor; cur == nil || cur.Blink {
+		t.Fatalf("a fresh caret should hold steady, got %+v", cur)
+	}
+	clock := time.Now()
+	app.now = func() time.Time { return clock.Add(_caretIdle) }
+	if cur := app.View().Cursor; cur == nil || !cur.Blink {
+		t.Fatalf("an idle composer's caret should blink, got %+v", cur)
+	}
+	app.now = func() time.Time { return clock }
+	app.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	if cur := app.View().Cursor; cur == nil || cur.Blink {
+		t.Fatalf("typing should steady the caret again, got %+v", cur)
+	}
+}
+
 // TestRedrawAfterCallbacks: a one-shot timer's change reaches the screen
 // with no other redraw, zemi.ui.redraw asks for one, and a burst of
 // refreshes waits in the hook queue as one.
