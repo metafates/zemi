@@ -174,6 +174,10 @@ func (c *Curtain) Dip(dur time.Duration, now time.Time) {
 // Owned reports a curtain that ever drew rows: the seat it took.
 func (c *Curtain) Owned() bool { return c.drawn }
 
+// Dipping reports a dip in flight: the sink it armed, or the rise that
+// follows it.
+func (c *Curtain) Dipping() bool { return c.dip }
+
 // Boot stamps the curtain's first appear to wait delay and rise, where its
 // JumpIn would take the rows whole: the chat view rises on boot like the
 // scrollbar's first paint. A seat taken back from a sibling draws whole.

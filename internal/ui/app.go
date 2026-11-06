@@ -46,7 +46,7 @@ const (
 	_idleInterval     = 250 * time.Millisecond // the tick with nothing moving on its own; a bump wakes it
 	_frameMS          = 50                     // the frame clock: the snail's spinner and shimmer step once per tick
 	_riseDuration     = 160 * time.Millisecond // how long a statusline pill's appear or disappear takes
-	_dipDuration      = 80 * time.Millisecond  // the ctx pill's out-and-back on a new count: fast, it changes while a turn streams
+	_dipDuration      = 140 * time.Millisecond // the ctx pill's out-and-back on a new count
 	_barDelay         = 120 * time.Millisecond // how long the boot's first paints (the pills', the scrollbar's, the chat's) wait before they rise
 	_riseTick         = 16 * time.Millisecond  // the tick while one runs, so the ramp reads smooth
 	_caretIdle        = time.Second            // how long the composer sits untouched before its caret blinks
@@ -1105,7 +1105,9 @@ func (a *App) widgetFaded(msg widgetRender) [][]hostapi.Segment {
 	}
 	if w.dip > 0 && len(msg.lines) > 0 {
 		if old := a.caches[msg.id]; old != nil && linesDiffer(old.lines, msg.lines) {
-			if c := a.rises[w.id]; c != nil && c.Shown() && !c.Sinking() {
+			// a dip in flight finishes first: a new count mid-rise would
+			// re-sink it and the pill would churn while a turn streams
+			if c := a.rises[w.id]; c != nil && c.Shown() && !c.Sinking() && !c.Dipping() {
 				c.Dip(w.dip, a.now())
 				a.wakeTick()
 			}

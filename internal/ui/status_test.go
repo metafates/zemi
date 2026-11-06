@@ -274,7 +274,14 @@ func TestContextDip(t *testing.T) {
 	if got := draw(5, second, up.Add(_dipDuration)); got.Text != "2k/2k ctx" || got.Fade != 1 {
 		t.Fatalf("the dip did not hand over to the new count: %+v", got)
 	}
-	if got := draw(6, second, up.Add(2*_dipDuration)); got.Fade != 0 {
+	third := [][]hostapi.Segment{{{Text: "3k/2k ctx", HL: "Dim"}}}
+	if got := draw(6, third, up.Add(_dipDuration+_dipDuration/2)); got.Text != "3k/2k ctx" || got.Fade >= 1 {
+		t.Fatalf("a count mid-rise did not ride the dip out: %+v", got)
+	}
+	if app.rises[id].Sinking() {
+		t.Fatal("a count mid-rise re-dipped the pill")
+	}
+	if got := draw(7, third, up.Add(2*_dipDuration)); got.Fade != 0 {
 		t.Fatalf("the dipped pill kept a fade of %v", got.Fade)
 	}
 }
