@@ -1802,9 +1802,8 @@ const StampLayout = time.DateOnly + " " + ClockLayout
 // UIState is the frame's state, passed in with every render.
 type UIState struct {
 	Time  string // the wall clock in ClockLayout, stepped once a minute
-	Frame int    // the 50ms frame clock the spinner, eyes and shimmer step on
+	Frame int    // the 50ms frame clock the snail's spinner and shimmer step on
 
-	Ended          TurnEnd // how the turn that ended a moment ago ended; "" after that
 	QuitArmed      bool    // a second ctrl+c quits
 	InterruptArmed bool    // a second esc interrupts the turn
 	KeySeq         string  // keys of a bound sequence typed so far

@@ -14,10 +14,9 @@ import (
 // carry.
 func TestWorkingRuleCarriesThePendingRowOnlyOutOfView(t *testing.T) {
 	st := &hostapi.ScreenState{Width: 80, Busy: []hostapi.BusyItem{{Label: "Answering the side question"}}}
-	e := &eyes{}
 	row := func() string {
 		t.Helper()
-		lines, _ := workingRule(e, st)
+		lines, _ := workingRule(st)
 		return hostapi.SegsText(lines[0])
 	}
 	if got := row(); strings.Contains(got, "side question") || strings.Contains(got, "esc") {

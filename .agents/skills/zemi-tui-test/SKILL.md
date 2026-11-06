@@ -127,8 +127,8 @@ streamed chunks.
 - Compare captures for row shifts: the same state change must not add or remove a row
   (house rule). `zemi-lab snap` saves a masked capture, `zemi-lab diff` diffs a fresh one
   against it and exits 1 on a shift; the mask blanks what moves on its own - the
-  statusline's figures (elapsed, token counts, cost, the clock), the braille spinner, the
-  snail's eyes, the right rail's thumb cell, a working border's figures (elapsed clock,
+  statusline's figures (elapsed, token counts, cost, the clock), the braille
+  spinner, the snail's shell, the right rail's thumb cell, a working border's figures (elapsed clock,
   retry countdown), a finished turn's `model  Ns  N out  clock` telemetry (the rules
   anchor the row's head and its clock at the row's end, so a user row quoting the shape
   mid-row keeps its figures), a row's

@@ -18,7 +18,6 @@ type ScreenState struct {
 	Time           string
 	Now            time.Time
 	Frame          int
-	Ended          TurnEnd
 	QuitArmed      bool
 	InterruptArmed bool
 	KeySeq         string
@@ -79,17 +78,16 @@ type RunView struct {
 // AgentState is the live turn: what the model is writing, thinking and
 // calling right now.
 type AgentState struct {
-	Active       bool
-	Model        string
-	Text         string
-	Reasoning    string
-	Thinking     bool
-	Steering     []string
-	Thought      time.Duration
-	Elapsed      time.Duration
-	CheckingGoal bool
-	Retry        *Retry
-	Tools        []AgentTool
+	Active    bool
+	Model     string
+	Text      string
+	Reasoning string
+	Thinking  bool
+	Steering  []string
+	Thought   time.Duration
+	Elapsed   time.Duration
+	Retry     *Retry
+	Tools     []AgentTool
 }
 
 // Retry is a provider retry waiting or under way.
@@ -180,7 +178,7 @@ func (h *Host) ScreenState(width, height int, state UIState) *ScreenState {
 	}
 	st := &ScreenState{
 		Width: width, Height: height, Time: state.Time, Now: h.now(), Frame: state.Frame,
-		Ended: state.Ended, QuitArmed: state.QuitArmed, InterruptArmed: state.InterruptArmed,
+		QuitArmed: state.QuitArmed, InterruptArmed: state.InterruptArmed,
 		KeySeq: state.KeySeq, RowsBelow: state.RowsBelow, Cancelling: state.Cancelling,
 		Editing: state.Editing, Waiting: state.Waiting,
 
@@ -267,7 +265,7 @@ func (h *Host) agentState(stream StreamSnapshot, now time.Time) AgentState {
 	a := AgentState{
 		Active: stream.Active, Model: stream.Model, Text: stream.Text,
 		Reasoning: stream.Reasoning, Thinking: stream.Thinking,
-		Thought: stream.Thought, Elapsed: stream.Elapsed, CheckingGoal: stream.CheckingGoal,
+		Thought: stream.Thought, Elapsed: stream.Elapsed,
 	}
 	for _, s := range stream.Steering {
 		a.Steering = append(a.Steering, s.Text)

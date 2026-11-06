@@ -44,11 +44,10 @@ const (
 	// program keeps sending it, so it is resent on this interval while running.
 	_progressInterval = 2 * time.Second
 	_idleInterval     = 250 * time.Millisecond // the tick with nothing moving on its own; a bump wakes it
-	_frameMS          = 50                     // the frame clock: spinner, eyes and shimmer step once per tick
+	_frameMS          = 50                     // the frame clock: the snail's spinner and shimmer step once per tick
 	_riseDuration     = 160 * time.Millisecond // how long a statusline pill's appear or disappear takes
 	_barDelay         = 120 * time.Millisecond // how long the boot's first paints (the pills', the scrollbar's, the chat's) wait before they rise
 	_riseTick         = 16 * time.Millisecond  // the tick while one runs, so the ramp reads smooth
-	_doneLinger       = 3 * time.Second        // how long the mascot's eyes say how a turn ended
 	_caretIdle        = time.Second            // how long the composer sits untouched before its caret blinks
 	// NOTE: 64 waiting hooks is the burst bound; past it dispatch drops a message, await waits.
 	_hookQueueSize = 64
@@ -195,7 +194,6 @@ type App struct {
 	timeStr       string
 	turnActive    bool             // what onFrame last saw of the agent
 	turnDone      *turnDoneMsg     // the last turn's end, waiting for a frame that reads the agent idle
-	turnEnd       time.Time        // when the agent went idle after a turn, so the mascot can bow
 	turnEnded     hostapi.TurnEnd  // how it ended
 	looping       bool             // what onFrame last saw of the session's /loop
 	unseen        hostapi.TurnEnd  // how the last turn ended while the window was away, "" once seen
@@ -801,12 +799,12 @@ func (a *App) frameWork(turnRunning bool) bool {
 }
 
 func (a *App) frameAwake(st hostapi.UIState) bool {
-	return a.frameWork(a.turnActive) || st.Ended != "" || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 || a.spun || a.fadesRising()
+	return a.frameWork(a.turnActive) || st.QuitArmed || st.InterruptArmed || st.KeySeq != "" || len(a.toasts) > 0 || a.spun || a.fadesRising()
 }
 
 // tickInterval is idleInterval unless something on screen moves by itself:
-// a turn's readouts, a shown run's clock, a spinner, a toast's or the done
-// frame's expiry, a pill's or scrollbar's rise. Everything else bumps.
+// a turn's readouts, a shown run's clock, a spinner, a toast, a pill's or
+// scrollbar's rise. Everything else bumps.
 func (a *App) tickInterval() time.Duration {
 	if a.fadesRising() {
 		return _riseTick
@@ -826,7 +824,7 @@ func (a *App) onFrame() tea.Cmd {
 		a.frameGen++
 	}
 	// While a turn, a shown run or a busy job runs every tick re-renders, so
-	// the eyes and the elapsed time step even when no stream event arrives.
+	// the spinner and the elapsed time step even when no stream event arrives.
 	active := a.host.AgentActive()
 	if a.frameWork(active) || a.fadesRising() {
 		a.frameGen++
@@ -858,7 +856,7 @@ func (a *App) onFrame() tea.Cmd {
 	}
 	// widgets read these flags, so a change re-renders them; the animation
 	// tick alone does not, it only matters while a turn bumps the frame
-	// anyway, and Ended turning on and off bumps at both ends by itself
+	// anyway
 	var replay tea.Cmd
 	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) > _keySeqTimeout {
 		replay = a.replayKeys(a.keySeq)
@@ -873,12 +871,12 @@ func (a *App) onFrame() tea.Cmd {
 	return tea.Batch(a.frameTickCmd(a.tickInterval()), a.renderStaleWidgetsCmd(false), replay, ended, a.statusTick())
 }
 
-// endTurn stamps how the last turn ended for the eyes and the tab title,
-// arms the recap, and alerts an unfocused terminal; a chain a loop run
+// endTurn stamps how the last turn ended for the status line and the tab
+// title, arms the recap, and alerts an unfocused terminal; a chain a loop run
 // began arms no recap and alerts nobody, since no one waits on it.
 func (a *App) endTurn(msg turnDoneMsg) tea.Cmd {
 	byLoop := a.host.AgentStream().ByLoop
-	a.turnEnd, a.turnEnded = a.now(), hostapi.TurnOK
+	a.turnEnded = hostapi.TurnOK
 	if !byLoop {
 		if d := a.host.Settings.Duration(config.KeySessionRecap); d > 0 {
 			a.recapAt = a.now().Add(d)
@@ -936,9 +934,6 @@ func (a *App) uiState() hostapi.UIState {
 		InterruptArmed: a.isArmed("esc") && a.armed.what == "interrupt",
 		RowsBelow:      a.rowsBelow(),
 		Cancelling:     a.cancelling, Editing: a.editing,
-	}
-	if !a.turnActive && a.now().Sub(a.turnEnd) < _doneLinger {
-		st.Ended = a.turnEnded
 	}
 	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) <= _keySeqTimeout {
 		st.KeySeq = strings.Join(a.keySeq, " ")

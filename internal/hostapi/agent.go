@@ -218,12 +218,10 @@ type agentHost struct {
 
 	// goal is the session's goal (/goal), nil for none; goalPending the
 	// condition of a /goal sent and not yet stored; goalRuns counts the turns
-	// it started in a row, and checkingGoal holds while nextTurn asks whether
-	// it holds.
-	goal         *Goal
-	goalPending  string
-	goalRuns     int
-	checkingGoal bool
+	// it started in a row.
+	goal        *Goal
+	goalPending string
+	goalRuns    int
 	// loop is the session's loop (/loop), nil for none; loopStop stops its
 	// armed timer, loopRun is the loop whose run was sent last, and byLoop
 	// says the running or last chain of turns began with a loop run.
@@ -1029,7 +1027,6 @@ func (h *Host) nextTurn(done *turnScope, err error) (*turnScope, string) {
 		h.release()
 	} else {
 		ag.beginTurn()
-		ag.checkingGoal = goal != nil
 		next = h.claim()
 	}
 	ag.mu.Unlock()
@@ -1059,7 +1056,6 @@ func (h *Host) continueGoal(next *turnScope, g *Goal) (*turnScope, string) {
 	}
 	ag := h.agents
 	ag.mu.Lock()
-	ag.checkingGoal = false
 	switch {
 	case stopped != nil:
 		note = ""

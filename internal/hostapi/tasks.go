@@ -520,7 +520,6 @@ func (run *agentRun) view(base StreamSnapshot) (RunStatus, []ChatMessage, Stream
 	if !run.retryAt.IsZero() {
 		base.Retrying, base.RetryIn, base.RetryWhy = true, max(time.Until(run.retryAt), 0), run.retryWhy
 	}
-	base.CheckingGoal = false
 	return run.status, run.transcriptLocked(), base, run.rev
 }
 

@@ -25,8 +25,9 @@ composer's (`App.floatPopup` anchors the palette and the completion list to it),
 region (`regionChat`: `App.scrolls`, `pendingScroll` and `pendingAnchor` are keyed by region)
 and the leaves a selection may not leave. A `composer` node with `Frame` draws the square
 frame around the composer and puts its `Top` region's first row in the top rule
-(`composerFrame`, ui/composer.go; that rule's left end holds the snail, its eyes showing the
-state, how a turn ended included, and its right end the turn's status), which is where the
+(`composerFrame`, ui/composer.go; that rule's left end holds the snail — its
+shell the `@` idle and a braille spinner while the agent works, its eyes still
+— and its right end the turn's status), which is where the
 shipped tree keeps the mascot, with the statusline on a bar row below the box: agent state
 changes what a rule says, never how many rows the frame takes, so nothing above it reflows.
 The statusline clusters draw from their outer edges by widget priority and a short row drops
@@ -171,7 +172,7 @@ mark the frame dirty or View-driven tests recompose stale bytes.
   the host's own state; a new flag goes into those two, not into `statusRow` or `compose`.
   No Lua draws. Animation a widget
   cannot render at the 50 ms frame clock is a segment `effect` the UI applies (`shimmer`, and `spin`, which steps a `hostapi.Marks` spinner). A
-  turn's end (the `ui.notify` alert, the done eyes, the recap timer) applies once per chain of
+  turn's end (the `ui.notify` alert, the recap timer) applies once per chain of
   turns, on the first frame that reads the agent idle (`onFrame`). OSC 9;4 progress and the OSC
   11 background go through `tea.View.ProgressBar` and `tea.View.BackgroundColor`, so bubbletea
   resets them on every exit, a signal included. Host chrome draws in whorl's

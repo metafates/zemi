@@ -1878,12 +1878,8 @@ view; a reset's wipe drops the row with the chat.
   the `working`
   region: it gets the whole rule between the corners (the shipped
   `working` widget: the snail mascot a cell in from the left corner, a cell of
-  rule either side of it, the state in its eyes alone: swapping while the model thinks or
-  tools run, rewound while an interrupt winds the turn down,
-  lowered while a reading call or a goal check runs,
-  `??` while the user is asked, then for a few seconds `^^`
-  when the turn finished ok, `><` when it failed and idle eyes when it was
-  cancelled; at the right end of the rule the interrupt key
+  rule either side of it, its shell the `@` idle and a braille spinner the
+  whole time the agent works, the eyes still; at the right end of the rule the interrupt key
   with the elapsed time, and while the chat shows an agent run's transcript
   that run's agent with `esc back` in its place, both on an idle
   rule too, and that run's own clock while it runs; the
@@ -1895,8 +1891,7 @@ view; a reset's wipe drops the row with the chat.
   can grow to; the running call names
   no cell of it, which the chat row already says. It reads the frame's
   `Frame`, `Ended`, `Cancelling`, `InterruptArmed`, `View`, `Editing`,
-  `Waiting` and `RowsBelow` and the turn's `Agent.Retry` and
-  `Agent.CheckingGoal`).
+  `Waiting` and `RowsBelow` and the turn's `Agent.Retry`).
   The mascot is always drawn and the frame's height
   never moves with agent state, so no turn adds or removes a row.
   The statusline is two clusters on the bar; a cluster's widgets are ordered by

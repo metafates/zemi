@@ -184,14 +184,7 @@ func TestIdleDrawsNothing(t *testing.T) {
 
 	host.SeedStream(hostapi.StreamSnapshot{})
 	app.Update(turnDoneMsg{})
-	app.Update(frameTickMsg{}) // the turn ends: the mascot bows
-	gen = app.frameGen
-	app.now = func() time.Time { return app.turnEnd.Add(_doneLinger + time.Second) }
-	app.Update(frameTickMsg{}) // it stops bowing
-	app.Update(frameTickMsg{})
-	if app.frameGen != gen+1 {
-		t.Fatalf("the done frame cost %d redraws, want 1", app.frameGen-gen)
-	}
+	app.Update(frameTickMsg{}) // the turn ends
 
 	// a run left 'running' in the store by a crash is one this process does
 	// not hold: viewing it reads as cancelled and ticks nothing
@@ -248,7 +241,7 @@ func TestBumpWakesIdleTick(t *testing.T) {
 
 // TestFrameClock: a tick lands on the next frame boundary, from the timer
 // and from a wake that cuts an idle sleep short alike, so the spinner and the
-// eyes step one glyph per tick.
+// shimmer step one glyph per tick.
 func TestFrameClock(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		a := &App{wake: make(chan struct{}, 1)}

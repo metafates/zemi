@@ -1962,6 +1962,15 @@ func spinOf(head string) (mark, rest string) {
 	return "", head
 }
 
+// maskSnail replaces the snail's spinning shell, which steps per frame with
+// the working state, so frame comparisons see the mascot alone.
+func maskSnail(frame string) string {
+	for _, s := range hostapi.Spinner {
+		frame = strings.ReplaceAll(frame, s+"··", "@··")
+	}
+	return frame
+}
+
 // TestReasoningLiveTail: while the model thinks, only its last lines show, and
 // the live mark animates (a braille spinner) without moving the header or tail.
 func TestReasoningLiveTail(t *testing.T) {
@@ -1992,7 +2001,7 @@ func TestReasoningLiveTail(t *testing.T) {
 	if restA != restB {
 		t.Fatalf("header moved while animating:\n%s\n%s", a, b)
 	}
-	if strings.Replace(a, headA, "", 1) != strings.Replace(b, headB, "", 1) {
+	if strings.Replace(maskSnail(a), headA, "", 1) != strings.Replace(maskSnail(b), headB, "", 1) {
 		t.Fatalf("tail moved while animating:\n%s\n%s", a, b)
 	}
 }
@@ -2103,9 +2112,8 @@ func TestWorkingRowRetry(t *testing.T) {
 }
 
 // TestWorkingRowRetryNarrow: a rule too narrow for everything keeps the
-// retry's reason and countdown before the key hint and the clock — the eyes
-// alone cannot name the state — and a long reason narrows, never starves the
-// rule of any state at all.
+// retry's reason and countdown before the key hint and the clock, and a long
+// reason narrows, never starves the rule of any state at all.
 func TestWorkingRowRetryNarrow(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -2145,10 +2153,10 @@ func TestWorkingRowRetrySubSecond(t *testing.T) {
 }
 
 // TestWorkingRowMascot: the snail stays in the left corner on a plain rule
-// and the turn shows in its eyes alone.
+// and its shell spins while the agent works.
 func TestWorkingRowMascot(t *testing.T) {
 	t.Parallel()
-	for _, r := range "@·.─^><?" { // the rule's arithmetic counts one cell each
+	for _, r := range "@·.─⠋⠦" { // the rule's arithmetic counts one cell each
 		if ansi.StringWidth(string(r)) != 1 {
 			t.Fatalf("%q is not one cell wide", r)
 		}
@@ -2168,21 +2176,16 @@ func TestWorkingRowMascot(t *testing.T) {
 	if a, b := row(0), row(7000); a != want || b != want {
 		t.Fatalf("idle rule moved: %q then %q", a, b)
 	}
-	// working drifts the two eye dots in place
+	// working spins the shell from the first frame, the eyes still
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-	if a, b := row(0), row(300); !strings.HasPrefix(a, " @·· ─") || !strings.HasPrefix(b, " @.· ─") {
-		t.Fatalf("the working eyes do not drift: %q then %q", a, b)
+	if a, b := row(0), row(300); !strings.HasPrefix(a, " ⠋·· ─") || !strings.HasPrefix(b, " ⠦·· ─") {
+		t.Fatalf("the working snail does not spin: %q then %q", a, b)
 	}
-	// a long command keeps the working drift, there is no waiting state
+	// a long command spins the same
 	long := []hostapi.StreamTool{{Name: "shell", Status: "run", Started: time.Now().Add(-time.Minute)}}
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: long})
-	if a, b := row(0), row(300); !strings.HasPrefix(a, " @·· ─") || !strings.HasPrefix(b, " @.· ─") {
-		t.Fatalf("a long command stops drifting without waiting: %q then %q", a, b)
-	}
-	long[0].Name = "read"
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: long})
-	if a, b := row(0), row(800); !strings.HasPrefix(a, " @·· ─") || !strings.HasPrefix(b, " @.. ─") {
-		t.Fatalf("the eyes do not read: %q then %q", a, b)
+	if a, b := row(0), row(300); !strings.HasPrefix(a, " ⠋·· ─") || !strings.HasPrefix(b, " ⠦·· ─") {
+		t.Fatalf("a long command stops the spinner: %q then %q", a, b)
 	}
 	// the block ends a cell off the rule: its right end stays put whatever the
 	// clock reads, the digits it gains eating into the rule on its left
@@ -2199,33 +2202,22 @@ func TestWorkingRowMascot(t *testing.T) {
 	// the open prompt says what answers it, so the rule shrinks to the snail
 	// alone: no esc, which the prompt takes
 	app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Subject: "tool.shell", Arg: "make"}}
-	if r := row(1000); r != " @?? "+strings.Repeat("─", 73) {
-		t.Fatalf("the snail does not ask while the user is asked: %q", r)
+	if r := row(1000); r != " ⠋·· "+strings.Repeat("─", 73) {
+		t.Fatalf("the rule does not shrink while the user is asked: %q", r)
 	}
 	app.permAsk = nil
-	host.SeedStream(hostapi.StreamSnapshot{})
-	if r := row(2500); !strings.HasPrefix(r, " @·· ─") {
-		t.Fatalf("a turn with no outcome (/compact) bows: %q", r)
-	}
-	for _, c := range []struct {
-		msg  turnDoneMsg
-		eyes string
-	}{{turnDoneMsg{}, " @^^ ─"}, {turnDoneMsg{err: "boom"}, " @>< ─"}, {turnDoneMsg{stopped: true}, " @·· ─"}} {
+	// a turn's end bows the snail back to idle, however it ended
+	for _, msg := range []turnDoneMsg{{}, {err: "boom"}, {stopped: true}} {
 		// the host can still read active a frame after the turn reported
 		host.SeedStream(hostapi.StreamSnapshot{Active: true})
 		app.AgentStream()
-		app.Update(c.msg)
+		app.Update(msg)
 		app.Update(frameTickMsg{})
 		host.SeedStream(hostapi.StreamSnapshot{})
 		app.Update(frameTickMsg{})
-		if r := row(2500); !strings.HasPrefix(r, c.eyes) {
-			t.Fatalf("after %+v the snail reads %q, want %q", c.msg, r, c.eyes)
+		if r := row(2500); !strings.HasPrefix(r, " @·· ─") {
+			t.Fatalf("after %+v the snail does not bow idle: %q", msg, r)
 		}
-	}
-	// thinking blinks in place, its cycle starting with the state
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Reasoning: "hm", Thinking: true})
-	if a, b := row(3210), row(3610); !strings.HasPrefix(a, " @.?") || !strings.HasPrefix(b, " @?.") {
-		t.Fatalf("the thinking eyes do not change: %q then %q", a, b)
 	}
 	// a narrow rule drops the clock before the interrupt key
 	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})

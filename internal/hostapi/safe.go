@@ -114,7 +114,6 @@ func (h *Host) clearCrashedTurn(r any) {
 	h.logPanic("agent turn", r)
 	ag := h.agents
 	ag.mu.Lock()
-	ag.checkingGoal = false
 	ag.textBuf, ag.reasonBuf, ag.tools = "", "", nil
 	ag.turnStart, ag.retryAt = time.Time{}, time.Time{}
 	ag.promptWait = 0
