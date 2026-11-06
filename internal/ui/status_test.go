@@ -233,9 +233,10 @@ func TestStatusRise(t *testing.T) {
 	}
 }
 
-// TestContextDip: the ctx pill dips to a new count — the old words sink
-// whole and the new rise once they land — while a re-render that says the
-// same words does not dip.
+// TestContextDip: the ctx pill dips to a new count — the changed digit
+// dissolves (the old one sinks, the new one rises once it lands) while the
+// rest of the pill stands — and a re-render that says the same words does
+// not dip.
 func TestContextDip(t *testing.T) {
 	_, host := statusApp(t)
 	app := &App{
@@ -271,17 +272,23 @@ func TestContextDip(t *testing.T) {
 	if !app.fadesRising() || app.tickInterval() != _riseTick {
 		t.Fatal("the dip did not keep the tick awake")
 	}
-	if got := draw(5, second, up.Add(_dipDuration)); got.Text != "2k/2k ctx" || got.Fade != 1 {
+	if got := draw(5, second, up.Add(_dipDuration/2)); got.Text != "1" || got.Fade < 0.4 || got.Fade > 0.6 {
+		t.Fatalf("the dip did not sink the changed digit alone: %+v", got)
+	}
+	if row := app.caches[id].lines[0]; len(row) != 2 || row[1].Text != "k/2k ctx" || row[1].Fade != 0 {
+		t.Fatalf("the dip did not leave the shared text standing: %+v", row)
+	}
+	if got := draw(6, second, up.Add(_dipDuration)); got.Text != "2" || got.Fade != 1 {
 		t.Fatalf("the dip did not hand over to the new count: %+v", got)
 	}
 	third := [][]hostapi.Segment{{{Text: "3k/2k ctx", HL: "Dim"}}}
-	if got := draw(6, third, up.Add(_dipDuration+_dipDuration/2)); got.Text != "3k/2k ctx" || got.Fade >= 1 {
+	if got := draw(7, third, up.Add(_dipDuration+_dipDuration/2)); got.Text != "3" || got.Fade >= 1 {
 		t.Fatalf("a count mid-rise did not ride the dip out: %+v", got)
 	}
 	if app.rises[id].Sinking() {
 		t.Fatal("a count mid-rise re-dipped the pill")
 	}
-	if got := draw(7, third, up.Add(2*_dipDuration)); got.Fade != 0 {
+	if got := draw(8, third, up.Add(2*_dipDuration)); got.Fade != 0 {
 		t.Fatalf("the dipped pill kept a fade of %v", got.Fade)
 	}
 }

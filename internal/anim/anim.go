@@ -13,7 +13,10 @@
 //
 // Words that change in place (a pill's counts) dip through the same
 // curtain: Dip sinks the drawn rows and the next Draw's rows rise once it
-// lands, so a value never swaps mid-fade.
+// lands, so a value never swaps mid-fade. The dip dissolves only the cells
+// the words changed: text the two draws share stands, the span between the
+// common prefix and suffix fades — a count that moves one digit animates
+// that digit alone.
 //
 // A curtain whose first paint must wait out a delay (the chat view's boot,
 // the scrollbar's) stamps it with Boot instead of drawing into a JumpIn.
@@ -36,6 +39,7 @@
 package anim
 
 import (
+	"slices"
 	"time"
 
 	"github.com/metafates/zemi/internal/hostapi"
@@ -136,6 +140,105 @@ func FadedRows(rows [][]hostapi.Segment, t float64, spare func(hostapi.Segment) 
 	return out
 }
 
+// dissolveRows builds one frame of a dip between the rows it sinks from and
+// the rows it rises to: a row the two share stands whole, and a row they do
+// not keeps the text before and after the changed span at full alpha while
+// the span itself fades — the old words' span while they sink, the new
+// words' while they rise. A row with no mate sinks whole.
+func dissolveRows(prev, next [][]hostapi.Segment, sunk float64, rise bool) [][]hostapi.Segment {
+	shown, mate := prev, next
+	if rise {
+		shown, mate = next, prev
+	}
+	out := make([][]hostapi.Segment, len(shown))
+	for i, row := range shown {
+		var other []hostapi.Segment
+		if i < len(mate) {
+			other = mate[i]
+		}
+		out[i] = dissolveRow(row, other, sunk)
+	}
+	return out
+}
+
+// dissolveRow is row sunk toward its surface on the span where its text
+// leaves other's, the shared text standing. The span is the text between the
+// common prefix and suffix, so a count that changes one digit dissolves that
+// digit alone.
+func dissolveRow(row, other []hostapi.Segment, sunk float64) []hostapi.Segment {
+	if sunk <= 0 {
+		return row
+	}
+	if other == nil {
+		return Faded(row, sunk, nil)
+	}
+	a, b := []rune(hostapi.SegsText(row)), []rune(hostapi.SegsText(other))
+	if slices.Equal(a, b) {
+		return row
+	}
+	p := 0
+	for p < len(a) && p < len(b) && a[p] == b[p] {
+		p++
+	}
+	s := 0
+	for s < len(a)-p && s < len(b)-p && a[len(a)-1-s] == b[len(b)-1-s] {
+		s++
+	}
+	out := make([]hostapi.Segment, 0, len(row)+2)
+	off := 0
+	for _, seg := range row {
+		rs := []rune(seg.Text)
+		start, end := off, off+len(rs)
+		off = end
+		switch {
+		case len(rs) == 0:
+			out = append(out, seg)
+		case end <= p || start >= len(a)-s:
+			out = append(out, seg) // the shared text stands
+		case start >= p && end <= len(a)-s:
+			seg.Fade = max(seg.Fade, sunk)
+			out = append(out, seg)
+		default: // a segment the span cuts: the pieces outside stand, the piece inside fades
+			head, mid, tail := splitSeg(seg, rs, p-start, len(a)-s-start)
+			if head.Text != "" {
+				out = append(out, head)
+			}
+			if mid.Text != "" {
+				mid.Fade = max(mid.Fade, sunk)
+				out = append(out, mid)
+			}
+			if tail.Text != "" {
+				out = append(out, tail)
+			}
+		}
+	}
+	return out
+}
+
+// splitSeg cuts seg's runes at from and to (offsets into rs, clamped) into
+// the pieces before, inside and past that span.
+func splitSeg(seg hostapi.Segment, rs []rune, from, to int) (head, mid, tail hostapi.Segment) {
+	if from < 0 {
+		from = 0
+	}
+	if to > len(rs) {
+		to = len(rs)
+	}
+	if from > 0 {
+		head = seg
+		head.Text = string(rs[:from])
+	}
+	if from < to {
+		mid = seg
+		mid.Text = string(rs[from:to])
+	}
+	if to < len(rs) {
+		tail = seg
+		tail.Text = string(rs[to:])
+	}
+	return head, mid, tail
+}
+
 // Curtain is one thing that comes and goes on a fade: appearing rises out
 // of the surface, leaving sinks back into it on the rows it kept drawing,
 // and a return rises from where it sank. Draw hands it a frame's rows and
@@ -146,6 +249,7 @@ type Curtain struct {
 
 	fade    Fade
 	rows    [][]hostapi.Segment // the rows a sink keeps drawing
+	from    [][]hostapi.Segment // the rows a dip in flight dissolves from
 	sinking bool
 	dip     bool // a change's sink in flight: the kept rows sink, the next draw's rise
 	drawn   bool // the curtain ever drew rows: it has owned its seat
@@ -167,7 +271,7 @@ func (c *Curtain) Dip(dur time.Duration, now time.Time) {
 		dur = c.Dur
 	}
 	c.fade.Delay = 0 // a change's rise is not a boot's first paint: it starts at once
-	c.dip, c.fade.Dur = true, dur
+	c.from, c.dip, c.fade.Dur = c.rows, true, dur
 	c.fade.Set(false, now) // the sink starts where the rows stand
 }
 
@@ -198,17 +302,18 @@ func (c *Curtain) Draw(rows [][]hostapi.Segment, now time.Time) (out [][]hostapi
 		if c.dip {
 			if a := c.fade.Alpha(now); a > 0 && !c.fade.Shown() && len(c.rows) > 0 {
 				c.sinking = true
-				return FadedRows(c.rows, 1-a, nil), false // the old words, sinking
+				return dissolveRows(c.rows, rows, 1-a, false), false // the changed cells of the old words, sinking
 			}
-			// the old words landed: the new ones rise, and a change mid-rise
-			// sinks them from where they stand
+			// the old words landed: the new ones rise against the rows they
+			// replace, and a change mid-rise sinks them from where they stand
 			c.sinking, c.drawn, c.rows = false, true, rows
 			if !c.fade.Shown() {
 				c.fade.Set(true, now)
 			}
 			if a := c.fade.Alpha(now); a < 1 {
-				return FadedRows(rows, 1-a, nil), false
+				return dissolveRows(c.from, rows, 1-a, true), false
 			}
+			c.from = nil
 			c.dip, c.fade.Dur = false, c.Dur
 			return rows, false
 		}

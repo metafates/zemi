@@ -38,7 +38,8 @@ the highest first (`fitClusters`), so what lasts sits outermost and never moves.
 Every ramp lives in `internal/anim`; its package doc is the recipe. The three patterns: a widget
 that comes and goes rides a `Curtain` — give the `widget` `eases: true` and `widgetFaded` routes
 its lines through one, no per-widget code; a pill whose counts change in place (the ctx pill)
-sets `dip` so `Curtain.Dip` sinks the old words and rises the new once they land, instead of
+sets `dip` so `Curtain.Dip` dissolves only the cells the words changed — the shared text stands, the
+changed span sinks with the old words and rises with the new once they land — instead of
 swapping bytes; widgets that share a region's seat (`solo: true`, the
 chat and the splash) hand over through the outgoing one's sink, by region rule, never by id;
 rows that rise inside a widget (a rail call, a readout, a prompt just sent) ride a `Rise` keyed by what names the

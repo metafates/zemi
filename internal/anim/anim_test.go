@@ -118,9 +118,9 @@ func TestCurtain(t *testing.T) {
 	}
 }
 
-// TestCurtainDip: a dip sinks the drawn rows — the old words, never the new
-// ones — and the next draw's rows rise once it lands, both over the dip's
-// own speed.
+// TestCurtainDip: a dip dissolves the cells its words changed — the shared
+// text stands, the changed span sinks with the old words and rises with the
+// new ones once it lands, both over the dip's own speed.
 func TestCurtainDip(t *testing.T) {
 	now := time.UnixMilli(0)
 	old := [][]hostapi.Segment{{{Text: "1k ctx", HL: "Dim"}}}
@@ -138,10 +138,12 @@ func TestCurtainDip(t *testing.T) {
 	if got, _ := c.Draw(next, now.Add(2*c.Dur)); got == nil || got[0][0].Text != "1k ctx" || got[0][0].Fade != 0 {
 		t.Fatalf("the dip's sink did not draw the old words whole: %v", got)
 	}
-	if got, _ := c.Draw(next, now.Add(2*c.Dur).Add(dip/2)); got == nil || got[0][0].Text != "1k ctx" || got[0][0].Fade < 0.4 || got[0][0].Fade > 0.6 {
-		t.Fatalf("the dip's sink did not ride mid-ramp: %v", got)
+	if got, _ := c.Draw(next, now.Add(2*c.Dur).Add(dip/2)); got == nil ||
+		got[0][0].Text != "1" || got[0][0].Fade < 0.4 || got[0][0].Fade > 0.6 ||
+		got[0][1].Text != "k ctx" || got[0][1].Fade != 0 {
+		t.Fatalf("the dip's sink did not dissolve the changed cell alone: %v", got)
 	}
-	if got, _ := c.Draw(next, now.Add(2*c.Dur).Add(dip)); got == nil || got[0][0].Text != "2k ctx" || got[0][0].Fade != 1 {
+	if got, _ := c.Draw(next, now.Add(2*c.Dur).Add(dip)); got == nil || got[0][0].Text != "2" || got[0][0].Fade != 1 {
 		t.Fatalf("the dip did not hand over to the new words: %v", got)
 	}
 	if got, _ := c.Draw(next, now.Add(2*c.Dur).Add(dip+dip/2)); got == nil || got[0][0].Fade < 0.4 || got[0][0].Fade > 0.6 {
@@ -152,6 +154,19 @@ func TestCurtainDip(t *testing.T) {
 	}
 	if c.fade.Dur != c.Dur {
 		t.Fatalf("the dip left the curtain's ramp at %v", c.fade.Dur)
+	}
+
+	// a row both draws share stands while the changed one dissolves
+	shared := NewCurtain(100 * time.Millisecond)
+	twoOld := [][]hostapi.Segment{{{Text: "same"}}, {{Text: "1k ctx"}}}
+	twoNext := [][]hostapi.Segment{{{Text: "same"}}, {{Text: "2k ctx"}}}
+	shared.Draw(twoOld, now)
+	shared.Draw(twoOld, now.Add(2*c.Dur))
+	shared.Dip(dip, now.Add(2*c.Dur))
+	if got, _ := shared.Draw(twoNext, now.Add(2*c.Dur).Add(dip/2)); got == nil ||
+		got[0][0].Text != "same" || got[0][0].Fade != 0 ||
+		got[1][0].Fade < 0.4 || got[1][0].Fade > 0.6 {
+		t.Fatalf("the shared row did not stand while the other dissolved: %v", got)
 	}
 
 	// a dip on a hidden curtain does nothing
