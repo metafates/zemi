@@ -114,7 +114,7 @@ func CmdOut(dir, name, raw string, lost int64, whole bool) string {
 type shellArgs struct {
 	// "about", not "description": a schema's properties reach the model
 	// sorted by name, and this one has to stream before the command
-	About     string `json:"about,omitempty" desc:"what the command does in 5-10 words, shown to the user, e.g. Run the unit tests."`
+	About     string `json:"about,omitempty" desc:"what the command does in 5-10 words, shown to the user, e.g. Run the unit tests; pass it first"`
 	Command   string `json:"command"`
 	TimeoutMS int    `json:"timeout_ms,omitempty" desc:"default 60000, max 600000; raise it for slow builds and test suites"`
 }
@@ -379,7 +379,7 @@ const (
 
 // readArgs is the read tool's input and its schema source.
 type readArgs struct {
-	Path   string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
+	Path   string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand; pass it first"`
 	Offset int    `json:"offset,omitempty" desc:"1-based line to start at"`
 	Limit  int    `json:"limit,omitempty" desc:"how many lines to read; omit for the whole file, still at most 2000 lines or 50000 bytes"`
 }
@@ -765,7 +765,7 @@ func boxScale(src image.Image, w, h int) *image.RGBA {
 
 // writeArgs is the write tool's input and its schema source.
 type writeArgs struct {
-	Path    string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
+	Path    string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand; pass before content"`
 	Content string `json:"content"`
 }
 
@@ -949,7 +949,7 @@ func listDir(path perm.Path) fantasy.ToolResponse {
 
 // editArgs is the edit tool's input and its schema source.
 type editArgs struct {
-	Path      string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
+	Path      string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand; pass before old_string"`
 	OldString string `json:"old_string"`
 	NewString string `json:"new_string"`
 }
