@@ -622,7 +622,9 @@ func (a *App) View() tea.View {
 	// too, so a cached frame never dangles a stale caret, and their return
 	// counts as fresh input.
 	holds := a.composerHoldsKeys()
-	if holds && !a.caretKeys {
+	// caretAt zero (fresh start, nothing typed yet) keeps the blink so the
+	// caret already blinks on boot; any real input steadies it.
+	if holds && !a.caretKeys && !a.caretAt.IsZero() {
 		a.caretAt = a.now()
 	}
 	a.caretKeys = holds
