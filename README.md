@@ -30,13 +30,9 @@ Zemi is still in preview and iterating rapidly. There will be compatibility-brea
 go install github.com/metafates/zemi@latest
 ```
 
-Then just
+Then just run it. It will prompt you to select and input provider api key on first run:
 
 ```bash
-# or ANTHROPIC_API_KEY, OPENAI_API_KEY, or any other provider zemi supports.
-# zemi will guide you if not set
-export DEEPSEEK_API_KEY=...
-
 zemi
 ```
 
@@ -49,12 +45,10 @@ Then, follow `zemi docs setup` output - it guides you how to setup zemi.
 
 ## Features
 
-- Keeps prompts small, cache hit rates high
-- Knows when to shut up
 - Endless chats that remember every message
 - Does more with less steps
 - Subagents, workflows, background jobs, lsp, mcp, and more.
-- Fully scriptable with Lua and knows how to modify itself
+- Scriptable with Lua and knows how to modify itself
 - Compatible with Claude Code plugins
 
 ## API keys
