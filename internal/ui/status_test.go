@@ -29,6 +29,36 @@ func statusApp(t *testing.T) (*App, *hostapi.Host) {
 	return NewApp(host, log), host
 }
 
+// TestScrollPillClicksToBottom: clicking the scroll pill does what its key
+// does, returning the view to the tail.
+func TestScrollPillClicksToBottom(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 80, 14)
+	for len(host.Session().Transcript) < 40 {
+		host.AppendMessage("user", fmt.Sprintf("row %d", len(host.Session().Transcript)+1))
+	}
+	app.renderSync(t)
+	app.applyScroll(hostapi.ScrollTop, _regionChat)
+	app.renderSync(t)
+	app.Frame()
+	var pill *widget
+	for _, w := range app.widgets {
+		if w.id == "statusline.scroll" {
+			pill = w
+		}
+	}
+	if pill == nil {
+		t.Fatal("the scroll pill is missing")
+	}
+	pill.onClick(app, nil)
+	app.renderSync(t)
+	app.Frame()
+	st := app.scrolls[app.scrollDef]
+	if st == nil || !st.follow || app.rowsBelow() != 0 {
+		t.Fatalf("the pill's click left the view parked: follow %v, rowsBelow %d", st != nil && st.follow, app.rowsBelow())
+	}
+}
+
 // statusFrame sends one frame and returns the OSC 7501 it carried, "" for none.
 func statusFrame(app *App) string {
 	_, cmd := app.Update(frameTickMsg{})

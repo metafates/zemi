@@ -22,8 +22,10 @@ func statuslineWidgets() []*widget {
 		{id: "statusline.keys", region: _regionStatusLeft, priority: 95, eases: true, render: statusKeys},
 		{
 			id: "statusline.scroll", region: _regionStatusLeft, priority: 100, eases: true, render: statusScroll,
-			// its id is the scroll target, not a command's name
-			onClick: func(*App, map[string]any) bool { return true },
+			onClick: func(a *App, _ map[string]any) bool {
+				a.applyScroll(hostapi.ScrollBottom, _regionNone)
+				return true
+			},
 		},
 		{id: "statusline.quit", region: _regionStatusLeft, priority: 110, eases: true, render: statusQuit},
 
