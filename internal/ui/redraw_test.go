@@ -668,81 +668,101 @@ func TestReadoutRise(t *testing.T) {
 	}
 }
 
-// TestUserPromptRise: a prompt the reader sends rises out of the surface;
-// one a session opens with never rises.
+// TestUserPromptRise: a prompt the reader sends lands styled queued and its
+// colors run into their own; one a session opens with is read as it is.
 func TestUserPromptRise(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 30)
 	f := app.chatFolds()
 	at := time.UnixMilli(1000)
 	f.now = func() time.Time { return at }
 
-	promptFade := func(app *App) float64 {
+	promptRow := func(app *App) ([]hostapi.Segment, bool) {
 		lines, _ := renderChat(t, app, 98, 20, app.uiState())
-		fade := 0.0
 		for _, row := range lines {
 			if len(row) > 1 && row[0].Text == "▌ " && row[0].HL == "UserMsg" {
-				for _, s := range row {
-					fade = max(fade, s.Fade)
-				}
+				return row, true
 			}
 		}
-		return fade
+		return nil, false
 	}
 
 	// the boot's empty frames read the log the splash owns
 	renderChat(t, app, 98, 20, app.uiState())
 	host.AppendChat(hostapi.ChatMessage{Role: fantasy.MessageRoleUser, Text: "a question"})
-	if fade := promptFade(app); fade < 0.5 {
-		t.Fatalf("the sent prompt did not sink: fade %v", fade)
+	row, ok := promptRow(app)
+	if !ok || row[0].Rise != 1 || row[0].From != "Queued" || row[1].From != "Dim" {
+		t.Fatalf("the sent prompt did not land styled queued: %+v", row)
+	}
+	at = at.Add(_riseDuration / 2)
+	row, _ = promptRow(app)
+	if row[0].Rise <= 0 || row[0].Rise >= 1 {
+		t.Fatalf("the prompt's colors are not on the ramp: rise %v", row[0].Rise)
 	}
 	at = at.Add(2 * _riseDuration)
-	if fade := promptFade(app); fade != 0 {
-		t.Fatalf("the prompt stayed sunk after the ramp: fade %v", fade)
+	row, _ = promptRow(app)
+	if row[0].Rise != 0 {
+		t.Fatalf("the prompt stayed sunk after the ramp: rise %v", row[0].Rise)
 	}
 
 	// a prompt a session opens with (a resume) is read as it is
 	app2, host2 := bootAgentApp(t, 100, 30)
 	app2.chatFolds().now = func() time.Time { return at }
 	host2.AppendChat(hostapi.ChatMessage{Role: fantasy.MessageRoleUser, Text: "an old question"})
-	if fade := promptFade(app2); fade != 0 {
-		t.Fatalf("a resumed prompt rose: fade %v", fade)
+	if row, ok := promptRow(app2); ok && row[0].Fade != 0 {
+		t.Fatalf("a resumed prompt rose: fade %v", row[0].Fade)
 	}
 }
 
-// TestQueuedMessageRise: a message queued behind a running turn rises into
-// the chat the way a sent prompt does.
+// TestQueuedMessageRise: a message queued behind a running turn stands in its
+// queued colors the frame it arrives, and the transcript row the turn
+// consumes it into starts at the same colors and runs the ramp.
 func TestQueuedMessageRise(t *testing.T) {
 	app, host := bootAgentApp(t, 100, 30)
 	f := app.chatFolds()
 	at := time.UnixMilli(1000)
 	f.now = func() time.Time { return at }
 
-	queuedFade := func(app *App) float64 {
+	queuedRow := func(app *App) ([]hostapi.Segment, bool) {
 		lines, _ := renderChat(t, app, 98, 20, app.uiState())
-		fade := 0.0
 		for _, row := range lines {
 			if len(row) > 1 && row[0].Text == "▌ " && row[0].HL == "Queued" {
-				for _, s := range row {
-					fade = max(fade, s.Fade)
-				}
+				return row, true
 			}
 		}
-		return fade
+		return nil, false
 	}
 
 	// the boot's empty frames read the log the splash owns
 	renderChat(t, app, 98, 20, app.uiState())
-	host.AppendChat(hostapi.ChatMessage{Role: fantasy.MessageRoleUser, Text: "a question"})
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
 	if err := host.AgentSend("one more thing"); err != nil {
 		t.Fatal(err)
 	}
-	if fade := queuedFade(app); fade < 0.5 {
-		t.Fatalf("the queued message did not sink: fade %v", fade)
+	row, ok := queuedRow(app)
+	if !ok || row[0].Fade != 0 {
+		t.Fatalf("the queued message did not stand whole: fade %v found %v", row[0].Fade, ok)
+	}
+
+	// the turn consumes it: the transcript row it lands as starts at the
+	// queued colors, two consumed at one boundary ramp together
+	host.AppendChat(hostapi.ChatMessage{Role: fantasy.MessageRoleUser, Text: "one more thing"})
+	host.AppendChat(hostapi.ChatMessage{Role: fantasy.MessageRoleUser, Text: "and this too"})
+	lines, _ := renderChat(t, app, 98, 20, app.uiState())
+	landed := 0
+	for _, row := range lines {
+		if len(row) > 1 && row[0].Text == "▌ " && row[0].HL == "UserMsg" && row[0].Rise == 1 {
+			landed++
+		}
+	}
+	if landed != 2 {
+		t.Fatalf("%d consumed messages started at the queued colors, want 2", landed)
 	}
 	at = at.Add(2 * _riseDuration)
-	if fade := queuedFade(app); fade != 0 {
-		t.Fatalf("the queued message stayed sunk after the ramp: fade %v", fade)
+	lines, _ = renderChat(t, app, 98, 20, app.uiState())
+	for _, row := range lines {
+		if len(row) > 1 && row[0].Text == "▌ " && row[0].HL == "UserMsg" && row[0].Rise != 0 {
+			t.Fatalf("a consumed message stayed sunk after the ramp: rise %v", row[0].Rise)
+		}
 	}
 }
 

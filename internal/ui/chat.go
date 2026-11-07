@@ -265,14 +265,23 @@ func (f *chatFolds) rowArrived(st *hostapi.ScreenState) {
 		f.rows = n
 		return
 	}
+	from := f.rows
 	f.rows = n
-	m := st.Transcript[n-1]
-	if m.Kind == hostapi.RowMessage && (m.Role == fantasy.MessageRoleUser || m.Stat != nil) && f.now != nil {
+	if f.now == nil {
+		return
+	}
+	// every row that just landed ramps: the turn can consume several queued
+	// messages at one step boundary, and only the last is the transcript's tail
+	for i := from + 1; i <= n; i++ {
+		m := st.Transcript[i-1]
+		if m.Kind != hostapi.RowMessage || (m.Role != fantasy.MessageRoleUser && m.Stat == nil) {
+			continue
+		}
 		fade := anim.NewFade(_riseDuration)
 		fade.Set(true, f.now())
 		// the row lands unstamped and the log names it moments later, so
 		// the ramp keys by the row's place, the way the folds do
-		f.rowRamps[keyOf(st.TranscriptCut, n)] = &rowRamp{fade: fade}
+		f.rowRamps[keyOf(st.TranscriptCut, i)] = &rowRamp{fade: fade}
 	}
 }
 
@@ -294,8 +303,8 @@ func (f *chatFolds) riseReadout(seq int64, row []hostapi.Segment) []hostapi.Segm
 	return row
 }
 
-// riseUser sinks a prompt that just landed into the surface and rises its
-// block over _riseDuration, the way a reply's readout rises under it.
+// riseUser runs a landed prompt's colors from the queued ones into its own
+// over _riseDuration, the way a reply's readout rises under it.
 func (f *chatFolds) riseUser(key int64, rows [][]hostapi.Segment) {
 	if f.now == nil {
 		return
@@ -306,36 +315,44 @@ func (f *chatFolds) riseUser(key int64, rows [][]hostapi.Segment) {
 	}
 	if alpha := ramp.fade.Alpha(f.now()); alpha < 1 {
 		for i, row := range rows {
-			rows[i] = anim.Faded(row, 1-alpha, nil)
+			rows[i] = anim.Tinted(row, 1-alpha)
 		}
 		return
 	}
 	ramp.done = true
 }
 
-// risingRow names the row whose rise is still running, 0 for none: the
-// render rebuilds that unit at each frame's alpha, one frame past the ramp
-// so the settled rows land clean.
-func (f *chatFolds) risingRow() int64 {
+// risingRows names the rows whose rise is still running: the render rebuilds
+// their units at each frame's alpha, one frame past the ramp so the settled
+// rows land clean.
+func (f *chatFolds) risingRows() map[int64]bool {
 	if f.now == nil {
-		return 0
+		return nil
 	}
 	now := f.now()
+	var out map[int64]bool
+	add := func(seq int64) {
+		if out == nil {
+			out = map[int64]bool{}
+		}
+		out[seq] = true
+	}
 	for seq, ramp := range f.rowRamps {
 		if ramp.done {
 			continue
 		}
 		if ramp.fade.Alpha(now) < 1 {
-			return seq
+			add(seq)
+			continue
 		}
 		if ramp.full {
 			ramp.done = true
 			continue
 		}
 		ramp.full = true
-		return seq
+		add(seq)
 	}
-	return 0
+	return out
 }
 
 // rising reports whether one of the chat's rises is in flight: the live
@@ -1147,6 +1164,10 @@ func (b *chatBuilder) user(text string, waiting bool, key int64) {
 	if waiting {
 		barHL, textHL, pin = "Queued", "Dim", hostapi.PinNone
 	}
+	// every user row rises out of the queued colors: a message lands styled
+	// queued and its colors run into their own, so a sent one and one the
+	// turn just consumed blend from the same place
+	const barFrom, textFrom = "Queued", "Dim"
 	wrapped := hostapi.WrapText(text, b.width-2)
 	// a prompt the model read whole, the chat showing its head and naming the
 	// way to the rest; only a prompt that folds carries the click
@@ -1160,9 +1181,9 @@ func (b *chatBuilder) user(text string, waiting bool, key int64) {
 		draw = 9
 	}
 	for i := range draw {
-		row := []hostapi.Segment{{Text: "▌ ", HL: barHL, NoCopy: true, NoHover: true, Pin: pin, Fill: hostapi.FillPanel}}
+		row := []hostapi.Segment{{Text: "▌ ", HL: barHL, From: barFrom, NoCopy: true, NoHover: true, Pin: pin, Fill: hostapi.FillPanel}}
 		for _, sg := range wrapped[i] {
-			sg.HL, sg.Fill = textHL, hostapi.FillPanel
+			sg.HL, sg.From, sg.Fill = textHL, textFrom, hostapi.FillPanel
 			sg.Click = click
 			// the head row lights as its pin does, the body under it stays quiet
 			sg.NoHover = i > 0
@@ -1187,7 +1208,7 @@ func (b *chatBuilder) user(text string, waiting bool, key int64) {
 // userFold is the row under a folded prompt: the bar, and what its click does.
 func (b *chatBuilder) userFold(barHL string, pin hostapi.Pin, text, click string) []hostapi.Segment {
 	return []hostapi.Segment{
-		{Text: "▌ ", HL: barHL, NoCopy: true, NoHover: true, Pin: pin, Fill: hostapi.FillPanel},
+		{Text: "▌ ", HL: barHL, From: "Queued", NoCopy: true, NoHover: true, Pin: pin, Fill: hostapi.FillPanel},
 		{Text: text, HL: "Dim", NoCopy: true, NoHover: true, Fill: hostapi.FillPanel, Click: click},
 	}
 }
@@ -1949,8 +1970,8 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		rows: len(st.Transcript), older: st.LogRows(), width: b.width,
 		folds: f.ver, view: viewID(st), tail: tailFirst, replying: st.Agent.Text == "",
 	}
-	rising := f.risingRow()
-	if key == f.settledKey && f.fillUnit == 0 && rising == 0 {
+	rising := f.risingRows()
+	if key == f.settledKey && f.fillUnit == 0 && len(rising) == 0 {
 		// appending may write into the spare capacity, which the settled
 		// slice's own rows never reach
 		b.lines, b.prev = f.settled, f.settledPrev
@@ -2047,11 +2068,10 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		}
 		// a row mid-rise rebuilds its unit at this frame's alpha, so the
 		// rise moves over the settled rows the cache would freeze
-		if !fresh && rising != 0 {
+		if !fresh && len(rising) > 0 {
 			for k, u := range units {
-				if keyOf(b.st.TranscriptCut, u.first+1) == rising {
+				if rising[keyOf(b.st.TranscriptCut, u.first+1)] {
 					f.built[k] = unitLines(k)
-					break
 				}
 			}
 		}
@@ -2187,13 +2207,11 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 			b.markdown(ag.Text)
 		}
 		// what waits for the turn's next step boundary: the user's own words as
-		// typed, folding past the paste threshold like any user row, rising the
-		// way a sent prompt does
+		// typed, folding past the paste threshold like any user row, standing
+		// in their queued colors the frame they arrive
 		for _, q := range queued {
 			b.gap(_blockQueued)
-			at := len(b.lines)
 			b.user(q, true, 0)
-			f.fadeLive("queued "+q, b.lines[at:], nil)
 		}
 	}
 	// what will change this conversation later sits between it and the todos

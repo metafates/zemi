@@ -1653,6 +1653,7 @@ func (a *App) fadeRows(rows [][]hostapi.Segment) [][]hostapi.Segment {
 				Text: s.Text, HL: s.HL, Over: s.Over, Effect: s.Effect,
 				NoCopy: s.NoCopy, NoHover: s.NoHover, Soft: s.Soft, Pin: s.Pin,
 				Fill: s.Fill, Fade: max(s.Fade, _modalFade),
+				From: s.From, Rise: s.Rise,
 			}
 		}
 		out[i] = faded
@@ -2426,13 +2427,27 @@ func (a *App) hlStyle(hl string) uv.Style {
 	return a.thm.style(hl)
 }
 
-func (a *App) segStyle(hl, over string, fill hostapi.Fill, fade float64, panel bool) uv.Style {
-	st := a.hlStyle(hl)
-	if over != "" {
-		st = a.thm.hover(st, over)
+// riseFrom blends a From group's colors into the segment's own as its ramp
+// runs: fade 1 draws the group whole, 0 the segment's own colors.
+func riseFrom(from, st uv.Style, fade float64, pal *hostapi.Palette) uv.Style {
+	t := 1 - fade
+	st.Fg = hostapi.Mix(cmp.Or(from.Fg, pal.Fg), cmp.Or(st.Fg, pal.Fg), t)
+	if from.Bg != nil || st.Bg != nil {
+		st.Bg = hostapi.Mix(cmp.Or(from.Bg, pal.Bg), cmp.Or(st.Bg, pal.Bg), t)
+	}
+	if st.UnderlineColor != nil && from.UnderlineColor != nil {
+		st.UnderlineColor = hostapi.Mix(from.UnderlineColor, st.UnderlineColor, t)
+	}
+	return st
+}
+
+func (a *App) segStyle(s hostapi.Segment) uv.Style {
+	st := a.hlStyle(s.HL)
+	if s.Over != "" {
+		st = a.thm.hover(st, s.Over)
 	}
 	if pal := hostapi.Whorl; pal != nil {
-		switch fill {
+		switch s.Fill {
 		case hostapi.FillBand:
 			st.Bg = pal.Band
 		case hostapi.FillWell:
@@ -2443,19 +2458,23 @@ func (a *App) segStyle(hl, over string, fill hostapi.Fill, fade float64, panel b
 			}
 		case hostapi.FillAuto, hostapi.FillCanvas:
 		}
-		// a faded segment sinks toward the surface it sits on, its fill
-		// included, before the colors are quantized
-		if fade > 0 {
+		// a segment rising out of a From group takes that group's colors
+		// before the colors are quantized; a faded one then sinks toward the
+		// surface it sits on, its fill included
+		if s.Rise > 0 {
+			st = riseFrom(a.hlStyle(s.From), st, s.Rise, pal)
+		}
+		if s.Fade > 0 {
 			to := pal.Bg
-			if panel {
+			if s.OnPanel {
 				to = pal.Panel
 			}
-			st.Fg = hostapi.Mix(cmp.Or(st.Fg, pal.Fg), to, fade)
+			st.Fg = hostapi.Mix(cmp.Or(st.Fg, pal.Fg), to, s.Fade)
 			if st.Bg != nil {
-				st.Bg = hostapi.Mix(st.Bg, to, fade)
+				st.Bg = hostapi.Mix(st.Bg, to, s.Fade)
 			}
 			if st.UnderlineColor != nil {
-				st.UnderlineColor = hostapi.Mix(st.UnderlineColor, to, fade)
+				st.UnderlineColor = hostapi.Mix(st.UnderlineColor, to, s.Fade)
 			}
 		}
 	}
@@ -2466,13 +2485,25 @@ func (a *App) segStyle(hl, over string, fill hostapi.Fill, fade float64, panel b
 // terminal's own. It is cached for the frame: compose styles thousands of
 // segments and building the sequence for each is the biggest cost of
 // drawing one.
-func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill, fade float64, panel bool) string {
-	key := hl // no highlight name holds a NUL, and hover, a fill and a fade are the rare cases
-	if over != "" {
-		key = hl + "\x00" + over
+func (a *App) sgrPrefix(s hostapi.Segment) string {
+	hl, over, fade, panel := s.HL, s.Over, s.Fade, s.OnPanel
+	key := hl // no highlight name holds a NUL, and a From, a hover, a fill and a fade are the rare cases
+	if s.From != "" {
+		key = hl + "\x00" + s.From
 	}
-	if fill != hostapi.FillAuto {
-		key += "\x00" + string(rune('0'+fill))
+	if over != "" {
+		key = key + "\x00" + over
+	}
+	if s.Fill != hostapi.FillAuto {
+		key += "\x00" + string(rune('0'+s.Fill))
+	}
+	if s.Rise > 0 {
+		fk, ok := a.fadeKeys[s.Rise]
+		if !ok {
+			fk = strconv.FormatFloat(s.Rise, 'f', 3, 64)
+			a.fadeKeys[s.Rise] = fk
+		}
+		key += "\x00r" + fk
 	}
 	if fade > 0 {
 		fk, ok := a.fadeKeys[fade]
@@ -2490,7 +2521,7 @@ func (a *App) sgrPrefix(hl, over string, fill hostapi.Fill, fade float64, panel 
 	if p, ok := a.prefixes[key]; ok {
 		return p
 	}
-	st := a.segStyle(hl, over, fill, fade, panel)
+	st := a.segStyle(s)
 	p := ""
 	if !st.IsZero() {
 		p = st.String()
@@ -2512,7 +2543,7 @@ func (a *App) renderSegs(segs []hostapi.Segment, w int) string {
 		if s.Text == "" {
 			continue
 		}
-		p := a.sgrPrefix(s.HL, s.Over, s.Fill, s.Fade, s.OnPanel)
+		p := a.sgrPrefix(s)
 		if p != "" {
 			b.WriteString(p)
 		}

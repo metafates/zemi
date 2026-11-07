@@ -1561,6 +1561,11 @@ type Segment struct {
 	// sits on: a scrolled view's rows at an edge content lies past, or a
 	// widget's own clipped block, which sets it on the segments it cuts
 	Fade float64
+	// From is Go only: the highlight group a segment's Rise runs out of
+	From string
+	// Rise is how far (0 to 1) the segment's colors still stand in its From
+	// group: a user row lands styled queued and its colors run into their own
+	Rise float64
 }
 
 // Pin is a row's part in a scrolled region's pinned header stack.

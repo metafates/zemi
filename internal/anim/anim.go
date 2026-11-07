@@ -131,6 +131,21 @@ func Faded(row []hostapi.Segment, t float64, spare func(hostapi.Segment) bool) [
 	return out
 }
 
+// Tinted is row with every segment standing by t in the colors its From group
+// holds, 0 being the segment's own. A t of 0 or less hands the row back
+// untouched.
+func Tinted(row []hostapi.Segment, t float64) []hostapi.Segment {
+	if t <= 0 {
+		return row
+	}
+	out := make([]hostapi.Segment, len(row))
+	for i, s := range row {
+		s.Rise = t
+		out[i] = s
+	}
+	return out
+}
+
 // FadedRows is rows with every row faded.
 func FadedRows(rows [][]hostapi.Segment, t float64, spare func(hostapi.Segment) bool) [][]hostapi.Segment {
 	out := make([][]hostapi.Segment, len(rows))
