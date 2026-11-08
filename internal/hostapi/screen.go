@@ -192,7 +192,7 @@ func (h *Host) ScreenState(width, height int, state UIState) *ScreenState {
 	st.Home, _ = os.UserHomeDir()
 	st.Project, st.Branch = h.project(), h.gitBranch()
 	if run != nil {
-		_, rows, live, rev := run.view(stream)
+		rows, live, rev := run.view(stream)
 		st.View = &RunView{ID: run.id, Agent: sanitize.String(run.label())}
 		st.Transcript, stream, st.ViewRevision = rows, live, rev
 		st.TranscriptCount, st.TranscriptEpoch = len(rows), 0

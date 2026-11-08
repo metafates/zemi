@@ -632,7 +632,7 @@ func callOutput(m ChatMessage) string {
 func (h *Host) viewedTranscript() []ChatMessage {
 	sess, stream := h.liveView()
 	if run := h.viewedRun(); run != nil {
-		_, rows, _, _ := run.view(stream)
+		rows, _, _ := run.view(stream)
 		return rows
 	}
 	return sess.Transcript

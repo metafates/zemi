@@ -515,7 +515,7 @@ func (run *agentRun) transcriptLocked() []ChatMessage {
 // snapshot, for what belongs to the process rather than to a turn: the model
 // and the usage tally. rev is the transcript's revision, so the
 // chat can cache what it rendered of rows this copy has.
-func (run *agentRun) view(base StreamSnapshot) (RunStatus, []ChatMessage, StreamSnapshot, uint64) {
+func (run *agentRun) view(base StreamSnapshot) ([]ChatMessage, StreamSnapshot, uint64) {
 	run.mu.Lock()
 	defer run.mu.Unlock()
 	base.Active, base.Elapsed = run.status == RunRunning, run.took()
@@ -528,7 +528,7 @@ func (run *agentRun) view(base StreamSnapshot) (RunStatus, []ChatMessage, Stream
 	if !run.retryAt.IsZero() {
 		base.Retrying, base.RetryIn, base.RetryWhy = true, max(time.Until(run.retryAt), 0), run.retryWhy
 	}
-	return run.status, run.transcriptLocked(), base, run.rev
+	return run.transcriptLocked(), base, run.rev
 }
 
 // touch marks the transcript as written (run.mu held): every tr write goes
@@ -1057,7 +1057,8 @@ func (h *Host) updateMessage(pad, id, agentName, who, text string) string {
 // script differ by no name. The status reads as what happened to it.
 func reportHead(r report) string {
 	who := runLabel(r.description, r.agent)
-	if workflowAgent(r.agent) {		who = cmp.Or(r.description, "workflow")
+	if workflowAgent(r.agent) {
+		who = cmp.Or(r.description, "workflow")
 	}
 	return fmt.Sprintf("%s %s (%s)", clipLine(who, 60), reportTense(r.status), r.id)
 }

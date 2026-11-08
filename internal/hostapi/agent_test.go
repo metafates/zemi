@@ -1776,7 +1776,7 @@ func TestRunRetryDropsItsThought(t *testing.T) {
 	if status != RunRunning {
 		t.Fatalf("status = %q, want the run kept running through the retry", status)
 	}
-	_, _, live, _ := run.view(h.AgentStream())
+	_, live, _ := run.view(h.AgentStream())
 	if !live.Retrying || live.RetryIn <= 0 || live.RetryIn > 3*time.Second || live.Retries != 1 {
 		t.Fatalf("view = retrying %v in %v (n=%d), want the retry the hook reported", live.Retrying, live.RetryIn, live.Retries)
 	}
@@ -1788,7 +1788,7 @@ func TestRunRetryDropsItsThought(t *testing.T) {
 	if len(got) != 1 || got[0].Kind != RowReasoning || got[0].Text != "the real one" {
 		t.Fatalf("rows = %+v, want the retried step's thought alone", got)
 	}
-	if _, _, live, _ := run.view(h.AgentStream()); live.Retrying {
+	if _, live, _ := run.view(h.AgentStream()); live.Retrying {
 		t.Fatal("a streamed part left the run marked retrying")
 	}
 }

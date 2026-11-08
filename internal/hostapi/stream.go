@@ -497,7 +497,7 @@ func (s *streamAdapter) ToolInputDelta(id, delta string) {
 	t.partial += delta
 	// NOTE: each delta re-walks the partial until the label lands; at
 	// provider delta sizes that stays well under a millisecond.
-	if label, isPath := streamLabel(string(t.Name), t.partial); label != "" {
+	if label, isPath := streamLabel(t.Name, t.partial); label != "" {
 		if isPath { // a path reads relative to the project, like every rail row names it
 			label = s.h.relPath(label)
 		}
