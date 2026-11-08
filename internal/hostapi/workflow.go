@@ -2075,9 +2075,9 @@ func (h *Host) workflowsOverlay() Overlay {
 		held.Add(f.id)
 		switch {
 		case f.isRunning():
-			running = append(running, h.flowItem(f, "Running"))
+			running = append(running, h.flowItem(f, _sectionRunning))
 		case f.parent == sid:
-			earlier = append(earlier, h.flowItem(f, "Earlier in this session"))
+			earlier = append(earlier, h.flowItem(f, _sectionEarlier))
 		}
 	}
 	var stored []*flowRun
@@ -2088,7 +2088,7 @@ func (h *Host) workflowsOverlay() Overlay {
 	}
 	slices.SortFunc(stored, func(a, b *flowRun) int { return b.started.Compare(a.started) })
 	for _, f := range stored {
-		earlier = append(earlier, h.flowItem(f, "Earlier in this session"))
+		earlier = append(earlier, h.flowItem(f, _sectionEarlier))
 	}
 	// making one heads the list, as it does in /agents and /plugin, and a run
 	// already in flight is what its keys act on by default
