@@ -803,7 +803,7 @@ func TestStoredRunsCapAtTheRegistryCap(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	sid := seedSession(t, h)
-	for i := 0; i < _maxKeptRuns+5; i++ {
+	for i := range _maxKeptRuns + 5 {
 		if err := h.DB.CreateSession(fmt.Sprintf("%sc%02d", sid, i), sid, fmt.Sprintf("run %d", i), "explore"); err != nil {
 			t.Fatal(err)
 		}
