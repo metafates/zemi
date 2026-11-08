@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -138,5 +139,21 @@ func TestRefuse(t *testing.T) {
 	release()
 	if err := Run(Command("true")); err != nil {
 		t.Fatalf("start once released: %v", err)
+	}
+}
+
+// A git child starts from the non-interactive set every other child gets, so a
+// var added there reaches the one child that talks to remotes, and the
+// caller's own entries come last.
+func TestGitEnv(t *testing.T) {
+	g := Git{Env: []string{"GIT_SSH_COMMAND=ssh -i k"}}
+	env := g.env([]string{"PATH=/bin"})
+	for _, kv := range NonInteractiveEnv {
+		if !slices.Contains(env, kv) {
+			t.Errorf("git's env is missing %q", kv)
+		}
+	}
+	if env[0] != "PATH=/bin" || env[len(env)-1] != "GIT_SSH_COMMAND=ssh -i k" {
+		t.Errorf("git's env = %q", env)
 	}
 }

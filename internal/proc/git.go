@@ -3,6 +3,7 @@ package proc
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -75,9 +76,7 @@ func (g Git) run(ctx context.Context, args ...string) (string, error) {
 	}
 	cmd := CommandContext(ctx, "git", args...)
 	cmd.Dir = g.Dir
-	// status leaves a repository's index alone
-	cmd.Env = append(cmd.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GIT_LFS_SKIP_SMUDGE=1")
-	cmd.Env = append(cmd.Env, g.Env...)
+	cmd.Env = g.env(cmd.Environ())
 	// a warning on stderr ("could not open directory") must not land in a
 	// -z listing or a blob's content
 	var stderr strings.Builder
@@ -90,6 +89,14 @@ func (g Git) run(ctx context.Context, args ...string) (string, error) {
 		err = fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return string(out), err
+}
+
+// env is a git child's environment over base: the non-interactive set every
+// other child gets, then git's own, then the caller's. status leaves a
+// repository's index alone.
+func (g Git) env(base []string) []string {
+	return slices.Concat(base, NonInteractiveEnv,
+		[]string{"GIT_CONFIG_NOSYSTEM=1", "GIT_OPTIONAL_LOCKS=0", "GIT_LFS_SKIP_SMUDGE=1"}, g.Env)
 }
 
 // subcommand is the git command args run, past leading -c options.
