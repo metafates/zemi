@@ -930,9 +930,9 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	}
 
 	// a model told it reads images plans screenshots it can never look at
-	readDesc := "Read a file (text or image), or list a directory one level deep."
+	readDesc := "Read the file at path (text or image), or list a directory one level deep."
 	if p != nil && p.Images != nil && !p.Images() {
-		readDesc = "Read a text file, or list a directory one level deep. This model cannot see images: do not take screenshots or read image files. Check visual work in its source, the project's build or tests, or ask the user to look."
+		readDesc = "Read the text file at path, or list a directory one level deep. This model cannot see images: do not take screenshots or read image files. Check visual work in its source, the project's build or tests, or ask the user to look."
 	}
 
 	return []fantasy.AgentTool{
@@ -950,12 +950,12 @@ Chain dependent steps with &&.`,
 			pathReq(perm.SubjectRead, pathIn),
 			typed(runRead))),
 
-		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. Pass path first, then the content. An existing file must have been read first, and not changed since. To change part of a file use edit.", false,
+		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. Pass path first, then the text. An existing file must have been read first, and not changed since. To change part of a file use edit.", false,
 			writeArgs{},
 			changeReq(ToolWrite),
 			typed(runWrite)))),
 
-		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. Pass path first, then the replacement. search must match exactly once, without read's line-number prefix. Keep it as small as still unique; edits and writes sent together apply in order.", false,
+		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. Pass path first, then search, then replace. search must match exactly once, without read's line-number prefix. Keep it as small as still unique; edits and writes sent together apply in order.", false,
 			editArgs{},
 			changeReq(ToolEdit),
 			typed(runEdit)))),
@@ -970,7 +970,7 @@ Chain dependent steps with &&.`,
 			pathReq(perm.SubjectRead, searchRoot),
 			typed(runGrep)),
 
-		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees; never a single step. Pass the whole list every time, exactly one item in_progress while work remains, and mark an item done in the same response as the next step's first calls. Work that arrives mid-turn joins the list: add it when you take it on, not once it is done. An item left in_progress when the turn ends goes back to pending, so mark the next one in_progress. A turn does not end with open items: every item done, or the list rewritten. Do not repeat the list in your reply.",
+		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees; never a single step. Pass items, the whole list, every time, exactly one item in_progress while work remains, and mark an item done in the same response as the next step's first calls. Work that arrives mid-turn joins the list: add it when you take it on, not once it is done. An item left in_progress when the turn ends goes back to pending, so mark the next one in_progress. A turn does not end with open items: every item done, or the list rewritten. Do not repeat the list in your reply.",
 			false,
 			todosArgs{},
 			nil,
@@ -996,7 +996,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			shellRequests,
 			typed(runJobStart)),
 
-		mk(ToolJobRead, "Read what a background job printed since your last read of it, and whether it is still running.",
+		mk(ToolJobRead, "Read what job id printed since your last read of it, and whether it is still running.",
 			true,
 			jobReadArgs{},
 			nil,
@@ -1008,7 +1008,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			nil,
 			typed(runJobList)),
 
-		mk(ToolJobKill, "Stop a background job and everything it started.",
+		mk(ToolJobKill, "Stop job id and everything it started.",
 			false,
 			jobKillArgs{},
 			nil,

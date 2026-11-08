@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -1065,6 +1066,13 @@ func TestToolSchemasAreProperties(t *testing.T) {
 			}
 			if m["type"] == "array" && m["items"] == nil {
 				t.Fatalf("%s.%s: array without items", info.Name, name)
+			}
+		}
+		// the description is the only ordering the model reads (properties
+		// reach it alphabetized), so it must name every required key
+		for _, r := range info.Required {
+			if !regexp.MustCompile(`\b` + r + `\b`).MatchString(info.Description) {
+				t.Errorf("%s: description never names its required key %q", info.Name, r)
 			}
 		}
 	}
