@@ -1107,22 +1107,40 @@ func TestReadPagesAHugeFile(t *testing.T) {
 	}
 }
 
+// argsInput is an args struct as the pipeline hands it to a tool: the map
+// ParseInput's marshalling produces, so a test names fields, not keys.
+func argsInput(t *testing.T, args any) map[string]any {
+	t.Helper()
+	b, err := json.Marshal(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var in map[string]any
+	if err := json.Unmarshal(b, &in); err != nil {
+		t.Fatal(err)
+	}
+	return in
+}
+
 func TestChangeDiff(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "a.go")
 	if err := os.WriteFile(path, []byte("one\ntwo\nthree\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	d := ChangeDiff("edit", map[string]any{"path": path, "search": "two", "replace": "TWO"})
+	d := ChangeDiff(ToolEdit, argsInput(t, editArgs{Path: path, Search: "two", Replace: "TWO"}))
 	for _, want := range []string{"@@ -1,3 +1,3 @@", " one", "-two", "+TWO", " three"} {
 		if !strings.Contains(d, want) {
 			t.Fatalf("diff misses %q:\n%s", want, d)
 		}
 	}
-	if d := ChangeDiff("edit", map[string]any{"path": path, "search": "1\n3", "replace": "2"}); d != "--- "+path+"\n+++ "+path+"\n@@\n-1\n-3\n+2" {
+	if d := ChangeDiff(ToolEdit, argsInput(t, editArgs{Path: path, Search: "1\n3", Replace: "2"})); d != "--- "+path+"\n+++ "+path+"\n@@\n-1\n-3\n+2" {
 		t.Fatalf("fallback = %q", d)
 	}
-	if d := ChangeDiff("write", map[string]any{"path": os.DevNull, "text": "a\nb\n"}); d != "--- "+os.DevNull+"\n+++ "+os.DevNull+"\n@@\n+a\n+b" {
+	if d := ChangeDiff(ToolWrite, argsInput(t, writeArgs{Path: os.DevNull, Text: "a\nb\n"})); d != "--- "+os.DevNull+"\n+++ "+os.DevNull+"\n@@\n+a\n+b" {
 		t.Fatalf("device fallback = %q", d)
+	}
+	if d := ChangeDiff(ToolRead, argsInput(t, readArgs{Path: path})); d != "" {
+		t.Fatalf("a tool that changes no file previewed %q", d)
 	}
 }
 
@@ -1191,61 +1209,91 @@ func trunc(s string, n int) string {
 	return s
 }
 
+// TestLeadPairsAreProperties: every lead pair names keys its tool's schema
+// offers, so a renamed arg cannot leave the guard pointing at a key nothing
+// sends. agent and lua are hostapi's tools and absent from All: their pairs
+// are not checked here.
+func TestLeadPairsAreProperties(t *testing.T) {
+	for _, tl := range All(nil) {
+		info := tl.Info()
+		for _, key := range LeadPairs[info.Name] {
+			if key == "" {
+				continue
+			}
+			if _, ok := info.Parameters[key]; !ok {
+				t.Errorf("%s: LeadPairs names %q, which its schema does not offer", info.Name, key)
+			}
+		}
+	}
+}
+
 // TestLeadOrder: a call that opens with the bulk content argument still
 // runs, but its output reminds the model to lead with the label argument.
+// The keys come from LeadPairs, pinned to the schemas by
+// TestLeadPairsAreProperties.
 func TestLeadOrder(t *testing.T) {
-	for _, c := range []struct {
-		name, input string
-		ok          bool
-	}{
-		{"label first", `{"about":"probe","command":"true"}`, true},
-		{"content only, no label", `{"command":"true"}`, false},
-		{"content first", `{"command":"true","about":"late"}`, false},
-		{"nested content keys do not count", `{"nested":{"command":"z"},"about":"a","command":"true"}`, true},
-		{"no object", `true`, true},
-	} {
-		if got := LeadOK(c.input, "about", "command"); got != c.ok {
-			t.Errorf("%s: LeadOK = %v, want %v", c.name, got, c.ok)
+	for _, tl := range All(nil) {
+		lead, bulk := LeadPairs[tl.Info().Name][0], LeadPairs[tl.Info().Name][1]
+		if lead == "" || bulk == "" {
+			continue
+		}
+		for _, c := range []struct {
+			name, input string
+			ok          bool
+		}{
+			{"label first", `{"` + lead + `":"x","` + bulk + `":"y"}`, true},
+			{"content first", `{"` + bulk + `":"y","` + lead + `":"x"}`, false},
+			{"content only, no label", `{"` + bulk + `":"y"}`, false},
+			{"nested content keys do not count", `{"nested":{"` + bulk + `":"z"},"` + lead + `":"x","` + bulk + `":"y"}`, true},
+			{"no object", `true`, true},
+		} {
+			if got := LeadOK(c.input, lead, bulk); got != c.ok {
+				t.Errorf("%s: %s: LeadOK = %v, want %v", tl.Info().Name, c.name, got, c.ok)
+			}
 		}
 	}
 	p, _ := testPipeline(t, true)
-	shell := toolNamed(t, "shell", p)
-	run := func(input string) string {
-		res, err := shell.Run(t.Context(), fantasy.ToolCall{ID: "t1", Name: "shell", Input: input})
+	run := func(name ToolName, input string) string {
+		res, err := toolNamed(t, string(name), p).Run(t.Context(), fantasy.ToolCall{ID: "t1", Name: string(name), Input: input})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return res.Content
 	}
-	if out := run(`{"about":"probe","command":"true"}`); strings.Contains(out, "system-reminder") {
-		t.Fatalf("a label-first call was reminded: %q", out)
+	for _, c := range []struct {
+		tool ToolName
+		bulk string
+	}{
+		{ToolShell, "true"},
+		{ToolGrep, "x"},
+	} {
+		lead, bulk := LeadPairs[string(c.tool)][0], LeadPairs[string(c.tool)][1]
+		if out := run(c.tool, `{"`+lead+`":"probe","`+bulk+`":"`+c.bulk+`"}`); strings.Contains(out, "system-reminder") {
+			t.Errorf("%s: a label-first call was reminded: %q", c.tool, out)
+		}
+		want := `<system-reminder>Pass "` + lead + `" before "` + bulk + `" in ` + string(c.tool)
+		if out := run(c.tool, `{"`+bulk+`":"`+c.bulk+`","`+lead+`":"probe"}`); !strings.Contains(out, want) {
+			t.Errorf("%s: a content-first call carried no reminder: %q", c.tool, out)
+		}
 	}
-	if out := run(`{"command":"true","about":"late"}`); !strings.Contains(out, `<system-reminder>Pass "about" before "command" in shell calls`) {
-		t.Fatalf("a content-first call carried no reminder: %q", out)
-	}
-	grep := toolNamed(t, "grep", p)
-	res, err := grep.Run(t.Context(), fantasy.ToolCall{ID: "t2", Name: "grep", Input: `{"pattern":"x","about":"late"}`})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(res.Content, `<system-reminder>Pass "about" before "pattern" in grep calls`) {
-		t.Fatalf("a content-first grep call carried no reminder: %q", res.Content)
-	}
+	lead, bulk := LeadPairs[string(ToolShell)][0], LeadPairs[string(ToolShell)][1]
 	for _, c := range []struct {
 		name, input, want string
 	}{
-		{"buries about", `{"command":"true","about":"late"}`, `{"about": "late", "command": "true"}`},
-		{"keeps raw values", `{"command":"a","about":"b","nested":{"command":"z"}}`, `{"about": "b", "command": "a", "nested": {"command":"z"}}`},
-		{"label first already", `{"about":"a","command":"b"}`, `{"about":"a","command":"b"}`},
-		{"no label", `{"command":"b"}`, `{"command":"b"}`},
+		{"buries the label", `{"` + bulk + `":"true","` + lead + `":"late"}`, `{"` + lead + `": "late", "` + bulk + `": "true"}`},
+		{"keeps raw values", `{"` + bulk + `":"a","` + lead + `":"b","nested":{"` + bulk + `":"z"}}`, `{"` + lead + `": "b", "` + bulk + `": "a", "nested": {"` + bulk + `":"z"}}`},
+		{"label first already", `{"` + lead + `":"a","` + bulk + `":"b"}`, `{"` + lead + `":"a","` + bulk + `":"b"}`},
+		{"no label", `{"` + bulk + `":"b"}`, `{"` + bulk + `":"b"}`},
 		{"no object", `true`, `true`},
 		{"unknown tool", `{"x":"y"}`, `{"x":"y"}`},
 	} {
-		if got := LeadInput("shell", c.input); got != c.want {
+		if got := LeadInput(string(ToolShell), c.input); got != c.want {
 			t.Errorf("%s: LeadInput = %s, want %s", c.name, got, c.want)
 		}
 	}
-	if got := LeadInput("read", `{"limit":5,"path":"p"}`); got != `{"path": "p", "limit": 5}` {
+	// read has no bulk key: its label jumps ahead of any other property
+	readLead := LeadPairs[string(ToolRead)][0]
+	if got := LeadInput(string(ToolRead), `{"limit":5,"`+readLead+`":"p"}`); got != `{"`+readLead+`": "p", "limit": 5}` {
 		t.Errorf("read: LeadInput = %s", got)
 	}
 }
