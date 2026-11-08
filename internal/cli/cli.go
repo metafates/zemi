@@ -67,9 +67,9 @@ type options struct {
 // exitError is the error of a command that printed its own diagnostic.
 type exitError int
 
-// interrupted is the status of a command a signal stopped: 128 + SIGINT, as a
+// _interrupted is the status of a command a signal stopped: 128 + SIGINT, as a
 // shell reports it.
-const interrupted = 130
+const _interrupted = 130
 
 func (e exitError) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
 
@@ -430,7 +430,7 @@ func pluginCommand(o *options) *cobra.Command {
 			err = plugin.Run(ctx, dirs, append([]string{c.Name()}, args...), c.OutOrStdout())
 		}
 		if ctx.Err() != nil {
-			return exitError(interrupted)
+			return exitError(_interrupted)
 		}
 		return err
 	}
@@ -904,7 +904,7 @@ func printHealth(h *hostapi.Host, stdout io.Writer, asJSON bool) int {
 	ctx, stop := signalContext()
 	defer stop()
 	if h.WaitMCP(ctx); ctx.Err() != nil {
-		return interrupted
+		return _interrupted
 	}
 	code, p := 0, colorprofile.Detect(stdout, os.Environ())
 	rows := h.HealthRows()

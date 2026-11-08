@@ -139,7 +139,7 @@ func launch(o options) int {
 		select {
 		case <-sig:
 			proc.KillAll()
-			os.Exit(interrupted)
+			os.Exit(_interrupted)
 		case <-stop:
 		}
 	}()

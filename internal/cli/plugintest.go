@@ -120,7 +120,7 @@ func testPluginsWithin(ctx context.Context, timeout time.Duration, args []string
 		declared := pt.Cases
 		end()
 		if ctx.Err() != nil {
-			return interrupted
+			return _interrupted
 		}
 		if err != nil {
 			failed++
@@ -155,7 +155,7 @@ func testPluginsWithin(ctx context.Context, timeout time.Duration, args []string
 			}
 			end()
 			if ctx.Err() != nil {
-				return interrupted
+				return _interrupted
 			}
 			if lines == nil {
 				passed++
@@ -167,7 +167,7 @@ func testPluginsWithin(ctx context.Context, timeout time.Duration, args []string
 	}
 	switch {
 	case ctx.Err() != nil:
-		return interrupted
+		return _interrupted
 	case failed == 0 && ran == 0:
 		fmt.Fprintf(stdout, "no case matches %q (%d %s in %d %s)\n", pattern, cases, hostapi.Plural(cases, "case", "cases"), len(files), hostapi.Plural(len(files), "file", "files"))
 		return 1
