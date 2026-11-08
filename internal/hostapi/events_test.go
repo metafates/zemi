@@ -34,7 +34,7 @@ func TestToolDeniedEvent(t *testing.T) {
 		if tl.Info().Name != "write" {
 			continue
 		}
-		resp, err := tl.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "write", Input: `{"path":"/p/secret.txt","content":"x"}`})
+		resp, err := tl.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "write", Input: `{"path":"/p/secret.txt","text":"x"}`})
 		if err != nil || !resp.IsError {
 			t.Fatalf("denied write = %+v, %v", resp, err)
 		}

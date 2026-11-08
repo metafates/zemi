@@ -835,7 +835,7 @@ func TestHaltKeepsTheStep(t *testing.T) {
 			if toolResult {
 				return textParts("went on past the halt")
 			}
-			return append(toolCallParts("w1", "write", fmt.Sprintf(`{"path":%q,"content":"x"}`, file))[:4], toolCallParts("g1", "glob", `{"pattern":"*"}`)...)
+			return append(toolCallParts("w1", "write", fmt.Sprintf(`{"path":%q,"text":"x"}`, file))[:4], toolCallParts("g1", "glob", `{"pattern":"*"}`)...)
 		}}, nil
 	}
 	if err := h.AgentSend("go"); err != nil {

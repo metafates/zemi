@@ -40,7 +40,7 @@ func TestLSPDiagnostics(t *testing.T) {
 			t.Helper()
 			in := map[string]string{"path": filepath.Join(h.Dirs.ProjectDir, name)}
 			if tool == "write" {
-				in["content"] = content
+				in["text"] = content
 			}
 			input, _ := json.Marshal(in, json.Deterministic(true))
 			resp, err := byName[tool].Run(t.Context(), fantasy.ToolCall{ID: "1", Name: tool, Input: string(input)})

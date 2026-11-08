@@ -765,8 +765,8 @@ func boxScale(src image.Image, w, h int) *image.RGBA {
 
 // writeArgs is the write tool's input and its schema source.
 type writeArgs struct {
-	Path    string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
-	Content string `json:"content" desc:"the file's whole content; pass after path"`
+	Path string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
+	Text string `json:"text" desc:"the file's whole content; pass after path"`
 }
 
 // looksBinary is the sniff read and command output share: a NUL near
@@ -815,7 +815,7 @@ func runRead(ctx context.Context, p *Pipeline, in readArgs) (fantasy.ToolRespons
 	}
 	defer f.Close()
 	// every outcome of opening a file counts as seen, a page included: the
-	// edit guard is about what changed under the model, an exact old_string
+	// edit guard is about what changed under the model, an exact search
 	// is its own proof, and a refused binary is all the model can know of a
 	// file that write replaces whole
 	p.markRead(path, fi)
@@ -949,9 +949,9 @@ func listDir(path perm.Path) fantasy.ToolResponse {
 
 // editArgs is the edit tool's input and its schema source.
 type editArgs struct {
-	Path      string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand; pass before old_string"`
-	OldString string `json:"old_string" desc:"the exact text to replace; pass after path"`
-	NewString string `json:"new_string"`
+	Path    string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
+	Search  string `json:"search" desc:"the exact text to find; pass after path"`
+	Replace string `json:"replace" desc:"the replacement text"`
 }
 
 // readGated reads a whole file for edit. A file over editMaxBytes is refused
@@ -1010,7 +1010,7 @@ func turn(ctx context.Context, id string) func() {
 // runWrite creates or overwrites a file (parents created).
 func runWrite(ctx context.Context, p *Pipeline, in writeArgs) (fantasy.ToolResponse, error) {
 	path := p.Path.String()
-	content := in.Content
+	content := in.Text
 	defer lockFile(path)()
 	if fi, err := os.Stat(path); err == nil {
 		if msg := p.stale(path, fi, false); msg != "" {
@@ -1040,7 +1040,7 @@ func runEdit(ctx context.Context, p *Pipeline, in editArgs) (fantasy.ToolRespons
 		return fantasy.NewTextErrorResponse(relErr(err).Error()), nil
 	}
 	rel := workRel(path)
-	out, msg := editText(lf(string(data)), in.OldString, in.NewString, rel)
+	out, msg := editText(lf(string(data)), in.Search, in.Replace, rel)
 	if msg != "" {
 		return fantasy.NewTextErrorResponse(msg), nil
 	}
@@ -1117,7 +1117,7 @@ type grepArgs struct {
 	Include string `json:"include,omitempty" desc:"glob limiting which files are searched, such as *.go"`
 }
 
-// editText applies an edit's old_string and new_string to LF text; msg
+// editText applies an edit's search and replace to LF text; msg
 // explains why it does not apply, and then out is to be ignored.
 func editText(src, oldText, newText, where string) (out, msg string) {
 	oldText, newText = lf(oldText), lf(newText)
@@ -1125,7 +1125,7 @@ func editText(src, oldText, newText, where string) (out, msg string) {
 	out, n = applyEdit(src, oldText, newText)
 	msg = editError(src, oldText, n, where)
 	if oldText != "" && oldText == newText {
-		msg = "old_string and new_string are the same; nothing to change"
+		msg = "search and replace are the same; nothing to change"
 	}
 	return out, msg
 }
@@ -1152,9 +1152,9 @@ type Hit struct {
 func editError(src, old string, n int, where string) string {
 	switch {
 	case old == "":
-		return "old_string is empty; use write to create a file"
+		return "search is empty; use write to create a file"
 	case n > 1:
-		return fmt.Sprintf("old_string matches %d places in %s; add surrounding lines to make it unique", n, where)
+		return fmt.Sprintf("search matches %d places in %s; add surrounding lines to make it unique", n, where)
 	case n > 0:
 		return ""
 	}
@@ -1164,7 +1164,7 @@ func editError(src, old string, n int, where string) string {
 		var hits []string
 		at := 0
 		// whole lines first; Contains only when none match, since the model
-		// may start old_string mid-line
+		// may start search mid-line
 		for _, match := range []func(string) bool{
 			func(l string) bool { return strings.TrimSpace(l) == first },
 			func(l string) bool { return strings.Contains(l, first) },
@@ -1187,14 +1187,14 @@ func editError(src, old string, n int, where string) string {
 		// the file's lines only when the hit is unique: a common first line
 		// like "}" would show the wrong block
 		if len(hits) > 1 {
-			return fmt.Sprintf("old_string not found in %s; its first line matches lines %s, so a later line differs: read the block you meant and copy it exactly", where, strings.Join(hits, ", "))
+			return fmt.Sprintf("search not found in %s; its first line matches lines %s, so a later line differs: read the block you meant and copy it exactly", where, strings.Join(hits, ", "))
 		}
 		if len(hits) == 1 {
-			return fmt.Sprintf("old_string not found in %s; its first line matches line %d, so a later line differs. The file there reads (copy it without the line numbers):", where, at+1) +
+			return fmt.Sprintf("search not found in %s; its first line matches line %d, so a later line differs. The file there reads (copy it without the line numbers):", where, at+1) +
 				numbered(lines, at, strings.Count(strings.Trim(old, "\n"), "\n")+1)
 		}
 	}
-	return "old_string not found in " + where + "; read the file again and copy the text exactly"
+	return "search not found in " + where + "; read the file again and copy the text exactly"
 }
 
 // runGlob lists files under root (default session dir) matching pattern,

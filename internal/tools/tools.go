@@ -777,8 +777,8 @@ func schemaPointer(root any, ref string) (any, error) {
 var LeadPairs = map[string][2]string{
 	string(ToolShell):    {"about", "command"},
 	string(ToolJobStart): {"about", "command"},
-	string(ToolWrite):    {"path", "content"},
-	string(ToolEdit):     {"path", "old_string"},
+	string(ToolWrite):    {"path", "text"},
+	string(ToolEdit):     {"path", "search"},
 	string(ToolGrep):     {"about", "pattern"},
 	string(ToolLua):      {"about", "script"},
 	string(ToolAgent):    {"description", "prompt"},
@@ -820,8 +820,8 @@ func LeadReminder(tool, lead, content string) string {
 // StripReminder cuts a trailing LeadReminder note from a tool result: the
 // model reads it, the user's echo rows do not show it.
 func StripReminder(output string) string {
-	if i := strings.LastIndex(output, "\n\n<system-reminder>"); i >= 0 && strings.HasSuffix(output, "</system-reminder>") {
-		return output[:i]
+	if head, tag, found := strings.CutLast(output, "\n\n<system-reminder>"); found && strings.HasPrefix(tag, "Pass \"") && strings.HasSuffix(tag, "</system-reminder>") {
+		return head
 	}
 	return output
 }
@@ -897,7 +897,7 @@ Chain dependent steps with &&.`,
 			changeReq(ToolWrite),
 			typed(runWrite)))),
 
-		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. Pass path first, then the old and new strings. old_string must match exactly once, without read's line-number prefix. Keep it as small as still unique; edits and writes sent together apply in order.", false,
+		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. Pass path first, then the replacement. search must match exactly once, without read's line-number prefix. Keep it as small as still unique; edits and writes sent together apply in order.", false,
 			editArgs{},
 			changeReq(ToolEdit),
 			typed(runEdit)))),
@@ -980,10 +980,10 @@ func ChangeDiff(tool ToolName, in map[string]any) string {
 	var updated string
 	switch tool {
 	case ToolWrite:
-		updated = lf(str(in["content"]))
+		updated = lf(str(in["text"]))
 	case ToolEdit:
 		var msg string
-		updated, msg = editText(old, str(in["old_string"]), str(in["new_string"]), workRel(path))
+		updated, msg = editText(old, str(in["search"]), str(in["replace"]), workRel(path))
 		if msg != "" {
 			return changePreview(in)
 		}
@@ -1012,8 +1012,8 @@ func changePreview(in map[string]any) string {
 			}
 		}
 	}
-	hunk("", str(in["content"]))
-	hunk(str(in["old_string"]), str(in["new_string"]))
+	hunk("", str(in["text"]))
+	hunk(str(in["search"]), str(in["replace"]))
 	return strings.Join(lines, "\n")
 }
 

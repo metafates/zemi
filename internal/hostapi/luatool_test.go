@@ -313,7 +313,7 @@ func TestLuaToolDrivesTools(t *testing.T) {
 	if out := run(`local ok, err = zemi.fs.write(` + strconv.Quote(w) + `, "x") print(ok, err) print(zemi.fs.read(` + strconv.Quote(w) + `))`); !strings.HasPrefix(out, "true\tnil\nx") {
 		t.Fatalf("a read file refused the script's write: %q", out)
 	}
-	edit := `local o, e = zemi.tool.call("edit", { path = ` + strconv.Quote(w) + `, old_string = "x", new_string = "y" }):wait() print(e or o)`
+	edit := `local o, e = zemi.tool.call("edit", { path = ` + strconv.Quote(w) + `, search = "x", replace = "y" }):wait() print(e or o)`
 	if out := run(edit); !strings.Contains(out, "edited") {
 		t.Fatalf("the edit after a script's write read stale: %q", out)
 	}

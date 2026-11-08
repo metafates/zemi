@@ -132,10 +132,10 @@ func TestTurnExtras(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	sa := h.streamHooks()
-	sa.ToolCallStart("e1", "edit", `{"path":"a.go","old_string":"x","new_string":"y"}`)
+	sa.ToolCallStart("e1", "edit", `{"path":"a.go","search":"x","replace":"y"}`)
 	sa.ToolCallEnd("e1", "edit", out(""), "")
-	sa.ToolCallStart("e2", "edit", `{"path":"b.go","old_string":"p","new_string":"q"}`)
-	sa.ToolCallEnd("e2", "edit", outErr("old_string not found"), "")
+	sa.ToolCallStart("e2", "edit", `{"path":"b.go","search":"p","replace":"q"}`)
+	sa.ToolCallEnd("e2", "edit", outErr("search not found"), "")
 	sa.TurnDone(nil, fantasy.Usage{})
 	var diffs []string
 	for _, m := range h.Session().Transcript {
@@ -209,7 +209,7 @@ func TestPendingRowPathLabel(t *testing.T) {
 	}
 	for _, c := range []struct{ delta, want string }{
 		{`{"path": "internal/st`, ""},
-		{`ore/store.go", "content"`, "internal/store/store.go"},
+		{`ore/store.go", "text"`, "internal/store/store.go"},
 		// the model may stream the body first and the path last
 	} {
 		if s.ToolInputDelta("1", c.delta); label() != c.want {
@@ -218,7 +218,7 @@ func TestPendingRowPathLabel(t *testing.T) {
 	}
 	// a path inside the project streams in absolute and reads relative
 	s.ToolCallPending("2", "write")
-	s.ToolInputDelta("2", `{"path": "`+h.Dirs.ProjectDir+`/x/y.go", "content"`)
+	s.ToolInputDelta("2", `{"path": "`+h.Dirs.ProjectDir+`/x/y.go", "text"`)
 	h.agents.mu.Lock()
 	want := "x/y.go"
 	if got := h.agents.tools[1].Label; got != want {
@@ -229,7 +229,7 @@ func TestPendingRowPathLabel(t *testing.T) {
 	// content streams before the path: the row still names the file as the
 	// path arrives, however long the body before it ran
 	s.ToolCallPending("3", "write")
-	s.ToolInputDelta("3", `{"content": "`+strings.Repeat("b", 3000)+`"`)
+	s.ToolInputDelta("3", `{"text": "`+strings.Repeat("b", 3000)+`"`)
 	s.ToolInputDelta("3", `, "path": "notes/la`)
 	s.ToolInputDelta("3", `st.md"}`)
 	h.agents.mu.Lock()
@@ -247,11 +247,11 @@ func TestStreamedInputCountsEveryDelta(t *testing.T) {
 	h, _ := newTestHost(t)
 	s := &streamAdapter{h: h}
 	s.ToolCallPending("1", "write")
-	s.ToolInputDelta("1", `{"about":"the config","content":"`)
+	s.ToolInputDelta("1", `{"about":"the config","text":"`)
 	s.ToolInputDelta("1", strings.Repeat("x", 2048))
 	h.agents.mu.Lock()
 	defer h.agents.mu.Unlock()
-	if got := h.agents.tools[0].Streamed; got != len(`{"about":"the config","content":"`)+2048 {
+	if got := h.agents.tools[0].Streamed; got != len(`{"about":"the config","text":"`)+2048 {
 		t.Errorf("Streamed = %d, want every delta counted", got)
 	}
 }

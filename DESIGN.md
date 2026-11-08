@@ -1416,8 +1416,8 @@ caller's own set instead, `lua` included and `update` not, since its cache
 requires the same array. A tool's input is built to spit its intention
 first: a schema's properties reach the model sorted by name (Go map keys in
 `ToolInfo.Parameters`), so the field that says what the call does is named to
-sort before the payload - `about` before `command` (fs_tools.go), `path`
-before `content` - and the rail names the file while the bytes still stream.
+sort before the payload - `about` before `command`, `path` before `text`
+(fs_tools.go) - and the rail names the file while the bytes still stream.
 Name new tools' intention fields the same way, and never the reverse.
 
 Every tool, Go or Lua, passes through the

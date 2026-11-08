@@ -473,12 +473,12 @@ func TestRecipes(t *testing.T) {
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	md := func(sub, name, body string) string {
-		in, _ := json.Marshal(map[string]string{"path": filepath.Join(dir, sub, "SKILL.md"), "content": "---\nname: " + name + "\ndescription: recipe " + name + "\n---\n\n" + body + "\n"}, json.Deterministic(true))
+		in, _ := json.Marshal(map[string]string{"path": filepath.Join(dir, sub, "SKILL.md"), "text": "---\nname: " + name + "\ndescription: recipe " + name + "\n---\n\n" + body + "\n"}, json.Deterministic(true))
 		return string(in)
 	}
 	// NAME=url is a command the entropy pass would cut
 	tok := md("tok", "tok", "step one: TOKEN=ghp_0123456789abcdefghijklmnopqrstuv make rig\nAUTH_ISSUER=http://127.0.0.1:8099/auth/realms/local make run")
-	edit, _ := json.Marshal(map[string]string{"path": filepath.Join(dir, "tok", "SKILL.md"), "old_string": "step one", "new_string": "step 1"}, json.Deterministic(true))
+	edit, _ := json.Marshal(map[string]string{"path": filepath.Join(dir, "tok", "SKILL.md"), "search": "step one", "replace": "step 1"}, json.Deterministic(true))
 	late := []string{"late", "rig"}
 	written := []string{"late", "rig", "tok"}
 	pinned := func() string {

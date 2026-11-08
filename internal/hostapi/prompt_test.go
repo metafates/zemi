@@ -297,7 +297,7 @@ func TestPromptPinned(t *testing.T) {
 				in   map[string]any
 			}{
 				{"read", map[string]any{"path": agentsMD(h), "limit": 0}},
-				{"edit", map[string]any{"path": agentsMD(h), "old_string": "test", "new_string": "check"}},
+				{"edit", map[string]any{"path": agentsMD(h), "search": "test", "replace": "check"}},
 			} {
 				i := slices.IndexFunc(all, func(a fantasy.AgentTool) bool { return a.Info().Name == call.name })
 				input, _ := json.Marshal(call.in, json.Deterministic(true))

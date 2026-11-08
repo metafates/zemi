@@ -255,8 +255,8 @@ func TestEditsOnOneFileKeepCallOrder(t *testing.T) {
 	for i := range 20 {
 		os.WriteFile(path, []byte("a\n"), 0o644)
 		call(t, read, `{"path":"`+path+`","limit":0}`)
-		first := fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path)
-		second := fmt.Sprintf(`{"path":%q,"old_string":"b","new_string":"c"}`, path)
+		first := fmt.Sprintf(`{"path":%q,"search":"a","replace":"b"}`, path)
+		second := fmt.Sprintf(`{"path":%q,"search":"b","replace":"c"}`, path)
 		CallStart(t.Context(), "c1", "edit", first)
 		CallStart(t.Context(), "c2", "edit", second)
 		var wg sync.WaitGroup
@@ -283,8 +283,8 @@ func TestCallOrderReleases(t *testing.T) {
 		p.Seen = &sync.Map{}
 		read, edit := toolNamed(t, "read", p), toolNamed(t, "edit", p)
 		path := filepath.Join(perm.RealPath(t.TempDir()), "f.txt")
-		first := fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path)
-		second := fmt.Sprintf(`{"path":%q,"old_string":"b","new_string":"c"}`, path)
+		first := fmt.Sprintf(`{"path":%q,"search":"a","replace":"b"}`, path)
+		second := fmt.Sprintf(`{"path":%q,"search":"b","replace":"c"}`, path)
 		run := func(ctx context.Context, id, input string) fantasy.ToolResponse {
 			done := make(chan fantasy.ToolResponse, 1)
 			go func() { r, _ := edit.Run(ctx, fantasy.ToolCall{ID: id, Name: "edit", Input: input}); done <- r }()
@@ -307,7 +307,7 @@ func TestCallOrderReleases(t *testing.T) {
 			want    string
 		}{
 			{"invalid first call answered", func() {
-				CallStart(bg, "c1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a"}`, path))
+				CallStart(bg, "c1", "edit", fmt.Sprintf(`{"path":%q,"search":"a"}`, path))
 				CallStart(bg, "c2", "edit", second)
 				CallDone(bg, "c1")
 			}, t.Context(), true, "a\n"},
@@ -315,7 +315,7 @@ func TestCallOrderReleases(t *testing.T) {
 				CallStart(bg, "c1", "edit", first)
 				CallStart(bg, "c2", "edit", second)
 				other := CallScope(bg)
-				CallStart(other, "c1", "edit", fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, path+".other"))
+				CallStart(other, "c1", "edit", fmt.Sprintf(`{"path":%q,"search":"a","replace":"b"}`, path+".other"))
 				CallDone(other, "c1")
 				go func() {
 					time.Sleep(50 * time.Millisecond) // the bubble's clock moves only once c2 waits
@@ -367,7 +367,7 @@ func TestNotFoundNamesSiblings(t *testing.T) {
 		path := filepath.Join(dir, c.missing)
 		for tool, input := range map[string]string{
 			"read": `{"path":"` + path + `","limit":0}`,
-			"edit": `{"path":"` + path + `","old_string":"a","new_string":"b"}`,
+			"edit": `{"path":"` + path + `","search":"a","replace":"b"}`,
 		} {
 			resp := call(t, toolNamed(t, tool, p), input)
 			_, got, _ := strings.Cut(strings.TrimSuffix(resp.Content, "?)"), "(did you mean ")
@@ -440,7 +440,7 @@ func TestWriteReadEditRoundtrip(t *testing.T) {
 	write, read, edit := toolNamed(t, "write", p), toolNamed(t, "read", p), toolNamed(t, "edit", p)
 	// results name the path relative to the (symlinked, on macOS) cwd
 	t.Chdir(dir)
-	resp := call(t, write, `{"path":"a.txt","content":"one\ntwo\nthree\n"}`)
+	resp := call(t, write, `{"path":"a.txt","text":"one\ntwo\nthree\n"}`)
 	if resp.IsError || resp.Content != "wrote a.txt (14 bytes)" {
 		t.Fatalf("write: %+v", resp)
 	}
@@ -448,7 +448,7 @@ func TestWriteReadEditRoundtrip(t *testing.T) {
 	if !strings.Contains(resp.Content, "2\ttwo") {
 		t.Fatalf("read: %+v", resp)
 	}
-	resp = call(t, edit, `{"path":"`+file+`","old_string":"two","new_string":"TWO"}`)
+	resp = call(t, edit, `{"path":"`+file+`","search":"two","replace":"TWO"}`)
 	if resp.IsError {
 		t.Fatalf("edit: %+v", resp)
 	}
@@ -612,16 +612,16 @@ func TestEditSafety(t *testing.T) {
 		input        map[string]any
 		want, result string
 	}{
-		{"unread, one exact match", "a\n", true, map[string]any{"old_string": "a", "new_string": "b"}, "edited", "b\n"},
-		{"crlf", "one\r\ntwo\r\n", false, map[string]any{"old_string": "one\ntwo", "new_string": "1\n2"}, "edited", "1\r\n2\r\n"},
-		{"mostly crlf", "one\r\ntwo\r\nthree\n", false, map[string]any{"old_string": "one", "new_string": "1"}, "edited", "1\r\ntwo\r\nthree\r\n"},
-		{"mostly lf", "one\ntwo\nthree\r\n", false, map[string]any{"old_string": "one", "new_string": "1"}, "edited", "1\ntwo\nthree\n"},
-		{"same text", "a\n", false, map[string]any{"old_string": "a", "new_string": "a"}, "are the same; nothing to change", "a\n"},
-		{"ambiguous", "x = 1\nx = 1\n", false, map[string]any{"old_string": "x = 1", "new_string": "x = 2"}, "matches 2 places", "x = 1\nx = 1\n"},
-		{"empty old_string", "x\n", false, map[string]any{"old_string": "", "new_string": "y"}, "empty", "x\n"},
-		{"diverges", "a\nb\nc\n", false, map[string]any{"old_string": "b\nX", "new_string": "y"}, "     2\tb\n     3\tc", "a\nb\nc\n"},
-		{"diverges at a common line", "}\na\n}\n}\n}\n", false, map[string]any{"old_string": "}\nX", "new_string": "y"}, "matches lines 1, 3, 4, ..., so a later line differs: read", "}\na\n}\n}\n}\n"},
-		{"whole line beats a partial one", "return nil, err\nreturn nil\nx\nreturn nil, err\n", false, map[string]any{"old_string": "return nil\nX", "new_string": "y"}, "     2\treturn nil\n     3\tx", "return nil, err\nreturn nil\nx\nreturn nil, err\n"},
+		{"unread, one exact match", "a\n", true, map[string]any{"search": "a", "replace": "b"}, "edited", "b\n"},
+		{"crlf", "one\r\ntwo\r\n", false, map[string]any{"search": "one\ntwo", "replace": "1\n2"}, "edited", "1\r\n2\r\n"},
+		{"mostly crlf", "one\r\ntwo\r\nthree\n", false, map[string]any{"search": "one", "replace": "1"}, "edited", "1\r\ntwo\r\nthree\r\n"},
+		{"mostly lf", "one\ntwo\nthree\r\n", false, map[string]any{"search": "one", "replace": "1"}, "edited", "1\ntwo\nthree\n"},
+		{"same text", "a\n", false, map[string]any{"search": "a", "replace": "a"}, "are the same; nothing to change", "a\n"},
+		{"ambiguous", "x = 1\nx = 1\n", false, map[string]any{"search": "x = 1", "replace": "x = 2"}, "matches 2 places", "x = 1\nx = 1\n"},
+		{"empty search", "x\n", false, map[string]any{"search": "", "replace": "y"}, "empty", "x\n"},
+		{"diverges", "a\nb\nc\n", false, map[string]any{"search": "b\nX", "replace": "y"}, "     2\tb\n     3\tc", "a\nb\nc\n"},
+		{"diverges at a common line", "}\na\n}\n}\n}\n", false, map[string]any{"search": "}\nX", "replace": "y"}, "matches lines 1, 3, 4, ..., so a later line differs: read", "}\na\n}\n}\n}\n"},
+		{"whole line beats a partial one", "return nil, err\nreturn nil\nx\nreturn nil, err\n", false, map[string]any{"search": "return nil\nX", "replace": "y"}, "     2\treturn nil\n     3\tx", "return nil, err\nreturn nil\nx\nreturn nil, err\n"},
 	} {
 		path := filepath.Join(dir, c.name)
 		os.WriteFile(path, []byte(c.file), 0o644)
@@ -640,11 +640,11 @@ func TestEditSafety(t *testing.T) {
 	sub := filepath.Join(dir, "sub")
 	os.Mkdir(sub, 0o755)
 	for _, in := range []map[string]any{
-		{"path": sub, "content": "x"},
-		{"path": sub, "old_string": "a", "new_string": "b"},
+		{"path": sub, "text": "x"},
+		{"path": sub, "search": "a", "replace": "b"},
 	} {
 		tl := write
-		if in["old_string"] != nil {
+		if in["search"] != nil {
 			tl = edit
 		}
 		if resp := call(t, tl, js(in)); !resp.IsError || !strings.HasSuffix(resp.Content, "sub is a directory") {
@@ -665,9 +665,9 @@ func TestEditSafety(t *testing.T) {
 		in   map[string]any
 		want string
 	}{
-		{edit, map[string]any{"old_string": "y", "new_string": "z"}, "matches 2 places"},
-		{edit, map[string]any{"old_string": "u", "new_string": "v"}, "edited"},
-		{write, map[string]any{"content": "x\n"}, "changed since you read it"},
+		{edit, map[string]any{"search": "y", "replace": "z"}, "matches 2 places"},
+		{edit, map[string]any{"search": "u", "replace": "v"}, "edited"},
+		{write, map[string]any{"text": "x\n"}, "changed since you read it"},
 	} {
 		c.in["path"] = path
 		if resp := call(t, c.tool, js(c.in)); !strings.Contains(resp.Content, c.want) {
@@ -682,7 +682,7 @@ func TestEditSafety(t *testing.T) {
 	bin := filepath.Join(dir, "b.bin")
 	os.WriteFile(bin, []byte("a\x00b"), 0o644)
 	call(t, read, js(map[string]any{"path": bin, "limit": 0}))
-	if resp := call(t, write, js(map[string]any{"path": bin, "content": "text\n"})); resp.IsError {
+	if resp := call(t, write, js(map[string]any{"path": bin, "text": "text\n"})); resp.IsError {
 		t.Fatalf("write over a read binary: %q", resp.Content)
 	}
 
@@ -692,7 +692,7 @@ func TestEditSafety(t *testing.T) {
 	ask.Seen = &sync.Map{}
 	unread := filepath.Join(dir, "unasked")
 	os.WriteFile(unread, []byte("x\n"), 0o644)
-	resp := call(t, toolNamed(t, "write", ask), js(map[string]any{"path": unread, "content": "y\n"}))
+	resp := call(t, toolNamed(t, "write", ask), js(map[string]any{"path": unread, "text": "y\n"}))
 	if !strings.Contains(resp.Content, "read ") || len(*asked) != 0 {
 		t.Fatalf("unread write: %q, asked %+v", resp.Content, *asked)
 	}
@@ -717,14 +717,14 @@ func TestScratchpad(t *testing.T) {
 		want              string
 		asks              bool
 	}{
-		{"write asks", string(ToolWrite), `{"path":"PAD/n.md","content":"x"}`, nil, "permission denied (overlay): fs.write", true},
-		{"write in a temp dir asks", string(ToolWrite), `{"path":"FREE/notes.txt","content":"x"}`, nil, "permission denied (overlay): fs.write", true},
+		{"write asks", string(ToolWrite), `{"path":"PAD/n.md","text":"x"}`, nil, "permission denied (overlay): fs.write", true},
+		{"write in a temp dir asks", string(ToolWrite), `{"path":"FREE/notes.txt","text":"x"}`, nil, "permission denied (overlay): fs.write", true},
 		{"read", string(ToolRead), `{"path":"PAD/stale.txt","limit":0}`, nil, "1\ta", false},
-		{"$ZEMI_SCRATCH write asks", string(ToolWrite), `{"path":"$ZEMI_SCRATCH/n.md","content":"x"}`, nil, "permission denied (overlay): fs.write", true},
+		{"$ZEMI_SCRATCH write asks", string(ToolWrite), `{"path":"$ZEMI_SCRATCH/n.md","text":"x"}`, nil, "permission denied (overlay): fs.write", true},
 		{"$ZEMI_SCRATCH read", string(ToolRead), `{"path":"$ZEMI_SCRATCH/stale.txt","limit":0}`, nil, "1\ta", false},
-		{"$UNKNOWN", string(ToolWrite), `{"path":"$NOPE/n.md","content":"x"}`, nil, `directory called "$NOPE" in the project`, false},
+		{"$UNKNOWN", string(ToolWrite), `{"path":"$NOPE/n.md","text":"x"}`, nil, `directory called "$NOPE" in the project`, false},
 		{"~", string(ToolRead), `{"path":"~/n.md","limit":0}`, nil, "home is", false},
-		{"%TEMP%", string(ToolWrite), `{"path":"%TEMP%\\n.md","content":"x"}`, nil, "not expanded", false},
+		{"%TEMP%", string(ToolWrite), `{"path":"%TEMP%\\n.md","text":"x"}`, nil, "not expanded", false},
 	} {
 		if c.before != nil {
 			c.before()
@@ -753,11 +753,11 @@ func TestScratchpad(t *testing.T) {
 	allow, _ := testPipeline(t, true)
 	allow.Pad, allow.Seen = pad, p.Seen
 	for _, path := range []string{filepath.Join(pad, "made.txt"), filepath.Join(free, "notes.txt")} {
-		if res := call(t, toolNamed(t, string(ToolWrite), allow), fmt.Sprintf(`{"path":%q,"content":"a\n"}`, path)); res.IsError {
+		if res := call(t, toolNamed(t, string(ToolWrite), allow), fmt.Sprintf(`{"path":%q,"text":"a\n"}`, path)); res.IsError {
 			t.Errorf("ungated write to %s: %q", path, res.Content)
 		}
 	}
-	if res := call(t, toolNamed(t, string(ToolEdit), allow), fmt.Sprintf(`{"path":%q,"old_string":"a","new_string":"b"}`, filepath.Join(pad, "made.txt"))); res.IsError {
+	if res := call(t, toolNamed(t, string(ToolEdit), allow), fmt.Sprintf(`{"path":%q,"search":"a","replace":"b"}`, filepath.Join(pad, "made.txt"))); res.IsError {
 		t.Errorf("ungated edit in the pad: %q", res.Content)
 	}
 	if entries, _ := os.ReadDir(proj); len(entries) > 0 {
@@ -919,7 +919,7 @@ func TestPostHookRuns(t *testing.T) {
 	}
 	call(t, ag, `{"command":"echo nope; rm x"}`)
 	file := perm.RealPath(filepath.Join(t.TempDir(), "f.txt"))
-	call(t, toolNamed(t, "write", p), `{"path":"`+file+`","content":"x"}`)
+	call(t, toolNamed(t, "write", p), `{"path":"`+file+`","text":"x"}`)
 	if len(posts) != 3 {
 		t.Fatalf("post must run for success and denial: %+v", posts)
 	}
@@ -1093,7 +1093,7 @@ func TestReadPagesAHugeFile(t *testing.T) {
 	if !strings.Contains(res.Content, "100000\tx") || !strings.Contains(res.Content, "... (more lines; continue with offset") {
 		t.Fatalf("page: %q", res.Content[:min(len(res.Content), 120)])
 	}
-	res, _ = runEdit(t.Context(), p, editArgs{OldString: "x", NewString: "y"})
+	res, _ = runEdit(t.Context(), p, editArgs{Search: "x", Replace: "y"})
 	if !strings.Contains(res.Content, "over edit's 10 MB limit") {
 		t.Fatalf("edit of a huge file: %q", res.Content)
 	}
@@ -1104,16 +1104,16 @@ func TestChangeDiff(t *testing.T) {
 	if err := os.WriteFile(path, []byte("one\ntwo\nthree\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	d := ChangeDiff("edit", map[string]any{"path": path, "old_string": "two", "new_string": "TWO"})
+	d := ChangeDiff("edit", map[string]any{"path": path, "search": "two", "replace": "TWO"})
 	for _, want := range []string{"@@ -1,3 +1,3 @@", " one", "-two", "+TWO", " three"} {
 		if !strings.Contains(d, want) {
 			t.Fatalf("diff misses %q:\n%s", want, d)
 		}
 	}
-	if d := ChangeDiff("edit", map[string]any{"path": path, "old_string": "1\n3", "new_string": "2"}); d != "--- "+path+"\n+++ "+path+"\n@@\n-1\n-3\n+2" {
+	if d := ChangeDiff("edit", map[string]any{"path": path, "search": "1\n3", "replace": "2"}); d != "--- "+path+"\n+++ "+path+"\n@@\n-1\n-3\n+2" {
 		t.Fatalf("fallback = %q", d)
 	}
-	if d := ChangeDiff("write", map[string]any{"path": os.DevNull, "content": "a\nb\n"}); d != "--- "+os.DevNull+"\n+++ "+os.DevNull+"\n@@\n+a\n+b" {
+	if d := ChangeDiff("write", map[string]any{"path": os.DevNull, "text": "a\nb\n"}); d != "--- "+os.DevNull+"\n+++ "+os.DevNull+"\n@@\n+a\n+b" {
 		t.Fatalf("device fallback = %q", d)
 	}
 }
@@ -1130,8 +1130,8 @@ func TestFileToolsRefuseSymlink(t *testing.T) {
 		tool  fantasy.AgentTool
 		input string
 	}{
-		{write, `{"path":"` + link + `","content":"x"}`},
-		{edit, `{"path":"` + link + `","old_string":"one","new_string":"x"}`},
+		{write, `{"path":"` + link + `","text":"x"}`},
+		{edit, `{"path":"` + link + `","search":"one","replace":"x"}`},
 	} {
 		if resp := call(t, c.tool, c.input); !resp.IsError || resp.Content != want {
 			t.Errorf("%s: %+v", c.tool.Info().Name, resp)
