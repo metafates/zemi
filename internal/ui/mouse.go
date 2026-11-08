@@ -440,11 +440,12 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		c := choices[hit-1]
 		return spans, func() { a.choosePerm(c) }, true
 	case top == _modalTrust:
-		spans, ok := item(len(_trustAnswers))
+		choices := a.trust.choices()
+		spans, ok := item(len(choices))
 		if !ok || a.fresh(a.trust.opened) {
 			return nil, nil, false
 		}
-		answer := _trustAnswers[hit-1]
+		answer := choices[hit-1].answer
 		return spans, func() { a.answerTrust(answer) }, true
 	case top == _modalPlan:
 		p := a.planAsk

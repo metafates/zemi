@@ -292,8 +292,12 @@ func (t *textRows) at(build func(int) [][]hostapi.Segment) func(int) [][]hostapi
 	}
 }
 
-// promptChoice is one answer of a Go-owned prompt.
-type promptChoice struct{ key, label, desc, hl, tag string }
+// promptChoice is one answer of a Go-owned prompt; answer is what a caller
+// waiting on the prompt hears back, for the prompts that report one.
+type promptChoice struct {
+	key, label, desc, hl, tag string
+	answer                    string
+}
 
 // choiceRows draws a prompt's answers as buttons: "[y] Trust", the key right
 // next to what it does, the selected one marked like a selected list row;

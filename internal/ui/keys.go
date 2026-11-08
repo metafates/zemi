@@ -162,7 +162,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		case top == _modalQuestion:
 			a.finishQuestion(false)
 		case top == _modalTrust:
-			a.answerTrust("later")
+			a.answerTrust(TrustLater)
 		case top == _modalOverlay:
 			a.cancelMenu()
 		case !a.composer.empty():
@@ -207,19 +207,20 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		tp := a.trust
-		if scrollKey(&tp.view, key, false) || moveSel(&tp.sel, len(_trustAnswers), len(_trustAnswers), key) {
+		choices := tp.choices()
+		if scrollKey(&tp.view, key, false) || moveSel(&tp.sel, len(choices), len(choices), key) {
 			a.bump()
 			return nil
 		}
 		switch key {
-		case "y":
-			a.answerTrust("trust")
-		case "n":
-			a.answerTrust("untrust")
-		case "l", "esc":
-			a.answerTrust("later")
+		case "esc":
+			a.answerTrust(TrustLater)
 		case "enter":
-			a.answerTrust(_trustAnswers[tp.sel])
+			a.answerTrust(choices[tp.sel].answer)
+		default:
+			if i := slices.IndexFunc(choices, func(c promptChoice) bool { return c.key == key }); i >= 0 {
+				a.answerTrust(choices[i].answer)
+			}
 		}
 	case _modalPerm:
 		pa := a.permAsk
