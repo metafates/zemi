@@ -70,17 +70,31 @@ func (h *Host) composeUserMessage(text string, images bool) fantasy.Message {
 	return fantasy.Message{Role: fantasy.MessageRoleUser, Content: parts}
 }
 
+// The @ word's kinds, which an @ word may spell out: @file:x, @skill:x,
+// @workflow:x, @agent:x forces that kind. The handlers, the popup's filter
+// and the grammar all name them from here.
+const (
+	AttachFile     = "file"
+	AttachSkill    = "skill"
+	AttachWorkflow = "workflow"
+	AttachAgent    = "agent"
+)
+
+// _attachKinds is the grammar's alternation and the splitter's order, one
+// list: a kind added here needs no second spelling.
+var _attachKinds = []string{AttachFile, AttachSkill, AttachWorkflow, AttachAgent}
+
 // _attachRef finds what attaches: an @ word at a word start, quoted when the
-// path cannot ride a bare word, and carrying its kind spelled out - the
-// prefixes SplitKind lists - which forces that kind. A quoted word's closing
-// quote is optional, so a word still being typed resolves too.
-var _attachRef = regexp.MustCompile(`(?:^|\s)@(?:(file|skill|workflow|agent):)?(?:"([^"\n]+)"?|'([^'\n]+)'?|(\S+))`)
+// path cannot ride a bare word, and carrying its kind spelled out - one of
+// _attachKinds - which forces that kind. A quoted word's closing quote is
+// optional, so a word still being typed resolves too.
+var _attachRef = regexp.MustCompile(`(?:^|\s)@(?:(` + strings.Join(_attachKinds, "|") + `):)?(?:"([^"\n]+)"?|'([^'\n]+)'?|(\S+))`)
 
 // SplitKind splits an @ word's kind prefix from what follows it, the form
 // the expander forces and the popup filters by. A quote before the colon
 // shields the word: @"file:x names a file.
 func SplitKind(token string) (kind, rest string) {
-	for _, k := range []string{"file", "skill", "workflow", "agent"} {
+	for _, k := range _attachKinds {
 		if after, ok := strings.CutPrefix(token, k+":"); ok {
 			return k, after
 		}
@@ -124,11 +138,11 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 		}
 		kind := m[1]
 		// a spelled workflow or agent attaches its hint and nothing else
-		if kind == "workflow" || kind == "agent" {
+		if kind == AttachWorkflow || kind == AttachAgent {
 			h.attachEntity(&b, word, kind)
 			continue
 		}
-		if s, ok := h.skillByName(word); ok && (kind == "" || kind == "skill") {
+		if s, ok := h.skillByName(word); ok && (kind == "" || kind == AttachSkill) {
 			// a skill attaches once, like a repeated @file
 			if !seen.Has(s.Name) {
 				seen.Add(s.Name)
@@ -137,7 +151,7 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 			continue
 		}
 		// a forced skill that misses is prose, not a fallthrough
-		if kind == "skill" {
+		if kind == AttachSkill {
 			continue
 		}
 		// a path, wherever it lives: the user named it, and what attaches
@@ -266,7 +280,7 @@ func (h *Host) expandAttachments(text string, images bool) (string, []fantasy.Fi
 // exact call. The words around the mention stay the request, in the typed
 // message. A name held by both kinds goes to the workflow; kind forces one.
 func (h *Host) attachEntity(b *strings.Builder, word, kind string) {
-	if kind == "" || kind == "workflow" {
+	if kind == "" || kind == AttachWorkflow {
 		for _, w := range h.workflows() {
 			if w.Name != word {
 				continue
@@ -280,7 +294,7 @@ func (h *Host) attachEntity(b *strings.Builder, word, kind string) {
 			return
 		}
 	}
-	if kind == "" || kind == "agent" {
+	if kind == "" || kind == AttachAgent {
 		for _, d := range h.agentDefs() {
 			if d.Name != word {
 				continue

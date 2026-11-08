@@ -41,7 +41,9 @@ func (a *App) AskTrust(root, cwd, state string) string {
 		what = "directory"
 	}
 	a.await(func() tea.Cmd {
-		a.trust = &trustPrompt{root: root, cwd: cwd, state: state, answer: ch, opened: a.now(), sel: len(_trustAnswers) - 1}
+		tp := &trustPrompt{root: root, cwd: cwd, state: state, answer: ch, opened: a.now()}
+		tp.sel = len(tp.choices()) - 1 // Later: an enter typed by habit trusts nothing
+		a.trust = tp
 		return a.notifyUnlessReported("zemi: trust this " + what + "?  " + ansi.Truncate(perm.TildePath(root), 200, "…"))
 	})
 	return <-ch
@@ -57,9 +59,26 @@ func (a *App) answerTrust(answer string) {
 	a.bump()
 }
 
-// _trustAnswers are the trust prompt's rows, in order: a click on row i
-// gives answer i.
-var _trustAnswers = []string{"trust", "untrust", "later"}
+// The answers AskTrust hands back, which cli's trust gate acts on.
+const (
+	TrustYes   = "trust"
+	TrustNo    = "untrust"
+	TrustLater = "later"
+)
+
+// choices are the trust prompt's rows, in cursor order: the answer each gives
+// is the one AskTrust's caller hears, so a row and its answer share a line.
+func (tp *trustPrompt) choices() []promptChoice {
+	laterDesc := "ask again next start"
+	if tp.state != "" {
+		laterDesc = "stays " + tp.state
+	}
+	return []promptChoice{
+		{key: "y", label: "Trust", answer: TrustYes},
+		{key: "n", label: "Don't trust", answer: TrustNo},
+		{key: "l", label: "Later", desc: laterDesc, answer: TrustLater},
+	}
+}
 
 // trustBox draws the Go-owned trust prompt (DESIGN §5, §8) in host
 // styles, with no Lua text inside. The cursor starts on Later, so an enter
@@ -103,15 +122,7 @@ func trustBox(tp *trustPrompt, w, h int) [][]hostapi.Segment {
 		}
 		return append(append(rows, nil), wrapText("Without trust, those stay off. Either answer is "+saved+".", hostapi.ChromeHint, width)...)
 	}
-	laterDesc := "ask again next start"
-	if tp.state != "" {
-		laterDesc = "stays " + tp.state
-	}
-	choices := []promptChoice{
-		{key: "y", label: "Trust"},
-		{key: "n", label: "Don't trust"},
-		{key: "l", label: "Later", desc: laterDesc},
-	}
+	choices := tp.choices()
 	act := func(compact bool) [][]hostapi.Segment { return choiceRows(choices, tp.sel, width, compact) }
 	body := scrollChoiceBody(h, width, nil, &tp.view, explain, width, act, _pickHint, hintPair{key: "esc", verb: "later"})
 	return promptBox("Trust this "+what+"?", "", body, w, h, 100, &tp.size)

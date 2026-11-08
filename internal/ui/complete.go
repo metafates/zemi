@@ -16,6 +16,16 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
+// _sections is the popup's heading per @ kind: the builders name their rows'
+// section from here, and an entity row carries the kind so its accept needs
+// no second mapping.
+var _sections = map[string]string{
+	hostapi.AttachFile:     "Files",
+	hostapi.AttachSkill:    "Skills",
+	hostapi.AttachWorkflow: "Workflows",
+	hostapi.AttachAgent:    "Agents",
+}
+
 // wordCompleter holds the composer popup that completes the word after a
 // trigger: "@" lists the project's files, the skills, the workflows and
 // agents - sections under headers - and, for a path-headed word, the
@@ -115,7 +125,7 @@ func (a *App) updateCompletion() tea.Cmd {
 		f.skills, f.skillRows, f.entities, f.entityRows = nil, nil, nil, nil
 		a.background(func() {
 			items := a.host.SkillMentions()
-			entities := append(candRows(a.host.WorkflowMentions(), "Workflows"), candRows(a.host.AgentMentions(), "Agents")...)
+			entities := append(candRows(a.host.WorkflowMentions(), hostapi.AttachWorkflow), candRows(a.host.AgentMentions(), hostapi.AttachAgent)...)
 			a.do(func() {
 				if !f.open || f.trigger != '@' {
 					return // the popup closed, or another trigger took it
@@ -133,7 +143,7 @@ func (a *App) updateCompletion() tea.Cmd {
 	a.repaths()
 	// a kind other than file takes no paths: its filter leaves no row a
 	// listing could fill
-	if kind == "" || kind == "file" {
+	if kind == "" || kind == hostapi.AttachFile {
 		if _, _, ok := pathToken(rest); ok {
 			if want := a.resolveDir(rest); want != f.dirDir {
 				a.listDir(want)
@@ -298,28 +308,22 @@ func (f *wordCompleter) title() string {
 // not the skills' leaves them no rows.
 func (f *wordCompleter) reskill() {
 	kind, rest := hostapi.SplitKind(f.token)
-	if kind != "" && kind != "skill" {
+	if kind != "" && kind != hostapi.AttachSkill {
 		f.skillRows = nil
 		f.trim()
 		return
 	}
-	f.skillRows = matchRows(candRows(f.skills, "Skills"), unquoteToken(rest), true)
+	f.skillRows = matchRows(candRows(f.skills, hostapi.AttachSkill), unquoteToken(rest), true)
 	f.trim()
 }
 
 // rentities narrows the fetched workflows and agents to the token; a kind
-// filter keeps only its own section, and the file and skill kinds none.
+// filter keeps only its own rows, and the file and skill kinds none.
 func (f *wordCompleter) rentities() {
 	kind, rest := hostapi.SplitKind(f.token)
 	f.entityRows = matchRows(f.entities, unquoteToken(rest), true)
-	if kind == "workflow" || kind == "agent" {
-		section := "Workflows"
-		if kind == "agent" {
-			section = "Agents"
-		}
-		f.entityRows = slices.DeleteFunc(f.entityRows, func(r listItem) bool { return r.section != section })
-	} else if kind != "" {
-		f.entityRows = nil
+	if kind != "" {
+		f.entityRows = slices.DeleteFunc(f.entityRows, func(r listItem) bool { return r.kind != kind })
 	}
 	f.trim()
 }
@@ -466,7 +470,7 @@ func (a *App) repaths() {
 	f := &a.completion
 	f.paths = f.paths[:0]
 	kind, rest := hostapi.SplitKind(f.token)
-	if kind != "" && kind != "file" {
+	if kind != "" && kind != hostapi.AttachFile {
 		return
 	}
 	dir, base, ok := pathToken(rest)
@@ -499,7 +503,7 @@ func (a *App) repaths() {
 		for kk := range h.Pos {
 			h.Pos[kk] += len(q) + len(dir)
 		}
-		f.paths = append(f.paths, listItem{label: word, match: h.Pos, score: pickScore(h), section: "Files", row: hostapi.OverlayItem{Tail: true}})
+		f.paths = append(f.paths, listItem{label: word, match: h.Pos, score: pickScore(h), section: _sections[hostapi.AttachFile], row: hostapi.OverlayItem{Tail: true}})
 	}
 	f.trim()
 }
@@ -511,7 +515,7 @@ func (a *App) repaths() {
 func (f *wordCompleter) rematch() {
 	f.matches = f.matches[:0]
 	kind, rest := hostapi.SplitKind(f.token)
-	if kind != "" && kind != "file" {
+	if kind != "" && kind != hostapi.AttachFile {
 		f.trim()
 		return
 	}
@@ -563,12 +567,13 @@ func (f *wordCompleter) matchFiles(lo, hi int, token string) []hostapi.Hit {
 	return hostapi.Rank(hits, f.files, _listMaxFiles)
 }
 
-// candRows are completion candidates as list rows under section; a path
-// keeps its tail when cut, where its name is.
-func candRows(cands []hostapi.CompletionItem, section string) []listItem {
+// candRows are completion candidates as list rows of kind: its section, which
+// the accept spells the kind for. A path keeps its tail when cut, where its
+// name is.
+func candRows(cands []hostapi.CompletionItem, kind string) []listItem {
 	rows := make([]listItem, 0, len(cands))
 	for _, c := range cands {
-		rows = append(rows, listItem{label: c.Text, desc: c.Desc, section: section, row: hostapi.OverlayItem{Tail: strings.Contains(c.Text, "/")}})
+		rows = append(rows, listItem{label: c.Text, desc: c.Desc, section: _sections[kind], kind: kind, row: hostapi.OverlayItem{Tail: strings.Contains(c.Text, "/")}})
 	}
 	return rows
 }
@@ -691,15 +696,11 @@ func (a *App) acceptCompletion() {
 		a.composer.replace(f.start+1, pre+word+" ")
 		f.close()
 	case sel < n+mt+p+s:
-		a.composer.replace(f.start+1, f.kindWord("skill", f.skillRows[sel-n-mt-p].label)+" ")
+		a.composer.replace(f.start+1, f.kindWord(f.skillRows[sel-n-mt-p].kind, f.skillRows[sel-n-mt-p].label)+" ")
 		f.close()
 	default:
 		row := f.entityRows[sel-n-mt-p-s]
-		kind := "workflow"
-		if row.section == "Agents" {
-			kind = "agent"
-		}
-		a.composer.replace(f.start+1, f.kindWord(kind, row.label)+" ")
+		a.composer.replace(f.start+1, f.kindWord(row.kind, row.label)+" ")
 		f.close()
 	}
 }
@@ -809,7 +810,7 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	}
 	kind, rest := hostapi.SplitKind(f.token)
 	if f.count() == 0 {
-		if f.scanning && len(f.files) == 0 && (kind == "" || kind == "file") && !pathHeaded(unquoteToken(rest)) {
+		if f.scanning && len(f.files) == 0 && (kind == "" || kind == hostapi.AttachFile) && !pathHeaded(unquoteToken(rest)) {
 			return [][]hostapi.Segment{note("scanning files…")}
 		}
 		if f.dirPending != "" && f.dirPending == a.resolveDir(rest) {
@@ -823,7 +824,7 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	}
 	items = slices.Grow(items, f.count())
 	for _, m := range f.matches {
-		items = append(items, listItem{label: f.files[m.Index], match: m.Pos, section: "Files", row: hostapi.OverlayItem{Tail: true}})
+		items = append(items, listItem{label: f.files[m.Index], match: m.Pos, section: _sections[hostapi.AttachFile], row: hostapi.OverlayItem{Tail: true}})
 	}
 	items = append(items, f.paths...)
 	items = append(items, f.skillRows...)

@@ -292,8 +292,12 @@ func (t *textRows) at(build func(int) [][]hostapi.Segment) func(int) [][]hostapi
 	}
 }
 
-// promptChoice is one answer of a Go-owned prompt.
-type promptChoice struct{ key, label, desc, hl, tag string }
+// promptChoice is one answer of a Go-owned prompt; answer is what a caller
+// waiting on the prompt hears back, for the prompts that report one.
+type promptChoice struct {
+	key, label, desc, hl, tag string
+	answer                    string
+}
 
 // choiceRows draws a prompt's answers as buttons: "[y] Trust", the key right
 // next to what it does, the selected one marked like a selected list row;
@@ -538,6 +542,7 @@ type listItem struct {
 	label, desc string
 	key         hostapi.Segment // right-aligned column: a tag in Host:HintKey or a switchSeg
 	section     string          // a change of section starts with a header row
+	kind        string          // an entity row's @ kind (hostapi.AttachWorkflow, AttachAgent), which its accept spells
 	mark, head  hostapi.Segment // the state mark ahead of the label, and ahead of its section's header
 	more        [][]hostapi.Segment
 	segs        []hostapi.Segment   // the label styled; label keeps its plain text

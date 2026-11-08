@@ -74,7 +74,7 @@ func statusCwd(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 			p = strings.TrimRight(p, "/")[i+1:]
 		}
 	}
-	line := []hostapi.Segment{{Text: p, HL: "Dim", Click: "projects"}}
+	line := []hostapi.Segment{{Text: p, HL: hostapi.GroupDim, Click: "projects"}}
 	if st.Branch != "" {
 		line = append(line, hostapi.Segment{Text: ":" + st.Branch, HL: "Accent"})
 	}
@@ -83,7 +83,7 @@ func statusCwd(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 		if p == "" {
 			return [][]hostapi.Segment{pointAt("untrusted", "/trust", "")}, false
 		}
-		line = append(line[:1], hostapi.Segment{Text: "   ", HL: "Dim"})
+		line = append(line[:1], hostapi.Segment{Text: "   ", HL: hostapi.GroupDim})
 		line = append(line, pointAt("untrusted", "/trust", "")...)
 	}
 	return [][]hostapi.Segment{line}, false
@@ -121,7 +121,7 @@ func statusAgents(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	}
 	line := pointAt("⧗ "+strconv.Itoa(n), plural(word, n), word+"s")
 	if flows > 0 && agents > 0 {
-		line = append(line, hostapi.Segment{Text: "   ", HL: "Dim"})
+		line = append(line, hostapi.Segment{Text: "   ", HL: hostapi.GroupDim})
 		line = append(line, pointAt(strconv.Itoa(agents), plural("agent", agents), "agents")...)
 	}
 	return [][]hostapi.Segment{line}, false
@@ -142,7 +142,7 @@ func statusKeys(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	if st.KeySeq == "" {
 		return nil, false
 	}
-	return [][]hostapi.Segment{{{Text: st.KeySeq + " …", HL: "Title"}}}, false
+	return [][]hostapi.Segment{{{Text: st.KeySeq + " …", HL: hostapi.GroupTitle}}}, false
 }
 
 // statusScroll is, while the chat is scrolled up, how many rows are below and
@@ -168,7 +168,7 @@ func statusModel(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	if st.Model == "" {
 		return nil, false
 	}
-	return [][]hostapi.Segment{{{Text: st.Model, HL: "Dim", Click: "model"}}}, false
+	return [][]hostapi.Segment{{{Text: st.Model, HL: hostapi.GroupDim, Click: "model"}}}, false
 }
 
 // statusEffort is the reasoning effort; a click opens its picker.
@@ -176,7 +176,7 @@ func statusEffort(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	if st.Effort == "" {
 		return nil, false
 	}
-	return [][]hostapi.Segment{{{Text: st.Effort, HL: "Dim", Click: "effort"}}}, false
+	return [][]hostapi.Segment{{{Text: st.Effort, HL: hostapi.GroupDim, Click: "effort"}}}, false
 }
 
 // statusContext is how much of the window is in use, not the running session
@@ -188,10 +188,10 @@ func statusContext(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 		if used == "" {
 			return nil, false
 		}
-		return [][]hostapi.Segment{{{Text: used + "/" + window + " ctx", HL: "Dim", Click: "usage"}}}, false
+		return [][]hostapi.Segment{{{Text: used + "/" + window + " ctx", HL: hostapi.GroupDim, Click: "usage"}}}, false
 	}
 	if total := tokens(st.Usage.Total); total != "" {
-		return [][]hostapi.Segment{{{Text: total + " tok", HL: "Dim", Click: "usage"}}}, false
+		return [][]hostapi.Segment{{{Text: total + " tok", HL: hostapi.GroupDim, Click: "usage"}}}, false
 	}
 	return nil, false
 }
@@ -206,7 +206,7 @@ func statusCost(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	if c == "" {
 		return nil, false
 	}
-	return [][]hostapi.Segment{{{Text: c, HL: "Dim", Click: "usage"}}}, false
+	return [][]hostapi.Segment{{{Text: c, HL: hostapi.GroupDim, Click: "usage"}}}, false
 }
 
 // statusHints is the two keys worth knowing, on an empty session only:
@@ -218,9 +218,9 @@ func statusHints(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	}
 	return [][]hostapi.Segment{{
 		{Text: "/", HL: "SplashKey", Click: "help"},
-		{Text: " commands  ", HL: "Dim", Click: "help"},
+		{Text: " commands  ", HL: hostapi.GroupDim, Click: "help"},
 		{Text: "@", HL: "SplashKey"},
-		{Text: " attachments", HL: "Dim"},
+		{Text: " attachments", HL: hostapi.GroupDim},
 	}}, false
 }
 
