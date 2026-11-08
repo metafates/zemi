@@ -88,7 +88,7 @@ func (h *Host) chatDropped() {
 			h.Log.Warn("usage not logged", "origin", "reset", "error", err)
 		}
 	}
-	h.resetTodoNag(nil)
+	h.resetTodoNag()
 	h.goalDropped()
 	h.forgetInstructions()
 	h.EmitAsync(EventSessionReset, nil)

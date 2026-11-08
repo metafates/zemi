@@ -197,10 +197,9 @@ type agentHost struct {
 	// todoNag nudges a stale todo list: the items it holds, how many steps
 	// have run since the last write, and whether a remind is already queued.
 	// Any todos write resets it, so an update (or a tick) stops it.
-	todoList    []store.Todo // the list as the last todos write left it
-	todoSteps   int          // main-runner steps since the last todos write
-	todoNagAt   int          // the step count the last nag fired at
-	todoTouched bool         // a todos call ran this step
+	todoSteps   int  // main-runner steps since the last todos write
+	todoNagAt   int  // the step count the last nag fired at
+	todoTouched bool // a todos call ran this step
 	todoPending bool
 	// todoNag waits for the next step boundary of the running turn, outside
 	// steering: a turn that ends first drops it instead of starting another.
@@ -739,7 +738,7 @@ func (h *Host) settleTodos() {
 		return
 	}
 	h.todosStale.Store(true)
-	h.resetTodoNag(todos)
+	h.resetTodoNag()
 	h.refresh()
 }
 
@@ -1934,44 +1933,11 @@ func (h *Host) maybeNagTodos() {
 	if t := h.turn.Load(); t != nil && t.ctx.Err() != nil {
 		return
 	}
-	ag := h.agents
-	ag.mu.Lock()
-	if !ag.active || ag.todoPending {
-		ag.mu.Unlock()
-		return
-	}
+	// the store is the truth, read before the lock: a sibling's ticks never
+	// reach this window's cache mid-turn, and no store call runs under the
+	// agents' lock
+	todos := h.todoSnapshot()
 	current, open := "", 0
-	for _, td := range ag.todoList {
-		switch td.Status {
-		case store.TodoInProgress:
-			current = td.Content
-		case store.TodoPending:
-			open++
-		}
-	}
-	if current == "" && open == 0 {
-		ag.mu.Unlock()
-		return // nothing open: nothing to nudge about
-	}
-	ag.todoSteps++
-	if ag.todoSteps-ag.todoNagAt < _todoNagAfter {
-		ag.mu.Unlock()
-		return
-	}
-	ag.todoNagAt = ag.todoSteps
-	ag.mu.Unlock()
-	// the store is the truth at the moment of the nag: a sibling's ticks
-	// never reach this window's cache mid-turn, and no store call runs under
-	// the agents' lock
-	todos := ag.todoList
-	if h.DB != nil {
-		if td, err := h.DB.Todos(h.AgentSessionID()); err == nil && len(td) > 0 {
-			todos = td
-		}
-	}
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	current, open = "", 0
 	for _, td := range todos {
 		switch td.Status {
 		case store.TodoInProgress:
@@ -1980,9 +1946,23 @@ func (h *Host) maybeNagTodos() {
 			open++
 		}
 	}
-	if current == "" && open == 0 {
-		return // the sibling finished it: nothing left to nudge about
+	ag := h.agents
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	if !ag.active || ag.todoPending {
+		return
 	}
+	if len(todos) < 2 {
+		return // a single item is a trivial task: it never nags
+	}
+	if current == "" && open == 0 {
+		return // nothing open: nothing to nudge about
+	}
+	ag.todoSteps++
+	if ag.todoSteps-ag.todoNagAt < _todoNagAfter {
+		return
+	}
+	ag.todoNagAt = ag.todoSteps
 	ag.todoPending = true
 	if current != "" {
 		ag.todoNag = agent.Note(fmt.Sprintf(
@@ -2000,7 +1980,7 @@ func (h *Host) maybeNagTodos() {
 // resetTodoNag re-arms the staleness tracker from a fresh todo write. A
 // next turn's first todos write is what started counting, so this also stops
 // the nag whenever the model engages at all.
-func (h *Host) resetTodoNag(todos []store.Todo) {
+func (h *Host) resetTodoNag() {
 	ag := h.agents
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
@@ -2008,11 +1988,6 @@ func (h *Host) resetTodoNag(todos []store.Todo) {
 	// must not let it ride into the chat that replaced the old one
 	ag.todoNag = ""
 	ag.todoSteps, ag.todoNagAt, ag.todoPending = 0, 0, false
-	if len(todos) < 2 {
-		ag.todoList = nil // a single item is a trivial task: it never nags
-		return
-	}
-	ag.todoList = slices.Clip(todos)
 }
 
 // ensureSession ran on the first send; the chat has no session row now, but
@@ -2952,7 +2927,7 @@ func (h *Host) PipelineFor() *tools.Pipeline {
 			if err := h.DB.SetTodos(store.MainSessionID, todos); err != nil {
 				return err
 			}
-			h.resetTodoNag(todos)
+			h.resetTodoNag()
 			return nil
 		}
 	}
