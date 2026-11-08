@@ -169,6 +169,22 @@ func TestCurtainDip(t *testing.T) {
 		t.Fatalf("the shared row did not stand while the other dissolved: %v", got)
 	}
 
+	// a dot between two changed digits stands: the dip dissolves the runes
+	// that changed, not the whole span between them
+	price := NewCurtain(100 * time.Millisecond)
+	priceOld := [][]hostapi.Segment{{{Text: "$55.4"}}}
+	priceNext := [][]hostapi.Segment{{{Text: "$56.3"}}}
+	price.Draw(priceOld, now)
+	price.Draw(priceOld, now.Add(2*c.Dur))
+	price.Dip(dip, now.Add(2*c.Dur))
+	if got, _ := price.Draw(priceNext, now.Add(2*c.Dur).Add(dip/2)); got == nil ||
+		got[0][0].Text != "$5" || got[0][0].Fade != 0 ||
+		got[0][1].Text != "5" || got[0][1].Fade < 0.4 || got[0][1].Fade > 0.6 ||
+		got[0][2].Text != "." || got[0][2].Fade != 0 ||
+		got[0][3].Text != "4" || got[0][3].Fade < 0.4 || got[0][3].Fade > 0.6 {
+		t.Fatalf("the dot between two changed digits did not stand: %v", got)
+	}
+
 	// a dip on a hidden curtain does nothing
 	c.Draw(nil, now.Add(9*c.Dur))
 	if got, _ := c.Draw(nil, now.Add(9*c.Dur).Add(c.Dur)); got != nil {

@@ -176,10 +176,10 @@ func dissolveRows(prev, next [][]hostapi.Segment, sunk float64, rise bool) [][]h
 	return out
 }
 
-// dissolveRow is row sunk toward its surface on the span where its text
-// leaves other's, the shared text standing. The span is the text between the
-// common prefix and suffix, so a count that changes one digit dissolves that
-// digit alone.
+// dissolveRow is row sunk toward its surface on the runes where its text
+// leaves other's, the shared text standing. The runes are aligned by the
+// common prefix and suffix, then compared in place, so a count that changes
+// two digits around an unchanged dot dissolves the digits alone.
 func dissolveRow(row, other []hostapi.Segment, sunk float64) []hostapi.Segment {
 	if sunk <= 0 {
 		return row
@@ -199,59 +199,39 @@ func dissolveRow(row, other []hostapi.Segment, sunk float64) []hostapi.Segment {
 	for s < len(a)-p && s < len(b)-p && a[len(a)-1-s] == b[len(b)-1-s] {
 		s++
 	}
+	span, mate := a[p:len(a)-s], b[p:len(b)-s]
+	changed := func(at int) bool { // absolute rune index into a
+		if at < p || at >= len(a)-s {
+			return false
+		}
+		i := at - p
+		return i >= len(mate) || mate[i] != span[i]
+	}
 	out := make([]hostapi.Segment, 0, len(row)+2)
 	off := 0
 	for _, seg := range row {
 		rs := []rune(seg.Text)
-		start, end := off, off+len(rs)
-		off = end
-		switch {
-		case len(rs) == 0:
+		if len(rs) == 0 {
 			out = append(out, seg)
-		case end <= p || start >= len(a)-s:
-			out = append(out, seg) // the shared text stands
-		case start >= p && end <= len(a)-s:
-			seg.Fade = max(seg.Fade, sunk)
-			out = append(out, seg)
-		default: // a segment the span cuts: the pieces outside stand, the piece inside fades
-			head, mid, tail := splitSeg(seg, rs, p-start, len(a)-s-start)
-			if head.Text != "" {
-				out = append(out, head)
+			continue
+		}
+		for len(rs) > 0 {
+			ch := changed(off)
+			n := 1
+			for n < len(rs) && changed(off+n) == ch {
+				n++
 			}
-			if mid.Text != "" {
-				mid.Fade = max(mid.Fade, sunk)
-				out = append(out, mid)
+			piece := seg
+			piece.Text = string(rs[:n])
+			if ch {
+				piece.Fade = max(piece.Fade, sunk)
 			}
-			if tail.Text != "" {
-				out = append(out, tail)
-			}
+			out = append(out, piece)
+			off += n
+			rs = rs[n:]
 		}
 	}
 	return out
-}
-
-// splitSeg cuts seg's runes at from and to (offsets into rs, clamped) into
-// the pieces before, inside and past that span.
-func splitSeg(seg hostapi.Segment, rs []rune, from, to int) (head, mid, tail hostapi.Segment) {
-	if from < 0 {
-		from = 0
-	}
-	if to > len(rs) {
-		to = len(rs)
-	}
-	if from > 0 {
-		head = seg
-		head.Text = string(rs[:from])
-	}
-	if from < to {
-		mid = seg
-		mid.Text = string(rs[from:to])
-	}
-	if to < len(rs) {
-		tail = seg
-		tail.Text = string(rs[to:])
-	}
-	return head, mid, tail
 }
 
 // Curtain is one thing that comes and goes on a fade: appearing rises out
