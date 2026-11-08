@@ -44,20 +44,18 @@
 			footer a {
 				color: var(--dim);
 				text-decoration: none;
-				background: var(--panel);
-				padding: 7px 14px;
+				letter-spacing: 0.02em;
+				transition: color 400ms ease;
 			}
-			footer a:hover {
-				color: var(--accent);
-				text-decoration: none;
-			}
+			footer a .slug { color: var(--accent); }
+			footer a:hover { color: var(--accent); }
 		</style>
 	</head>
 	<body>
 		<main>
 			<img class="logo" src="../assets/zemi.png" alt="zemi">
 			<p class="pitch">There are many agent harnesses,<br>but this one takes <em>the best from them</em></p>
-			<footer><a href="https://github.com/metafates/zemi">github.com/metafates/zemi</a></footer>
+			<footer><a href="https://github.com/metafates/zemi">github.com/metafates/<span class="slug">zemi</span></a></footer>
 			<img class="shot" src="../assets/chat.png" alt="zemi chat">
 		</main>
 	</body>
