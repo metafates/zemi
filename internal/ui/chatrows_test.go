@@ -107,6 +107,23 @@ func TestReplyStatsShed(t *testing.T) {
 	}
 }
 
+// TestReplyTLDR: a reply that ends with a <tldr> tag draws its body without
+// the tag and the summary as a quoted line under it.
+func TestReplyTLDR(t *testing.T) {
+	t.Parallel()
+	app, host := bootAgentApp(t, 80, 24)
+	host.AppendMessage("user", "go")
+	appendReply(host, "moved the parse into shared.go and fixed the callers.\n<tldr>parse moved to shared.go</tldr>", hostapi.TurnStat{})
+	rows := chatRows(t, app, 80)
+	joined := strings.Join(rows, "\n")
+	if strings.Contains(joined, "<tldr>") {
+		t.Fatalf("the tag or the body leaked:\n%s", joined)
+	}
+	if !slices.Contains(rows, "  │ parse moved to shared.go") {
+		t.Fatalf("the summary block is missing:\n%s", joined)
+	}
+}
+
 // TestThoughtDigestHoldsWhileReplying: the thought a replying turn holds draws
 // as the digest row it settles as, so the settle that lands later rewrites no
 // row. A blank thought names nothing, and one a call holds is the digest's,

@@ -1119,9 +1119,14 @@ func (b *chatBuilder) markdown(text string) {
 	key := strconv.Itoa(b.width) + "\x00" + text
 	rows, ok := b.folds.md[key]
 	if !ok {
-		for _, segs := range b.host.Markdown(text, b.width-2) {
+		body, tldr := hostapi.SplitTLDR(text)
+		for _, segs := range b.host.Markdown(body, b.width-2) {
 			row := []hostapi.Segment{{Text: "  ", HL: "Normal", NoCopy: true}}
 			rows = append(rows, append(row, segs...))
+		}
+		if tldr != "" {
+			rows = append(rows, []hostapi.Segment{{Text: ""}})
+			rows = append(rows, b.tldrRows(tldr)...)
 		}
 		// NOTE: the memo holds one render's worth of replies; a chat past it
 		// re-renders each reply once more
@@ -1135,6 +1140,21 @@ func (b *chatBuilder) markdown(text string) {
 		// own row arrays and mutates segments only as value copies
 		b.push(row)
 	}
+}
+
+// tldrRows draws the summary a reply ended with: a dim quoted line under the
+// body, the reply's own left edge kept.
+func (b *chatBuilder) tldrRows(tldr string) [][]hostapi.Segment {
+	var rows [][]hostapi.Segment
+	for _, segs := range hostapi.WrapText(tldr, b.width-4) {
+		row := []hostapi.Segment{{Text: "  │ ", HL: "MarkdownQuote", NoCopy: true}}
+		for i := range segs {
+			segs[i].HL = "MarkdownQuote"
+			row = append(row, segs[i])
+		}
+		rows = append(rows, row)
+	}
+	return rows
 }
 
 // highlight is a shell command as the row reads it, memoized like markdown.

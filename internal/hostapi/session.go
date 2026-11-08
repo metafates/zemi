@@ -58,6 +58,9 @@ func (h *Host) LastReply() string {
 			return ""
 		case fantasy.MessageRoleAssistant:
 			if s := strings.TrimSpace(m.Text); s != "" {
+				if _, tldr := SplitTLDR(s); tldr != "" {
+					return tldr
+				}
 				return s
 			}
 		}

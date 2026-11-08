@@ -2277,7 +2277,12 @@ view; a reset's wipe drops the row with the chat.
   previous row of the run, the live turn's calls among them, and the level the
   view came from steps with it, so going back lands on the call that was
   read; the view is rebuilt as the transcript grows, so a row that settles
-  is a step target at once. The reply that ends an
+  is a step target at once. A reply that ends with a `<tldr>…</tldr>`
+  summary (the prompt asks for it on a longer turn-ending reply, written
+  after the text) draws the body without the tag and the summary as a
+  quoted dim line under it; the turn-end notification and the status
+  record carry that summary in its place.
+  The reply that ends an
   exchange carries its readout: the model that wrote it, how long its turn
   ran, its tokens out and the clock; a narrow row drops the model first, and
   a sentence the model says between runs carries none of it, and each
