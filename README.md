@@ -1,14 +1,14 @@
 <div align="center">
-	<img width="300" alt="zemi" src="./assets/zemi.png" />
-	<h1>zemi @··</h1>
-	<p>There are many agent harnesses, but this one takes <i>the best from them</i></p>
+	<img width="250" alt="zemi logo" src="./assets/zemi.png" />
+	<h1>ZEMI 🐌</h1>
+	<p>There are many agent harnesses,<br>but this one takes <i>the best from them</i></p>
 </div>
 
 <div align="center">
-	<img width="800" alt="zemi chat" src="./assets/chat.png" />
+	<img width="800" alt="zemi chat screenshot" src="./assets/chat.png" />
 </div>
 
-Zemi (/ˈzɛmi/) is a (coding) agent harness that...
+Zemi (/ˈzɛmi/) is a coding agent harness that...
 
 - never forgets _anything_ with endless chats like [UniiChat](https://gist.github.com/VictorTaelin/91837951a5ce5b38f341ec1ba1df6449).
 - fast and native like [crush](https://github.com/charmbracelet/crush)
@@ -32,13 +32,13 @@ go install github.com/metafates/zemi@latest
 
 Then just run it. On first run it will prompt you to select inference provider and input api key (stored locally in OS keychain):
 
-```bash
+```sh
 zemi
 ```
 
 ### "Make no mistakes" version
 
-Or let agent set it up for you by pasting the following prompt in it:
+Or let your other agent install & set it up for you by pasting the following prompt in it:
 
 ```markdown
 Install zemi with `go install github.com/metafates/zemi@latest`.
@@ -47,7 +47,6 @@ Then, follow `zemi docs setup` output - it guides you how to setup zemi.
 
 <details>
 <summary>In case you wonder what <code>zemi docs setup</code> outputs</summary>
-
 
 ```markdown
 Set zemi up by following its documentation skill at `$path-to-zemi-documentation-skill`
@@ -100,7 +99,7 @@ You can expect it to have most inference providers.
 | `VENICE_API_KEY`            | Venice AI                                          |
 | `ZHIPU_API_KEY`             | Zhipu                                              |
 
-## Local models & custom providers
+## Local models, custom providers & configuration
 
 Zemi uses [`charmbracelet/fantasy`](https://github.com/charmbracelet/fantasy) for communicating with providers and controlling agents.
 
@@ -123,6 +122,24 @@ zemi.provider.add({
 
 > [!NOTE]
 > Zemi's Lua API is strictly typed, so you can expect to get type hints on hover in your IDE (ensure it supports Lua, e.g. install a plugin or setup a language server)
+
+For further configuration just ask zemi itself.
+
+## Plugins
+
+Zemi supports claude-code plugins and marketplaces.
+For example:
+
+```sh
+zemi plugin marketplace add anthropics/claude-plugins-official
+zemi plugin add frontend-design@claude-plugins-official
+```
+
+It also has its own Lua-based plugins. Ask it to create something for itself:
+
+```
+/plugin new
+```
 
 ## Feature scope or "why it doesn't support X or Y?"
 
