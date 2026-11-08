@@ -1795,47 +1795,11 @@ user's to change, and the capability model that matters is the manifest's
 
 ## 7. Storage (SQLite)
 
-```
-log(seq, kind, text, meta_json, parts_json, created_at)  -- the eternal chat: one append-only row
-                                                         -- per message, word for word; seq is the
-                                                         -- dense 0-based index, max+1 inside the
-                                                         -- append transaction (never AUTOINCREMENT:
-                                                         -- the index stays dense; a reset empties
-                                                         -- the log and the next append starts at 0);
-                                                         -- kind: user | agent | tool | echo | work |
-                                                         -- note | thought | error | shell;
-                                                         -- meta_json names a tool row's tool, a work
-                                                         -- row's run, a thought row's wall time, an
-                                                         -- error row's cancellation, a shell row's
-                                                         -- outcome and output head, an agent row's
-                                                         -- turn stat (the readout a resumed window
-                                                         -- draws), parts_json replays a message's
-                                                         -- images
-nodes(l, i, text, size, built_at)                        -- the summary tree: node(l,i) covers the 2^l
-                                                         -- messages from i*2^l on, one line each;
-                                                         -- INSERT OR IGNORE dedupes racing writes
-view_lines(ord, l, i)                                    -- the persisted view, oldest first; ord is
-                                                         -- the line's first message, so an append or
-                                                         -- a merge collapses onto the row it made
-sessions(id, parent_id, title, agent, created_at, updated_at,
-         prompt_tokens, completion_tokens, cache_read_tokens,
-         cache_billed_tokens, cost, last_in, run_status) -- the "main" billing and todos anchor (the
-                                                         -- migration plants it), one row per
-                                                         -- subagent run; run_status: how the run
-                                                         -- ended; last_in: the context its latest
-                                                         -- step used
-messages(id, session_id, role, parts_json, row_meta, created_at)
-                                                         -- a subagent run's transcript rows, goal
-                                                         -- events and chat rows (role "chat": a
-                                                         -- notice, an error, a !command); the main
-                                                         -- chat writes none, the log is its transcript
-todos(id, session_id, content, status, active_form, ord, created_at)
-tool_calls(id, message_id, tool, ok, created_at)         -- per-tool counts and step stats
-skills(name, path, source, enabled, created_at)          -- source: user|builtin|plugin
-kv(key, value_json, updated_at)                          -- zemi.state, saved config picks, the
-                                                         -- builder's compaction view ("chatlog.cv"),
-                                                         -- the projects list's reads ("projects.stats")
-```
+The tables, their columns and their defaults are not restated here: the
+migrations under `internal/store/migrations` are the one copy, and `make golden`
+turns them into the schema block of `runtime/skills/zemi/db.md`, which
+`store.TestSchemaDocIsCurrent` pins, so that block is the schema this spec
+describes. What a log row's `kind` and `meta_json` carry is §10.1's.
 
 Ids people and the model type (agent and workflow runs) are 8 lowercase
 Crockford base32 characters, 40 random bits (`store.ShortID`); a subagent
@@ -1909,14 +1873,14 @@ view; a reset's wipe drops the row with the chat.
   left; a narrow rule sheds the least worth first, sized by the cells a part
   can grow to; the running call names
   no cell of it, which the chat row already says. It reads the frame's
-  `Frame`, `Ended`, `Cancelling`, `InterruptArmed`, `View`, `Editing`,
+  `Frame`, `Cancelling`, `InterruptArmed`, `View`, `Editing`,
   `Waiting` and `RowsBelow` and the turn's `Agent.Retry`).
   The mascot is always drawn and the frame's height
   never moves with agent state, so no turn adds or removes a row.
   The statusline is two clusters on the bar; a cluster's widgets are ordered by
-  `priority` ascending from each side's outer edge, the right one from the
-  right edge, Go joins the ones that draw three spaces apart,
-  overflow drops the highest priority first; the
+  `rank` ascending from each side's outer edge (`priority` where no rank is
+  set), the right one from the right edge, Go joins the ones that draw two
+  spaces apart, and a short row drops the highest `priority` first; the
   shipped left widgets also show an armed quit (`QuitArmed`), a
   pending key sequence (`KeySeq`) and the rows below a scrolled chat
   (`RowsBelow`); the stuck and errors pills

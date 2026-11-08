@@ -30,8 +30,9 @@ shell the `@` idle and a braille spinner while the agent works, its eyes still
 — and its right end the turn's status), which is where the
 shipped tree keeps the mascot, with the statusline on a bar row below the box: agent state
 changes what a rule says, never how many rows the frame takes, so nothing above it reflows.
-The statusline clusters draw from their outer edges by widget priority and a short row drops
-the highest first (`fitClusters`), so what lasts sits outermost and never moves.
+The statusline clusters draw from their outer edges by widget `rank` (`priority` where none is
+set) and a short row drops the highest `priority` first (`fitClusters`), so what lasts sits
+outermost and never moves.
 
 ## Animation (internal/anim)
 

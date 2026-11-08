@@ -73,7 +73,7 @@ any overlay waits on the user: a permission ask (`ask y|n` first) or a question/
 overlay (`send Escape` first) - past one, its first letters answer the overlay and the
 rest lands as a mangled draft. On tmux the mark cannot name the kind, so the refusal
 names both remedies instead of a key that would answer the wrong one. Browser popups
-(Messages, Agents) set no mark and are invisible to this guard: `prompt` types into
+(Memories, Agents) set no mark and are invisible to this guard: `prompt` types into
 their filter and dies at the composer check - close them (`send Escape`) and retry. A steer sent while
 a turn runs can have an ask rise over
 it: `prompt` then names the overlay instead of blaming a stuck zemi - settle it
@@ -103,7 +103,7 @@ runs `zemi-safe health` against the lab tree.
 
 ## The fake model
 
-`fake_openai.py` is a 40-line OpenAI-compatible server: it streams a reply with a reasoning
+`fake_openai.py` is an OpenAI-compatible server: it streams a reply with a reasoning
 delta, or calls a tool once when the user message reads `call NAME {json}`, and answers
 non-streaming requests (the object calls: classify, `zemi.model.ask`) with a plain
 completion. Every accepted request body lands in `last_request.json` and

@@ -713,7 +713,7 @@ function zemi.event.stats() end
 ---@field fill? string put in the composer (ignored while the overlay has an on_select, which takes enter instead)
 ---@field run? string a command line such as "mcp restart gitlab" (ignored while the overlay has an on_select)
 ---@field copy? string the row's value: y copies it in place of the row's text, and enter copies it, keeping the list open, when the row does nothing else (no on_select, run, fill or detail); the filter matches it too
----@field verb? zemi.OverlayVerb enter's action in the hint where the default would say another: "open" (a screen of its own), "pick" (a value), "run" (a command), "toggle", "fill", "copy" or "stop"; space passes the row by in a toggle list, and an "open" row's run leaves the list under the screen it opens
+---@field verb? zemi.OverlayVerb enter's action in the hint where the default would say another; space passes the row by in a toggle list, and an "open" row's run leaves the list under the screen it opens
 ---@field anchor? integer The transcript row this one stands for, counted as `ctx.transcript` is (1-based); a list with `follow` set scrolls the chat here when the row is selected.
 
 --- What enter does on a row, in one word for the footer hint.
@@ -1766,7 +1766,7 @@ function zemi.fs.grep(pattern, opts) end
 ---@field error? string
 
 ---@class zemi.HTTPHandle
----@field wait fun(self: zemi.HTTPHandle): zemi.HTTPResponse|nil, string|nil Suspends the task until the response, 120 seconds at most; raises outside a task (a tool's execute, a command, a keymap, an overlay callback, an on_done or on_exit) and under pcall.
+---@field wait fun(self: zemi.HTTPHandle): zemi.HTTPResponse|nil, string|nil Suspends the task until the response, 120 seconds at most; raises outside a task and under pcall (`lua.CheckWait` names where a task may suspend).
 ---@field cancel fun(self: zemi.HTTPHandle) Cancels the request; a waiting `wait` comes back with its error.
 
 --- http and https only, no userinfo. Gated as `lua.http.<method>` with the

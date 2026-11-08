@@ -33,8 +33,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   ended and one the tool asked for with `background`, so only the live turn
   starts one; its task says what it is, so it does not ask for another.
 - **Workflows** (workflow.go, DESIGN §6.3) are Lua scripts (model-written via the `workflow`
-  tool, saved under `workflows/`, builtin in `runtime/workflows/` - `review`,
-  `hunt`, `brainstorm`, `ship` - a plugin's after both). `/workflows` heads with a `New workflow` fill row and
+  tool, saved under `workflows/`, builtin in `runtime/workflows/` - `hunt`,
+  `brainstorm`, `ship` - a plugin's after both). `/workflows` heads with a `New workflow` fill row and
   `new <what it should do>` sends the line with a prompt pointing at the New workflow steps
   in `workflows.md`, as `/agents new` and `/plugin new` do. They
   run in their **own** gopher-lua state on a host goroutine, never on the interpreter (DESIGN
