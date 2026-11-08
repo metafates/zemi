@@ -945,7 +945,7 @@ func (a *App) endTurn(msg turnDoneMsg) tea.Cmd {
 			text = "zemi failed"
 		}
 	case a.turnReply != "":
-		text = "zemi finished: " + a.turnReply
+		text = a.turnReply
 	}
 	if byLoop {
 		return nil

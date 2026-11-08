@@ -77,10 +77,10 @@ func TestNotifyWhenAway(t *testing.T) {
 		{"away with a failing turn", "osc", false, turnDoneMsg{err: "provider refused\n\tand again"}, "", "\x1b]9;zemi failed: provider refused and again\x07"},
 		{"away with a failing turn and support", "osc", true, turnDoneMsg{err: "provider refused"}, "", ""},
 		{"away with a long failure", "osc", false, turnDoneMsg{err: strings.Repeat("x", 300)}, "", "\x1b]9;zemi failed: " + strings.Repeat("x", 79) + "…\x07"},
-		{"away with a reply", "osc", false, turnDoneMsg{}, "all 9 tests pass", "\x1b]9;zemi finished: all 9 tests pass\x07"},
-		{"away with a long reply", "osc", false, turnDoneMsg{}, strings.Repeat("x", 300), "\x1b]9;zemi finished: " + strings.Repeat("x", 199) + "…\x07"},
-		{"away with a headed reply", "osc", false, turnDoneMsg{}, "# Deploy notes\nall green", "\x1b]9;zemi finished: Deploy notes all green\x07"},
-		{"away with a tldr reply", "osc", false, turnDoneMsg{}, "# Deploy notes\nall green\n<tldr>deploy notes all green</tldr>", "\x1b]9;zemi finished: deploy notes all green\x07"},
+		{"away with a reply", "osc", false, turnDoneMsg{}, "all 9 tests pass", "\x1b]9;all 9 tests pass\x07"},
+		{"away with a long reply", "osc", false, turnDoneMsg{}, strings.Repeat("x", 300), "\x1b]9;" + strings.Repeat("x", 199) + "…\x07"},
+		{"away with a headed reply", "osc", false, turnDoneMsg{}, "# Deploy notes\nall green", "\x1b]9;Deploy notes all green\x07"},
+		{"away with a tldr reply", "osc", false, turnDoneMsg{}, "# Deploy notes\nall green\n<tldr>deploy notes all green</tldr>", "\x1b]9;deploy notes all green\x07"},
 		{"away with a bell", "bell", false, turnDoneMsg{}, "", "\a"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
