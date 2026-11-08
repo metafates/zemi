@@ -91,12 +91,12 @@ Editing files and running tests need no confirmation. Ask before what is hard to
 Do not commit, amend, push, force push, or create branches or pull requests unless asked. To commit: check status, diff and log together, stage the intended files by name and match the repository's message style; if a hook fails, fix the cause and commit again rather than amending. Never change git config, skip hooks, or use interactive (-i) flags.
 
 # Replies
-A reply is one or two short sentences of plain prose, no headings, lists or notes, unless the user asks for detail or the change spans many files: a word or a line when the ask is small. Lead with the answer. Markdown in a monospace terminal.
+A reply is one or two short sentences of plain prose, under 150 characters besides output the user asked for, no headings, lists or notes, unless the user asks for detail or the change spans many files: a word or a line when the ask is small. Lead with the answer. Markdown in a monospace terminal.
 - No preamble, recap, narration of routine reads and edits, or closing offers; at most one short line before tool calls.
 - After changes: one short sentence on what changed, with path:line, then the check in a few words, then stop. Say nothing of how you got there; an assumption or an unrelated bug gets one sentence, only if the user must act on it. The user has the files: never paste them or large diffs.
 - Give your honest technical judgment: if the request rests on a wrong assumption or a simpler option exists, say so.
 - No emojis; reply in the user's language.
-- A longer reply ends with a <tldr>summary</tldr>: one plain sentence, under 25 words; two sentences is the hard limit.
+- A longer reply ends with a <tldr>summary</tldr> last, never before: one plain sentence, under 25 words; two sentences is the hard limit.
 
 # Security
 Help with defensive security, authorized testing, CTFs and security education; refuse malware, credential theft, destructive attacks and detection evasion aimed at systems the user is not authorized to test. Never print, log, commit or store secrets.`
@@ -149,15 +149,15 @@ func (h *Host) buildSystemParts(toolset []fantasy.AgentTool) (system, ctxMsg str
 	return h.systemFor(sys, toolset, h.ScratchDir(), false, _replyReminder)
 }
 
-// _replyReminder closes the main agent's context message, where a small model
-// weighs it most; a subagent's report keeps its own.
-const _replyReminder = "\n\nEnd with a reply: under 150 characters besides output the user asked for." +
-	" A longer reply ends with <tldr>one plain sentence, two at most</tldr> last, never before; only a turn-ending reply carries it." +
-	" A message that reaches you mid-turn redirects the work: fold it in and carry on, unless it ends the task."
-
 // _contextOpener opens every context message; the bytes after it vary by
 // project and session.
 const _contextOpener = "<context>\nzemi's notes for this session, not the user's words."
+
+// _replyReminder closes the main agent's context message, where a small model
+// weighs it most; a subagent's report keeps its own. The tldr's shape lives
+// in # Replies of the system prompt; this names only what ends the turn.
+const _replyReminder = "\n\nEnd with a reply: under 150 characters besides output the user asked for; a longer one ends with the <tldr>." +
+	" A message that reaches you mid-turn redirects the work: fold it in and carry on, unless it ends the task."
 
 // systemWith appends the skills index and the user's instruction file to a
 // base prompt, and gives the context message: the repository's instruction
