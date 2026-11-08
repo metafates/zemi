@@ -2382,10 +2382,22 @@ func joinItems(items []statusItem, reverse bool) []hostapi.Segment {
 
 var _statusDot = hostapi.Segment{Text: "  ", HL: hostapi.GroupDim, NoCopy: true}
 
-// statusItems are the widgets of r that draw, by priority.
+// statusItems are the widgets of r that draw, outermost first: by rank where
+// one is set, else by priority.
 func (a *App) statusItems(r region) []statusItem {
+	wgts := a.regionWidgets(r)
+	slices.SortStableFunc(wgts, func(x, y regionWidget) int {
+		xr, yr := x.Go.rank, y.Go.rank
+		if xr == 0 {
+			xr = x.Priority
+		}
+		if yr == 0 {
+			yr = y.Priority
+		}
+		return cmp.Compare(xr, yr)
+	})
 	var out []statusItem
-	for _, wgt := range a.regionWidgets(r) {
+	for _, wgt := range wgts {
 		if lines := a.widgetLines(wgt.ID); len(lines) > 0 && hostapi.SegsWidth(lines[0]) > 0 {
 			out = append(out, statusItem{lines[0], wgt.Priority})
 		}

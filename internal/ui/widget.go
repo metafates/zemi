@@ -21,6 +21,9 @@ type widget struct {
 	render   func(*hostapi.ScreenState) ([][]hostapi.Segment, bool)
 	onClick  func(a *App, ev map[string]any) bool
 	chat     *chatFolds // the chat widget's fold state, its rises included
+	// rank orders the widget inside its statusline cluster when it differs
+	// from priority, which stays what a short row drops first
+	rank float64
 	// eases routes the widget's lines through a curtain: appearing rises out
 	// of the surface, leaving sinks on the rows it kept
 	eases bool

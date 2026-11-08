@@ -263,6 +263,40 @@ func TestStatusRise(t *testing.T) {
 	}
 }
 
+// TestCostPlacement: the cost pill sits outside the ctx pill while keeping
+// its priority, so a short row still sheds the cost before the ctx count.
+func TestCostPlacement(t *testing.T) {
+	t.Parallel()
+	app := &App{
+		widgets: statuslineWidgets(),
+		rises:   map[string]*anim.Curtain{},
+		caches:  map[string]*widgetCache{},
+		now:     func() time.Time { return time.UnixMilli(500) },
+	}
+	for id, text := range map[string]string{"statusline.context": "1k/2k ctx", "statusline.cost": "$0.12"} {
+		app.onWidgetRendered(widgetRender{id: id, lines: [][]hostapi.Segment{{{Text: text}}}, gen: 1, seq: 1, width: 80, height: 14})
+	}
+	items := app.statusItems(_regionStatusRight)
+	at := func(id string) int {
+		for i, it := range items {
+			if hostapi.SegsText(it.segs) == map[string]string{"statusline.context": "1k/2k ctx", "statusline.cost": "$0.12"}[id] {
+				return i
+			}
+		}
+		t.Fatalf("%s draws no item", id)
+		return 0
+	}
+	// items run outermost first, so the cost sits outside the ctx count
+	if at("statusline.cost") > at("statusline.context") {
+		t.Fatalf("the ctx pill sits outside the cost: %v", items)
+	}
+	for _, it := range items {
+		if text := hostapi.SegsText(it.segs); text == "$0.12" && it.pri != 42 {
+			t.Fatalf("the cost lost its drop priority %v", it.pri)
+		}
+	}
+}
+
 // TestContextDip: the ctx pill dips to a new count — the changed digit
 // dissolves (the old one sinks, the new one rises once it lands) while the
 // rest of the pill stands — and a re-render that says the same words does

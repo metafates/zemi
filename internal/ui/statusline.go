@@ -9,7 +9,8 @@ import (
 
 // The statusline: statusline.left holds the project and what needs attention,
 // statusline.right the model and context use. Each side draws from its outer
-// edge in priority order and a short row drops the highest priority first, so
+// edge in rank order (priority where no rank is set) and a short row drops
+// the highest priority first, so
 // what lasts sits outermost and what comes and goes sits inner, where it
 // moves nothing.
 func statuslineWidgets() []*widget {
@@ -31,8 +32,8 @@ func statuslineWidgets() []*widget {
 
 		{id: "statusline.model", region: _regionStatusRight, priority: 8, eases: true, render: statusModel},
 		{id: "statusline.effort", region: _regionStatusRight, priority: 9, eases: true, render: statusEffort},
-		{id: "statusline.context", region: _regionStatusRight, priority: 40, eases: true, dip: _dipDuration, render: statusContext},
-		{id: "statusline.cost", region: _regionStatusRight, priority: 42, eases: true, render: statusCost},
+		{id: "statusline.context", region: _regionStatusRight, priority: 40, rank: 42, eases: true, dip: _dipDuration, render: statusContext},
+		{id: "statusline.cost", region: _regionStatusRight, priority: 42, rank: 40, eases: true, render: statusCost},
 		{id: "statusline.hints", region: _regionStatusRight, priority: 130, eases: true, render: statusHints},
 	}
 }
