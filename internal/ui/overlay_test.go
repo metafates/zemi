@@ -147,7 +147,7 @@ func TestOverlayFilter(t *testing.T) {
 			return state(a, true, "amma three", len(st.visible), st.selected)
 		}},
 		{"j moves while no filter types", hostapi.Overlay{}, runes("jj"), func(a *App) string { return state(a, false, "", 5, 2) }},
-		{"a bare letter starts the filter, as a word typed to a picker narrows", hostapi.Overlay{}, runes("b"), func(a *App) string { return state(a, true, "b", 1, 0) }},
+		{"a bare letter with no bind is a no-op", hostapi.Overlay{}, runes("b"), func(a *App) string { return state(a, false, "", 5, 0) }},
 		{"a no-match footer drops enter, esc still clears", hostapi.Overlay{}, runes("/zz"), func(a *App) string {
 			if s := state(a, true, "zz", 0, 0); s != "" {
 				return s

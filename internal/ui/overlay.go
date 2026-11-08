@@ -1018,7 +1018,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 	case "l":
 		// one level in, where there is one: a row's view or the screen its run
 		// opens. Its operations are keys of the row, so a row with neither
-		// falls through and the letter filters, as any unclaimed key does.
+		// falls through to the no-op an unclaimed key is.
 		if st.back || len(st.visible) == 0 {
 			return nil
 		}
@@ -1038,7 +1038,7 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		}
 	case "h":
 		// one level back, a view or a level stacked over another only: at the
-		// root there is nowhere back to, and h filters, as any unclaimed key
+		// root there is nowhere back to, and h is a no-op
 		if len(a.overlays) > 1 {
 			if st.back {
 				a.overlays = a.overlays[:len(a.overlays)-1] // back, with nothing to rebuild
@@ -1058,16 +1058,11 @@ func (a *App) overlayKey(key, text string) tea.Cmd {
 		}
 		a.cancelOverlay(o)
 	}
-	// a printable key nothing acts on starts the filter with its letter, so
-	// a word typed to a picker narrows it instead of dying: the keys the
-	// footer and the rows list act, the rest filter, as the / popups type.
-	// A list too short to filter drops the key: an open box holds the keys,
-	// and the composer under it never types while one is up.
-	if text == "" || strings.TrimSpace(text) == "" {
-		return nil
-	}
-	if st.filterable && len(st.items) > 0 && st.edit("/", "/") {
-		st.edit(key, text)
+	// only "/" starts the filter; a printable key nothing acts on is a no-op:
+	// an open box holds the keys, and the composer under it never types while
+	// one is up.
+	if key == "/" && st.filterable && len(st.items) > 0 {
+		st.edit("/", "/")
 	}
 	return nil
 }
