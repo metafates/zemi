@@ -538,6 +538,7 @@ type listItem struct {
 	label, desc string
 	key         hostapi.Segment // right-aligned column: a tag in Host:HintKey or a switchSeg
 	section     string          // a change of section starts with a header row
+	kind        string          // an entity row's @ kind (hostapi.AttachWorkflow, AttachAgent), which its accept spells
 	mark, head  hostapi.Segment // the state mark ahead of the label, and ahead of its section's header
 	more        [][]hostapi.Segment
 	segs        []hostapi.Segment   // the label styled; label keeps its plain text
