@@ -34,13 +34,24 @@ type planAnswer struct {
 	ok bool
 }
 
+// planChoice is one button of the plan prompt: the verdict approving sends,
+// or typing, which opens the changes input instead.
+type planChoice struct {
+	promptChoice
+
+	verdict tools.PlanVerdict
+	typing  bool
+}
+
 // choices is the plan's buttons: the rows, the keys and the hit test all read
 // them, and a button's key is what it does (planKey).
-func (p *planAskPrompt) choices() []promptChoice {
-	return []promptChoice{
-		{key: "a", label: "Approve"},
-		{key: "s", label: "Save, don't start"},
-		{key: "e", label: "Request changes"},
+func (p *planAskPrompt) choices() []planChoice {
+	return []planChoice{
+		{promptChoice: promptChoice{key: "a", label: "Approve"}, verdict: tools.PlanVerdict{Approved: true}},
+		// the same approval, held: the file is saved, the work waits
+		{promptChoice: promptChoice{key: "s", label: "Save, don't start"}, verdict: tools.PlanVerdict{Approved: true, Hold: true}},
+		// edit: every key, j/k included, types from here on
+		{promptChoice: promptChoice{key: "e", label: "Request changes"}, typing: true},
 	}
 }
 
@@ -83,7 +94,7 @@ func (a *App) planKey(key, text string) {
 	// that is no button's key opens it, and a kept draft holds the buttons —
 	// the words are the verdict being written; esc dismisses the plan whole
 	drafted := strings.TrimSpace(p.input.text) != ""
-	button := slices.ContainsFunc(choices, func(c promptChoice) bool { return c.key == key })
+	button := slices.ContainsFunc(choices, func(c planChoice) bool { return c.key == key })
 	if !p.typing && key != "esc" && (drafted || text != "" && !button) {
 		p.typing = true
 	}
@@ -103,14 +114,15 @@ func (a *App) planKey(key, text string) {
 	if key == "enter" {
 		key = choices[p.sel].key
 	}
-	switch key {
-	case "a":
-		a.finishPlan(tools.PlanVerdict{Approved: true}, true)
-	case "s": // the same approval, held: the file is saved, the work waits
-		a.finishPlan(tools.PlanVerdict{Approved: true, Hold: true}, true)
-	case "e": // edit: every key, j/k included, types from here on
-		p.typing = true
-	case "esc":
+	if i := slices.IndexFunc(choices, func(c planChoice) bool { return c.key == key }); i >= 0 {
+		if choices[i].typing {
+			p.typing = true
+		} else {
+			a.finishPlan(choices[i].verdict, true)
+		}
+		return
+	}
+	if key == "esc" {
 		a.finishPlan(tools.PlanVerdict{}, false)
 	}
 }
@@ -120,7 +132,11 @@ func (a *App) planKey(key, text string) {
 // nothing.
 func (a *App) planBox(p *planAskPrompt, w, h int) [][]hostapi.Segment {
 	inner := boxInner(w)
-	act := choiceRows(p.choices(), p.sel, inner, true)
+	btns := make([]promptChoice, len(p.choices()))
+	for i, c := range p.choices() {
+		btns[i] = c.promptChoice
+	}
+	act := choiceRows(btns, p.sel, inner, true)
 	hints := []hintPair{_pickHint, {key: "esc", verb: "dismiss"}}
 	if p.typing {
 		act = [][]hostapi.Segment{{{Text: "What should change?", HL: hostapi.ChromeHint}}, p.input.inputRow(inner, "")}
