@@ -443,40 +443,38 @@ func (s *streamAdapter) TurnDone(err error, usage fantasy.Usage) {
 	}
 }
 
-// streamLabel reads a label out of call input that is still streaming: the
-// first "about" or "path" whose string value has fully arrived, wherever the
-// model put the key, and whether it was the path. "" while neither has.
-func streamLabel(partial string) (label string, isPath bool) {
+// streamLabel reads a tool's label argument out of call input that is still
+// streaming: the tool's own lead key (tools.LeadPairs), wherever the model put
+// it, and whether it was the path. "" while the label has not arrived, and for
+// a tool that names no label argument.
+func streamLabel(tool, partial string) (label string, isPath bool) {
+	pair, ok := tools.LeadPairs[tool]
+	if !ok || pair[0] == "" {
+		return "", false
+	}
 	dec := jsontext.NewDecoder(strings.NewReader(partial))
 	if tok, err := dec.ReadToken(); err != nil || tok.Kind() != '{' {
 		return "", false
 	}
-	var about string
 	for {
 		tok, err := dec.ReadToken()
 		if err != nil || tok.Kind() != '"' { // the object closed, or the key is still streaming
 			break
 		}
 		key := tok.String() // the token voids at the next decoder call
+		raw, err := dec.ReadValue()
+		if err != nil {
+			break // the value is still streaming
+		}
 		var v string
-		if err := json.UnmarshalDecode(dec, &v); err != nil {
-			break // the value is still streaming, or is not a string
-		}
-		switch key {
-		case "about":
-			if about == "" {
-				about = v
+		if key == pair[0] {
+			if json.Unmarshal(raw, &v) != nil {
+				break // the label is not a string
 			}
-		case "path":
-			if label == "" {
-				label, isPath = v, true
-			}
+			return v, pair[0] == "path"
 		}
 	}
-	if about != "" {
-		return about, false
-	}
-	return label, isPath
+	return "", false
 }
 
 // ToolInputDelta labels a pending row as soon as its "about" or "path" has
@@ -499,7 +497,7 @@ func (s *streamAdapter) ToolInputDelta(id, delta string) {
 	t.partial += delta
 	// NOTE: each delta re-walks the partial until the label lands; at
 	// provider delta sizes that stays well under a millisecond.
-	if label, isPath := streamLabel(t.partial); label != "" {
+	if label, isPath := streamLabel(string(t.Name), t.partial); label != "" {
 		if isPath { // a path reads relative to the project, like every rail row names it
 			label = s.h.relPath(label)
 		}
