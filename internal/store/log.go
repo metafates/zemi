@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// LogEntry is one row of the log: one message, word for word. Kind is user,
-// agent, tool, echo, work, note, thought, error or shell.
+// LogEntry is one row of the log: one message, word for word. Kind is one of
+// the row kinds below.
 type LogEntry struct {
 	Seq       int64
 	Kind      LogKind
@@ -116,16 +116,14 @@ func (s *DB) LogFrom(seq int64, limit int) ([]LogEntry, error) {
 
 // LogTail reads the last n rows, oldest first.
 func (s *DB) LogTail(n int) ([]LogEntry, error) {
-	rows, err := s.db.Query(`SELECT `+_logCols+` FROM (SELECT seq, kind, text, meta_json, parts_json, created_at, COALESCE(origin, '') AS origin
-		FROM log ORDER BY seq DESC LIMIT ?) ORDER BY seq`, n)
+	rows, err := s.db.Query(`SELECT * FROM (SELECT `+_logCols+` FROM log ORDER BY seq DESC LIMIT ?) ORDER BY seq`, n)
 	return collect(rows, err, scanLog)
 }
 
 // LogKindBack reads the last n rows of one kind, oldest first: the composer
 // history's user rows.
 func (s *DB) LogKindBack(kind LogKind, limit int) ([]LogEntry, error) {
-	rows, err := s.db.Query(`SELECT `+_logCols+` FROM (SELECT seq, kind, text, meta_json, parts_json, created_at, COALESCE(origin, '') AS origin
-		FROM log WHERE kind = ? ORDER BY seq DESC LIMIT ?) ORDER BY seq`, kind, limit)
+	rows, err := s.db.Query(`SELECT * FROM (SELECT `+_logCols+` FROM log WHERE kind = ? ORDER BY seq DESC LIMIT ?) ORDER BY seq`, kind, limit)
 	return collect(rows, err, scanLog)
 }
 
