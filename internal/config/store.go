@@ -131,20 +131,10 @@ var _cursorShapes = []string{"bar", "block", "underline"}
 var _logLevels = []string{"debug", "info", "warn", "error"}
 
 // LogLevel parses a log.level value; ok is false for anything else, which
-// the key's choices already refuse.
+// the key's choices already refuse. slog owns the names, so _logLevels only
+// lists the choices and cannot disagree with the parse.
 func LogLevel(v string) (lvl slog.Level, ok bool) {
-	switch v {
-	case "debug":
-		return slog.LevelDebug, true
-	case "info":
-		return slog.LevelInfo, true
-	case "warn":
-		return slog.LevelWarn, true
-	case "error":
-		return slog.LevelError, true
-	default:
-		return 0, false
-	}
+	return lvl, lvl.UnmarshalText([]byte(v)) == nil
 }
 
 // OrList joins words as "a, b or c".
@@ -441,6 +431,10 @@ func checkKind(def Setting, val any) (any, error) {
 		val = s
 	case KindList:
 		val, ok = stringList(val)
+	default:
+		// a kind nobody taught this check is a bug in the caller, and storing
+		// its value unchecked is how it would go unnoticed
+		return nil, fmt.Errorf("config key %s has an unknown kind %q", def.Path, def.Kind)
 	}
 	if !ok {
 		if def.Choices != nil {
