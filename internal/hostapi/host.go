@@ -571,9 +571,6 @@ type Host struct {
 	stampFrom int64
 	stampRow  int
 
-	// origin is this window's writer id, what its log rows carry
-	origin string
-
 	// trEpoch changes whenever the transcript is replaced (new, resume,
 	// reset), so the chat widget can cache the rows of settled messages.
 	trEpoch atomic.Int64
@@ -807,7 +804,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		h.refresh()
 		h.watchJobs()
 	}
-	settings.SetChoices("agent.effort", append(slices.Clone(agent.Efforts), ""))
+	settings.SetChoices(config.KeyAgentEffort, append(slices.Clone(agent.Efforts), ""))
 	h.trustRoot = sync.OnceValue(h.Dirs.TrustRoot)
 	h.project = sync.OnceValue(func() string { return perm.TildePath(h.trustRoot()) })
 	h.repoRoot = sync.OnceValue(h.Dirs.RepoRoot)
@@ -830,8 +827,7 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 	if h.DB != nil {
 		// the window names itself in its log rows, so a restart tells its rows
 		// from the ones an older boot wrote
-		h.origin = originID()
-		h.DB.Origin = h.origin
+		h.DB.Origin = originID()
 		h.chat = newChatLog(context.Background(), h)
 		// the window opens on the log's tail: the chat that never ends has
 		// no resume, only more of itself. The tail is read with slack so
