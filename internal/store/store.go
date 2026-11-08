@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -142,7 +143,7 @@ func ClaimForDelete(path string) (sessions []string, release func(), err error) 
 // NOTE: a collision is a refused primary key insert, about n^2/2^41 over n rows
 // of one table (1e-3 at 50k); widen to 10 characters if stores grow past that.
 func ShortID() string {
-	var b [5]byte
+	var b [_shortIDBytes]byte
 	rand.Read(b[:])
 	return _shortEnc.EncodeToString(b[:])
 }
@@ -210,13 +211,13 @@ func (s *DB) Path() string { return s.path }
 
 // unmigrated reports a store the embedded migrations have not reached: their
 // version table is missing (a 0-byte or pre-goose file) or behind their
-// count. A file that is not a database at all is its own error: no open
-// migrates it, so the unmigrated remedy would never work.
+// newest version. A file that is not a database at all is its own error: no
+// open migrates it, so the unmigrated remedy would never work.
 func (s *DB) unmigrated() error {
 	var v sql.NullInt64
 	err := s.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&v)
 	if err == nil {
-		if v.Int64 < int64(migrationCount()) {
+		if v.Int64 < int64(newestMigration(_migrations)) {
 			return ErrUnmigrated
 		}
 		return nil
@@ -242,12 +243,19 @@ func (s *DB) Query(query string, args ...any) (*sql.Rows, error) {
 	return s.db.Query(query, args...)
 }
 
-// _shortEnc is lowercase Crockford base32: no i, l, o or u, the same name on a
-// case-folding disk, and never a leading '-'.
-var _shortEnc = base32.NewEncoding("0123456789abcdefghjkmnpqrstvwxyz").WithPadding(base32.NoPadding)
+const (
+	// _shortAlphabet is lowercase Crockford base32: no i, l, o or u, the same
+	// name on a case-folding disk, and never a leading '-'.
+	_shortAlphabet = "0123456789abcdefghjkmnpqrstvwxyz"
+	_shortIDBytes  = 5 // 40 bits, written out as 8 characters
+)
 
-// IDShape is what ShortID makes, the one check for a file name read back as an id.
-var IDShape = regexp.MustCompile(`^[0-9a-hjkmnp-tv-z]{8}$`)
+var (
+	_shortEnc = base32.NewEncoding(_shortAlphabet).WithPadding(base32.NoPadding)
+
+	// IDShape is what ShortID makes, the one check for a file name read back as an id.
+	IDShape = regexp.MustCompile(fmt.Sprintf(`^[%s]{%d}$`, _shortAlphabet, _shortEnc.EncodedLen(_shortIDBytes)))
+)
 
 // migrate applies the embedded migrations, one goose transaction each, under
 // a file lock so two zemis opening one store never run one twice. A store
@@ -337,11 +345,22 @@ func isNotADB(err error) bool {
 	return ok && e.Code()&0xff == sqlite3.SQLITE_NOTADB
 }
 
-// migrationCount is the newest version the embedded migrations reach; the
-// files are numbered 0001.. in step with goose's versions.
-func migrationCount() int {
-	files, _ := fs.Glob(_migrations, "migrations/*.sql")
-	return len(files)
+// newestMigration is the highest version the migrations in fsys reach: the
+// number in each file name, which goose takes as its version. A count is not
+// the same thing once a number is skipped.
+func newestMigration(fsys fs.FS) int {
+	files, _ := fs.Glob(fsys, "migrations/*.sql")
+	newest := 0
+	for _, file := range files {
+		num, _, ok := strings.Cut(filepath.Base(file), "_")
+		if !ok {
+			continue
+		}
+		if v, err := strconv.Atoi(num); err == nil {
+			newest = max(newest, v)
+		}
+	}
+	return newest
 }
 
 // newID returns a random 128-bit id, hex encoded, for rows nobody types.

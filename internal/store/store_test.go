@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/metafates/zemi/internal/perm"
@@ -28,6 +29,19 @@ func TestShortID(t *testing.T) {
 		if IDShape.MatchString(bad) {
 			t.Errorf("IDShape matches %q", bad)
 		}
+	}
+}
+
+// TestNewestMigration: the migrations' version is the highest number in their
+// file names, so a number nobody used still leaves a store read as migrated.
+func TestNewestMigration(t *testing.T) {
+	files := fstest.MapFS{
+		"migrations/0001_initial.sql": {},
+		"migrations/0003_gap.sql":     {},
+		"migrations/notes.sql":        {},
+	}
+	if got := newestMigration(files); got != 3 {
+		t.Fatalf("newest migration = %d, want 3", got)
 	}
 }
 
@@ -105,8 +119,8 @@ func TestMigrationFresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version int
-	if err := db.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&version); err != nil || version != migrationCount() {
-		t.Fatalf("goose version = %d, %v; want %d", version, err, migrationCount())
+	if err := db.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&version); err != nil || version != newestMigration(_migrations) {
+		t.Fatalf("goose version = %d, %v; want %d", version, err, newestMigration(_migrations))
 	}
 	db.Close()
 
