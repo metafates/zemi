@@ -823,6 +823,9 @@ func TestShortOutput(t *testing.T) {
 	if got := shortOutput(tools.TruncOut(strings.Join(lines, "\n"), 10_000)); !strings.Contains(got, "\n… 2991 more lines\n") {
 		t.Errorf("a cut result counts the lines it cut:\n%s", got)
 	}
+	if got := shortOutput("boom\nexit status 2\n\n" + tools.LeadReminder("shell", "about", "command")); strings.Contains(got, "system-reminder") {
+		t.Errorf("the reminder leaked into the row: %q", got)
+	}
 }
 
 // TestRowOutputDates: a date row reads the compact local stamp, and the

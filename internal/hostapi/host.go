@@ -472,6 +472,7 @@ func rowOutput(tool, out string) string {
 // capped at 300 runes and sanitized: the first three, which say what went
 // wrong, and the last six, with a row counting what fell out between them.
 func shortOutput(s string) string {
+	s = tools.StripReminder(s) // the reminder is the model's, the row never shows it
 	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
 	if n := len(lines) - 9; n > 1 {
 		// a tools.TruncOut marker stands for the lines it cut
