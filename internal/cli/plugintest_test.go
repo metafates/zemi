@@ -230,7 +230,7 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 			name: "300 boots in 256 spare file descriptors", args: []string{"<plugin>"}, spare: 256, code: 0,
 			plugin: map[string]string{".zemi/init.lua": "", ".zemi/tests/a.lua": many}, want: "300 passed (1 file, (T))\n",
 		},
-		{name: "an interrupt leaves no temp dir", args: []string{"<plugin>", ".zemi/tests/pass.lua"}, cancel: true, code: 130, want: ""},
+		{name: "an interrupt leaves no temp dir", args: []string{"<plugin>", ".zemi/tests/pass.lua"}, cancel: true, code: _interrupted, want: ""},
 		{name: "Lua left at the plugin root is refused", args: []string{"<plugin>"}, code: 1, plugin: map[string]string{
 			".zemi/init.lua": "", ".zemi/tests/a.lua": `zemi.test("a", function() end)`, "workflows/w.lua": "-- d\nreturn 1",
 		}, want: "zemi: plugin test: <plugin>: workflows is at the plugin root, where zemi no longer loads it: move init.lua, lua/, tests/ and workflows/ under .zemi/\n"},

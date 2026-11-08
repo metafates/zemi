@@ -3,6 +3,7 @@ package classify
 import (
 	"errors"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -233,5 +234,43 @@ func TestQuestionLabelsChecked(t *testing.T) {
 				t.Errorf("err = %v, want %q", err, c.want)
 			}
 		})
+	}
+}
+
+// TestDeclaredValues: every strategy zemi declares is one the ladder reports,
+// and every type is one a question of it is accepted as.
+func TestDeclaredValues(t *testing.T) {
+	var reported []string
+	collect := func(req Request) {
+		res, err := Ask(t.Context(), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reported = append(reported, string(res.Strategy))
+	}
+	p, _ := server(t, `{"answers": {"danger": {"type": "noul", "noul": 0.9}}}`)
+	collect(Request{State: map[string]any{}, Questions: one("danger"), Protocol: p})
+	chat := chatOf(&fakeModel{}, TokenLogprob{"Yes", -0.1}, TokenLogprob{"No", -3})
+	collect(Request{State: map[string]any{}, Questions: one("danger"), Chat: &chat})
+	chat = Chat{Model: &fakeModel{object: map[string]any{"danger": true}}}
+	collect(Request{State: map[string]any{}, Questions: one("danger"), Chat: &chat})
+	want := make([]string, len(Strategies))
+	for i, s := range Strategies {
+		want[i] = string(s)
+	}
+	slices.Sort(want)
+	slices.Sort(reported)
+	if !slices.Equal(reported, want) {
+		t.Errorf("the ladder reports %v, the declared strategies are %v", reported, want)
+	}
+
+	for _, ty := range Types {
+		q := Question{Type: ty, Criteria: map[string]string{"a": "", "b": ""}, Levels: []string{"low", "high"}}
+		if err := q.Check(); err != nil {
+			t.Errorf("a question of type %q is refused: %v", ty, err)
+		}
+	}
+	if err := (Question{Type: "rating"}).Check(); err == nil {
+		t.Error("a type outside Types is accepted")
 	}
 }

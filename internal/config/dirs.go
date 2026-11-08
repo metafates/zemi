@@ -124,7 +124,7 @@ const StarterInit = `-- zemi config. Lua, reloaded whenever you save this file. 
 -- a known one (reuse its id: yours replaces it whole):
 -- zemi.provider.add({
 -- 	id = "local",
--- 	kind = "openai_compat",   -- or "anthropic", "openai", "google", "openrouter", "vercel", "system_one"
+-- 	kind = "openai_compat",   -- the family zemi speaks to it as (zemi.ProviderKind)
 -- 	base_url = "http://localhost:11434/v1",   -- required for openai_compat, refused for openrouter, an endpoint override for the rest
 -- 	api_key = zemi.env.get("LOCAL_API_KEY"),   -- leave out for a server that needs none
 -- 	headers = { ["X-Team"] = "core" },   -- extra headers a gateway needs; as secret as the key
@@ -213,11 +213,17 @@ func (d Dirs) WorktreesDir() string {
 // a symlinked .agents must not steer it elsewhere.
 func (d Dirs) WorktreesIgnore() (bool, error) {
 	wt := d.WorktreesDir()
-	root, err := filepath.EvalSymlinks(d.RepoRoot())
+	repo := d.RepoRoot()
+	root, err := filepath.EvalSymlinks(repo)
 	if err != nil {
 		return false, nil
 	}
-	if got, err := filepath.EvalSymlinks(wt); err != nil || got != filepath.Join(root, ".agents", "worktrees") {
+	// the path WorktreesDir names below the repo root, resolved root beside it
+	rel, err := filepath.Rel(repo, wt)
+	if err != nil {
+		return false, nil
+	}
+	if got, err := filepath.EvalSymlinks(wt); err != nil || got != filepath.Join(root, rel) {
 		return false, nil
 	}
 	if fi, err := os.Stat(wt); err != nil || !fi.IsDir() {

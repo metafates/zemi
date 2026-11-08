@@ -93,3 +93,25 @@ func TestKeyFamilies(t *testing.T) {
 		t.Fatal("a builtin key names a plugin")
 	}
 }
+
+// A kind checkKind does not know is refused, never stored with its value
+// unchecked.
+func TestStoreUnknownKind(t *testing.T) {
+	s := NewStore()
+	if _, err := s.Add(Setting{Path: "plugins.p.rating", Kind: "rating", Default: "x"}); err == nil {
+		t.Fatal("a setting with an unknown kind is registered")
+	}
+}
+
+// Every name log.level offers is one slog parses, so a value the key accepts
+// is a level at all.
+func TestLogLevelNames(t *testing.T) {
+	for _, name := range _logLevels {
+		if _, ok := LogLevel(name); !ok {
+			t.Errorf("log.level offers %q, which slog does not parse", name)
+		}
+	}
+	if _, ok := LogLevel("verbose"); ok {
+		t.Error("an unknown level name parses")
+	}
+}
