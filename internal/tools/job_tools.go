@@ -408,7 +408,7 @@ func (m *Jobs) KillAll() int {
 // jobStartArgs is the job_start tool's input and its schema source.
 type jobStartArgs struct {
 	About   string `json:"about,omitempty" desc:"what the process is in 3-6 words, shown to the user, e.g. Dev server."`
-	Command string `json:"command" desc:"the command line; pass after about"`
+	Command string `json:"command" desc:"pass after about: the command line"`
 }
 
 func runJobStart(ctx context.Context, p *Pipeline, in jobStartArgs) (fantasy.ToolResponse, error) {

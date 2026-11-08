@@ -115,7 +115,7 @@ type shellArgs struct {
 	// "about", not "description": a schema's properties reach the model
 	// sorted by name, and this one has to stream before the command
 	About     string `json:"about,omitempty" desc:"what the command does in 5-10 words, e.g. Run the unit tests"`
-	Command   string `json:"command" desc:"the command line; pass after about"`
+	Command   string `json:"command" desc:"pass after about: the command line"`
 	TimeoutMS int    `json:"timeout_ms,omitempty" desc:"default 60000, max 600000; raise it for slow builds and test suites"`
 }
 
@@ -766,7 +766,7 @@ func boxScale(src image.Image, w, h int) *image.RGBA {
 // writeArgs is the write tool's input and its schema source.
 type writeArgs struct {
 	Path string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
-	Text string `json:"text" desc:"the file's whole content; pass after path"`
+	Text string `json:"text" desc:"pass after path: the file's whole content"`
 }
 
 // looksBinary is the sniff read and command output share: a NUL near
@@ -950,7 +950,7 @@ func listDir(path perm.Path) fantasy.ToolResponse {
 // editArgs is the edit tool's input and its schema source.
 type editArgs struct {
 	Path    string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand"`
-	Search  string `json:"search" desc:"the exact text to find; pass after path"`
+	Search  string `json:"search" desc:"pass after path: the exact text to find"`
 	Replace string `json:"replace" desc:"the replacement text"`
 }
 
@@ -1112,7 +1112,7 @@ type grepArgs struct {
 	// "about", not "description": a schema's properties reach the model
 	// sorted by name, and this one has to stream before the pattern
 	About   string `json:"about,omitempty" desc:"the target of the search, no verb — the row already shows \"search\"; e.g. \"TODO markers in notes\""`
-	Pattern string `json:"pattern" desc:"RE2 regular expression matched against each line; pass after about"`
+	Pattern string `json:"pattern" desc:"pass after about: an RE2 regex matched against each line"`
 	Path    string `json:"path,omitempty" desc:"file or directory to search; default the working directory"`
 	Include string `json:"include,omitempty" desc:"glob limiting which files are searched, such as *.go"`
 }
