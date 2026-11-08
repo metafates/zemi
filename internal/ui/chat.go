@@ -1145,12 +1145,18 @@ func (b *chatBuilder) markdown(text string) {
 // tldrRows draws the summary a reply ended with: a dim quoted line under the
 // body, the reply's own left edge kept.
 func (b *chatBuilder) tldrRows(tldr string) [][]hostapi.Segment {
+	const lead = "TL;DR: "
 	var rows [][]hostapi.Segment
-	for _, segs := range hostapi.WrapText(tldr, b.width-4) {
+	for i, segs := range hostapi.WrapText(tldr, b.width-4-len(lead)) {
 		row := []hostapi.Segment{{Text: "  │ ", HL: "MarkdownQuote", NoCopy: true}}
-		for i := range segs {
-			segs[i].HL = "MarkdownQuote"
-			row = append(row, segs[i])
+		if i == 0 {
+			segs = append([]hostapi.Segment{{Text: lead, HL: "MarkdownTLDR"}}, segs...)
+		}
+		for j := range segs {
+			if i > 0 || j > 0 {
+				segs[j].HL = "MarkdownQuote"
+			}
+			row = append(row, segs[j])
 		}
 		rows = append(rows, row)
 	}

@@ -36,6 +36,7 @@ var _shippedGroups = withKnots(map[string]HLSpec{
 	"MarkdownCode":  {Link: "Literal"},
 	"MarkdownLink":  {Link: "Accent", Underline: UnderlineSingle},
 	"MarkdownQuote": {Fg: "dim", Italic: new(true)},
+	"MarkdownTLDR":  {Link: "MarkdownQuote", Bold: new(true)},
 
 	"AgentReason":   {Link: "Dim"},
 	"ThinkingMark":  {Link: "Accent"},

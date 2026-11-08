@@ -2280,7 +2280,8 @@ view; a reset's wipe drops the row with the chat.
   is a step target at once. A reply that ends with a `<tldr>…</tldr>`
   summary (the prompt asks for it on a longer turn-ending reply, written
   after the text) draws the body without the tag and the summary as a
-  quoted dim line under it; the turn-end notification and the status
+  quoted dim line under it, bold `TL;DR:` leading the first line; the
+  turn-end notification and the status
   record carry that summary in its place.
   The reply that ends an
   exchange carries its readout: the model that wrote it, how long its turn

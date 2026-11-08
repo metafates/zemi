@@ -119,7 +119,7 @@ func TestReplyTLDR(t *testing.T) {
 	if strings.Contains(joined, "<tldr>") {
 		t.Fatalf("the tag or the body leaked:\n%s", joined)
 	}
-	if !slices.Contains(rows, "  │ parse moved to shared.go") {
+	if !slices.Contains(rows, "  │ TL;DR: parse moved to shared.go") {
 		t.Fatalf("the summary block is missing:\n%s", joined)
 	}
 }
