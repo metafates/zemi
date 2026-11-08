@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"maps"
 	"os"
-	"regexp"
 	"slices"
 	"strings"
 	"unicode"
@@ -73,8 +72,17 @@ func (c *composerState) empty() bool { return strings.TrimSpace(c.text) == "" }
 // insert places s at the cursor and moves past it.
 func (c *composerState) insert(s string) { c.replace(c.cursor, s) }
 
-// _pasteToken matches a paste token ending at the cursor.
-var _pasteToken = regexp.MustCompile(`\[Pasted text #\d+ [^\]]+\]$`)
+// pasteTokenAt is the paste token ending at the cursor: the draft holds the
+// token paste built, and c.pastes keys are the only tokens there are.
+func (c *composerState) pasteTokenAt() string {
+	head := string(c.runes()[:c.cursor])
+	for tok := range c.pastes {
+		if strings.HasSuffix(head, tok) {
+			return tok
+		}
+	}
+	return ""
+}
 
 // insertFits inserts s at the cursor unless it would push the draft past
 // maxDraftChars; ok false leaves the draft alone.
@@ -142,7 +150,7 @@ func (c *composerState) backspace() {
 		return
 	}
 	r := c.runes()
-	if tok := _pasteToken.FindString(string(r[:c.cursor])); c.pastes[tok] != "" {
+	if tok := c.pasteTokenAt(); tok != "" {
 		c.replace(c.cursor-len([]rune(tok)), "")
 		return
 	}
