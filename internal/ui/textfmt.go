@@ -129,7 +129,7 @@ func pendingLine(st *hostapi.ScreenState, withBusy bool) []hostapi.Segment {
 		if i > 0 {
 			row = append(row, hostapi.Segment{Text: "   ", HL: hostapi.GroupDim, NoCopy: true, NoHover: true})
 		}
-		row = append(row, hostapi.Segment{Text: part, HL: hostapi.GroupDim, Effect: "shimmer"})
+		row = append(row, hostapi.Segment{Text: part, HL: hostapi.GroupDim, Effect: hostapi.EffectShimmer})
 	}
 	return row
 }

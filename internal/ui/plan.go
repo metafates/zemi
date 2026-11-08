@@ -47,11 +47,11 @@ type planChoice struct {
 // them, and a button's key is what it does (planKey).
 func (p *planAskPrompt) choices() []planChoice {
 	return []planChoice{
-		{promptChoice: promptChoice{key: "a", label: "Approve"}, verdict: tools.PlanVerdict{Approved: true}},
+		{key: "a", label: "Approve", verdict: tools.PlanVerdict{Approved: true}},
 		// the same approval, held: the file is saved, the work waits
-		{promptChoice: promptChoice{key: "s", label: "Save, don't start"}, verdict: tools.PlanVerdict{Approved: true, Hold: true}},
+		{key: "s", label: "Save, don't start", verdict: tools.PlanVerdict{Approved: true, Hold: true}},
 		// edit: every key, j/k included, types from here on
-		{promptChoice: promptChoice{key: "e", label: "Request changes"}, typing: true},
+		{key: "e", label: "Request changes", typing: true},
 	}
 }
 

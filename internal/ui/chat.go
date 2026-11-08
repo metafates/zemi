@@ -405,11 +405,12 @@ func relPath(s, cwd, home string) string {
 }
 
 // _verb is what a tool call does, as its row and the working rule say it.
-var _verb = map[string]string{
-	"read": "Read", "write": "Write", "edit": "Edit", "glob": "Find", "grep": "Search", "shell": "Run",
-	"job_start": "Start", "job_read": "Check", "job_list": "List jobs", "job_kill": "Stop",
-	"todos": "Update", "question": "Ask", "plan": "Plan", "skill": "Load skill", "tool_search": "Find tools",
-	"lua": "Run", "update": "Report",
+var _verb = map[tools.ToolName]string{
+	tools.ToolRead: "Read", tools.ToolWrite: "Write", tools.ToolEdit: "Edit", tools.ToolGlob: "Find",
+	tools.ToolGrep: "Search", tools.ToolShell: "Run", tools.ToolJobStart: "Start", tools.ToolJobRead: "Check",
+	tools.ToolJobList: "List jobs", tools.ToolJobKill: "Stop", tools.ToolTodos: "Update", tools.ToolQuestion: "Ask",
+	tools.ToolPlan: "Plan", tools.ToolSkill: "Load skill", tools.ToolSearch: "Find tools", tools.ToolLua: "Run",
+	tools.ToolUpdate: "Report",
 }
 
 // noun is a call family the chat counts: its verb, then its noun, one and
@@ -419,22 +420,22 @@ type noun struct{ verb, one, many string }
 // _countFamilies are the call families a digest counts. A call of any other
 // name keeps a row of its own, and family adds the entry an MCP call counts
 // under.
-var _countFamilies = map[string]noun{
-	"read":        {"read", "file", "files"},
-	"glob":        {"searched for", "pattern", "patterns"},
-	"grep":        {"searched for", "pattern", "patterns"},
-	"shell":       {"ran", "command", "commands"},
-	"edit":        {"edited", "edit", "edits"},
-	"write":       {"wrote", "write", "writes"},
-	"skill":       {"loaded", "skill", "skills"},
-	"job_read":    {"checked", "job", "jobs"},
-	"job_list":    {"listed jobs", "", ""},
-	"job_kill":    {"stopped", "job", "jobs"},
-	"todos":       {"updated todos", "", ""},
-	"agent":       {"started", "agent run", "agent runs"},
-	"workflow":    {"ran", "workflow", "workflows"},
-	"lua":         {"ran", "script", "scripts"},
-	"tool_search": {"looked for", "tool", "tools"},
+var _countFamilies = map[tools.ToolName]noun{
+	tools.ToolRead:     {"read", "file", "files"},
+	tools.ToolGlob:     {"searched for", "pattern", "patterns"},
+	tools.ToolGrep:     {"searched for", "pattern", "patterns"},
+	tools.ToolShell:    {"ran", "command", "commands"},
+	tools.ToolEdit:     {"edited", "edit", "edits"},
+	tools.ToolWrite:    {"wrote", "write", "writes"},
+	tools.ToolSkill:    {"loaded", "skill", "skills"},
+	tools.ToolJobRead:  {"checked", "job", "jobs"},
+	tools.ToolJobList:  {"listed jobs", "", ""},
+	tools.ToolJobKill:  {"stopped", "job", "jobs"},
+	tools.ToolTodos:    {"updated todos", "", ""},
+	tools.ToolAgent:    {"started", "agent run", "agent runs"},
+	tools.ToolWorkflow: {"ran", "workflow", "workflows"},
+	tools.ToolLua:      {"ran", "script", "scripts"},
+	tools.ToolSearch:   {"looked for", "tool", "tools"},
 }
 
 // family is the family a call counts as, false for a call whose name has
@@ -442,7 +443,7 @@ var _countFamilies = map[string]noun{
 // and a server name holds no "_", one entry per server however many of its
 // tools ran.
 func family(name string) (noun, bool) {
-	if f, ok := _countFamilies[name]; ok {
+	if f, ok := _countFamilies[tools.ToolName(name)]; ok {
 		return f, true
 	}
 	rest, ok := strings.CutPrefix(name, "mcp_")
@@ -467,7 +468,7 @@ func oneName(calls []entry) string {
 
 // _waits are the calls the turn _waits on: their work is another agent loop, so
 // nothing streams until they end and their row says what holds the turn.
-var _waits = map[string]bool{"agent": true, "workflow": true}
+var _waits = map[tools.ToolName]bool{tools.ToolAgent: true, tools.ToolWorkflow: true}
 
 // gateStopped is a call the permission gate stopped: denied or dismissed, the
 // reader's own act. An interrupted call's stop the turn's own row tells.
@@ -500,19 +501,19 @@ func counted(e entry) bool {
 // waitOnly is a call the turn only waited on: its row names the waiting,
 // which a digest would fold into a run that never started.
 func waitOnly(e entry) bool {
-	if !_waits[e.name()] {
+	if !_waits[tools.ToolName(e.name())] {
 		return false
 	}
 	if e.text == "all" {
 		return true
 	}
 	id, ok := strings.CutPrefix(e.text, "wait ")
-	return e.name() == "workflow" && ok && id != "" && !strings.Contains(id, " ")
+	return e.name() == string(tools.ToolWorkflow) && ok && id != "" && !strings.Contains(id, " ")
 }
 
 // news are the tools whose diff is news rather than their work: a command's
 // change is news, an edit's is its own.
-func news(name string) bool { return name == "shell" }
+func news(name string) bool { return name == string(tools.ToolShell) }
 
 // digests is whether a call folds into its turn's digest: it counts, and its
 // diff is its own work or there is none. A background hand-off counts too, or
@@ -573,7 +574,7 @@ func counts(calls []entry, commands []string, withVerb bool) string {
 	}
 	var parts []string
 	ran := ""
-	shell := _countFamilies["shell"]
+	shell := _countFamilies[tools.ToolShell]
 	for _, key := range order {
 		k := fam[key]
 		var part string
@@ -594,7 +595,7 @@ func counts(calls []entry, commands []string, withVerb bool) string {
 		if n[key] == 1 && k.one != "" {
 			t := first[key]
 			name := t.label
-			if name == "" && t.name() != "shell" {
+			if name == "" && t.name() != string(tools.ToolShell) {
 				name = t.text
 			}
 			if name != "" {
@@ -629,29 +630,29 @@ func headText(name, label, input string, status hostapi.CallStatus) (string, str
 		rest = " " + input
 	}
 	waiting := status == hostapi.CallRun || status == hostapi.CallWait
-	if _waits[name] && input == "all" {
+	if _waits[tools.ToolName(name)] && input == "all" {
 		if waiting {
 			return "waiting for", " all agents and workflows"
 		}
 		return "waited for", " all agents and workflows"
 	}
-	if id, ok := strings.CutPrefix(input, "wait "); name == "workflow" && ok && id != "" && !strings.Contains(id, " ") {
+	if id, ok := strings.CutPrefix(input, "wait "); name == string(tools.ToolWorkflow) && ok && id != "" && !strings.Contains(id, " ") {
 		if waiting {
 			return "waiting on", " workflow " + id
 		}
 		return "waited on", " workflow " + id
 	}
-	if status == hostapi.CallRun && _waits[name] {
+	if status == hostapi.CallRun && _waits[tools.ToolName(name)] {
 		return "waiting on " + name, rest
 	}
-	if name == "shell" && label != "" {
+	if name == string(tools.ToolShell) && label != "" {
 		word, after, _ := strings.Cut(label, " ")
 		if after != "" {
 			return word, " " + after
 		}
 		return word, ""
 	}
-	return cmp.Or(_verb[name], title(name)), rest
+	return cmp.Or(_verb[tools.ToolName(name)], title(name)), rest
 }
 
 // thoughtText is how long a thought took, as a digest or a thought row says it.
@@ -731,7 +732,7 @@ func digest(rows []entry, first, last int, cwd, home string) string {
 		// mixed run's digest saying "1 command" would hide which one ran
 		var commands []string
 		for _, m := range calls {
-			if m.name() == "shell" && m.label == "" {
+			if m.name() == string(tools.ToolShell) && m.label == "" {
 				commands = append(commands, oneLineText(relPath(m.text, cwd, home)))
 			}
 		}
@@ -739,7 +740,7 @@ func digest(rows []entry, first, last int, cwd, home string) string {
 		// thing it touched, and the name reads relative, as a command's does
 		named := make([]entry, len(calls))
 		for i, m := range calls {
-			if m.label == "" && m.text != "" && m.name() != "shell" {
+			if m.label == "" && m.text != "" && m.name() != string(tools.ToolShell) {
 				m.text = relPath(m.text, cwd, home)
 			}
 			named[i] = m
@@ -774,7 +775,7 @@ func digest(rows []entry, first, last int, cwd, home string) string {
 	if len(fails) > 0 {
 		switch {
 		case len(fails) == 1 && len(calls) == 0:
-			name := lower(cmp.Or(_verb[fails[0].name()], title(fails[0].name())))
+			name := lower(cmp.Or(_verb[tools.ToolName(fails[0].name())], title(fails[0].name())))
 			if fails[0].status == hostapi.CallStopped {
 				parts = append(parts, name+" "+stoppedWhy(fails[0].output))
 				break
@@ -1301,7 +1302,7 @@ func (b *chatBuilder) group(group []entry, click string) {
 func (b *chatBuilder) said(group []entry) string {
 	var commands []string
 	for _, t := range group {
-		if t.name() == "shell" {
+		if t.name() == string(tools.ToolShell) {
 			commands = append(commands, oneLineText(relPath(t.inputText(), b.st.CWD, b.st.Home)))
 		}
 	}
@@ -1372,7 +1373,7 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 	// a command is highlighted where it is what the row reads, the head; under
 	// its label it stays a Dim detail
 	var code []hostapi.Segment
-	if name == "shell" && input != "" && label == "" && !dim {
+	if name == string(tools.ToolShell) && input != "" && label == "" && !dim {
 		if segs := b.highlight(clipText(input, room-1), "bash"); len(segs) > 0 {
 			code = segs
 		}
@@ -1381,7 +1382,7 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 	// a workflow's its view
 	click := "call:" + strconv.Itoa(oneBased)
 	if t.run != "" {
-		if name == "workflow" {
+		if name == string(tools.ToolWorkflow) {
 			click = "workflow:" + t.run
 		} else {
 			click = "agent:" + t.run
@@ -1447,7 +1448,7 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 	output := t.output
 	// an answered question's output holds "question\tanswer\tnote" lines, which
 	// take the place of the question under its header
-	answered := name == "question" && strings.Contains(output, "\t")
+	answered := name == string(tools.ToolQuestion) && strings.Contains(output, "\t")
 	// the command a description stands for, then progress, then the job a
 	// timed-out command went on as, which the row carries
 	if !o.terse {
@@ -1461,7 +1462,7 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 		}
 		// a zoom or date row previews the line it opened: the first line only,
 		// so a split zoom's second child stays behind the click
-		if (name == "zoom" || name == "date") && t.status == hostapi.CallOK && output != "" {
+		if (name == string(tools.ToolZoom) || name == string(tools.ToolDate)) && t.status == hostapi.CallOK && output != "" {
 			line, _, _ := strings.Cut(output, "\n")
 			if i := strings.IndexByte(line, '|'); i > 0 && zoomHead(line[:i]) {
 				line = line[i+1:]
@@ -1495,12 +1496,12 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 	if strings.HasPrefix(t.output, "The user dismissed") {
 		output = "dismissed by you"
 	}
-	if output != "" && (t.status == hostapi.CallErr || t.status == hostapi.CallStopped || name == "question" || name == "plan") {
+	if output != "" && (t.status == hostapi.CallErr || t.status == hostapi.CallStopped || name == string(tools.ToolQuestion) || name == string(tools.ToolPlan)) {
 		out := strings.Split(output, "\n")
 		// a failure shows three lines where it says what went wrong: a tool's
 		// first, a command's last (its stderr and exit status); a click shows
 		// the rest
-		failed, fromTail := t.status == hostapi.CallErr, name == "shell"
+		failed, fromTail := t.status == hostapi.CallErr, name == string(tools.ToolShell)
 		from, to := 0, len(out)
 		if failed && len(out) > 3 {
 			if fromTail {
@@ -1673,7 +1674,7 @@ func (b *chatBuilder) notices(list []entry, first, last int) {
 		// the workflow's view, an agent's its transcript
 		click := ""
 		if m.run != "" {
-			if m.tool == "workflow" || strings.HasPrefix(m.tool, "workflow:") {
+			if m.tool == string(tools.ToolWorkflow) || strings.HasPrefix(m.tool, "workflow:") {
 				click = "workflow:" + m.run
 			} else {
 				click = "agent:" + m.run
@@ -1801,7 +1802,7 @@ func (b *chatBuilder) steps(list []entry, first, last int, o railOpts, headed bo
 			// a live rail folds a call the turn has superseded into its header:
 			// the newest entry, a running one, a failure and an ask keep the
 			// rows under theirs
-			keep := i == last || t.status == hostapi.CallRun || fail || kind == "question" || kind == "plan"
+			keep := i == last || t.status == hostapi.CallRun || fail || kind == string(tools.ToolQuestion) || kind == string(tools.ToolPlan)
 			b.toolRow(t, oneBased, toolOpts{terse: o.live && !keep})
 			b.markCall(at, oneBased)
 			i++
