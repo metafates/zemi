@@ -90,7 +90,7 @@ func (h *Host) luaEvalTool(pipe *tools.Pipeline) fantasy.AgentTool {
 
 // luaArgs is the lua tool's input and its schema source.
 type luaArgs struct {
-	About  string `json:"about" desc:"what the script does in 3-6 words, shown to the user"`
+	About  string `json:"about" desc:"what the script does in 3-6 words"`
 	Script string `json:"script,omitempty" desc:"Lua source"`
 	Path   string `json:"path,omitempty" desc:"a .lua file to run instead of script"`
 }

@@ -114,7 +114,7 @@ func CmdOut(dir, name, raw string, lost int64, whole bool) string {
 type shellArgs struct {
 	// "about", not "description": a schema's properties reach the model
 	// sorted by name, and this one has to stream before the command
-	About     string `json:"about,omitempty" desc:"what the command does in 5-10 words, shown to the user, e.g. Run the unit tests; pass it first"`
+	About     string `json:"about,omitempty" desc:"what the command does in 5-10 words, e.g. Run the unit tests"`
 	Command   string `json:"command"`
 	TimeoutMS int    `json:"timeout_ms,omitempty" desc:"default 60000, max 600000; raise it for slow builds and test suites"`
 }
@@ -1111,7 +1111,7 @@ func lf(s string) string { return strings.ReplaceAll(s, "\r\n", "\n") }
 type grepArgs struct {
 	// "about", not "description": a schema's properties reach the model
 	// sorted by name, and this one has to stream before the pattern
-	About   string `json:"about,omitempty" desc:"what the search is for"`
+	About   string `json:"about,omitempty" desc:"the target of the search, no verb — the row already shows \"search\"; e.g. \"TODO markers in notes\""`
 	Pattern string `json:"pattern" desc:"RE2 regular expression matched against each line"`
 	Path    string `json:"path,omitempty" desc:"file or directory to search; default the working directory"`
 	Include string `json:"include,omitempty" desc:"glob limiting which files are searched, such as *.go"`

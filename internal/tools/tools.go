@@ -899,7 +899,7 @@ Chain dependent steps with &&.`,
 			pathReq(perm.SubjectRead, searchRoot),
 			typed(runGlob)),
 
-		mk(ToolGrep, "Search file contents under path, skipping .gitignored, binary and over 4 MB files, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case). Returns up to 100 matching lines as path:line: text. Pass about first.", true,
+		mk(ToolGrep, "Search file contents under path, skipping .gitignored, binary and 4 MB+ files, with an RE2 regex (no lookaround or backreferences; (?i) ignores case). Returns up to 100 lines as path:line: text. Pass about first.", true,
 			grepArgs{},
 			pathReq(perm.SubjectRead, searchRoot),
 			typed(runGrep)),
