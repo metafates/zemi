@@ -45,6 +45,9 @@ const (
 	RunCancelled RunStatus = "cancelled"
 )
 
+// RunStatuses lists every run status, the set zemi.lua's alias names.
+var RunStatuses = []RunStatus{RunRunning, RunQueued, RunDone, RunWarn, RunFailed, RunCancelled}
+
 // RunMarks are the Marks a run's or an agent's status word draws, as the
 // chat marks a call: queued and paused wait, running spins.
 var RunMarks = map[string]MarkKind{

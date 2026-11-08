@@ -310,6 +310,10 @@ func TestTypesEnums(t *testing.T) {
 		{"zemi.TurnEnd", "", strs(_turnEnds)},
 		{"zemi.Waiting", "", strs(_waitings)},
 		{"zemi.SettingKind", "", strs(config.Kinds)},
+		{"zemi.RunStatus", "", strs(RunStatuses)},
+		{"zemi.OverlayVerb", "", strs(_verbs)},
+		// host is Go's own: a chunk never runs under it
+		{"zemi.Origin", "", strs([]lua.Origin{lua.OriginUser, lua.OriginBuiltin, lua.OriginPlugin, lua.OriginProject})},
 	} {
 		if c.alias != "" {
 			assertSameNames(t, c.alias, annotatedAlias(t, c.alias), slices.Clone(c.live))
