@@ -63,6 +63,42 @@ func TestComposerTerminalCursor(t *testing.T) {
 	}
 }
 
+// TestPopupCaret: a menu's filter and an input overlay draw the terminal's
+// own caret at the cell the input marks, and a filter without the keys
+// draws none.
+func TestPopupCaret(t *testing.T) {
+	t.Parallel()
+	app, _ := bootAgentApp(t, 60, 14)
+	var items []hostapi.OverlayItem
+	for _, s := range []string{"alpha one", "Beta two", "gamma three", "xyz", "qqq"} { // filterMin rows
+		items = append(items, hostapi.OverlayItem{Text: s})
+	}
+	app.openOverlay(hostapi.Overlay{ID: "menu", Title: "menu", Items: items})
+	if cur := app.View().Cursor; cur != nil {
+		t.Fatalf("a filter that does not type draws no caret, got %+v", cur)
+	}
+	app.overlayKey("", "/")
+	cur := app.View().Cursor
+	if cur == nil || !strings.Contains(hostapi.SegsText(app.lastRows[cur.Y]), "/ ") {
+		t.Fatalf("an open filter should draw the caret on its query row, got %+v", cur)
+	}
+	x := cur.X
+	app.overlayKey("", "b")
+	cur = app.View().Cursor
+	if cur == nil || cur.X != x+1 || !strings.Contains(hostapi.SegsText(app.lastRows[cur.Y]), "/ b") {
+		t.Fatalf("typing should move the caret with the query, got %+v", cur)
+	}
+	app.overlayKey("esc", "")
+	if cur := app.View().Cursor; cur != nil {
+		t.Fatalf("a filter without the keys draws no caret, got %+v", cur)
+	}
+	app.openOverlay(hostapi.Overlay{ID: "ask", Title: "ask", Input: true})
+	app.bump() // the uiFunc boundary a dispatched open crosses
+	if cur := app.View().Cursor; cur == nil || !strings.Contains(hostapi.SegsText(app.lastRows[cur.Y]), ">") {
+		t.Fatalf("a typed line should draw the caret on its > prompt row, got %+v", cur)
+	}
+}
+
 // TestComposerCaretBlinks: the caret holds steady while the user is at the
 // keys, blinks once the composer sits idle, and steadies on the next input.
 func TestComposerCaretBlinks(t *testing.T) {

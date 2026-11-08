@@ -413,6 +413,7 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 		rows, cell, a.caretOn = a.composerFrame(n, w)
 		if a.caretOn {
 			a.caret = cell.Add(l.rect.Min)
+			a.caretModal, a.caretText = _noModal, a.composer.text
 		}
 	case n.Kind == _layoutComposer:
 		// the composer is on the panel, its rows padded to the node so the
@@ -421,6 +422,7 @@ func (a *App) paint(l laid) [][]hostapi.Segment {
 		rows, cell, a.caretOn = a.composerRows(w, n.Placeholder)
 		if a.caretOn {
 			a.caret = cell.Add(l.rect.Min)
+			a.caretModal, a.caretText = _noModal, a.composer.text
 		}
 		for i := range rows {
 			rows[i] = padSegs(rows[i], w)

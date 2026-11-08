@@ -124,7 +124,7 @@ const (
 
 var _notifyStyles = []string{NotifyOSC, NotifyNative, NotifyBell}
 
-// The composer caret shapes ui.cursor takes, as DECSCUSR names them.
+// The input caret shapes ui.cursor takes, as DECSCUSR names them.
 var _cursorShapes = []string{"bar", "block", "underline"}
 
 // The log levels log.level takes, in rising order.
@@ -180,7 +180,7 @@ func (s *Store) defineDefaults() {
 		{Path: KeyKeymapLeader, Kind: KindString, Default: "ctrl+x", Desc: "the key <leader> stands for in zemi.keymap.set sequences (set it before binding)"},
 		{Path: KeyUIMouse, Kind: KindBool, Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
 		{Path: KeyUINotify, Kind: KindString, Default: NotifyOSC, Choices: _notifyStyles, Desc: "how zemi alerts while its window is unfocused, as a turn ends, a prompt waits, or background work completes: osc (default; a terminal notification), native (osascript or notify-send), bell"},
-		{Path: KeyUICursor, Kind: KindString, Default: "bar", Choices: _cursorShapes, Desc: "the composer caret's shape: bar (default), block or underline"},
+		{Path: KeyUICursor, Kind: KindString, Default: "bar", Choices: _cursorShapes, Desc: "the input caret's shape: bar (default), block or underline"},
 		{Path: KeyUITips, Kind: KindBool, Default: true, Desc: "the discovery tip zemi prints as one line when it exits; false keeps the exit quiet"},
 		{Path: KeyLogLevel, Kind: KindString, Default: "debug", Choices: _logLevels, Desc: "what the launch log file (~/.local/state/zemi/logs) records: debug, info, warn or error"},
 	}

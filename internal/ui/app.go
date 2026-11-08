@@ -120,14 +120,17 @@ type App struct {
 	// paint bands, like highlight; 0 none).
 	chatFocus bool
 	chatSel   int
-	// caret is the composer cursor's cell on the last composed frame; the
+	// caret is the input cursor's cell on the last composed frame; the
 	// terminal's own cursor draws there while caretOn, so no replica is
-	// painted (like neovim's TUI caret).
+	// painted (like neovim's TUI caret). caretModal is the chrome that drew
+	// it — the composer, or the modal whose filter or typed line left the
+	// cell marked — and caretText is what that input holds.
 	caret      uv.Position
 	caretOn    bool
-	caretAt    time.Time   // the last input that changed the draft or moved the caret
-	caretKeys  bool        // whether the composer held the keys on the last frame
-	caretTyped string      // the draft as of the last steadying keystroke
+	caretModal modal
+	caretText  string
+	caretAt    time.Time   // the last input that changed the text or moved the caret
+	caretTyped string      // caretText as of the last steadying keystroke
 	caretPos   uv.Position // the caret cell as of the last frame with the keys
 	caretSeen  bool        // caretPos holds a real cell; the first frame never steadies
 	// chatSelMemo is the message the cursor held when the chat last had the
@@ -616,25 +619,27 @@ func (a *App) View() tea.View {
 	if a.progress {
 		v.ProgressBar = &tea.ProgressBar{State: tea.ProgressBarIndeterminate, Value: a.beat}
 	}
-	// the terminal's own cursor draws the composer's caret, the way neovim's
-	// TUI drives it: a steady bar while the user types, a blinking one once
-	// they stop, hidden whenever the composer lacks the keys or something
-	// covers the cell. The keys are checked here too, so a cached frame never
-	// dangles a stale caret. Only a changed draft or a moved caret steadies
-	// it — scrolling and other actions leave it blinking.
-	holds := a.composerHoldsKeys()
-	if holds && a.caretOn {
+	// the terminal's own cursor draws the input caret — the composer's, or a
+	// popup filter's or typed line's — the way neovim's TUI drives it: a
+	// steady bar while the user types, a blinking one once they stop, hidden
+	// whenever its owner lacks the keys or something covers the cell. The
+	// keys are checked here too, so a cached frame never dangles a stale
+	// caret. Only a changed text or a moved caret steadies it — scrolling
+	// and other actions leave it blinking.
+	top := a.topChrome()
+	holds := a.caretOn && top == a.caretModal &&
+		(a.caretModal != _noModal || a.composerHoldsKeys())
+	if holds {
 		switch {
-		case a.caretTyped != a.composer.text:
+		case a.caretTyped != a.caretText:
 			a.caretAt = a.now()
-			a.caretTyped = a.composer.text
+			a.caretTyped = a.caretText
 		case a.caretSeen && a.caret != a.caretPos:
 			a.caretAt = a.now()
 		}
 		a.caretPos, a.caretSeen = a.caret, true
 	}
-	a.caretKeys = holds
-	if a.caretOn && holds && !a.caret.In(a.popRect) {
+	if holds && !a.caret.In(a.popRect) {
 		v.Cursor = tea.NewCursor(a.caret.X, a.caret.Y)
 		v.Cursor.Shape = cursorShape(a.host.Settings.Str(config.KeyUICursor))
 		v.Cursor.Blink = a.now().Sub(a.caretAt) >= _caretIdle
@@ -652,6 +657,41 @@ func cursorShape(v string) tea.CursorShape {
 		return tea.CursorUnderline
 	default:
 		return tea.CursorBar
+	}
+}
+
+// caretCell finds the caret cell a modal's input marked (cursorSegs) inside
+// the box the chrome took, for the terminal's cursor to draw at; a cut-off
+// cell marks nothing.
+func caretCell(rows [][]hostapi.Segment, rect uv.Rectangle) (uv.Position, bool) {
+	for y := max(rect.Min.Y, 0); y < min(rect.Max.Y, len(rows)); y++ {
+		x := 0
+		for _, seg := range rows[y] {
+			if seg.HL == hostapi.ChromeCursor && x >= rect.Min.X {
+				return uv.Position{X: x, Y: y}, true
+			}
+			x += ansi.StringWidth(seg.Text)
+		}
+	}
+	return uv.Position{}, false
+}
+
+// caretTextOf is the text the top chrome's input holds, so its caret
+// steadies on the input's change alone.
+func (a *App) caretTextOf(top modal) string {
+	switch top {
+	case _modalOverlay:
+		st := &a.overlays[len(a.overlays)-1]
+		if st.o.Input {
+			return st.input.text
+		}
+		return st.query
+	case _modalQuestion:
+		return a.question.states[a.question.at].input.text
+	case _modalPlan:
+		return a.planAsk.input.text
+	default:
+		return ""
 	}
 }
 
@@ -1507,6 +1547,17 @@ func (a *App) compose(w, h int) string {
 	// into it, and the tray must not be joined into the box's
 	a.join(rows, w)
 	toasts()
+
+	// the top chrome's input leaves its caret cell marked (cursorSegs): the
+	// terminal's own cursor draws there, as it does for the composer. Only
+	// the frontmost box is scanned, so a covered box keeps its mark but not
+	// the keys.
+	if top := a.topChrome(); top != _noModal && !a.chromeRect.Empty() {
+		if cell, ok := caretCell(rows, a.chromeRect); ok {
+			a.caret, a.caretOn, a.caretModal = cell, true, top
+			a.caretText = a.caretTextOf(top)
+		}
+	}
 
 	a.lastRows, a.stage, a.popRect, a.panes = rows, stage, pop, lay.panes
 	a.highlightSelection(rows, w)

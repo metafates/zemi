@@ -80,7 +80,6 @@ func chromeStyles(p *hostapi.Palette) map[string]uv.Style {
 		hostapi.ChromeBold:       {Fg: p.Fg, Attrs: uv.AttrBold},
 		hostapi.ChromeTitle:      {Fg: p.Accent, Attrs: uv.AttrBold},
 		hostapi.ChromeRule:       {Fg: p.Rule},
-		hostapi.ChromeCursor:     {Attrs: uv.AttrReverse},
 		hostapi.ChromeValue:      {Fg: p.Fg},
 		hostapi.ChromeHint:       {Fg: p.Dim},
 		hostapi.ChromeHintKey:    {Fg: p.Accent},
