@@ -1091,7 +1091,13 @@ talks back the same way: the run's `update` tool sends its caller a line
 mid-run, which joins the caller's turn at its next step boundary and
 draws a notice row naming the run, so a caller waiting on the run reads
 it there and can steer on it (the user's own message hands the run off
-instead, §4). A run that fails or is cancelled cannot
+instead, §4). With `to`, the same tool queues the line for a running
+sibling run instead, prefixed `from agent run <id>`, so a
+model-authored line never reads as the user's words; the lead's own
+`send_to` marks its line `from the lead agent` the same way. A message
+that lands between the run's last step boundary and its end is parked,
+not dropped: one more pass sends it before the run finishes. A run that
+fails or is cancelled cannot
 read what is still queued, so its report says how many messages it never
 read. A finished run is not gone:
 `send_to` runs it once more on the history it ended with (its kept runner,

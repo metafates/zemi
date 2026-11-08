@@ -410,6 +410,11 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 		}
 		own, err = h.sendPruning(ctx, runner, modelID, "Your reply is not the JSON asked for: "+bad.Error()+". Reply with only the JSON object.", own)
 	}
+	// a message parked while the queue was closed - send_to racing the finish
+	// - still reaches the run: one more pass before the report
+	for next := run.followUp(err); next != ""; next = run.followUp(err) {
+		own, err = h.sendPruning(ctx, runner, modelID, next, own)
+	}
 	h.consultHooks(EventAgentSubagentFinish, map[string]any{"agent": def.Name, "error": errString(err)})
 	h.EmitAsync(EventAgentSubagentFinish, map[string]any{"agent": def.Name, "session": sid, "error": errString(err)})
 	// history keeps the steps finished before a failure: text is then the
@@ -1187,6 +1192,7 @@ func (t *agentTool) Info() fantasy.ToolInfo {
 		" Subagents of one session share the caller's working directory and project: split file edits between parallel runs, or hand each run its own git worktree." +
 		" Set background for long work this call need not hold for. A call without it waits for its run, and hands the run off when the user sends a message while it runs or when the turn is interrupted: the report or result then arrives as a message." +
 		" send_to continues a run, running or finished, by its run id; stop kills the run." +
+		" Two runs that must exchange findings message each other directly: update takes to, a sibling run's id, while both still run; you relay through a run that has ended, or continue it with send_to." +
 		" wait blocks until a run, or every run and workflow of this session with \"all\", ends instead of working on, and composes with send_to, which acts and then the wait holds; a run sending an update, or a sibling finishing or sending one, ends the wait early with a line naming it and the waited run, which keeps running: read it, answer with send_to if needed, then wait again.")
 	b.WriteString("\n\nAgents:")
 	for _, d := range t.defs {
@@ -1282,7 +1288,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		}
 		if run.isRunning() {
 			if strings.TrimSpace(in.Prompt) != "" {
-				if err := t.h.MessageAgent(run.id, in.Prompt); err != nil {
+				if err := sendRun(run, _fromLead, "", in.Prompt); err != nil {
 					return fantasy.NewTextErrorResponse(err.Error()), nil
 				}
 				t.h.setToolDetail(call.ID, "message to "+run.id)
@@ -1298,7 +1304,7 @@ func (t *agentTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fanta
 		}
 		t.h.setTool(call.ID, func(st *StreamTool) { st.Run = run.id })
 		resp, err := t.foreground(ctx, call.ID, run, func(progress func(string)) (string, error) {
-			return t.h.continueRun(ctx, run, in.Prompt, progress)
+			return t.h.continueRun(ctx, run, queuedFrom(_fromLead, "")+in.Prompt, progress)
 		})
 		// the continue held until the run ended; a wait for the others holds on
 		if err != nil || in.Wait == "" {
@@ -1792,7 +1798,12 @@ type updateTool struct {
 // updateArgs is the update tool's input and its schema source.
 type updateArgs struct {
 	Text string `json:"text" desc:"one or two lines: the finding, the blocker or the question"`
+	To   string `json:"to,omitempty" desc:"a sibling run's id: queue the line for that run instead of your caller, for teammates messaging each other directly; it reads the message at its next step and can update you back"`
 }
+
+// _peerUpdateMax caps a peer message: one or two lines, so one run cannot pad
+// another's history.
+const _peerUpdateMax = 2048
 
 func (t *updateTool) Info() fantasy.ToolInfo {
 	props, required := tools.ArgsOf(updateArgs{})
@@ -1820,16 +1831,56 @@ func (t *updateTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fant
 		return resp, nil
 	}
 	run := runOf(ctx)
+	reply = fantasy.NewTextResponse("Sent to the caller.")
+	defer t.h.postNotify(ctx, t.pipe.Pad, string(tools.ToolUpdate), call.Input, &reply, time.Now())
+	if in.To != "" {
+		if run == nil {
+			return fantasy.NewTextErrorResponse("there is no run here to message a sibling from: the lead reaches a run with send_to"), nil
+		}
+		// its own result is the only place a child learns the line never landed
+		if out, err := t.h.updatePeer(run, strings.TrimSpace(in.To), text); err != nil {
+			reply = fantasy.NewTextErrorResponse(err.Error())
+		} else {
+			reply = fantasy.NewTextResponse(out)
+		}
+		return reply, nil
+	}
 	if run == nil {
 		return fantasy.NewTextErrorResponse("there is no caller to update"), nil
 	}
-	reply = fantasy.NewTextResponse("Sent to the caller.")
-	defer t.h.postNotify(ctx, t.pipe.Pad, string(tools.ToolUpdate), call.Input, &reply, time.Now())
 	// its own result is the only place a child learns the line never landed
 	if err := t.h.deliverUpdate(run, text); err != nil {
 		reply = fantasy.NewTextErrorResponse(err.Error())
 	}
 	return reply, nil
+}
+
+// updatePeer delivers one run's message to a sibling run: queued for its next
+// step, named as coming from another agent so it never reads as the user's
+// words.
+func (h *Host) updatePeer(from *agentRun, to, text string) (string, error) {
+	if len(text) > _peerUpdateMax {
+		return "", fmt.Errorf("a message to a sibling is at most %d characters: send the finding, not the work", _peerUpdateMax)
+	}
+	target := h.tasks.find(to)
+	switch {
+	case target == nil:
+		return "", fmt.Errorf("no agent %q in this session", to)
+	case target == from:
+		return "", fmt.Errorf("that is this run: leave to empty to update your caller")
+	case target.agent == _forkAgent || target.workflow != "":
+		return "", fmt.Errorf("agent %s is a fork or a workflow's agent: it takes no messages", to)
+	case !target.isRunning():
+		return "", fmt.Errorf("agent %s has ended: ask your caller to continue it with send_to", to)
+	}
+	if err := sendRun(target, from.id, from.label(), text); err != nil {
+		return "", err
+	}
+	if h.ViewedAgent() == target.id {
+		h.scroll(ScrollBottom)
+		h.refresh()
+	}
+	return "Queued for agent " + to + ": it reads the message at its next step and can update you back.", nil
 }
 
 // decodeInput validates a host tool's input against its schema, so a wrong

@@ -368,7 +368,7 @@ func TestMessageAgent(t *testing.T) {
 		}
 		return "", h.MessageAgent(id, text)
 	}
-	run := func(name string, firstCallsTool, continues bool, send func(*Host, string, string) (string, error)) {
+	run := func(name string, firstCallsTool, continues bool, send func(*Host, string, string) (string, error), from string) {
 		t.Run(name, func(t *testing.T) {
 			h, _ := newTestHostDB(t)
 			h.SetUIHooks(&fakeUI{}) // background agents are a TUI feature
@@ -386,7 +386,7 @@ func TestMessageAgent(t *testing.T) {
 							return toolCallParts("t1", "glob", `{"pattern":"*.none"}`)
 						}
 						return textParts("first")
-					case last == "also this" && !toolResult:
+					case strings.Contains(last, "also this") && !toolResult:
 						return textParts("got it")
 					default:
 						return textParts("unexpected: " + last)
@@ -415,14 +415,15 @@ func TestMessageAgent(t *testing.T) {
 				return nil
 			})
 			tr := r.transcript()
-			if len(tr) < 3 || tr[len(tr)-2].Text != "also this" || tr[len(tr)-1].Text != "got it" {
+			want := from + "also this"
+			if len(tr) < 3 || tr[len(tr)-2].Text != want || tr[len(tr)-1].Text != "got it" {
 				t.Fatalf("transcript: %+v", tr)
 			}
 			_, _, _, rsid := r.state()
 			// a run the process forgot is read back by the id the model saw
 			forgetRun(h, id)
 			stored, err := h.loadRun(id)
-			if err != nil || stored.sessionID != rsid || !strings.Contains(fmt.Sprint(stored.transcript()), "{user  also this") {
+			if err != nil || stored.sessionID != rsid || !strings.Contains(fmt.Sprint(stored.transcript()), "{user  "+from) {
 				t.Fatalf("stored run: %v %+v", err, stored)
 			}
 			// the tool continues a finished run on its history; the view only
@@ -432,24 +433,101 @@ func TestMessageAgent(t *testing.T) {
 			switch {
 			case !continues && (err == nil || !strings.Contains(err.Error(), "not running")):
 				t.Fatalf("finished run took a message: %v", err)
-			case continues && (err != nil || !strings.Contains(out, "unexpected: too late") || !strings.HasPrefix(out, "[run "+id+"]")):
+			case continues && (err != nil || !strings.Contains(out, "unexpected:") || !strings.HasPrefix(out, "[run "+id+"]")):
 				t.Fatalf("continuation: %q %v", out, err)
 			}
 			if continues {
-				if tr := r.transcript(); r.isRunning() || tr[len(tr)-1].Text != "unexpected: too late" || tr[len(tr)-2].Text != "too late" {
+				if tr := r.transcript(); r.isRunning() || tr[len(tr)-1].Text != "unexpected: "+from+"too late" || tr[len(tr)-2].Text != from+"too late" {
 					t.Fatalf("continued transcript: %+v", tr)
 				}
 				forgetRun(h, id)
 				stored, _ := h.loadRun(rsid)
-				if !strings.Contains(fmt.Sprint(stored.transcript()), "{user  too late") {
+				if !strings.Contains(fmt.Sprint(stored.transcript()), "{user  "+from) {
 					t.Fatalf("continuation not stored: %+v", stored.transcript())
 				}
 			}
 			waitIdle(t, h)
 		})
 	}
-	run("model at a step boundary", true, true, viaTool)
-	run("user after the last step", false, false, viaView)
+	run("model at a step boundary", true, true, viaTool, queuedFrom(_fromLead, ""))
+	run("user after the last step", false, false, viaView, "")
+}
+
+// TestMessageParkedAcrossTheClose: a message arriving between the run's last
+// step boundary and its end is parked, then still reaches the run - both old
+// paths refused it there, the queue as "not running" and the continuation as
+// "running".
+func TestMessageParkedAcrossTheClose(t *testing.T) {
+	t.Parallel()
+	run := &agentRun{id: "r1", agent: "explore", status: RunRunning, closed: true, started: time.Now()}
+	if err := run.message("late"); err != nil {
+		t.Fatalf("parked message refused: %v", err)
+	}
+	if got := run.followUp(nil); got != "late" {
+		t.Fatalf("followUp = %q, want the parked message", got)
+	}
+	if run.closed {
+		t.Fatal("the queue must reopen while the parked message is sent")
+	}
+	if err := run.message("later"); err != nil {
+		t.Fatalf("queued message refused after reopening: %v", err)
+	}
+	if got := run.followUp(nil); got != "later" {
+		t.Fatalf("followUp = %q", got)
+	}
+	if got := run.followUp(nil); got != "" || !run.closed {
+		t.Fatalf("followUp = %q closed=%v, want the queue closed", got, run.closed)
+	}
+	run.status = RunDone
+	if err := run.message("no"); err == nil || !strings.Contains(err.Error(), "not running") {
+		t.Fatalf("finished run took a message: %v", err)
+	}
+}
+
+// TestUpdateToRefusals: a peer message reaches a running sibling named as
+// coming from another agent, and is refused for everything else.
+func TestUpdateToRefusals(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	h.SetUIHooks(&fakeUI{})
+	sender := &agentRun{id: "send", agent: "general", status: RunRunning, started: time.Now()}
+	live := &agentRun{id: "live1", agent: "general", description: "reviewer", status: RunRunning, started: time.Now()}
+	runs := []*agentRun{
+		sender, live,
+		{agent: _forkAgent, id: "fork1", status: RunRunning, started: time.Now()},
+		{agent: "general", id: "flow1", workflow: "f1", status: RunRunning, started: time.Now()},
+		{agent: "general", id: "end1", status: RunDone, started: time.Now()},
+	}
+	for _, run := range runs {
+		if err := h.tasks.add(run); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cases := []struct {
+		name, to, text, want string
+	}{
+		{"unknown", "nope", "hi", `no agent "nope" in this session`},
+		{"itself", "send", "hi", "that is this run"},
+		{"fork", "fork1", "hi", "takes no messages"},
+		{"workflow agent", "flow1", "hi", "takes no messages"},
+		{"ended", "end1", "hi", "has ended"},
+		{"too long", "live1", strings.Repeat("x", _peerUpdateMax+1), "at most"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if _, err := h.updatePeer(sender, c.to, c.text); err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("updatePeer(%q) = %v, want %q", c.to, err, c.want)
+			}
+		})
+	}
+	out, err := h.updatePeer(sender, "live1", "found it")
+	if err != nil || !strings.Contains(out, "Queued") {
+		t.Fatalf("updatePeer: %q %v", out, err)
+	}
+	want := queuedFrom(sender.id, sender.label()) + "found it"
+	if q := live.queued(); len(q) != 1 || q[0] != want {
+		t.Fatalf("queued = %q, want %q", q, want)
+	}
 }
 
 // TestFinishNeverDeadlocksNextTurn: finish marks the run's rows with run.mu

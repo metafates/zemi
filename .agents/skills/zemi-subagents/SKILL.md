@@ -94,7 +94,13 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   A background run past
   `agent.max_background`
   (4 by default, workflows counted with agents, a handed-off run counted too) is refused
-  (`taskReg.detached`). What the chat
+  (`taskReg.detached`). A run messages a running sibling directly with `update`'s `to`
+  (a run id; `updatePeer` in subagent.go): the line queues for the sibling's next step,
+  prefixed `from agent run <id>`, so a model-authored line never reads as the user's words;
+  forks and a workflow's agents take no messages, an ended sibling sends the peer back to
+  its caller. The lead's own `send_to` marks its line `from the lead agent` the same way, and
+  a message that lands between a run's last step boundary and its end is parked, not dropped:
+  `followUp` sends it as one more turn before the run finishes. What the chat
   draws of a queue is one row per message (`queuedRows`): the user's own words as typed, and a
   subagent's report, update or plugin send as a notice row naming it, since the whole of that
   message is the model's. Background runs report through

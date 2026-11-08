@@ -128,20 +128,24 @@ type agentRun struct {
 	sessionID string        // the run's child session, "" when not recorded
 	runner    *agent.Runner // kept after the run ends: send_to continues it with its history
 	calls     int
-	tokens    int64           // billed input and output of its steps
-	cost      float64         // 0 when the model has no prices
-	tr        []ChatMessage   // the prompt, tool rows and replies so far
-	text      string          // reply text streamed since the last row
-	reason    string          // thinking streamed since the last row, drawn live until it settles
-	thinkAt   time.Time       // when the open reasoning block began, zero when none is
-	thought   time.Duration   // closed reasoning blocks since the last row
-	rows      map[string]int  // tool call id -> tr index
-	rev       uint64          // bumped on every tr write (run.mu held): the chat caches the shown run's rows by it
-	queue     []string        // messages waiting for the next step boundary
-	closed    bool            // past its last step boundary: a message would be lost
-	dropped   int             // queued messages the run ended before reading
-	end       chan struct{}   // closed when the run's current attempt ends, fresh per attempt
-	updates   []chan struct{} // update waiters, each closed once its send succeeds
+	tokens    int64          // billed input and output of its steps
+	cost      float64        // 0 when the model has no prices
+	tr        []ChatMessage  // the prompt, tool rows and replies so far
+	text      string         // reply text streamed since the last row
+	reason    string         // thinking streamed since the last row, drawn live until it settles
+	thinkAt   time.Time      // when the open reasoning block began, zero when none is
+	thought   time.Duration  // closed reasoning blocks since the last row
+	rows      map[string]int // tool call id -> tr index
+	rev       uint64         // bumped on every tr write (run.mu held): the chat caches the shown run's rows by it
+	queue     []string       // messages waiting for the next step boundary
+	// messages parked between the run's last step boundary and its end, where
+	// the queue is closed but the run is still going: followUp honors them
+	// before the run finishes
+	pending []string
+	closed  bool            // past its last step boundary: a message would be lost
+	dropped int             // queued messages the run ended before reading
+	end     chan struct{}   // closed when the run's current attempt ends, fresh per attempt
+	updates []chan struct{} // update waiters, each closed once its send succeeds
 	// the attempt in flight after a provider retry, as the session turn's
 	// stream keeps it: Retrying sets it, the next streamed part clears it
 	retries  int
@@ -569,16 +573,47 @@ func (run *agentRun) thinkTime() time.Duration {
 	return run.thought + time.Since(run.thinkAt)
 }
 
-// message queues text for the run's next step boundary (Steer), or for one
-// more turn when it arrives after the last one.
+// message queues text for the run's next step boundary (Steer), for one more
+// turn when it arrives after the last one, or parks it when the run is
+// between its last step boundary and its end: followUp honors parked messages
+// before the run finishes, so none is accepted and then lost.
 func (run *agentRun) message(text string) error {
 	run.mu.Lock()
 	defer run.mu.Unlock()
-	if run.status != RunRunning || run.closed {
+	switch {
+	case run.status != RunRunning:
 		return fmt.Errorf("agent %s is not running", run.id)
+	case run.closed:
+		run.pending = append(run.pending, text)
+	default:
+		run.queue = append(run.queue, text)
 	}
-	run.queue = append(run.queue, text)
 	return nil
+}
+
+// _fromLead names the lead model as a queued message's sender.
+const _fromLead = "lead"
+
+// queuedFrom is the line a queued message carries when its sender is not the
+// user: the run's model must never read a model-authored line as its words.
+func queuedFrom(from, label string) string {
+	if from == _fromLead {
+		return "from the lead agent, not the user:\n"
+	}
+	if label != "" {
+		return "from agent run " + from + " (" + label + "), not the user:\n"
+	}
+	return "from agent run " + from + ", not the user:\n"
+}
+
+// sendRun queues text for a run on behalf of from: "" for the user, "lead"
+// for the lead model, a run id (with its label) for a peer messaging a
+// sibling.
+func sendRun(run *agentRun, from, label, text string) error {
+	if from != "" {
+		text = queuedFrom(from, label) + text
+	}
+	return run.message(text)
 }
 
 // take empties the queue into transcript rows, after the reply they
@@ -609,16 +644,20 @@ func (run *agentRun) takeQueue() []string {
 // queued after its last step boundary, or "" once it is done, which closes
 // the queue in the same lock so no message is accepted and then dropped.
 // A failed run cannot read what is still queued; dropped counts it so the
-// report says so instead of losing it silently.
+// report says so instead of losing it silently. Messages parked while the
+// queue was closed (sent_to racing the finish) still reach the run here.
 func (run *agentRun) followUp(err error) string {
 	run.mu.Lock()
 	defer run.mu.Unlock()
-	if err != nil || len(run.queue) == 0 {
+	if err != nil || (len(run.queue) == 0 && len(run.pending) == 0) {
 		run.closed = true
-		run.dropped += len(run.queue)
-		run.queue = nil
+		run.dropped += len(run.queue) + len(run.pending)
+		run.queue, run.pending = nil, nil
 		return ""
 	}
+	run.queue = append(run.queue, run.pending...)
+	run.pending = nil
+	run.closed = false
 	return strings.Join(run.take(), "\n\n")
 }
 
@@ -675,6 +714,13 @@ func (h *Host) MessageAgent(id, text string) error {
 func (run *agentRun) finish(h *Host, err error) {
 	run.mu.Lock()
 	run.flush()
+	if len(run.pending) > 0 {
+		// parked in the last instant, past the report's dropped count: say so
+		h.Log.Warn("messages parked as the run finished were never read",
+			"origin", "agents", "run", run.id, "count", len(run.pending))
+		run.dropped += len(run.pending)
+		run.pending = nil
+	}
 	run.retries, run.retryAt, run.retryWhy = 0, time.Time{}, ""
 	if run.end != nil {
 		close(run.end)
