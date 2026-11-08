@@ -1109,6 +1109,9 @@ func lf(s string) string { return strings.ReplaceAll(s, "\r\n", "\n") }
 
 // grepArgs is the grep tool's input and its schema source.
 type grepArgs struct {
+	// "about", not "description": a schema's properties reach the model
+	// sorted by name, and this one has to stream before the pattern
+	About   string `json:"about,omitempty" desc:"what the search is for"`
 	Pattern string `json:"pattern" desc:"RE2 regular expression matched against each line"`
 	Path    string `json:"path,omitempty" desc:"file or directory to search; default the working directory"`
 	Include string `json:"include,omitempty" desc:"glob limiting which files are searched, such as *.go"`

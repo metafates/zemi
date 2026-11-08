@@ -1215,4 +1215,12 @@ func TestLeadOrder(t *testing.T) {
 	if out := run(`{"command":"true","about":"late"}`); !strings.Contains(out, `<system-reminder>Pass "about" first in shell calls`) {
 		t.Fatalf("a content-first call carried no reminder: %q", out)
 	}
+	grep := toolNamed(t, "grep", p)
+	res, err := grep.Run(t.Context(), fantasy.ToolCall{ID: "t2", Name: "grep", Input: `{"pattern":"x","about":"late"}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Content, `<system-reminder>Pass "about" first in grep calls`) {
+		t.Fatalf("a content-first grep call carried no reminder: %q", res.Content)
+	}
 }

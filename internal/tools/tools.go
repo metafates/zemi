@@ -779,6 +779,7 @@ var LeadPairs = map[string][2]string{
 	string(ToolJobStart): {"about", "command"},
 	string(ToolWrite):    {"path", "content"},
 	string(ToolEdit):     {"path", "old_string"},
+	string(ToolGrep):     {"about", "pattern"},
 	string(ToolLua):      {"about", "script"},
 	string(ToolAgent):    {"description", "prompt"},
 }
@@ -870,7 +871,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	return []fantasy.AgentTool{
 		mk(ToolShell, `Run a shell command. It runs bash when bash is on PATH and, on unix, falls back to zsh, dash, then sh, so a bashism can fail there. Every call already starts in the working directory: relative paths resolve there and a command never needs a cd to reach it. A cd or export lasts for its call only. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged.
 Not for what does not exit on its own (npm run dev, tsc -w, tail -f): what a command leaves running is stopped when it returns. Not for reading, searching or editing a file, but one perl -pi command makes the same substitution across many files.
-Pass about first, then the command.
+Pass about first.
 A command whose output is worth a second look (a build, a long test run, a log) tees under $ZEMI_SCRATCH before any other pipe stage - make test 2>&1 | tee "$ZEMI_SCRATCH/t.log" | tail -3 - so a stage that fails, or the next part you want, reads the file instead of rerunning the command.
 Chain dependent steps with &&.`,
 			false,
@@ -898,7 +899,7 @@ Chain dependent steps with &&.`,
 			pathReq(perm.SubjectRead, searchRoot),
 			typed(runGlob)),
 
-		mk(ToolGrep, "Search file contents under path, skipping .gitignored, binary and over 4 MB files, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case). Returns up to 100 matching lines as path:line: text.", true,
+		mk(ToolGrep, "Search file contents under path, skipping .gitignored, binary and over 4 MB files, with an RE2 regular expression (no lookaround or backreferences; (?i) ignores case). Returns up to 100 matching lines as path:line: text. Pass about first.", true,
 			grepArgs{},
 			pathReq(perm.SubjectRead, searchRoot),
 			typed(runGrep)),
@@ -923,7 +924,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			nil,
 			typed(runPlan)),
 
-		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. There is no timeout field: a job runs until it exits or job_kill stops it. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need. Pass about first, then the command.",
+		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. There is no timeout field: a job runs until it exits or job_kill stops it. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need. Pass about first.",
 			true,
 			jobStartArgs{},
 			shellRequests,
