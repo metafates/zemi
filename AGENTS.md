@@ -48,15 +48,16 @@ model call: the model supplies its own labels, like a shell call's `about`, as i
 call.
 
 The permission system is a UX feature, not isolation: everything runs, and a
-plugin's `permission.request` handler (the `perm` word in its `uses`) may deny
-or force the ask overlay per action. It never parses a command to judge it,
-and it is never a security boundary - a run that must not touch the machine
-runs in a container or VM. An ask no one can answer fails closed.
+plugin's `tool.pre` handler may deny a call, halt the turn or put its action to
+the ask overlay. It never parses a command to judge it, and it is never a
+security boundary - a run that must not touch the machine runs in a container
+or VM. An ask no one can answer fails closed.
 
 The UI has one identity: neutrals from whorl's fg and bg, one accent (whorl's
 periwinkle), one literal for text quoted as written (whorl's apricot), the chat on the canvas but
 the user's prompt on the panel, every box and the composer on the panel, square corners joined
-where two lines touch, and the `@` snail whose state lives in its eyes, plain eye color in every state.
+where two lines touch, and the snail whose shell is `@` idle and a braille spinner while the
+agent works, its `··` eyes plain in both states.
 Widgets use the semantic theme groups (`Accent`, `Dim`, `Rule`, `Title`, `Literal`, `Danger`,
 `Warn`, `Ok`); every other group links to one or names a palette role. No state change may
 add or remove a row or shift text. Hover in the chat is minimal: body rows get none, a header
@@ -83,7 +84,7 @@ Each of these has a failure mode, not a style preference; the skill in brackets 
 - No bare `go func()` in hostapi: start one with `h.GoSafe(where, fn)`, and a turn goroutine also defers `h.endTurnAfterPanic()`. [zemi-lua-runtime]
 - All `ui.App` state mutates on the bubbletea Update goroutine, and nothing `Update` calls may call `program.Send`/`program.Quit` (bubbletea's unbuffered channel makes the loop wait on itself: the `/quit` hang). Blocking hooks run off the UI goroutine only. [zemi-ui]
 - Never keep a pointer into an old generation: every registration is `Gen`-tagged and purged before the replay. [zemi-lua-runtime]
-- A Lua handler on the UI path stays under ~10 ms; a vetoable event's handler has 50 ms and then takes the event's logged default (for `permission.request`, silence: the request runs unless the overlay denies it; the hot runtime still denies). [zemi-lua-runtime]
+- A Lua handler on the UI path stays under ~10 ms; a vetoable event's handler has 50 ms and then takes the event's logged default (for `tool.pre`, silence: the call runs; the hot runtime still denies). [zemi-lua-runtime]
 - An ask with no overlay available fails closed, and a rewritten tool input re-enters at the permission gate. [zemi-perm]
 - A child process starts through `internal/proc`, never a plain `exec.Command`. [zemi-perm]
 - The store schema is embedded goose migrations run on open: a change is a new numbered file under `internal/store/migrations`, applied at the next boot, and no version refusal. [zemi-host-flow]
