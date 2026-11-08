@@ -651,10 +651,10 @@ func (a *App) acceptCompletion() {
 		// a bare name another kind answers spells its kind out, the word
 		// the expander forces, in place of the host's ./ escape
 		if !strings.ContainsAny(rel, `/\`) && f.claims(rel) > 1 {
-			ins = "file:" + rel
+			ins = hostapi.AttachFile + ":" + rel
 			if !hostapi.CanRef(ins) {
 				q := hostapi.FrameQuote(rel)
-				ins = "file:" + string(q) + rel + string(q)
+				ins = hostapi.AttachFile + ":" + string(q) + rel + string(q)
 			}
 		}
 		a.composer.replace(f.start, "@"+ins+" ")

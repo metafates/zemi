@@ -1811,7 +1811,7 @@ which `zoom(id)` and `date(id)` take.
 One file per scope: global DB at `~/.local/state/zemi/zemi.db` (skills and
 kv), per-project DBs at
 `~/.local/state/zemi/projects/<hash of trust root>/zemi.db` (the log, the
-tree, the view, sessions, messages, todos, tool_calls, kv),
+tree, the view, sessions, messages, todos, tool_calls, usage_days, kv),
 named in the dir's `root` file (read only when it hashes to the dir's
 name), the same repository identity trust uses, so a subdirectory or a
 linked worktree opens the same chat rather than a blank store. The log is
@@ -1834,8 +1834,8 @@ one transaction each, applied on open under a `zemi.db.lock` file lock so
 two opens never run one twice. A change is a new numbered file: it reaches
 every store at its next open, with no version stamp and no reset to do.
 The baseline is all `CREATE ... IF NOT EXISTS`, so a store made before
-goose only gets the version table and keeps its rows; the one migration
-builds the tables above and plants the `main` anchor row.
+goose only gets the version table and keeps its rows; the migrations
+build today's tables and plant the `main` anchor row.
 
 An append commits in one transaction: the log row, its view line and, for
 the kinds a template can line (a tool call, a tool result), the message's

@@ -15,6 +15,7 @@ import (
 	"github.com/yuin/gopher-lua/parse"
 
 	"github.com/metafates/zemi/internal/agent"
+	"github.com/metafates/zemi/internal/classify"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/skill"
@@ -301,6 +302,8 @@ func TestTypesEnums(t *testing.T) {
 		{"zemi.ServiceStatus", "", strs(_serviceStatuses)},
 		{"zemi.TodoStatus", "", strs(store.TodoStatuses)},
 		{"zemi.ToolVerdict", "", strs(tools.PreVerdicts)},
+		{"zemi.ClassifyStrategy", "", strs(classify.Strategies)},
+		{"zemi.ClassifierType", "", strs(classify.Types)},
 		{"zemi.SkillSource", "", strs(skill.Sources)},
 		{"zemi.HealthLevel", "", strs(_healthLevels)},
 		{"zemi.NArgs", "", strs(_nargsSpecs)},

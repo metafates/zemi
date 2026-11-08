@@ -675,8 +675,8 @@ func (tg *trustGate) decide() (bool, error) {
 // record applies a prompt answer: trust and untrust are saved, "later" holds
 // for this process only (a reload does not ask again, the next start does).
 func (tg *trustGate) record(root, answer string) (bool, error) {
-	ok := answer == "trust"
-	if answer != "later" && !hostapi.TrustUnsaved(root) {
+	ok := answer == ui.TrustYes
+	if answer != ui.TrustLater && !hostapi.TrustUnsaved(root) {
 		saved := tg.dirs.ReadTrust()
 		mark := config.Untrusted
 		if ok {
@@ -707,7 +707,7 @@ func (tg *trustGate) command() func() {
 				mark = config.Trusted
 			}
 			answer := tg.ask(root, tg.dirs.ProjectDir, mark)
-			if answer == "later" {
+			if answer == ui.TrustLater {
 				return
 			}
 			ok, err := tg.record(root, answer)

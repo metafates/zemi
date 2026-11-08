@@ -5,7 +5,7 @@ The screen is drawn in Go (`internal/ui`): the splash, the chat, the composer's 
 ## Keys
 
 ```lua
-zemi.keymap.set("<leader>r", "review", { desc = "review changes" }) -- a command name or a host action
+zemi.keymap.set("<leader>m", "memories", { desc = "open memories" }) -- a command name or a host action
 zemi.keymap.set("ctrl+t", function() zemi.agent.send("run the tests") end, { desc = "run tests" })
 zemi.keymap.del("ctrl+y") -- shipped keys unbind too
 zemi.keymap.set("ctrl+j", "down", { list = true }) -- moves in every list, popup and prompt

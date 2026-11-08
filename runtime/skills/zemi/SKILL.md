@@ -36,7 +36,7 @@ The prompt names the exact user config, project config and local plugins directo
 - Never write an API key into a file: config reads it with `zemi.env.get("NAME")`.
 - zemi reloads within a second of a config file change once no turn runs, and the Lua tool reloads before a script whenever a config or plugin file changed, so a script always sees what is on disk and its result starts with what failed to load. A reload drops what earlier scripts registered.
 - The system prompt is pinned: the listed skills, agents and workflows and `agent.assemble` sections change when the pin is dropped (a trust flip, a deleted skill). A new agent or workflow still loads by name at once, a new skill after the next reload, and an edited AGENTS.md reaches the model with the next message.
-- For the Lua API, grep the types file in the shell, never read it whole: `grep -n '^function zemi\.'` lists every member with its parameters, `grep -n -B20 'function zemi.config.add('` one member with the rules and `---@return` above it, and `grep -n -A20 '@class zemi.WidgetSpec'` (or `@alias zemi.SettingKind`) one type with its fields.
+- For the Lua API, grep the types file in the shell, never read it whole: `grep -n '^function zemi\.'` lists every member with its parameters, `grep -n -B20 'function zemi.config.add('` one member with the rules and `---@return` above it, and `grep -n -A20 '@class zemi.AgentDef'` (or `@alias zemi.SettingKind`) one type with its fields.
 
 ## Check a change
 

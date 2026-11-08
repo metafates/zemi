@@ -103,7 +103,7 @@ func TestMemoriesZoomKeys(t *testing.T) {
 
 // TestMemoriesLeafPreview: enter on a leaf reads the messages it covers over
 // the browser, and the chat stays where it was - the browser is an overview;
-// finding a turn's place on the screen is /messages' job.
+// finding a turn's place on the screen is the chat's own scrolling.
 func TestMemoriesLeafPreview(t *testing.T) {
 	t.Parallel()
 	app, host := seedMemoriesApp(t, 100, 24)

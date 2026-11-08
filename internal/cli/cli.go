@@ -33,6 +33,7 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/sanitize"
+	"github.com/metafates/zemi/internal/ui"
 )
 
 // _envHelp ends the root's help only.
@@ -893,7 +894,7 @@ func (o *options) readStdin(stdin *os.File) error {
 // headlessTrust answers the trust prompt when nobody can: not now.
 func headlessTrust() func(root, cwd, state string) string {
 	return func(root, _, _ string) string {
-		return "later"
+		return ui.TrustLater
 	}
 }
 

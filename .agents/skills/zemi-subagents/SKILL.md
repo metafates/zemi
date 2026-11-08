@@ -107,7 +107,7 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   `AgentSend` behind `agent.AttachMarker`, which the live transcript and resume cut off; the
   notice row is drawn from the message wherever the model reads it (`appendUserRows`: a new
   turn, a step boundary, a drained queue), so it sits under the rows of the turn it
-  arrived in. Consecutive notice rows are one block in the chat (chat.lua `B.notices`), no
+  arrived in. Consecutive notice rows are one block in the chat (`internal/ui/chat.go`'s notices), no
   blank row between them and the older ones of a long burst behind one click-to-open row, so
   a fleet of runs reporting at once cannot take the transcript over. A report whose
   turn is gone is still logged as the chat's work row (§10.5) and toasted

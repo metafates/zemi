@@ -2336,7 +2336,8 @@ type statusItem struct {
 }
 
 // statusClusters are the statusline's two sides fitted into w cells, each
-// drawn from its outer edge in priority order, so a lasting widget sits
+// drawn from its outer edge in rank order (priority where no rank is set), so
+// a lasting widget sits
 // outermost and one that comes and goes never moves it: the left widgets and
 // the pills left to right, the right widgets right to left.
 func (a *App) statusClusters(w int) (left, right []hostapi.Segment) {
