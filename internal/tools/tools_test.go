@@ -1212,7 +1212,7 @@ func TestLeadOrder(t *testing.T) {
 	if out := run(`{"about":"probe","command":"true"}`); strings.Contains(out, "system-reminder") {
 		t.Fatalf("a label-first call was reminded: %q", out)
 	}
-	if out := run(`{"command":"true","about":"late"}`); !strings.Contains(out, `<system-reminder>Pass "about" first in shell calls`) {
+	if out := run(`{"command":"true","about":"late"}`); !strings.Contains(out, `<system-reminder>Pass "about" before "command" in shell calls`) {
 		t.Fatalf("a content-first call carried no reminder: %q", out)
 	}
 	grep := toolNamed(t, "grep", p)
@@ -1220,7 +1220,7 @@ func TestLeadOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(res.Content, `<system-reminder>Pass "about" first in grep calls`) {
+	if !strings.Contains(res.Content, `<system-reminder>Pass "about" before "pattern" in grep calls`) {
 		t.Fatalf("a content-first grep call carried no reminder: %q", res.Content)
 	}
 }

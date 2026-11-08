@@ -502,7 +502,7 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 	}
 	res, err = t.run(ctx, &run, input)
 	if res.Type == "text" && t.lead[0] != "" && !LeadOK(call.Input, t.lead[0], t.lead[1]) {
-		res.Content += LeadReminder(t.info.Name, t.lead[0])
+		res.Content += LeadReminder(t.info.Name, t.lead[0], t.lead[1])
 	}
 	return res, err
 }
@@ -813,8 +813,8 @@ func LeadOK(input, lead, content string) bool {
 }
 
 // LeadReminder is the note a label-burying call appends to its output.
-func LeadReminder(tool, lead string) string {
-	return "\n\n<system-reminder>Pass \"" + lead + "\" first in " + tool + " calls, before the content arguments, so the row streams its label first.</system-reminder>"
+func LeadReminder(tool, lead, content string) string {
+	return "\n\n<system-reminder>Pass \"" + lead + "\" before \"" + content + "\" in " + tool + " calls, so the row streams its label first.</system-reminder>"
 }
 
 func gated(t *tool) *tool {
@@ -865,14 +865,13 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	// a model told it reads images plans screenshots it can never look at
 	readDesc := "Read a file (text or image), or list a directory one level deep."
 	if p != nil && p.Images != nil && !p.Images() {
-		readDesc = "Read a text file, or list a directory one level deep. This model cannot see images: do not take screenshots or read image files. Check visual work in its source and with the project's build or tests, or ask the user to look."
+		readDesc = "Read a text file, or list a directory one level deep. This model cannot see images: do not take screenshots or read image files. Check visual work in its source, the project's build or tests, or ask the user to look."
 	}
 
 	return []fantasy.AgentTool{
-		mk(ToolShell, `Run a shell command. It runs bash when bash is on PATH and, on unix, falls back to zsh, dash, then sh, so a bashism can fail there. Every call already starts in the working directory: relative paths resolve there and a command never needs a cd to reach it. A cd or export lasts for its call only. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged.
-Not for what does not exit on its own (npm run dev, tsc -w, tail -f): what a command leaves running is stopped when it returns. Not for reading, searching or editing a file, but one perl -pi command makes the same substitution across many files.
-Pass about first.
-A command whose output is worth a second look (a build, a long test run, a log) tees under $ZEMI_SCRATCH before any other pipe stage - make test 2>&1 | tee "$ZEMI_SCRATCH/t.log" | tail -3 - so a stage that fails, or the next part you want, reads the file instead of rerunning the command.
+		mk(ToolShell, `Run a shell command. Pass about first, then the command. It runs bash when bash is on PATH and, on unix, falls back to zsh, dash, then sh. Every call starts in the working directory: relative paths resolve there and a command never needs a cd to reach it; a cd or export lasts for its call only. No terminal and empty stdin: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged.
+Not for what does not exit on its own (npm run dev, tsc -w, tail -f); what it leaves running stops when it returns. Not for reading, searching or editing a file; one perl -pi makes the same substitution across many files.
+A command whose output is worth a second look (a build, a test run, a log) tees under $ZEMI_SCRATCH before any other pipe stage - make test 2>&1 | tee "$ZEMI_SCRATCH/t.log" | tail -3 - so a failing stage, or the next part you want, reads the file instead of rerunning.
 Chain dependent steps with &&.`,
 			false,
 			shellArgs{},
@@ -884,47 +883,47 @@ Chain dependent steps with &&.`,
 			pathReq(perm.SubjectRead, pathIn),
 			typed(runRead))),
 
-		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read first, and not changed since. To change part of a file use edit. Pass path first.", false,
+		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. Pass path first, then the content. An existing file must have been read first, and not changed since. To change part of a file use edit.", false,
 			writeArgs{},
 			changeReq(ToolWrite),
 			typed(runWrite)))),
 
-		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. old_string must match exactly once, as written and without read's line-number prefix. Keep it as small as still unique; edits and writes sent together apply in order. Pass path first.", false,
+		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. Pass path first, then the old and new strings. old_string must match exactly once, without read's line-number prefix. Keep it as small as still unique; edits and writes sent together apply in order.", false,
 			editArgs{},
 			changeReq(ToolEdit),
 			typed(runEdit)))),
 
-		mk(ToolGlob, "List files matching a glob under path, newest first, skipping .gitignored ones. A pattern without / matches names at any depth; one with / is relative to path.", true,
+		mk(ToolGlob, "List files matching a glob under path, newest first, skipping .gitignored ones. A pattern without / matches names at any depth; with / it is relative to path.", true,
 			globArgs{},
 			pathReq(perm.SubjectRead, searchRoot),
 			typed(runGlob)),
 
-		mk(ToolGrep, "Search file contents under path, skipping .gitignored, binary and 4 MB+ files, with an RE2 regex (no lookaround or backreferences; (?i) ignores case). Returns up to 100 lines as path:line: text. Pass about first.", true,
+		mk(ToolGrep, "Search file contents under path, skipping .gitignored, binary and 4 MB+ files, with an RE2 regex (no lookaround; (?i) ignores case). Pass about first, then the pattern. Returns up to 100 lines as path:line: text.", true,
 			grepArgs{},
 			pathReq(perm.SubjectRead, searchRoot),
 			typed(runGrep)),
 
-		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees; never a single step. Pass the whole list every time, with exactly one item in_progress while work remains, and mark an item done in the same response as the next step's first calls. Work that arrives mid-turn joins the list: add it when you take it on, not once it is done. An item left in_progress when the turn ends goes back to pending, so mark the next one in_progress to pick it up. A turn does not end with open items: before your final message every item is done, or the list rewritten to match what happened. Do not repeat the list in your reply.",
+		mk(ToolTodos, "Track several distinct steps, or several tasks from the user, in a list the user sees; never a single step. Pass the whole list every time, exactly one item in_progress while work remains, and mark an item done in the same response as the next step's first calls. Work that arrives mid-turn joins the list: add it when you take it on, not once it is done. An item left in_progress when the turn ends goes back to pending, so mark the next one in_progress. A turn does not end with open items: every item done, or the list rewritten. Do not repeat the list in your reply.",
 			false,
 			todosArgs{},
 			nil,
 			typed(runTodos)),
 
-		mk(ToolQuestion, `Ask the user up to 4 questions and wait for the answers. Only for what they alone can decide: requirements, scope, behavior, preferences, tradeoffs; never what reading code would tell you, approval for a routine action, or whether a plan is ready. Put independent questions in one call; ask separately when one answer changes another. Choice questions take 2-4 options with 1-5 word labels, the one you recommend first with its label ending in "(Recommended)". Never add an "Other" option: the user can always type their own answer.`,
+		mk(ToolQuestion, `Ask the user up to 4 questions and wait for the answers. Only for what they alone can decide: requirements, scope, behavior, preferences, tradeoffs; never what reading code would tell you. Put independent questions in one call; ask separately when one answer changes another. Choice questions take 2-4 options with 1-5 word labels, the recommended one first with its label ending in "(Recommended)". Never add an "Other" option: the user can always type their own answer.`,
 			false,
 			questionArgs{},
 			nil,
 			typed(runQuestion)),
 
-		mk(ToolPlan, `Present an implementation plan and wait for the user's verdict before changing anything. Call it only before a large or ambiguous change (a clear task is done, not planned, and a question is answered), or as a read-only agent once nothing is left to decide.
+		mk(ToolPlan, `Present an implementation plan and wait for the user's verdict before changing anything. Call it only before a large or ambiguous change, or as a read-only agent once nothing is left to decide.
 
-The plan is short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter most. Wrote the plan to a file? Pass its path in file instead of retyping it; exactly one of plan/file.`,
+The plan is short markdown someone could implement without guessing: the goal, what changes where (files, and code to reuse as path:line), how to verify, the assumptions, and only the approach you recommend. End with a Critical Files section naming the 3-5 files that matter. Wrote the plan to a file? Pass its path in file; exactly one of plan/file.`,
 			false,
 			planArgs{},
 			nil,
 			typed(runPlan)),
 
-		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. There is no timeout field: a job runs until it exits or job_kill stops it. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need. Pass about first.",
+		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. Pass about first, then the command. No timeout field: a job runs until it exits or job_kill stops it. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need.",
 			true,
 			jobStartArgs{},
 			shellRequests,
@@ -948,7 +947,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			nil,
 			typed(runJobKill)),
 
-		mk(ToolSkill, "Load a listed skill's instructions by name. Not for a keyword match alone, and not for a skill already loaded.",
+		mk(ToolSkill, "Load a listed skill's instructions by name. Not for a keyword match alone or an already loaded skill.",
 			true,
 			skillArgs{},
 			nil,
