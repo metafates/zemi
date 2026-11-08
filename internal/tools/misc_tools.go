@@ -132,6 +132,10 @@ func runTodos(ctx context.Context, p *Pipeline, in todosArgs) (fantasy.ToolRespo
 	return fantasy.NewTextResponse(TodoList(rows)), nil
 }
 
+// _todoStatuses is every status a todos call may send: this store's three and
+// the words other harnesses taught models, which parseTodos maps onto them.
+var _todoStatuses = append(slices.Clone(store.TodoStatuses), "completed", "cancelled")
+
 // parseTodos reads the list a todos call sets, returning the contents it
 // dropped as cancelled; ok is false for a call that only reads the list.
 func parseTodos(items []todoItem) (out []store.Todo, dropped []string, ok bool, err error) {
@@ -139,22 +143,34 @@ func parseTodos(items []todoItem) (out []store.Todo, dropped []string, ok bool, 
 	for i, td := range items {
 		status := td.Status
 		// the names other harnesses taught models
-		if status == "completed" {
-			status = store.TodoDone
-		}
 		if status == "cancelled" {
 			dropped = append(dropped, td.Content)
 			continue
 		}
+		if status == "completed" {
+			status = store.TodoDone
+		}
 		if td.Content == "" {
 			return nil, nil, true, fmt.Errorf("todo %d: content is required", i+1)
 		}
-		if !slices.Contains(store.TodoStatuses, status) {
-			return nil, nil, true, fmt.Errorf("todo %d: status must be pending, in_progress or done", i+1)
+		if !slices.Contains(_todoStatuses, status) {
+			return nil, nil, true, fmt.Errorf("todo %d: status must be %s", i+1, wordList(store.TodoStatuses))
 		}
 		out = append(out, store.Todo{Content: td.Content, Status: status, ActiveForm: td.ActiveForm})
 	}
 	return out, dropped, ok, nil
+}
+
+// wordList is the words of a list as a refusal names them: "a, b or c".
+func wordList[T ~string](words []T) string {
+	all := make([]string, len(words))
+	for i, w := range words {
+		all[i] = string(w)
+	}
+	if len(all) < 2 {
+		return strings.Join(all, "")
+	}
+	return strings.Join(all[:len(all)-1], ", ") + " or " + all[len(all)-1]
 }
 
 // TodoList is the list as the todos tool reports it.
@@ -388,7 +404,7 @@ func runQuestion(ctx context.Context, p *Pipeline, in questionArgs) (fantasy.Too
 			}
 		}
 		if !slices.Contains(_questionTypes, ask.Type) {
-			return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: type must be single_choice, multi_choice or free_text", i+1)), nil
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: type must be %s", i+1, wordList(_questionTypes))), nil
 		}
 		if ask.Type == TypeFreeText {
 			qs = append(qs, ask)
