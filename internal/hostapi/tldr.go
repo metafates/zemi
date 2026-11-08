@@ -17,6 +17,19 @@ var (
 	_tldrParts  = []string{"<tldr>", "<tldr", "<tlr>", "<tlr", "<tl", "<t", "<"}
 )
 
+// _tldrMin: a reply shorter than this reads in one glance and a summary
+// would only repeat it.
+const _tldrMin = 800
+
+// _keepTldr drops the summary when the body is too small to need one; the
+// tag is still peeled, so the reply just ends plain.
+func _keepTldr(body, tldr string) (string, string) {
+	if tldr != "" && len(body) < _tldrMin {
+		return body, ""
+	}
+	return body, tldr
+}
+
 // SplitTLDR peels a <tldr>…</tldr> summary a reply ends with: the tag must
 // close at the very end, only whitespace after it, or have opened at the very
 // end and still be streaming. A tag inside a code fence never counts. body
@@ -53,12 +66,12 @@ func SplitTLDR(text string) (body, tldr string) {
 		}
 	}
 	if closeAt < 0 {
-		return trimTrail(text[:open]), strings.TrimSpace(rest)
+		return _keepTldr(trimTrail(text[:open]), strings.TrimSpace(rest))
 	}
 	if strings.TrimSpace(rest[closeAt+closeLen:]) != "" {
 		return text, ""
 	}
-	return trimTrail(text[:open]), strings.TrimSpace(rest[:closeAt])
+	return _keepTldr(trimTrail(text[:open]), strings.TrimSpace(rest[:closeAt]))
 }
 
 func trimTrail(s string) string { return strings.TrimRight(s, " \t\r\n") }

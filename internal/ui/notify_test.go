@@ -80,7 +80,7 @@ func TestNotifyWhenAway(t *testing.T) {
 		{"away with a reply", "osc", false, turnDoneMsg{}, "all 9 tests pass", "\x1b]9;all 9 tests pass\x07"},
 		{"away with a long reply", "osc", false, turnDoneMsg{}, strings.Repeat("x", 300), "\x1b]9;" + strings.Repeat("x", 199) + "…\x07"},
 		{"away with a headed reply", "osc", false, turnDoneMsg{}, "# Deploy notes\nall green", "\x1b]9;Deploy notes all green\x07"},
-		{"away with a tldr reply", "osc", false, turnDoneMsg{}, "# Deploy notes\nall green\n<tldr>deploy notes all green</tldr>", "\x1b]9;deploy notes all green\x07"},
+		{"away with a tldr reply", "osc", false, turnDoneMsg{}, "# Deploy notes\n" + strings.Repeat("it checks every suite and reports each one green. ", 16) + "\n<tldr>deploy notes all green</tldr>", "\x1b]9;deploy notes all green\x07"},
 		{"away with a bell", "bell", false, turnDoneMsg{}, "", "\a"},
 	} {
 		t.Run(c.name, func(t *testing.T) {

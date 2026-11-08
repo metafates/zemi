@@ -113,7 +113,7 @@ func TestReplyTLDR(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 24)
 	host.AppendMessage("user", "go")
-	appendReply(host, "moved the parse into shared.go and fixed the callers.\n<tldr>parse moved to shared.go</tldr>", hostapi.TurnStat{})
+	appendReply(host, "moved the parse into shared.go and fixed the callers.\n"+strings.Repeat("it also trims the callers that passed raw strings. ", 20)+"\n<tldr>parse moved to shared.go</tldr>", hostapi.TurnStat{})
 	rows := chatRows(t, app, 80)
 	joined := strings.Join(rows, "\n")
 	if strings.Contains(joined, "<tldr>") {
