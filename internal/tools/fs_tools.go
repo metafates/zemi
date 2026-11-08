@@ -116,7 +116,7 @@ type shellArgs struct {
 	// sorted by name, and this one has to stream before the command
 	About     string `json:"about,omitempty" desc:"what the command does in 5-10 words, e.g. Run the unit tests"`
 	Command   string `json:"command" desc:"pass after about: the command line"`
-	TimeoutMS int    `json:"timeout_ms,omitempty" desc:"default 60000, max 600000; raise it for slow builds and test suites"`
+	TimeoutMS int    `json:"timeout_ms,omitempty" desc:"raise it for slow builds and test suites"`
 }
 
 // Spill saves output too long for a result under dir and names the file,
@@ -381,7 +381,7 @@ const (
 type readArgs struct {
 	Path   string `json:"path" desc:"relative to the working directory, or absolute; environment variables like $ZEMI_SCRATCH expand; pass it first"`
 	Offset int    `json:"offset,omitempty" desc:"1-based line to start at"`
-	Limit  int    `json:"limit,omitempty" desc:"how many lines to read; omit for the whole file, still at most 2000 lines or 50000 bytes"`
+	Limit  int    `json:"limit,omitempty" desc:"how many lines to read; omit for the whole file, a page at a time"`
 }
 
 // progress shows the command's last output line under its row while it
@@ -432,10 +432,10 @@ func (p *Pipeline) cmdEnv() []string {
 	env := append([]string{}, os.Environ()...)
 	env = append(env, proc.NonInteractiveEnv...)
 	if p.Pad != "" {
-		env = append(env, "ZEMI_SCRATCH="+p.Pad)
+		env = append(env, EnvScratch+"="+p.Pad)
 	}
 	if p.ProjectDir != "" {
-		env = append(env, "ZEMI_PROJECT_DIR="+p.ProjectDir)
+		env = append(env, EnvProject+"="+p.ProjectDir)
 	}
 	if p.Pad != "" && os.MkdirAll(p.Pad, 0o700) == nil {
 		now := time.Now()
@@ -643,9 +643,9 @@ func runShell(ctx context.Context, p *Pipeline, in shellArgs) (fantasy.ToolRespo
 	if strings.TrimSpace(cmd) == "" {
 		return fantasy.NewTextErrorResponse("empty command"), nil
 	}
-	timeout := 60 * time.Second
+	timeout := _timeoutDefaultMS * time.Millisecond
 	if in.TimeoutMS > 0 {
-		timeout = time.Duration(min(in.TimeoutMS, 600_000)) * time.Millisecond
+		timeout = time.Duration(min(in.TimeoutMS, _timeoutMaxMS)) * time.Millisecond
 	}
 	// its own session and process group: cancelling or the timeout stops
 	// pipelines and backgrounded children too, and nothing reads the TUI's tty.

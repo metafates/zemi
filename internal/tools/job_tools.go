@@ -23,7 +23,8 @@ import (
 )
 
 // JobHandoff opens the shell result note for a command that outlived its
-// timeout; the host stamps such a row "bg" by this phrase.
+// timeout; the run reports the job through Outcome.Job, and the host stamps
+// the row from that.
 const JobHandoff = "moved to the background as "
 
 // _maxKeptJobs is how many finished jobs a host keeps before the oldest go;
@@ -427,7 +428,7 @@ func runJobStart(ctx context.Context, p *Pipeline, in jobStartArgs) (fantasy.Too
 // jobReadArgs is the job_read tool's input and its schema source.
 type jobReadArgs struct {
 	ID     string `json:"id"`
-	WaitMS int    `json:"wait_ms,omitempty" desc:"wait until the job exits, or goes quiet for 2s after printing, at most this long (max 600000, default 0)"`
+	WaitMS int    `json:"wait_ms,omitempty" desc:"wait until the job exits, or goes quiet for 2s after printing, at most this long (default 0)"`
 }
 
 func runJobRead(ctx context.Context, p *Pipeline, in jobReadArgs) (fantasy.ToolResponse, error) {
@@ -442,7 +443,7 @@ func runJobRead(ctx context.Context, p *Pipeline, in jobReadArgs) (fantasy.ToolR
 	// chatty build costs one model step, not one per burst; the turn's
 	// cancel still wins
 	if in.WaitMS > 0 {
-		waitJob(ctx, j, _jobSettle, time.Duration(min(in.WaitMS, 600_000))*time.Millisecond)
+		waitJob(ctx, j, _jobSettle, time.Duration(min(in.WaitMS, _timeoutMaxMS))*time.Millisecond)
 	} else if j.Running() {
 		waitJob(ctx, j, _jobQuietHold, _jobQuietCap)
 	}

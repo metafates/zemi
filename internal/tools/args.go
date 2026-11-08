@@ -15,10 +15,8 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// _schemaEnums is the enum a named arg type shows in the schema. TodoStatuses
-// and questionTypes are the vars the run code validates against, so the
-// words are written once; the scope words' order here is the schema's,
-// not store.Scopes'.
+// _schemaEnums is the enum a named arg type shows in the schema: the var the
+// run code validates against, so the words are written once.
 var _schemaEnums = map[reflect.Type]any{
 	reflect.TypeFor[store.TodoStatus](): store.TodoStatuses,
 	reflect.TypeFor[QuestionType]():     _questionTypes,

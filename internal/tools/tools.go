@@ -61,6 +61,13 @@ const (
 	ToolSearch   ToolName = "tool_search"
 )
 
+// _timeoutDefaultMS and _timeoutMaxMS bound a shell call and a job_read wait:
+// one pair, so neither clamp states a limit of its own.
+const (
+	_timeoutDefaultMS = 60_000
+	_timeoutMaxMS     = 600_000
+)
+
 // Outcome is what a call did beyond its text: the job or run it handed the
 // work to, a failure inside a call that still answered, and a stop the user
 // asked for. A tool reports it while it runs, so a row never reads its own
@@ -185,6 +192,13 @@ type PreHook func(tool string, input map[string]any) (decision PreVerdict, reaso
 // Asker resolves an ask decision with the user; FIFO ordering is the
 // caller's concern (one overlay at a time, host-side).
 type Asker func(req Request) (allowed bool, decidedBy string)
+
+// EnvScratch and EnvProject name the pad and the project dir in a child's
+// environment and in a file tool's path, so both spell them once.
+const (
+	EnvScratch = "ZEMI_SCRATCH"
+	EnvProject = "ZEMI_PROJECT_DIR"
+)
 
 // Pipeline wires tools to the host hooks: a read-only agent's actions deny,
 // a tool.pre ask or the ask path covers the rest, everything else runs.
@@ -518,9 +532,9 @@ var _unexpanded = regexp.MustCompile(`^(\$|~|%\w+%)`)
 func (p *Pipeline) expandEnv(path string) string {
 	return os.Expand(path, func(key string) string {
 		switch key {
-		case "ZEMI_SCRATCH":
+		case EnvScratch:
 			return p.Pad
-		case "ZEMI_PROJECT_DIR":
+		case EnvProject:
 			return p.ProjectDir
 		}
 		if v, ok := os.LookupEnv(key); ok {
@@ -965,7 +979,7 @@ Chain dependent steps with &&.`,
 			pathReq(perm.SubjectRead, searchRoot),
 			typed(runGlob)),
 
-		mk(ToolGrep, "Search file contents under path, skipping .gitignored, binary and 4 MB+ files, with an RE2 regex (no lookaround; (?i) ignores case). Pass about first, then the pattern. Returns up to 100 lines as path:line: text.", true,
+		mk(ToolGrep, fmt.Sprintf("Search file contents under path, skipping .gitignored, binary and %d MB+ files, with an RE2 regex (no lookaround; (?i) ignores case). Pass about first, then the pattern. Returns up to %d lines as path:line: text.", _grepMaxSize>>20, _grepMaxMatches), true,
 			grepArgs{},
 			pathReq(perm.SubjectRead, searchRoot),
 			typed(runGrep)),
@@ -976,7 +990,7 @@ Chain dependent steps with &&.`,
 			nil,
 			typed(runTodos)),
 
-		mk(ToolQuestion, `Ask the user up to 4 questions and wait for the answers. Only for what they alone can decide: requirements, scope, behavior, preferences, tradeoffs; never what reading code would tell you. Put independent questions in one call; ask separately when one answer changes another. Choice questions take 2-4 options with 1-5 word labels, the recommended one first with its label ending in "(Recommended)". Never add an "Other" option: the user can always type their own answer.`,
+		mk(ToolQuestion, fmt.Sprintf(`Ask the user up to %d questions and wait for the answers. Only for what they alone can decide: requirements, scope, behavior, preferences, tradeoffs; never what reading code would tell you. Put independent questions in one call; ask separately when one answer changes another. Choice questions take 2-4 options with 1-5 word labels, the recommended one first with its label ending in "(Recommended)". Never add an "Other" option: the user can always type their own answer.`, _maxQuestions),
 			false,
 			questionArgs{},
 			nil,
