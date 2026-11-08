@@ -45,19 +45,6 @@ Install zemi with `go install github.com/metafates/zemi@latest`.
 Then, follow `zemi docs setup` output - it guides you how to setup zemi.
 ```
 
-<details>
-<summary>In case you wonder what <code>zemi docs setup</code> outputs</summary>
-
-```markdown
-Set zemi up by following its documentation skill at `$path-to-zemi-documentation-skill`
-(config.md in the same directory covers settings, providers and models, MCP, trust and the command line).
-
-Ask the user how much of your own configuration to replicate: everything, only some parts, or a minimal setup.
-Never write an API key into a file; config reads it with zemi.env.get("NAME").
-```
-
-</details>
-
 ## API keys
 
 Zemi uses [`charmbracelet/catwalk`](https://github.com/charmbracelet/catwalk) for providers collection.
