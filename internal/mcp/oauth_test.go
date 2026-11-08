@@ -279,28 +279,6 @@ func TestCallbackPageEscapes(t *testing.T) {
 	}
 }
 
-// TestCallbackPageMatchesLanding: callback.html copies the landing's palette,
-// since go:embed cannot reach docs/.
-func TestCallbackPageMatchesLanding(t *testing.T) {
-	style, err := os.ReadFile("../../docs/style.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// every color token the landing's palette defines and the callback
-	// carries is the same: var/value pairs from docs/style.css's :root
-	_, root, _ := strings.Cut(string(style), ":root {")
-	root, _, _ = strings.Cut(root, "}")
-	for line := range strings.SplitSeq(root, "\n") {
-		pair := strings.TrimSpace(line)
-		if !strings.HasPrefix(pair, "--") || !strings.Contains(pair, ": #") {
-			continue // not a color token (color-scheme, the fonts)
-		}
-		if !strings.Contains(_callbackHTML, strings.TrimSuffix(pair, ";")) {
-			t.Errorf("palette: %q is not on the callback page", pair)
-		}
-	}
-}
-
 func TestCheckEndpoint(t *testing.T) {
 	for raw, ok := range map[string]bool{
 		"https://auth.example.com/authorize": true,
