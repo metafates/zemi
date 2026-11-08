@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="color-scheme" content="dark">
+		<meta name="theme-color" content="#17181e">
+		<title>zemi - coding agent harness</title>
+		<style>
+			:root {
+				--bg: #17181e;
+				--panel: #202128;
+				--fg: #e7e7ec;
+				--dim: #898b98;
+				--accent: #a2adfd;
+				--literal: #fcb67c;
+			}
+			* { margin: 0; padding: 0; box-sizing: border-box; }
+			html, body { height: 100%; }
+			body {
+				background: var(--bg);
+				color: var(--fg);
+				font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				overflow: hidden;
+			}
+			main {
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				gap: 22px;
+				padding: 24px;
+				text-align: center;
+			}
+			.logo { height: 120px; width: auto; }
+			.pitch { color: var(--dim); }
+			.pitch em { color: var(--fg); font-style: italic; }
+			.shot {
+				max-width: min(90vw, 900px);
+				max-height: 48vh;
+			}
+			footer a { color: var(--dim); text-decoration: none; }
+			footer a:hover { color: var(--accent); }
+		</style>
+	</head>
+	<body>
+		<main>
+			<img class="logo" src="../assets/zemi.png" alt="zemi">
+			<p class="pitch">There are many agent harnesses,<br>but this one takes <em>the best from them</em></p>
+			<img class="shot" src="../assets/chat.png" alt="zemi chat">
+			<footer><a href="https://github.com/metafates/zemi">github.com/metafates/zemi</a></footer>
+		</main>
+	</body>
+</html>
