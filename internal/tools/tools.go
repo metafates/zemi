@@ -1022,44 +1022,60 @@ The plan is short markdown someone could implement without guessing: the goal, w
 	}
 }
 
+// changeText is what a file-changing call names: write sets text, edit sets
+// search and replace. The input decodes into the tool's args struct, so the
+// key names live in args.go alone; ok is false for a tool that changes no file.
+func changeText(tool ToolName, in map[string]any) (path, oldText, newText string, ok bool) {
+	switch tool {
+	case ToolWrite:
+		var args writeArgs
+		if remarshal(in, &args) != nil {
+			return "", "", "", false
+		}
+		return args.Path, "", args.Text, true
+	case ToolEdit:
+		var args editArgs
+		if remarshal(in, &args) != nil {
+			return "", "", "", false
+		}
+		return args.Path, args.Search, args.Replace, true
+	}
+	return "", "", "", false
+}
+
 // ChangeDiff renders what write or edit would do to its file as
 // a unified diff against the current content. When an edit does not apply
 // (the tool will report that), it falls back to changePreview.
 func ChangeDiff(tool ToolName, in map[string]any) string {
-	path := str(in["path"])
+	path, search, replace, ok := changeText(tool, in)
+	if !ok {
+		return ""
+	}
 	// it runs before the gate, on the model's path: a FIFO or /dev/zero
 	// must not block or exhaust memory
 	fi, err := os.Stat(path)
 	if err == nil && (!fi.Mode().IsRegular() || fi.Size() > 1<<20) {
-		return changePreview(in)
+		return changePreview(path, search, replace)
 	}
 	data, _ := os.ReadFile(path)
 	old := lf(string(data))
-	var updated string
-	switch tool {
-	case ToolWrite:
-		updated = lf(str(in["text"]))
-	case ToolEdit:
+	updated := lf(replace)
+	if tool == ToolEdit {
 		var msg string
-		updated, msg = editText(old, str(in["search"]), str(in["replace"]), workRel(path))
+		updated, msg = editText(old, search, replace, workRel(path))
 		if msg != "" {
-			return changePreview(in)
+			return changePreview(path, search, replace)
 		}
-	default:
-		return changePreview(in)
 	}
 	return udiff.Unified(path, path, old, updated)
 }
 
 // changePreview renders a file tool's change for the permission overlay
 // from the input alone (the file is not read before the gate): a unified
-// diff with one unnumbered hunk per replaced or new text.
-func changePreview(in map[string]any) string {
-	lines := []string{"--- " + str(in["path"]), "+++ " + str(in["path"])}
-	hunk := func(oldText, newText string) {
-		if oldText == "" && newText == "" {
-			return
-		}
+// diff with one unnumbered hunk of the replaced or new text.
+func changePreview(path, oldText, newText string) string {
+	lines := []string{"--- " + path, "+++ " + path}
+	if oldText != "" || newText != "" {
 		lines = append(lines, "@@")
 		for _, p := range [][2]string{{"-", oldText}, {"+", newText}} {
 			if p[1] == "" {
@@ -1070,8 +1086,6 @@ func changePreview(in map[string]any) string {
 			}
 		}
 	}
-	hunk("", str(in["text"]))
-	hunk(str(in["search"]), str(in["replace"]))
 	return strings.Join(lines, "\n")
 }
 
