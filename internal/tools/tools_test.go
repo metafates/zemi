@@ -1182,3 +1182,37 @@ func trunc(s string, n int) string {
 	}
 	return s
 }
+
+// TestLeadOrder: a call that opens with the bulk content argument still
+// runs, but its output reminds the model to lead with the label argument.
+func TestLeadOrder(t *testing.T) {
+	for _, c := range []struct {
+		name, input string
+		ok          bool
+	}{
+		{"label first", `{"about":"probe","command":"true"}`, true},
+		{"content only, no label", `{"command":"true"}`, false},
+		{"content first", `{"command":"true","about":"late"}`, false},
+		{"nested content keys do not count", `{"nested":{"command":"z"},"about":"a","command":"true"}`, true},
+		{"no object", `true`, true},
+	} {
+		if got := LeadOK(c.input, "about", "command"); got != c.ok {
+			t.Errorf("%s: LeadOK = %v, want %v", c.name, got, c.ok)
+		}
+	}
+	p, _ := testPipeline(t, true)
+	shell := toolNamed(t, "shell", p)
+	run := func(input string) string {
+		res, err := shell.Run(t.Context(), fantasy.ToolCall{ID: "t1", Name: "shell", Input: input})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.Content
+	}
+	if out := run(`{"about":"probe","command":"true"}`); strings.Contains(out, "system-reminder") {
+		t.Fatalf("a label-first call was reminded: %q", out)
+	}
+	if out := run(`{"command":"true","about":"late"}`); !strings.Contains(out, `<system-reminder>Pass "about" first in shell calls`) {
+		t.Fatalf("a content-first call carried no reminder: %q", out)
+	}
+}

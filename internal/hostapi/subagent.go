@@ -1186,7 +1186,7 @@ type agentArgs struct {
 func (t *agentTool) Info() fantasy.ToolInfo {
 	var b strings.Builder
 	b.WriteString("Start a subagent on a self-contained task. It cannot see this conversation, so the prompt carries everything it needs," +
-		" what to report and how to verify. Only its final report comes back, and the user does not see it: relay what matters." +
+		" what to report and how to verify. Pass description first, then the prompt. Only its final report comes back, and the user does not see it: relay what matters." +
 		" A long run sends you lines with the update tool as it goes, which you read at your next step." +
 		" Calls sent together run at once." +
 		" Subagents of one session share the caller's working directory and project: split file edits between parallel runs, or hand each run its own git worktree." +
@@ -1938,6 +1938,9 @@ func (h *Host) postNotify(ctx context.Context, pad, tool, input string, reply *f
 	_ = json.Unmarshal([]byte(input), &m)
 	if out := h.toolPost(ctx, pad, tool, m, !reply.IsError, reply.Content, nil, time.Since(start)); reply.Type == "text" {
 		reply.Content = out
+	}
+	if pair, ok := tools.LeadPairs[tool]; ok && reply.Type == "text" && !tools.LeadOK(input, pair[0], pair[1]) {
+		reply.Content += tools.LeadReminder(tool, pair[0])
 	}
 }
 

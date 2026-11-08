@@ -5,6 +5,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -398,6 +399,8 @@ type tool struct {
 	// edits: the tool changes a file it must have read unchanged (write,
 	// edit), checked before the gate
 	edits bool
+	// lead is this tool's label argument ("about", "path"): LeadPairs
+	lead [2]string
 }
 
 func (t *tool) Info() fantasy.ToolInfo { return t.info }
@@ -497,7 +500,11 @@ func (t *tool) Run(ctx context.Context, call fantasy.ToolCall) (res fantasy.Tool
 			return fantasy.NewTextErrorResponse(DeniedText(v, what)), nil
 		}
 	}
-	return t.run(ctx, &run, input)
+	res, err = t.run(ctx, &run, input)
+	if res.Type == "text" && t.lead[0] != "" && !LeadOK(call.Input, t.lead[0], t.lead[1]) {
+		res.Content += LeadReminder(t.info.Name, t.lead[0])
+	}
+	return res, err
 }
 
 // _unexpanded is a path whose shell variable did not resolve ($NOPE/x), and
@@ -762,6 +769,53 @@ func schemaPointer(root any, ref string) (any, error) {
 	return cur, nil
 }
 
+// LeadPairs names each tool's label argument and the bulk content argument
+// that must come after it: a schema's properties reach the model sorted by
+// name (content sorts before path), so only the tool prose and this check
+// teach the order. A call that opens with the content hides its label from
+// the streaming row; its output carries LeadReminder.
+var LeadPairs = map[string][2]string{
+	string(ToolShell):    {"about", "command"},
+	string(ToolJobStart): {"about", "command"},
+	string(ToolWrite):    {"path", "content"},
+	string(ToolEdit):     {"path", "old_string"},
+	string(ToolLua):      {"about", "script"},
+	string(ToolAgent):    {"description", "prompt"},
+}
+
+// LeadOK reports whether a call's raw input passes no bulk content key
+// before its label key; a missing label counts as too late, and input that
+// is no readable object passes.
+func LeadOK(input, lead, content string) bool {
+	dec := jsontext.NewDecoder(strings.NewReader(input))
+	if dec.PeekKind() != jsontext.Kind('{') {
+		return true
+	}
+	_, _ = dec.ReadToken() // the object's opening brace
+	seen := false
+	for dec.PeekKind() != jsontext.Kind('}') {
+		var key string
+		if err := json.UnmarshalDecode(dec, &key); err != nil {
+			return true
+		}
+		if key == content {
+			return seen
+		}
+		if key == lead {
+			seen = true
+		}
+		if _, err := dec.ReadValue(); err != nil {
+			return true
+		}
+	}
+	return true
+}
+
+// LeadReminder is the note a label-burying call appends to its output.
+func LeadReminder(tool, lead string) string {
+	return "\n\n<system-reminder>Pass \"" + lead + "\" first in " + tool + " calls, before the content arguments, so the row streams its label first.</system-reminder>"
+}
+
 func gated(t *tool) *tool {
 	t.gated = true
 	return t
@@ -787,6 +841,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 			subjects: subjects,
 			run:      run,
 			pipe:     p,
+			lead:     LeadPairs[string(name)],
 		}
 	}
 
@@ -815,6 +870,7 @@ func All(p *Pipeline) []fantasy.AgentTool {
 	return []fantasy.AgentTool{
 		mk(ToolShell, `Run a shell command. It runs bash when bash is on PATH and, on unix, falls back to zsh, dash, then sh, so a bashism can fail there. Every call already starts in the working directory: relative paths resolve there and a command never needs a cd to reach it. A cd or export lasts for its call only. There is no terminal and stdin is empty: use the non-interactive form (-m, --yes, CI=1), never an editor, pager or REPL. stdout and stderr are merged.
 Not for what does not exit on its own (npm run dev, tsc -w, tail -f): what a command leaves running is stopped when it returns. Not for reading, searching or editing a file, but one perl -pi command makes the same substitution across many files.
+Pass about first, then the command.
 A command whose output is worth a second look (a build, a long test run, a log) tees under $ZEMI_SCRATCH before any other pipe stage - make test 2>&1 | tee "$ZEMI_SCRATCH/t.log" | tail -3 - so a stage that fails, or the next part you want, reads the file instead of rerunning the command.
 Chain dependent steps with &&.`,
 			false,
@@ -827,12 +883,12 @@ Chain dependent steps with &&.`,
 			pathReq(perm.SubjectRead, pathIn),
 			typed(runRead))),
 
-		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read first, and not changed since. To change part of a file use edit.", false,
+		gated(edits(mk(ToolWrite, "Create a file or replace its whole content; parent directories are created. An existing file must have been read first, and not changed since. To change part of a file use edit. Pass path first.", false,
 			writeArgs{},
 			changeReq(ToolWrite),
 			typed(runWrite)))),
 
-		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. old_string must match exactly once, as written and without read's line-number prefix. Keep it as small as still unique; edits and writes sent together apply in order.", false,
+		gated(edits(mk(ToolEdit, "Replace an exact substring in a file. old_string must match exactly once, as written and without read's line-number prefix. Keep it as small as still unique; edits and writes sent together apply in order. Pass path first.", false,
 			editArgs{},
 			changeReq(ToolEdit),
 			typed(runEdit)))),
@@ -867,7 +923,7 @@ The plan is short markdown someone could implement without guessing: the goal, w
 			nil,
 			typed(runPlan)),
 
-		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. There is no timeout field: a job runs until it exits or job_kill stops it. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need.",
+		mk(ToolJobStart, "Start a command that runs long or never exits (dev server, watcher, a slow build you need not wait on) and return a job id at once. There is no timeout field: a job runs until it exits or job_kill stops it. Read its output with job_read, whose wait_ms returns once a server's ready line prints, so never sleep; job_kill what you no longer need. Pass about first, then the command.",
 			true,
 			jobStartArgs{},
 			shellRequests,
