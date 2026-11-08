@@ -8,11 +8,11 @@
 	<img width="800" alt="zemi chat" src="https://github.com/user-attachments/assets/45797dac-3470-4983-863c-fc23c223d473" />
 </div>
 
-Zemi is a (coding) agent harness that...
+Zemi (/ˈzɛmi/) is a (coding) agent harness that...
 
 - never forgets _anything_ with endless chats like [UniiChat](https://gist.github.com/VictorTaelin/91837951a5ce5b38f341ec1ba1df6449).
 - fast and native like [crush](https://github.com/charmbracelet/crush)
-- extensible and cache-efficient like [pi](https://github.com/earendil-works/pi)
+- extensible and efficient like [pi](https://github.com/earendil-works/pi)
 - batteries included like [codex](https://github.com/openai/codex) & [claude-code](https://github.com/anthropics/claude-code)
 - has a nice TUI like [opencode](https://github.com/anomalyco/opencode)
 
@@ -22,7 +22,7 @@ Zemi is a (coding) agent harness that...
 > I use zemi daily exclusively and have better experience with it than with other harnesses.
 > However, things may be different for you. If you like this project but something is not working well, open an issue / PR.
 
-Zemi is still in preview and iterating rapidly. There will be compatibility-breaking changes.
+Zemi is still iterating rapidly. There will be compatibility-breaking changes until it reaches v1.
 
 ## Install
 
@@ -30,30 +30,39 @@ Zemi is still in preview and iterating rapidly. There will be compatibility-brea
 go install github.com/metafates/zemi@latest
 ```
 
-Then just run it. It will prompt you to select and input provider api key on first run:
+Then just run it. On first run it will prompt you to select inference provider and input api key (stored locally in OS keychain):
 
 ```bash
 zemi
 ```
 
-Or let another agent set it up for you:
+### "Make no mistakes" version
+
+Or let agent set it up for you by pasting the following prompt in it:
 
 ```markdown
 Install zemi with `go install github.com/metafates/zemi@latest`.
 Then, follow `zemi docs setup` output - it guides you how to setup zemi.
 ```
 
-## Features
+<details>
+<summary>In case you wonder what <code>zemi docs setup</code> outputs</summary>
 
-- Endless chats that remember every message
-- Does more with less steps
-- Subagents, workflows, background jobs, lsp, mcp, and more.
-- Scriptable with Lua and knows how to modify itself
-- Compatible with Claude Code plugins
+
+```markdown
+Set zemi up by following its documentation skill at `$path-to-zemi-documentation-skill`
+(config.md in the same directory covers settings, providers and models, MCP, trust and the command line).
+
+Ask the user how much of your own configuration to replicate: everything, only some parts, or a minimal setup.
+Never write an API key into a file; config reads it with zemi.env.get("NAME").
+```
+
+</details>
 
 ## API keys
 
-You can use zemi with any provider.
+Zemi uses [`charmbracelet/catwalk`](https://github.com/charmbracelet/catwalk) for providers collection.
+You can expect it to have most inference providers.
 
 | Environment Variable        | Provider                                           |
 | --------------------------- | -------------------------------------------------- |
@@ -93,16 +102,38 @@ You can use zemi with any provider.
 
 ## Local models & custom providers
 
-zemi talks to any OpenAI-compatible server: Ollama, llama.cpp, LM Studio, vLLM, a gateway like LiteLLM. Register it in `~/.config/zemi/init.lua`:
+Zemi uses [`charmbracelet/fantasy`](https://github.com/charmbracelet/fantasy) for communicating with providers and controlling agents.
+
+You can ask your existing agent to setup zemi for you, including porting your local & custom providers. See [installation](#make-no-mistakes-version).
+
+In case you need to do it yourself:
+
+1. Open or create-if-not-exists `~/.config/zemi/init.lua` (zemi is configured through Lua)
+2. Put this in your config:
 
 ```lua
 zemi.provider.add({
-	id = "local",
+	id = "my-local",
 	kind = "openai_compat", -- or "anthropic", "openai" (OpenAI itself), "google", ...
 	base_url = "http://localhost:11434/v1",
-	-- api_key = zemi.env.get("MY_KEY"),   -- for a server that wants one
-	models = { { id = "qwen3", context_window = 32000 } },   -- listed by hand; the id is the name your server reports
+	-- api_key = zemi.env.get("MY_KEY"), -- for a server that wants one
+	models = { { id = "qwen", context_window = 123000 } },
 })
 ```
 
-Then pick the model in `/model`. Registering under a builtin's id, say `openai`, replaces that builtin whole.
+> [!NOTE]
+> Zemi's Lua API is strictly typed, so you can expect to get type hints on hover in your IDE (ensure it supports Lua, e.g. install a plugin or setup a language server)
+
+## Feature scope or "why it doesn't support X or Y?"
+
+Zemi is opionated. It's not "one-size-fits-all", but that's why we have so many harnesses out there.
+Each tool and feature zemi ships with is battle-tested.
+
+For example, zemi...
+
+- has plugins, but they can't change how zemi looks.
+- doesn't have headless runs or GUI.
+- doesn't have server-client architecture.
+- doesn't have multiple sessions per project.
+
+...but, it has todos, subagents, workflows, codemode, goals, plans.
