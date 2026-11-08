@@ -734,10 +734,16 @@ func TestUserPromptRise(t *testing.T) {
 	if row[0].Rise <= 0 || row[0].Rise >= 1 {
 		t.Fatalf("the prompt's colors are not on the ramp: rise %v", row[0].Rise)
 	}
+	// the background holds through the ramp: the prompt queued on the panel
+	// rises out of the panel, its cells never dip toward the canvas
+	midBg := app.segStyle(row[1]).Bg
 	at = at.Add(2 * _riseDuration)
 	row, _ = promptRow(app)
 	if row[0].Rise != 0 {
 		t.Fatalf("the prompt stayed sunk after the ramp: rise %v", row[0].Rise)
+	}
+	if end := app.segStyle(row[1]).Bg; !sameColor(midBg, end) {
+		t.Fatalf("the prompt's background moved during the ramp: %v then %v", midBg, end)
 	}
 
 	// a prompt a session opens with (a resume) is read as it is

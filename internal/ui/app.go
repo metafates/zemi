@@ -2492,28 +2492,36 @@ func riseFrom(from, st uv.Style, fade float64, pal *hostapi.Palette) uv.Style {
 	return st
 }
 
+// fillStyle paints a fill onto a resolved style: the band and the well set
+// the background, the panel lifts a canvas-colored one onto the panel.
+func fillStyle(st uv.Style, fill hostapi.Fill, pal *hostapi.Palette) uv.Style {
+	switch fill {
+	case hostapi.FillBand:
+		st.Bg = pal.Band
+	case hostapi.FillWell:
+		st.Bg = pal.Well
+	case hostapi.FillPanel:
+		if sameColor(st.Bg, pal.Bg) {
+			st.Bg = pal.Panel
+		}
+	case hostapi.FillAuto, hostapi.FillCanvas:
+	}
+	return st
+}
+
 func (a *App) segStyle(s hostapi.Segment) uv.Style {
 	st := a.hlStyle(s.HL)
 	if s.Over != "" {
 		st = a.thm.hover(st, s.Over)
 	}
 	if pal := hostapi.Whorl; pal != nil {
-		switch s.Fill {
-		case hostapi.FillBand:
-			st.Bg = pal.Band
-		case hostapi.FillWell:
-			st.Bg = pal.Well
-		case hostapi.FillPanel:
-			if sameColor(st.Bg, pal.Bg) {
-				st.Bg = pal.Panel
-			}
-		case hostapi.FillAuto, hostapi.FillCanvas:
-		}
-		// a segment rising out of a From group takes that group's colors
-		// before the colors are quantized; a faded one then sinks toward the
-		// surface it sits on, its fill included
+		st = fillStyle(st, s.Fill, pal)
+		// a segment rising out of a From group takes that group's colors,
+		// on the same fill the segment carries, before the colors are
+		// quantized; a faded one then sinks toward the surface it sits on,
+		// its fill included
 		if s.Rise > 0 {
-			st = riseFrom(a.hlStyle(s.From), st, s.Rise, pal)
+			st = riseFrom(fillStyle(a.hlStyle(s.From), s.Fill, pal), st, s.Rise, pal)
 		}
 		if s.Fade > 0 {
 			to := pal.Bg
