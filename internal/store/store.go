@@ -142,7 +142,7 @@ func ClaimForDelete(path string) (sessions []string, release func(), err error) 
 // NOTE: a collision is a refused primary key insert, about n^2/2^41 over n rows
 // of one table (1e-3 at 50k); widen to 10 characters if stores grow past that.
 func ShortID() string {
-	var b [5]byte
+	var b [_shortIDBytes]byte
 	rand.Read(b[:])
 	return _shortEnc.EncodeToString(b[:])
 }
@@ -242,12 +242,19 @@ func (s *DB) Query(query string, args ...any) (*sql.Rows, error) {
 	return s.db.Query(query, args...)
 }
 
-// _shortEnc is lowercase Crockford base32: no i, l, o or u, the same name on a
-// case-folding disk, and never a leading '-'.
-var _shortEnc = base32.NewEncoding("0123456789abcdefghjkmnpqrstvwxyz").WithPadding(base32.NoPadding)
+const (
+	// _shortAlphabet is lowercase Crockford base32: no i, l, o or u, the same
+	// name on a case-folding disk, and never a leading '-'.
+	_shortAlphabet = "0123456789abcdefghjkmnpqrstvwxyz"
+	_shortIDBytes  = 5 // 40 bits, written out as 8 characters
+)
 
-// IDShape is what ShortID makes, the one check for a file name read back as an id.
-var IDShape = regexp.MustCompile(`^[0-9a-hjkmnp-tv-z]{8}$`)
+var (
+	_shortEnc = base32.NewEncoding(_shortAlphabet).WithPadding(base32.NoPadding)
+
+	// IDShape is what ShortID makes, the one check for a file name read back as an id.
+	IDShape = regexp.MustCompile(fmt.Sprintf(`^[%s]{%d}$`, _shortAlphabet, _shortEnc.EncodedLen(_shortIDBytes)))
+)
 
 // migrate applies the embedded migrations, one goose transaction each, under
 // a file lock so two zemis opening one store never run one twice. A store
