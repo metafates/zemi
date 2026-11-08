@@ -139,7 +139,7 @@ func launch(o options) int {
 		select {
 		case <-sig:
 			proc.KillAll()
-			os.Exit(130)
+			os.Exit(interrupted)
 		case <-stop:
 		}
 	}()
@@ -529,7 +529,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			if args = strings.TrimSpace(args); args == "" {
 				return h.OpenEffortPicker()
 			}
-			return h.SetConfig("agent.effort", args)
+			return h.SetConfig(config.KeyAgentEffort, args)
 		}, GoComplete: func(*hostapi.Host, string, string) []string { return efforts }},
 		{Name: "usage", Desc: "show tokens and cost", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			return h.OpenUsage()
