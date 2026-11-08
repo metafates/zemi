@@ -223,18 +223,27 @@ func (r *taskReg) addFlow(f *flowRun, advice string) error {
 		}
 	}
 	r.flows[f.id] = f
-	if len(r.flows) > _maxKeptRuns {
-		var oldest *flowRun
-		for _, x := range r.flows {
-			if !x.isRunning() && (oldest == nil || x.started.Before(oldest.started)) {
-				oldest = x
-			}
+	evict(r.flows, f.id, (*flowRun).isRunning, func(f *flowRun) time.Time { return f.started })
+	return nil
+}
+
+// evict keeps a registry at _maxKeptRuns: the oldest finished run goes, never
+// keep, the one just added (loadRun registers old finished runs to view them).
+// The caller holds the registry's lock.
+func evict[T any](runs map[string]T, keep string, live func(T) bool, started func(T) time.Time) {
+	if len(runs) <= _maxKeptRuns {
+		return
+	}
+	oldest, at := "", time.Time{}
+	for id, x := range runs {
+		if id == keep || live(x) {
+			continue
 		}
-		if oldest != nil {
-			delete(r.flows, oldest.id)
+		if s := started(x); oldest == "" || s.Before(at) {
+			oldest, at = id, s
 		}
 	}
-	return nil
+	delete(runs, oldest) // a registry of all-live runs keeps them: "" names none
 }
 
 // running reports whether any agent or workflow run is live.
@@ -297,18 +306,7 @@ func (r *taskReg) add(run *agentRun) error {
 		}
 	}
 	r.runs[run.id] = run
-	if len(r.runs) > _maxKeptRuns {
-		var oldest *agentRun
-		for _, x := range r.runs {
-			// never the run just added: loadRun adds old finished runs to view them
-			if x != run && !x.isRunning() && (oldest == nil || x.startedAt().Before(oldest.startedAt())) {
-				oldest = x
-			}
-		}
-		if oldest != nil {
-			delete(r.runs, oldest.id)
-		}
-	}
+	evict(r.runs, run.id, (*agentRun).isRunning, (*agentRun).startedAt)
 	return nil
 }
 
@@ -480,7 +478,10 @@ func (run *agentRun) state() (status RunStatus, calls int, took time.Duration, s
 
 // label names the run for the user: what the model said it does, or its
 // definition's name when it wrote none.
-func (run *agentRun) label() string { return cmp.Or(run.description, run.agent) }
+// runLabel names a run in a row: its description, else the agent it ran.
+func runLabel(description, agent string) string { return cmp.Or(description, agent) }
+
+func (run *agentRun) label() string { return runLabel(run.description, run.agent) }
 
 // took is how long the run has run: to now while it runs (run.mu held).
 func (run *agentRun) took() time.Duration {
@@ -922,7 +923,7 @@ func (h *Host) deliverReport(parent string, r report, attached string) {
 		return
 	}
 	pad := h.ScratchDir()
-	h.work(r.id, cmp.Or(r.description, r.agent), r.agent, string(r.status), h.truncOutput(pad, "agent", r.body))
+	h.work(r.id, runLabel(r.description, r.agent), r.agent, string(r.status), h.truncOutput(pad, "agent", r.body))
 	if err := h.AgentSend(h.reportMessage(pad, r) + attached); err != nil {
 		h.Notify(slog.LevelError, "Could not send the report of "+r.id, h.friendlyError(err))
 	}
@@ -942,8 +943,8 @@ func (h *Host) deliverUpdate(run *agentRun, text string) error {
 		h.notifyReport(report{id: run.id, agent: run.agent, status: _updateStatus, description: run.description, body: text})
 		return nil
 	}
-	h.work(run.id, cmp.Or(run.description, run.agent), run.agent, string(_updateStatus), text)
-	if err := h.AgentSend(h.updateMessage(h.ScratchDir(), run.id, run.agent, cmp.Or(run.description, run.agent), text)); err != nil {
+	h.work(run.id, run.label(), run.agent, string(_updateStatus), text)
+	if err := h.AgentSend(h.updateMessage(h.ScratchDir(), run.id, run.agent, run.label(), text)); err != nil {
 		h.Notify(slog.LevelError, "Could not send the update of "+run.id, h.friendlyError(err))
 		return fmt.Errorf("the update did not reach the caller: %s", h.friendlyError(err))
 	}
@@ -1052,9 +1053,8 @@ func (h *Host) updateMessage(pad, id, agentName, who, text string) string {
 // "workflow:<saved name>", and its description names it, since runs of one
 // script differ by no name. The status reads as what happened to it.
 func reportHead(r report) string {
-	who := cmp.Or(r.description, r.agent)
-	if workflowAgent(r.agent) {
-		who = cmp.Or(r.description, "workflow")
+	who := runLabel(r.description, r.agent)
+	if workflowAgent(r.agent) {		who = cmp.Or(r.description, "workflow")
 	}
 	return fmt.Sprintf("%s %s (%s)", clipLine(who, 60), reportTense(r.status), r.id)
 }
@@ -1105,7 +1105,7 @@ func (h *Host) notifyReport(r report) {
 		pad := h.ScratchDir()
 		msg := h.reportMessage(pad, r)
 		if r.status == _updateStatus {
-			msg = h.updateMessage(pad, r.id, r.agent, cmp.Or(r.description, r.agent), r.body)
+			msg = h.updateMessage(pad, r.id, r.agent, runLabel(r.description, r.agent), r.body)
 		}
 		parts, err := json.Marshal(agent.UserMessage(msg), json.Deterministic(true))
 		if err == nil {
@@ -1283,9 +1283,13 @@ func (h *Host) loadRun(id string) (*agentRun, error) {
 	return run, nil
 }
 
-// _sectionRunning is the section a list puts its live rows in, and how the
-// /agents screen knows its first row is one.
-const _sectionRunning = "Running"
+// The section words a list puts its rows in, and how /agents knows its first
+// row is a live one.
+const (
+	_sectionRunning = "Running"
+	_sectionEarlier = "Earlier in this session"
+	_sectionFlows   = "Workflows"
+)
 
 // agentRunItems are the /agents rows for the live session's runs, the
 // stored ones this process does not hold included; enter opens the run's
@@ -1316,7 +1320,7 @@ func (h *Host) agentRunItems() []OverlayItem {
 			item.Fields = fieldList("status", string(status), "time", fmtDuration(took), "agent", def, "run", id)
 		}
 		item.Keys = []ItemKey{{Key: "v", Desc: "view its transcript", Run: "agents view " + id + " list"}}
-		item.Section = "Earlier in this session"
+		item.Section = _sectionEarlier
 		if status == RunRunning {
 			item.Keys = append(item.Keys, ItemKey{Key: "s", Desc: "stop", Run: "agents stop " + id, Danger: true})
 			item.Section = _sectionRunning
@@ -1329,7 +1333,7 @@ func (h *Host) agentRunItems() []OverlayItem {
 	// is listed like its runs below
 	held := set.Set[string]{}
 	for _, f := range slices.DeleteFunc(h.tasks.flowList(), func(f *flowRun) bool { return f.parent != sid && !f.isRunning() }) {
-		flows = append(flows, h.flowItem(f, "Workflows"))
+		flows = append(flows, h.flowItem(f, _sectionFlows))
 	}
 	for _, run := range h.tasks.runsOf(sid) {
 		status, calls, took, runSID := run.state()
