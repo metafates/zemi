@@ -20,6 +20,9 @@ func TestSplitTLDR(t *testing.T) {
 		{"streaming partial opener", "body <tl", "body", ""},
 		{"streaming lone bracket", "body 2 < 3 <", "body 2 < 3", ""},
 		{"tag on the last line only after a fence", "```\ncode\n```\n<tldr>after</tldr>", "```\ncode\n```", "after"},
+		{"misspelled tag", "body text\n<tlr>all green, two files</tlr>", "body text", "all green, two files"},
+		{"misspelled tag, correct close", "body text\n<tlr>all green</tldr>", "body text", "all green"},
+		{"streaming misspelled opener", "body <tlr", "body", ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			body, tldr := SplitTLDR(c.text)
