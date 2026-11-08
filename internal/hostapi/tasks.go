@@ -1346,6 +1346,11 @@ func (h *Host) agentRunItems() []OverlayItem {
 	}
 	if h.DB != nil && sid != "" {
 		children, _ := h.DB.ChildSessions(sid)
+		// the registry keeps _maxKeptRuns, and its runs are recorded here too,
+		// so the same cap bounds the stored rows a fresh process would list
+		if len(children) > _maxKeptRuns {
+			children = children[:_maxKeptRuns]
+		}
 		inFlows := h.flowAgentIDs()
 		for _, c := range children {
 			if !held.Has(c.ID) && !inFlows.Has(c.ID) {

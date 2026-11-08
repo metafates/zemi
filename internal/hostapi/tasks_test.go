@@ -797,6 +797,23 @@ func TestAgentViewRestoresItsScreen(t *testing.T) {
 	}
 }
 
+// TestStoredRunsCapAtTheRegistryCap: /agents lists stored runs too, but no
+// more than the registry keeps, so an old session's list stays bounded.
+func TestStoredRunsCapAtTheRegistryCap(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	sid := seedSession(t, h)
+	for i := 0; i < _maxKeptRuns+5; i++ {
+		if err := h.DB.CreateSession(fmt.Sprintf("%sc%02d", sid, i), sid, fmt.Sprintf("run %d", i), "explore"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows := dumpItems(h.agentRunItems())
+	if n := strings.Count(rows, "section:Earlier in this session"); n != _maxKeptRuns {
+		t.Fatalf("stored rows listed: %d, want %d", n, _maxKeptRuns)
+	}
+}
+
 // TestStoredRunningReadsCancelled: a run_status left 'running' in the store
 // is one this process does not hold, so it reads as cancelled - listed under
 // Earlier, not Running, and viewed it does not tick the frame.
