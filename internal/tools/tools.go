@@ -817,6 +817,15 @@ func LeadReminder(tool, lead, content string) string {
 	return "\n\n<system-reminder>Pass \"" + lead + "\" before \"" + content + "\" in " + tool + " calls, so the row streams its label first.</system-reminder>"
 }
 
+// StripReminder cuts a trailing LeadReminder note from a tool result: the
+// model reads it, the user's echo rows do not show it.
+func StripReminder(output string) string {
+	if i := strings.LastIndex(output, "\n\n<system-reminder>"); i >= 0 && strings.HasSuffix(output, "</system-reminder>") {
+		return output[:i]
+	}
+	return output
+}
+
 func gated(t *tool) *tool {
 	t.gated = true
 	return t

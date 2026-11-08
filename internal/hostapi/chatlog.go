@@ -239,7 +239,7 @@ func (c *chatLog) Echo(name string, ok bool, output string, call StreamTool) err
 	if err != nil {
 		return err
 	}
-	clipped := clipMiddle(output, _echoClipChars)
+	clipped := clipMiddle(tools.StripReminder(output), _echoClipChars)
 	if _, err := c.h.DB.AppendLog(store.KindEcho, clipped, string(meta), "", echoLeaf(name, ok, clipped)); err != nil {
 		return err
 	}
