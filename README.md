@@ -126,7 +126,7 @@ zemi.provider.add({
 
 ## Feature scope or "why it doesn't support X or Y?"
 
-Zemi is opionated. It's not "one-size-fits-all", but that's why we have so many harnesses out there.
+Zemi is opinionated. It's not "one-size-fits-all", but that's why we have so many harnesses out there.
 Each tool and feature zemi ships with is battle-tested.
 
 For example, zemi...
