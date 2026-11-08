@@ -378,8 +378,14 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	var choices []promptChoice
 	if q.Type != tools.TypeFreeText {
 		for i, opt := range q.Options {
-			items = append(items, listItem{label: opt.Label, key: switchSeg(st.picked.Has(i), false)})
-			choices = append(choices, promptChoice{key: optionKey(i), label: opt.Label})
+			item := listItem{label: opt.Label, key: switchSeg(st.picked.Has(i), false)}
+			choice := promptChoice{key: optionKey(i), label: opt.Label}
+			if opt.Recommended {
+				item.segs = []hostapi.Segment{{Text: opt.Label}, {Text: "  recommended", HL: hostapi.ChromeHint}}
+				choice.tag = "recommended"
+			}
+			items = append(items, item)
+			choices = append(choices, choice)
 		}
 		items = append(items, listItem{label: "Type your own answer"})
 		choices = append(choices, promptChoice{key: optionKey(len(q.Options)), label: "Type your own answer"})
@@ -399,14 +405,10 @@ func (a *App) questionRows(qp *questionPrompt, w, h int) [][]hostapi.Segment {
 	paneWrapped := make([][][]hostapi.Segment, len(q.Options))
 	paneN := 0
 	for i, opt := range q.Options {
-		if opt.Description == "" && !opt.Recommended {
+		if opt.Description == "" {
 			continue
 		}
-		desc := opt.Description
-		if opt.Recommended {
-			desc = strings.TrimSuffix("recommended   "+desc, "   ")
-		}
-		paneWrapped[i] = a.host.Markdown(desc, inner)
+		paneWrapped[i] = a.host.Markdown(opt.Description, inner)
 		paneN = max(paneN, min(len(paneWrapped[i]), 4))
 	}
 	var hints []hintPair

@@ -293,7 +293,7 @@ func (t *textRows) at(build func(int) [][]hostapi.Segment) func(int) [][]hostapi
 }
 
 // promptChoice is one answer of a Go-owned prompt.
-type promptChoice struct{ key, label, desc, hl string }
+type promptChoice struct{ key, label, desc, hl, tag string }
 
 // choiceRows draws a prompt's answers as buttons: "[y] Trust", the key right
 // next to what it does, the selected one marked like a selected list row;
@@ -335,7 +335,11 @@ func choiceRows(choices []promptChoice, sel, w int, short bool) [][]hostapi.Segm
 		if c.desc != "" {
 			labelW, desc = lw, hostapi.WrapSegs([]hostapi.Segment{{Text: c.desc, HL: hostapi.ChromeHint}}, descW)
 		}
-		label := hostapi.WrapSegs([]hostapi.Segment{{Text: c.label, HL: cmp.Or(c.hl, textHL)}}, labelW)
+		labelSegs := []hostapi.Segment{{Text: c.label, HL: cmp.Or(c.hl, textHL)}}
+		if c.tag != "" {
+			labelSegs = append(labelSegs, hostapi.Segment{Text: "  " + c.tag, HL: hostapi.ChromeHint})
+		}
+		label := hostapi.WrapSegs(labelSegs, labelW)
 		if short {
 			label, desc = capRows(label, 1, labelW), capRows(desc, 1, descW)
 		}

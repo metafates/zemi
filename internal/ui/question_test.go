@@ -308,7 +308,7 @@ func TestQuestionOptionsWrap(t *testing.T) {
 	app.renderSync(t)
 	frame := ansi.Strip(app.Frame())
 	if !regexp.MustCompile(`\[1\] SQLite with write-ahead logging and a busy timeout`).MatchString(frame) ||
-		!strings.Contains(frame, "recommended   one file, no server") || strings.Contains(frame, "a server to run") {
+		!strings.Contains(frame, "one file, no server") || strings.Contains(frame, "a server to run") || !strings.Contains(frame, "recommended") {
 		t.Fatalf("the selected option's description is not alone in the pane:\n%s", frame)
 	}
 	rows := func() (h, w int) {
