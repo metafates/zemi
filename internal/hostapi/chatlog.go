@@ -133,6 +133,10 @@ func (c *chatLog) Agent(text string) error {
 	return err
 }
 
+// dropped forgets the reply row a finished turn remembered: the chat it named
+// is gone, and its seqs name other rows now.
+func (c *chatLog) dropped() { c.reply = -1 }
+
 // Note logs a memory from before the chat: a chapter mark.
 func (c *chatLog) Note(text string) (int64, error) {
 	first, _, err := c.append(store.KindNote, text, "", "")

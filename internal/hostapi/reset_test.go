@@ -132,3 +132,20 @@ func TestResetChat(t *testing.T) {
 		t.Fatalf("the fresh chat names %d earlier messages, want none", n)
 	}
 }
+
+// TestResetForgetsTheReplyRow: a turn stat landing after a reset must write
+// nothing, since the reply seq it remembered names another chat's row now.
+func TestResetForgetsTheReplyRow(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	if err := h.chat.Agent("a reply"); err != nil {
+		t.Fatal(err)
+	}
+	if h.chat.reply < 0 {
+		t.Fatal("the reply row was not remembered")
+	}
+	h.chatDropped()
+	if h.chat.reply != -1 {
+		t.Fatalf("reply seq %d survives the reset", h.chat.reply)
+	}
+}

@@ -76,6 +76,9 @@ func (h *Host) ResetChat(yes bool) error {
 // chatDropped drops what belongs to the chat that is gone, so the window it
 // left is fresh: a reset's wipe ends the chat this way.
 func (h *Host) chatDropped() {
+	if h.chat != nil {
+		h.chat.dropped()
+	}
 	ag := h.agents
 	ag.mu.Lock()
 	ag.runner, ag.turnModel = nil, ""
