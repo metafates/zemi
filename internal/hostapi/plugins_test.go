@@ -1217,3 +1217,31 @@ func TestPickPluginsLinks(t *testing.T) {
 		}
 	}
 }
+
+// TestSweepKeepsALivePluginsPicks: the sweep reads a plugin's state under
+// plugin: and its kept settings under config:plugins.; a live plugin keeps
+// both. A parse that names either prefix differently deletes rows it cannot
+// place, so the stored key shapes are pinned here as literals.
+func TestSweepKeepsALivePluginsPicks(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	if h.GlobalDB == nil {
+		t.Skip("no global store")
+	}
+	seed := map[string]string{
+		"plugin:live":               `""`,
+		"plugin:live:token":         `"t"`,
+		"config:plugins.live.model": `"m"`,
+	}
+	for k, v := range seed {
+		if err := h.GlobalDB.SetKV(k, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.sweepPluginState([]plugin.Plugin{{Name: "live", Dir: t.TempDir()}})
+	for k := range seed {
+		if _, err := h.GlobalDB.GetKV(k); err != nil {
+			t.Errorf("%s was swept: %v", k, err)
+		}
+	}
+}

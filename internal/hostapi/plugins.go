@@ -348,6 +348,10 @@ func (h *Host) pluginDeclares(name, capability string) bool {
 	return g != nil && name != "" && slices.Contains(g.uses[name], capability)
 }
 
+// _kvPluginPicks is the kv prefix a plugin's kept settings live under,
+// config:plugins.<name>.<key>.
+const _kvPluginPicks = _kvConfigPrefix + "plugins."
+
 // sweepPluginState drops the zemi.state keys and kept setting picks of a
 // plugin whose directory is gone or holds another install than the one that
 // wrote them, so a deleted plugin's saved tokens never reach a new one of
@@ -379,13 +383,13 @@ func (h *Host) sweepPluginState(ps []plugin.Plugin) {
 		}
 	}
 	keys, _ := h.GlobalDB.KeysKV(perm.PluginPrefix)
-	picks, _ := h.GlobalDB.KeysKV("config:plugins.")
+	picks, _ := h.GlobalDB.KeysKV(_kvPluginPicks)
 	h.cfgMu.Lock()
 	defer h.cfgMu.Unlock()
 	for _, k := range append(keys, picks...) {
 		// a name holds no "." or ":"; its state keys are plugin:<name>:<key>,
 		// its kept settings config:plugins.<name>.<key>
-		name, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(k, perm.PluginPrefix), "config:plugins."), ":")
+		name, _, _ := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(k, perm.PluginPrefix), _kvPluginPicks), ":")
 		name, _, _ = strings.Cut(name, ".")
 		if _, ok := ids[name]; ok && !fresh.Has(name) {
 			continue
