@@ -543,11 +543,6 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 		{Name: "init", Desc: "write AGENTS.md for this project", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			return h.InitProject()
 		}},
-		{Name: "export", Hidden: true, NArgs: hostapi.NArgsAny, Desc: "save this session as markdown ([full] [path]; full adds reasoning, tool calls and agent runs)", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
-			path, full := strings.CutPrefix(strings.TrimSpace(args)+" ", "full ")
-			_, err := h.ExportSession(strings.TrimSpace(path), full)
-			return err
-		}, GoComplete: hostapi.SubcommandCompleter([]string{"full"}, nil)},
 		{Name: "compact", Desc: "compact the chat's context now", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
 			h.CompactNow()
 			return nil

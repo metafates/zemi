@@ -1,19 +1,14 @@
-// export.go is what a chat can be copied out of: /export writes the
-// conversation as markdown, /copy puts a reply or a code block on the
-// clipboard, and /usage reports what it cost. It also caches the todo list the
-// chat widget shows.
+// export.go is what a chat can be copied out of: /copy puts a reply or a
+// code block on the clipboard and /usage reports what it cost. It also caches
+// the todo list the chat widget shows.
 
 package hostapi
 
 import (
 	"cmp"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -22,7 +17,6 @@ import (
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/sanitize"
 	"github.com/metafates/zemi/internal/store"
 )
@@ -193,159 +187,6 @@ func codeBlocks(md string) []codeBlock {
 		out[len(out)-1].text = body.String()
 	}
 	return out
-}
-
-// ExportSession writes the chat log as markdown to path ("" picks
-// zemi-<seq>.md in the project), says where, and returns the path written.
-func (h *Host) ExportSession(path string, full bool) (string, error) {
-	if h.DB == nil {
-		return "", Usagef("nothing to export")
-	}
-	if path == "" {
-		path = filepath.Join(h.Dirs.ProjectDir, "zemi-chat.md")
-	} else if !filepath.IsAbs(path) {
-		path = filepath.Join(h.Dirs.ProjectDir, path)
-	}
-	// the user names this path, so it may leave the project
-	md, err := LogMarkdown(h.DB, full)
-	if err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(path, []byte(md), 0o644); err != nil {
-		return "", err
-	}
-	// the bare name says nothing of where: a file under the project says so,
-	// anything else its whole tilde path
-	note := "saved to " + perm.TildePath(path)
-	if rel, err := filepath.Rel(h.Dirs.ProjectDir, path); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		note = "saved to " + rel + " in the project"
-	}
-	h.Notify(slog.LevelInfo, "Chat exported", note)
-	return path, nil
-}
-
-// LogMarkdown is the chat log as markdown; full expands every tool call with
-// its result.
-func LogMarkdown(db *store.DB, full bool) (string, error) {
-	rows, err := db.LogFrom(0, _exportMaxRows)
-	if err != nil {
-		return "", err
-	}
-	count, err := db.LogCount()
-	if err != nil {
-		return "", err
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "# zemi chat\n\n_%d messages, %s_\n", count, time.Now().Format(StampLayout))
-	if count > int64(len(rows)) {
-		fmt.Fprintf(&b, "\n_(the first %d messages are older than this export)_\n", count-int64(len(rows)))
-	}
-	exportLog(&b, rows, 2, full)
-	return b.String(), nil
-}
-
-// _exportMaxRows bounds one export; the log is eternal, a markdown file is
-// not the archive.
-const _exportMaxRows = 5000
-
-// exportLog writes log rows as markdown under level headers, one over each
-// run of rows by one speaker. Every string is sanitized: a file the user
-// later cats must not carry escapes.
-func exportLog(b *strings.Builder, rows []store.LogEntry, level int, full bool) {
-	speaker := ""
-	for _, row := range rows {
-		who := "zemi"
-		if row.Kind == store.KindUser || row.Kind == store.KindShell {
-			who = "You"
-		}
-		if who != speaker || who == "You" {
-			fmt.Fprintf(b, "\n%s %s\n", strings.Repeat("#", level), who)
-			speaker = who
-		}
-		text := strings.TrimSpace(sanitize.String(row.Text))
-		name := rowTool(row)
-		switch row.Kind {
-		case store.KindTool:
-			if full {
-				fmt.Fprintf(b, "\n**%s**\n", sanitize.String(name))
-				b.WriteString(codeFence("", text))
-			} else {
-				head := sanitize.Line(toolSummary(nil, name, row.Text))
-				fmt.Fprintf(b, "- `%s` %s\n", sanitize.String(name), clipLine(head, 120))
-			}
-		case store.KindEcho:
-			if full {
-				b.WriteString(codeFence("", text))
-			}
-		case store.KindWork:
-			fmt.Fprintf(b, "\n_%s_\n", text)
-		case store.KindNote:
-			fmt.Fprintf(b, "\n> _note: %s_\n", text)
-		case store.KindThought:
-			// reasoning joins the export in full only, as the command says
-			if full {
-				fmt.Fprintf(b, "\n> _thought:_\n")
-				for line := range strings.Lines(text) {
-					fmt.Fprintf(b, "> %s", line)
-				}
-			}
-		case store.KindError:
-			fmt.Fprintf(b, "\n> _error: %s_\n", strings.ReplaceAll(text, "\n", " "))
-		case store.KindShell:
-			var meta struct {
-				OK  bool   `json:"ok"`
-				Out string `json:"out"`
-			}
-			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
-			if full {
-				fmt.Fprintf(b, "\n**!command**\n")
-				b.WriteString(codeFence("bash", text))
-				if strings.TrimSpace(meta.Out) != "" {
-					b.WriteString(codeFence("", meta.Out))
-				}
-			} else {
-				fmt.Fprintf(b, "- `!%s`\n", clipLine(firstLine(text), 120))
-			}
-		default:
-			fmt.Fprintf(b, "\n%s\n", demoteHeadings(text, level))
-		}
-	}
-}
-
-// demoteHeadings sinks each ATX heading outside a code fence by level, to six
-// hashes at most (seven are no heading), so a message's own "## Plan" stays
-// under the speaker header it is written in.
-// NOTE: a setext heading (a line underlined with === or ---) is not demoted.
-func demoteHeadings(s string, level int) string {
-	var b strings.Builder
-	var fs fenceScanner
-	for line := range strings.SplitAfterSeq(s, "\n") {
-		body := strings.TrimLeft(line, " ")
-		wasFence := fs.run != ""
-		switch {
-		case fs.line(line, 0):
-		case !wasFence && len(line)-len(body) < 4 && _atxHeading.MatchString(body):
-			n := len(body) - len(strings.TrimLeft(body, "#"))
-			line = strings.Repeat("#", min(n+level, 6)) + body[n:]
-		}
-		b.WriteString(line)
-	}
-	return b.String()
-}
-
-var _atxHeading = regexp.MustCompile(`^#{1,6}(\s|$)`)
-
-// codeFence fences text in more backticks than any fence line inside it, so
-// a result holding ``` cannot close the block early.
-func codeFence(lang, text string) string {
-	n := 3
-	for l := range strings.Lines(text) {
-		if run, _ := fenceRun(strings.TrimLeft(l, " \t")); strings.HasPrefix(run, "`") {
-			n = max(n, len(run)+1)
-		}
-	}
-	fence := strings.Repeat("`", n)
-	return fence + lang + "\n" + text + "\n" + fence + "\n"
 }
 
 // todoSnapshot is the live todo list for widgets, reloaded only after the

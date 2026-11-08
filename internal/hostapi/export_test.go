@@ -1,8 +1,6 @@
 package hostapi
 
 import (
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -13,9 +11,9 @@ import (
 	"github.com/metafates/zemi/internal/tools"
 )
 
-// TestExportAndCopy: a finished exchange exports the log as markdown, /copy
-// takes a reply with no code blocks at once.
-func TestExportAndCopy(t *testing.T) {
+// TestCopyBareReply: /copy with no args over a reply with no code blocks
+// takes the whole reply at once.
+func TestCopyBareReply(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
 	replyStub(t, h, "pong")
@@ -23,30 +21,6 @@ func TestExportAndCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitIdle(t, h)
-
-	path, err := h.ExportSession(filepath.Join(t.TempDir(), "s.md"), false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	md, _ := os.ReadFile(path)
-	if !strings.Contains(string(md), "## You\n\nping") || !strings.Contains(string(md), "## zemi\n\npong") {
-		t.Fatalf("export:\n%s", md)
-	}
-	if _, err := h.ExportSession(path, true); err != nil {
-		t.Fatal(err)
-	}
-	if md, _ = os.ReadFile(path); !strings.Contains(string(md), "## You\n\nping") {
-		t.Fatalf("full export:\n%s", md)
-	}
-	// the toast says where: a file under the project names it, so the bare
-	// name never stands alone
-	if _, err := h.ExportSession("", false); err != nil {
-		t.Fatal(err)
-	}
-	if n := h.evlog.notes[len(h.evlog.notes)-1]; n.body != "saved to zemi-chat.md in the project" {
-		t.Fatalf("export toast: %q", n.body)
-	}
-
 	ui := &fakeUI{}
 	h.SetUIHooks(ui)
 	if err := h.CopyReply(""); err != nil || ui.copied != "pong" {
@@ -125,28 +99,6 @@ func TestCopyRunReply(t *testing.T) {
 	}
 	if err := h.CopyReply("reply"); err != nil || ui.copied != "pong" {
 		t.Fatalf("chat copy = %q, %v", ui.copied, err)
-	}
-}
-
-// TestExportLogMarkdown renders log rows as markdown, one header per run of
-// one speaker, tool calls as list rows or expanded in full.
-func TestExportLogMarkdown(t *testing.T) {
-	rows := []store.LogEntry{
-		{Kind: store.KindUser, Text: "hi"},
-		{Kind: store.KindTool, Text: `{"command":"go test ./..."}`, MetaJSON: `{"tool":"shell"}`},
-		{Kind: store.KindAgent, Text: "done"},
-		{Kind: store.KindNote, Text: "chapter"},
-	}
-	var b strings.Builder
-	exportLog(&b, rows, 2, false)
-	want := "\n## You\n\nhi\n\n## zemi\n- `shell` go test ./...\n\ndone\n\n> _note: chapter_\n"
-	if b.String() != want {
-		t.Errorf("export:\n%q\nwant\n%q", b.String(), want)
-	}
-	var full strings.Builder
-	exportLog(&full, rows[:3], 2, true)
-	if !strings.Contains(full.String(), "**shell**") || !strings.Contains(full.String(), "```") {
-		t.Errorf("full export lost the tool body: %q", full.String())
 	}
 }
 

@@ -1055,7 +1055,7 @@ holding a preamble and the caller's prompt, and its calls carry the caller's
 own provider cache key (`prompt_cache_key`, `x-session-affinity`, §6.3), so
 the provider reads that prefix out of its cache instead of writing it again.
 Everything else is an ordinary subagent run: an `agentRun` in `taskReg`, a child
-session whose `agent` is `fork`, `send_to`, `/agents`, `/export`, the same
+session whose `agent` is `fork`, `send_to`, `/agents`, the same
 permission pipeline, the same billing. It is no definition: `_forkAgent` holds a
 name and a description only, so the tool's enum, its agent list and
 `zemi.agent.list()` name it, while a user's `agents/fork.md` is ignored with an
