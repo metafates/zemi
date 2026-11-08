@@ -41,6 +41,14 @@ const (
 	TypeScore  Type = "score"
 )
 
+// Strategies is every way a call may be answered, and Types every type a
+// question may be: these are the values zemi.ClassifyStrategy and
+// zemi.ClassifierType name, so an annotation is pinned to them, not retyped.
+var (
+	Strategies = []Strategy{StrategyProtocol, StrategyLogprobs, StrategySchema}
+	Types      = []Type{TypeBool, TypeChoice, TypeScore}
+)
+
 // Question is one thing to judge about the state.
 type Question struct {
 	Type         Type

@@ -19,8 +19,12 @@ import (
 // with one token, so a label has to be one: a letter for a choice, a digit for
 // a score, Yes or No for a bool. The answer is the softmax over the labels'
 // log probabilities, never the text the model wrote.
+//
+// _boolAnswers pairs each token a bool question is answered with and the
+// criteria key it stands for, so neither list can drift from the other.
+var _boolAnswers = []struct{ label, key string }{{"Yes", KeyTrue}, {"No", KeyFalse}}
+
 var (
-	_boolLabels   = []string{"Yes", "No"}
 	_choiceLabels = strings.Split("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "")
 	_scoreLabels  = strings.Split("0123456789", "")
 )
@@ -31,8 +35,6 @@ const (
 	KeyTrue  = "true"
 	KeyFalse = "false"
 )
-
-var _boolKeys = []string{KeyTrue, KeyFalse}
 
 // _readoutDepth is how many token probabilities the first call asks for, and
 // the depths a label missing from that readout escalates through: only the
@@ -78,7 +80,9 @@ func (q Question) labelTokens() (labels, keys []string, err error) {
 	}
 	switch q.Type {
 	case TypeBool:
-		labels, keys = _boolLabels, _boolKeys
+		for _, a := range _boolAnswers {
+			labels, keys = append(labels, a.label), append(keys, a.key)
+		}
 	case TypeChoice:
 		keys = q.labels()
 		if len(keys) > len(_choiceLabels) {
@@ -212,9 +216,9 @@ func renderQuestion(name string, q Question, labels []string) string {
 	switch q.Type {
 	case TypeBool:
 		var lines []string
-		for _, key := range _boolKeys {
-			if m := q.Criteria[key]; m != "" {
-				lines = append(lines, strings.ToUpper(key)+" means: "+m)
+		for _, a := range _boolAnswers {
+			if m := q.Criteria[a.key]; m != "" {
+				lines = append(lines, strings.ToUpper(a.key)+" means: "+m)
 			}
 		}
 		if len(lines) > 0 {
@@ -247,8 +251,12 @@ func answerInstruction(q Question) string {
 		return "Answer with one letter."
 	case TypeScore:
 		return "Answer with one level number."
-	default: // a bool question: the two labels
-		return "Answer Yes or No."
+	default: // a bool question: the two labels, in the order the probabilities are read
+		names := make([]string, len(_boolAnswers))
+		for i, a := range _boolAnswers {
+			names[i] = a.label
+		}
+		return "Answer " + strings.Join(names, " or ") + "."
 	}
 }
 
