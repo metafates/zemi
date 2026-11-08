@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -210,13 +211,13 @@ func (s *DB) Path() string { return s.path }
 
 // unmigrated reports a store the embedded migrations have not reached: their
 // version table is missing (a 0-byte or pre-goose file) or behind their
-// count. A file that is not a database at all is its own error: no open
-// migrates it, so the unmigrated remedy would never work.
+// newest version. A file that is not a database at all is its own error: no
+// open migrates it, so the unmigrated remedy would never work.
 func (s *DB) unmigrated() error {
 	var v sql.NullInt64
 	err := s.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&v)
 	if err == nil {
-		if v.Int64 < int64(migrationCount()) {
+		if v.Int64 < int64(newestMigration(_migrations)) {
 			return ErrUnmigrated
 		}
 		return nil
@@ -344,11 +345,22 @@ func isNotADB(err error) bool {
 	return ok && e.Code()&0xff == sqlite3.SQLITE_NOTADB
 }
 
-// migrationCount is the newest version the embedded migrations reach; the
-// files are numbered 0001.. in step with goose's versions.
-func migrationCount() int {
-	files, _ := fs.Glob(_migrations, "migrations/*.sql")
-	return len(files)
+// newestMigration is the highest version the migrations in fsys reach: the
+// number in each file name, which goose takes as its version. A count is not
+// the same thing once a number is skipped.
+func newestMigration(fsys fs.FS) int {
+	files, _ := fs.Glob(fsys, "migrations/*.sql")
+	newest := 0
+	for _, file := range files {
+		num, _, ok := strings.Cut(filepath.Base(file), "_")
+		if !ok {
+			continue
+		}
+		if v, err := strconv.Atoi(num); err == nil {
+			newest = max(newest, v)
+		}
+	}
+	return newest
 }
 
 // newID returns a random 128-bit id, hex encoded, for rows nobody types.
