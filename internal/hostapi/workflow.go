@@ -727,7 +727,7 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 	}
 	schema := callSchema(L, opts)
 	a := &flowAgent{def: def.Name, description: desc, phase: cmp.Or(phase, r.f.phase), model: def.Model}
-	key := agentKey(def.Name, model, schema, string(prompt))
+	key := agentKey(def.Name, a.model, schema, string(prompt))
 	// an identical call an earlier run finished answers at once and starts
 	// nothing, so it does not count toward the cap
 	if q := r.cache[key]; len(q) > 0 {
