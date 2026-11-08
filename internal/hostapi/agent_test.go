@@ -1255,8 +1255,8 @@ func TestTurnDoneLogsTheRawArgs(t *testing.T) {
 			toolRow = r
 		}
 	}
-	if toolRow.Text != `{"command":"sleep 30","about":"slow4"}` {
-		t.Fatalf("the log holds %q, want the raw args the live rail's label came from", toolRow.Text)
+	if toolRow.Text != `{"about": "slow4", "command": "sleep 30"}` {
+		t.Fatalf("the log holds %q, want the raw args with the label leading", toolRow.Text)
 	}
 	var rebuilt ChatMessage
 	for _, m := range logRows(nil, rows) {

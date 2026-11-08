@@ -1223,4 +1223,21 @@ func TestLeadOrder(t *testing.T) {
 	if !strings.Contains(res.Content, `<system-reminder>Pass "about" before "pattern" in grep calls`) {
 		t.Fatalf("a content-first grep call carried no reminder: %q", res.Content)
 	}
+	for _, c := range []struct {
+		name, input, want string
+	}{
+		{"buries about", `{"command":"true","about":"late"}`, `{"about": "late", "command": "true"}`},
+		{"keeps raw values", `{"command":"a","about":"b","nested":{"command":"z"}}`, `{"about": "b", "command": "a", "nested": {"command":"z"}}`},
+		{"label first already", `{"about":"a","command":"b"}`, `{"about":"a","command":"b"}`},
+		{"no label", `{"command":"b"}`, `{"command":"b"}`},
+		{"no object", `true`, `true`},
+		{"unknown tool", `{"x":"y"}`, `{"x":"y"}`},
+	} {
+		if got := LeadInput("shell", c.input); got != c.want {
+			t.Errorf("%s: LeadInput = %s, want %s", c.name, got, c.want)
+		}
+	}
+	if got := LeadInput("read", `{"limit":5,"path":"p"}`); got != `{"path": "p", "limit": 5}` {
+		t.Errorf("read: LeadInput = %s", got)
+	}
 }

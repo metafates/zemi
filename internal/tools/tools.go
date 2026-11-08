@@ -782,6 +782,7 @@ var LeadPairs = map[string][2]string{
 	string(ToolGrep):     {"about", "pattern"},
 	string(ToolLua):      {"about", "script"},
 	string(ToolAgent):    {"description", "prompt"},
+	string(ToolRead):     {"path", ""},
 }
 
 // LeadOK reports whether a call's raw input passes no bulk content key
@@ -810,6 +811,63 @@ func LeadOK(input, lead, content string) bool {
 		}
 	}
 	return true
+}
+
+// LeadInput reorders a call's input so its label argument leads: the provider
+// re-marshals arguments alphabetically, and the log row is the example the
+// model reads back in zoom and memories. Input that is not a readable object
+// holding the label passes through untouched.
+func LeadInput(tool, input string) string {
+	pair, ok := LeadPairs[tool]
+	if !ok || pair[0] == "" {
+		return input
+	}
+	dec := jsontext.NewDecoder(strings.NewReader(input))
+	if dec.PeekKind() != jsontext.Kind('{') {
+		return input
+	}
+	if _, err := dec.ReadToken(); err != nil { // the object's opening brace
+		return input
+	}
+	type member struct {
+		key, val string
+	}
+	var members []member
+	at := -1
+	for dec.PeekKind() != jsontext.Kind('}') {
+		var key string
+		if err := json.UnmarshalDecode(dec, &key); err != nil {
+			return input
+		}
+		val, err := dec.ReadValue()
+		if err != nil {
+			return input
+		}
+		if key == pair[0] && at < 0 {
+			at = len(members)
+		}
+		members = append(members, member{key, string(val)})
+	}
+	if at <= 0 {
+		return input
+	}
+	members[0], members[at] = members[at], members[0]
+	var b strings.Builder
+	b.WriteByte('{')
+	for i, m := range members {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		k, err := json.Marshal(m.key)
+		if err != nil {
+			return input
+		}
+		b.Write(k)
+		b.WriteString(": ")
+		b.WriteString(m.val)
+	}
+	b.WriteByte('}')
+	return b.String()
 }
 
 // LeadReminder is the note a label-burying call appends to its output.

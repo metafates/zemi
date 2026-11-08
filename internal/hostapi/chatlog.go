@@ -190,6 +190,7 @@ func (c *chatLog) Work(run, who, agent, status, text string) (int64, error) {
 // Tool logs one tool call: its name, the input as sent, and the call id that
 // pairs it with its echo across parallel calls of one tool.
 func (c *chatLog) Tool(name, input, id string) error {
+	input = tools.LeadInput(name, input)
 	meta, err := json.Marshal(struct {
 		Tool string `json:"tool"`
 		ID   string `json:"id,omitempty"`
