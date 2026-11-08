@@ -222,16 +222,20 @@ var _callTitles = map[tools.ToolName]string{
 	tools.ToolPlan: "Plan", tools.ToolLua: "Script", tools.ToolTodos: "Todos",
 }
 
-// _callWords say where a call stands, beside its mark.
-var _callWords = map[CallStatus]string{
-	CallWait: "waiting", CallRun: "running", CallOK: "ok", CallWarn: "warned",
-	CallErr: "failed", CallStopped: "stopped", CallBG: "in the background", CallCancelled: "cancelled",
-}
-
-// _callMarks are the chat's own marks for a call's state.
-var _callMarks = map[CallStatus]MarkKind{
-	CallWait: tools.MarkWait, CallRun: tools.MarkSpin, CallOK: tools.MarkOK, CallWarn: tools.MarkWarn,
-	CallErr: tools.MarkErr, CallStopped: tools.MarkStop, CallBG: tools.MarkBG, CallCancelled: tools.MarkStop,
+// _callStates says where a call stands: the word its view reads and the mark
+// its row and view wear, one entry per state.
+var _callStates = map[CallStatus]struct {
+	word string
+	mark MarkKind
+}{
+	CallWait:      {"waiting", tools.MarkWait},
+	CallRun:       {"running", tools.MarkSpin},
+	CallOK:        {"ok", tools.MarkOK},
+	CallWarn:      {"warned", tools.MarkWarn},
+	CallErr:       {"failed", tools.MarkErr},
+	CallStopped:   {"stopped", tools.MarkStop},
+	CallBG:        {"in the background", tools.MarkBG},
+	CallCancelled: {"cancelled", tools.MarkStop},
 }
 
 // _callArg names what a call was given, so the facts table says what it acted
@@ -302,10 +306,10 @@ func (h *Host) logCallView(seq int64, m ChatMessage) Overlay {
 func (h *Host) callBody(m ChatMessage, took time.Duration) Overlay {
 	o := Overlay{
 		Title: callTitle(m), Origin: lua.OriginBuiltin,
-		Mark: _callMarks[m.Status], Live: m.Status == CallRun || m.Status == CallWait,
+		Mark: _callStates[m.Status].mark, Live: m.Status == CallRun || m.Status == CallWait,
 	}
 	var parts []BodyPart
-	fields := []Field{{Name: "status", Value: _callWords[m.Status]}}
+	fields := []Field{{Name: "status", Value: _callStates[m.Status].word}}
 	if m.Kind == RowReasoning {
 		parts = append(parts, BodyPart{Text: m.Text, Lang: "markdown"})
 		if m.Stat != nil && m.Stat.ThoughtMS > 0 {
