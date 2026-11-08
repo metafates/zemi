@@ -151,7 +151,7 @@ func (h *Host) buildSystemParts(toolset []fantasy.AgentTool) (system, ctxMsg str
 // _replyReminder closes the main agent's context message, where a small model
 // weighs it most; a subagent's report keeps its own.
 const _replyReminder = "\n\nEnd with a reply: under 150 characters besides output the user asked for." +
-	" A longer reply ends with <tldr>one or two sentences summing it up</tldr> after the text, never before; only a turn-ending reply carries it." +
+	" A longer reply ends with <tldr>one short sentence in plain words and simple grammar; two sentences is the hard limit</tldr> after the text, never before; only a turn-ending reply carries it." +
 	" A message that reaches you mid-turn redirects the work in progress: fold it in and carry on, unless it ends the task."
 
 // _contextOpener opens every context message; the bytes after it vary by
