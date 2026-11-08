@@ -38,6 +38,49 @@ const (
 	_echoClipChars = 30_000
 )
 
+// The log metas: one named shape per kind, written by the chatLog method below
+// and read back by every reader through metaOf, so a renamed key cannot blank a
+// field on one side alone. The JSON names are stored rows' own: they never move.
+type (
+	noteMeta struct {
+		System bool `json:"system,omitempty"`
+	}
+	noticeMeta struct {
+		Detail string `json:"detail"`
+	}
+	thoughtMeta struct {
+		MS int64 `json:"ms"`
+	}
+	errorMeta struct {
+		Cancelled bool `json:"cancelled"`
+	}
+	shellMeta struct {
+		OK  bool   `json:"ok"`
+		Out string `json:"out"`
+	}
+	workMeta struct {
+		Run    string `json:"run"`
+		Name   string `json:"name"`
+		Agent  string `json:"agent,omitempty"`
+		Status string `json:"status,omitempty"`
+	}
+	toolMeta struct {
+		Tool string `json:"tool"`
+		ID   string `json:"id,omitempty"`
+	}
+	splitMeta struct {
+		Split bool `json:"split"`
+	}
+)
+
+// metaOf reads a log row's meta as its kind's shape: the zero value of a row
+// that carries none or does not decode, which every reader treats as absent.
+func metaOf[T any](row store.LogEntry) T {
+	var m T
+	_ = json.Unmarshal([]byte(row.MetaJSON), &m)
+	return m
+}
+
 // chatLog writes the main log of one project store. It owns the builder.
 type chatLog struct {
 	h    *Host
@@ -99,7 +142,11 @@ func (c *chatLog) Note(text string) (int64, error) {
 // systemNote records a note the chat's transcript draws nothing of: the
 // wipe's trace, reachable by zoom and the picker alone.
 func (c *chatLog) systemNote(text string) error {
-	_, _, err := c.append(store.KindNote, text, `{"system":true}`, "")
+	meta, err := json.Marshal(noteMeta{System: true}, json.Deterministic(true))
+	if err != nil {
+		return err
+	}
+	_, _, err = c.append(store.KindNote, text, string(meta), "")
 	return err
 }
 
@@ -108,9 +155,7 @@ func (c *chatLog) systemNote(text string) error {
 func (c *chatLog) Notice(text, detail string) (int64, error) {
 	meta := ""
 	if detail != "" {
-		raw, err := json.Marshal(struct {
-			Detail string `json:"detail"`
-		}{detail}, json.Deterministic(true))
+		raw, err := json.Marshal(noticeMeta{Detail: detail}, json.Deterministic(true))
 		if err != nil {
 			return -1, err
 		}
@@ -123,9 +168,7 @@ func (c *chatLog) Notice(text, detail string) (int64, error) {
 // Thought logs one settled reasoning stretch: its text and the wall time its
 // flush measured, which the rebuilt row and the run digest read back.
 func (c *chatLog) Thought(text string, d time.Duration) error {
-	meta, err := json.Marshal(struct {
-		MS int64 `json:"ms"`
-	}{d.Milliseconds()}, json.Deterministic(true))
+	meta, err := json.Marshal(thoughtMeta{MS: d.Milliseconds()}, json.Deterministic(true))
 	if err != nil {
 		return err
 	}
@@ -139,9 +182,7 @@ func (c *chatLog) Thought(text string, d time.Duration) error {
 // Error logs a failed turn's error row: the text it drew and whether the user
 // cancelled the turn.
 func (c *chatLog) Error(text string, cancelled bool) error {
-	meta, err := json.Marshal(struct {
-		Cancelled bool `json:"cancelled"`
-	}{cancelled}, json.Deterministic(true))
+	meta, err := json.Marshal(errorMeta{Cancelled: cancelled}, json.Deterministic(true))
 	if err != nil {
 		return err
 	}
@@ -152,10 +193,7 @@ func (c *chatLog) Error(text string, cancelled bool) error {
 // Shell logs a shell command's row: the command, its output head and its
 // outcome.
 func (c *chatLog) Shell(cmd, out string, ok bool) error {
-	meta, err := json.Marshal(struct {
-		OK  bool   `json:"ok"`
-		Out string `json:"out"`
-	}{ok, out}, json.Deterministic(true))
+	meta, err := json.Marshal(shellMeta{OK: ok, Out: out}, json.Deterministic(true))
 	if err != nil {
 		return err
 	}
@@ -169,12 +207,7 @@ func (c *chatLog) Shell(cmd, out string, ok bool) error {
 // body make. A report too long for one row splits into siblings, each
 // labeled, so a continuation reads as the same run's where the split cut it.
 func (c *chatLog) Work(run, who, agent, status, text string) (int64, error) {
-	meta, err := json.Marshal(struct {
-		Run    string `json:"run"`
-		Name   string `json:"name"`
-		Agent  string `json:"agent,omitempty"`
-		Status string `json:"status,omitempty"`
-	}{run, who, agent, status}, json.Deterministic(true))
+	meta, err := json.Marshal(workMeta{Run: run, Name: who, Agent: agent, Status: status}, json.Deterministic(true))
 	if err != nil {
 		return -1, err
 	}
@@ -191,10 +224,7 @@ func (c *chatLog) Work(run, who, agent, status, text string) (int64, error) {
 // pairs it with its echo across parallel calls of one tool.
 func (c *chatLog) Tool(name, input, id string) error {
 	input = tools.LeadInput(name, input)
-	meta, err := json.Marshal(struct {
-		Tool string `json:"tool"`
-		ID   string `json:"id,omitempty"`
-	}{name, id}, json.Deterministic(true))
+	meta, err := json.Marshal(toolMeta{Tool: name, ID: id}, json.Deterministic(true))
 	if err != nil {
 		return err
 	}
@@ -257,17 +287,6 @@ func statusOf(ok bool) CallStatus {
 	return CallErr
 }
 
-// replyStat is the readout a finished turn rides its last reply row's meta:
-// the model, the turn's wall time, its tokens out, when it ended, and the
-// turn's whole thought, which reasoning never being logged leaves to it.
-type replyStat struct {
-	Model     string `json:"model"`
-	TurnMS    int64  `json:"turn_ms"`
-	Out       int64  `json:"out"`
-	ThoughtMS int64  `json:"thought_ms"`
-	Ended     int64  `json:"ended"`
-}
-
 // setReplyStat writes the finished turn's readout onto its last reply row,
 // which Agent remembered. A turn that wrote no reply (a cancel before any
 // text) writes nothing.
@@ -275,10 +294,8 @@ func (c *chatLog) setReplyStat(stat TurnStat, thought time.Duration) error {
 	if c.reply < 0 {
 		return nil
 	}
-	meta, err := json.Marshal(replyStat{
-		Model: stat.Model, TurnMS: stat.ElapsedMS, Out: stat.Out,
-		ThoughtMS: thought.Milliseconds(), Ended: stat.Ended,
-	}, json.Deterministic(true))
+	stat.ThoughtMS = thought.Milliseconds()
+	meta, err := json.Marshal(stat, json.Deterministic(true))
 	if err != nil {
 		return err
 	}
@@ -334,20 +351,13 @@ func withSplit(meta string) string {
 
 // splitMarked reads the split mark withSplit wrote.
 func splitMarked(row store.LogEntry) bool {
-	var m struct {
-		Split bool `json:"split"`
-	}
-	return json.Unmarshal([]byte(row.MetaJSON), &m) == nil && m.Split
+	return metaOf[splitMeta](row).Split
 }
 
 // rowID is the call id a split unit's chunks share, from its meta: the unit
 // key where siblings of different calls sit side by side.
 func rowID(row store.LogEntry) string {
-	var m struct {
-		ID string `json:"id"`
-	}
-	_ = json.Unmarshal([]byte(row.MetaJSON), &m)
-	return m.ID
+	return metaOf[toolMeta](row).ID
 }
 
 // toolLeaf renders a tool call's line mechanically: the tool and the first
@@ -664,13 +674,7 @@ func workRun(row store.LogEntry) string {
 	if row.Kind != store.KindWork {
 		return ""
 	}
-	var meta struct {
-		Run string `json:"run"`
-	}
-	if json.Unmarshal([]byte(row.MetaJSON), &meta) != nil {
-		return ""
-	}
-	return meta.Run
+	return metaOf[workMeta](row).Run
 }
 
 // zoomRun is zoom(id, 1) on a work message: the run it names, its transcript
@@ -712,13 +716,7 @@ func rowTool(row store.LogEntry) string {
 	if row.Kind != store.KindTool && row.Kind != store.KindEcho {
 		return ""
 	}
-	var meta struct {
-		Tool string `json:"tool"`
-	}
-	if json.Unmarshal([]byte(row.MetaJSON), &meta) != nil {
-		return ""
-	}
-	return meta.Tool
+	return metaOf[toolMeta](row).Tool
 }
 
 // zoomChild renders one child line of node(l,i), a placeholder when unbuilt.

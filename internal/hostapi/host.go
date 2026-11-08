@@ -491,14 +491,16 @@ func shortOutput(s string) string {
 }
 
 // TurnStat summarizes one completed agent turn: token counts and wall
-// time (thought = time spent in reasoning blocks).
+// time (thought = time spent in reasoning blocks). Its JSON names are the
+// reply row's stored readout: the one shape a finished turn rides out and a
+// rebuilt chat reads back.
 type TurnStat struct {
-	In        int64
-	Out       int64
-	ThoughtMS int64
-	ElapsedMS int64
-	Ended     int64  // unix seconds the turn ended, 0 when unknown
-	Model     string // the model id that wrote the reply, "" elsewhere
+	In        int64  `json:"-"` // not on the wire: the log's readout carries no input count
+	Out       int64  `json:"out"`
+	ThoughtMS int64  `json:"thought_ms"`
+	ElapsedMS int64  `json:"turn_ms"`
+	Ended     int64  `json:"ended"` // unix seconds the turn ended, 0 when unknown
+	Model     string `json:"model"` // the model id that wrote the reply, "" elsewhere
 }
 
 // Host bundles the core services the zemi.* namespaces adapt.

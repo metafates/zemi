@@ -243,11 +243,7 @@ func systemNote(row store.LogEntry) bool {
 	if row.Kind != store.KindNote {
 		return false
 	}
-	var meta struct {
-		System bool `json:"system"`
-	}
-	_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
-	return meta.System
+	return metaOf[noteMeta](row).System
 }
 
 // logRows converts log rows into the transcript rows the chat draws: a user
@@ -273,15 +269,11 @@ func logRowsFor(rel func(string) string, rows []store.LogEntry, browse bool) []C
 		if row.Kind != store.KindEcho {
 			continue
 		}
-		var meta struct {
-			Tool string `json:"tool"`
-			ID   string `json:"id"`
-		}
-		_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
-		if meta.ID != "" {
-			echo[meta.ID] = append(echo[meta.ID], i)
+		em := metaOf[echoRow](row)
+		if em.ID != "" {
+			echo[em.ID] = append(echo[em.ID], i)
 		} else {
-			fifo[meta.Tool] = append(fifo[meta.Tool], i)
+			fifo[em.Tool] = append(fifo[em.Tool], i)
 		}
 	}
 	// nextEcho pops the oldest echo below the call: rows above it belong to
@@ -323,27 +315,17 @@ func logRowsFor(rel func(string) string, rows []store.LogEntry, browse bool) []C
 				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Text: s, Seq: row.Seq, Stat: replyMeta(row.MetaJSON)})
 			}
 		case store.KindThought:
-			var meta struct {
-				MS int64 `json:"ms"`
-			}
-			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
+			meta := metaOf[thoughtMeta](row)
 			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: row.Text, Stat: &TurnStat{ThoughtMS: meta.MS}, Seq: row.Seq})
 		case store.KindError:
-			var meta struct {
-				Cancelled bool `json:"cancelled"`
-			}
-			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
+			meta := metaOf[errorMeta](row)
 			m := ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowError, Text: row.Text, Seq: row.Seq}
 			if meta.Cancelled {
 				m.Status = CallCancelled
 			}
 			tr = append(tr, m)
 		case store.KindShell:
-			var meta struct {
-				OK  bool   `json:"ok"`
-				Out string `json:"out"`
-			}
-			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
+			meta := metaOf[shellMeta](row)
 			status := CallOK
 			if !meta.OK {
 				status = CallErr
@@ -351,10 +333,7 @@ func logRowsFor(rel func(string) string, rows []store.LogEntry, browse bool) []C
 			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Kind: RowShell, Text: row.Text, Detail: meta.Out, Status: status, Seq: row.Seq})
 		case store.KindTool:
 			name := rowTool(row)
-			var call struct {
-				ID string `json:"id"`
-			}
-			_ = json.Unmarshal([]byte(row.MetaJSON), &call)
+			call := metaOf[toolMeta](row)
 			j := -1
 			if call.ID != "" {
 				echo[call.ID], j = next(echo[call.ID], i)
@@ -384,13 +363,7 @@ func logRowsFor(rel func(string) string, rows []store.LogEntry, browse bool) []C
 				Diff:   diff, Run: run, Job: job, Output: out, Seq: row.Seq,
 			})
 		case store.KindWork:
-			var meta struct {
-				Run    string `json:"run"`
-				Name   string `json:"name"`
-				Agent  string `json:"agent,omitempty"`
-				Status string `json:"status"`
-			}
-			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
+			meta := metaOf[workMeta](row)
 			// the head is in the logged text, where work wrote it: the row
 			// draws its first line, the same line the live window drew
 			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: firstLine(row.Text), Status: workStatus(meta.Status), Run: meta.Run, Tool: tools.ToolName(cmp.Or(meta.Agent, meta.Name)), Seq: row.Seq})
@@ -403,10 +376,7 @@ func logRowsFor(rel func(string) string, rows []store.LogEntry, browse bool) []C
 			}
 			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: messageHead(row.Text), Seq: row.Seq})
 		case store.KindNotice:
-			var meta struct {
-				Detail string `json:"detail"`
-			}
-			_ = json.Unmarshal([]byte(row.MetaJSON), &meta)
+			meta := metaOf[noticeMeta](row)
 			tr = append(tr, ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowNotice, Text: messageHead(row.Text), Detail: meta.Detail, Seq: row.Seq})
 		}
 	}
@@ -455,14 +425,14 @@ func replyMeta(meta string) *TurnStat {
 	if meta == "" {
 		return nil
 	}
-	var m replyStat
+	var m TurnStat
 	if json.Unmarshal([]byte(meta), &m) != nil {
 		return nil
 	}
-	if m == (replyStat{}) {
+	if m == (TurnStat{}) {
 		return nil // the split mark rides a split reply's meta alone, before its readout lands
 	}
-	return &TurnStat{Model: m.Model, ElapsedMS: m.TurnMS, Out: m.Out, ThoughtMS: m.ThoughtMS, Ended: m.Ended}
+	return &m
 }
 
 // stampMS is a log stamp as unix ms, 0 when it does not parse.

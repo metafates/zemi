@@ -1,6 +1,9 @@
 package hostapi
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -250,6 +253,32 @@ func TestMessageHead(t *testing.T) {
 	for _, c := range cases {
 		if got := messageHead(c.text); got != c.want {
 			t.Errorf("%s: head %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// TestEveryLogKindDrawsARow: the store's kinds and logRows' switch are one
+// list. A kind the store grows that the switch does not map fails here rather
+// than as a message that silently never draws.
+func TestEveryLogKindDrawsARow(t *testing.T) {
+	t.Parallel()
+	src, err := os.ReadFile(filepath.Join("..", "store", "log.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := regexp.MustCompile(`Kind\w+\s+LogKind = "(\w+)"`).FindAllStringSubmatch(string(src), -1)
+	if len(found) < 2 {
+		t.Fatalf("store/log.go names %d kinds: the enum moved", len(found))
+	}
+	for _, m := range found {
+		kind := store.LogKind(m[1])
+		row := store.LogEntry{Kind: kind, Text: "a row", MetaJSON: `{"tool":"read","run":"r1","detail":"d","name":"n"}`}
+		want := 1
+		if kind == store.KindEcho {
+			want = 0 // a result rides the call's row, never one of its own
+		}
+		if got := logRows(func(s string) string { return s }, []store.LogEntry{row}); len(got) != want {
+			t.Errorf("kind %q draws %d rows, want %d", kind, len(got), want)
 		}
 	}
 }
