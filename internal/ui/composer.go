@@ -449,7 +449,7 @@ func (a *App) composerRows(w int, placeholder string) (rows [][]hostapi.Segment,
 			if a.composerNote != "" {
 				placeholder = a.composerNote
 			}
-			segs = []hostapi.Segment{{Text: placeholder, HL: "Dim", NoCopy: true}}
+			segs = []hostapi.Segment{{Text: placeholder, HL: hostapi.GroupDim, NoCopy: true}}
 			segs = truncateSegs(segs, max(wrap, 1)) // a row never comes out empty
 		default:
 			segs = []hostapi.Segment{{Text: string(text), HL: "Normal"}}
@@ -498,16 +498,16 @@ func frameInner(w int) int { return max(w-4, 1) }
 // changes what the rule says and never how many rows the frame takes, so
 // nothing above it reflows.
 func (a *App) composerFrame(n *node, w int) ([][]hostapi.Segment, uv.Position, bool) {
-	hl := "Rule"
+	hl := hostapi.GroupRule
 	if _, _, rule := a.draftMode(); rule != "" {
 		hl = rule // a command draft tints the whole frame, not just its glyph
 	}
 	inner := frameInner(w)
-	// the top region draws its rule corner to corner; its "Rule" cells take
-	// the frame's tint, and its plain rule runs join what stands on them
+	// the top region draws its rule corner to corner; its Rule cells take the
+	// frame's tint, and its plain rule runs join what stands on them
 	top := truncateSegs(joinItems(a.statusItems(n.Top), false), w-2)
 	for i := range top {
-		if top[i].HL == "Rule" {
+		if top[i].HL == hostapi.GroupRule {
 			top[i].HL = hl
 			top[i].Line = strings.Trim(top[i].Text, "─") == ""
 		}
@@ -547,12 +547,12 @@ func (c *composerState) inputRow(width int, ghost string) []hostapi.Segment {
 	}
 	segs := cursorSegs(r, c.cursor, "")
 	if c.text == "" && ghost != "" {
-		segs = cursorSegs([]rune(ghost), 0, "Dim")
+		segs = cursorSegs([]rune(ghost), 0, hostapi.GroupDim)
 	}
 	if over := 2 + hostapi.SegsWidth(segs[:2]) - (width - 1); over > 0 {
 		segs = dropCells(segs, over)
 	}
-	return padSegs(ellipsizeSegs(append([]hostapi.Segment{{Text: "> ", HL: "Dim", NoCopy: true}}, segs...), width), 40)
+	return padSegs(ellipsizeSegs(append([]hostapi.Segment{{Text: "> ", HL: hostapi.GroupDim, NoCopy: true}}, segs...), width), 40)
 }
 
 // cursorSegs draws r with a block cursor on the rune at cursor, or on a

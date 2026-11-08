@@ -127,9 +127,9 @@ func pendingLine(st *hostapi.ScreenState, withBusy bool) []hostapi.Segment {
 	row := []hostapi.Segment{{Text: bg.Glyph + " ", HL: bg.HL, NoCopy: true, NoHover: true}}
 	for i, part := range parts {
 		if i > 0 {
-			row = append(row, hostapi.Segment{Text: "   ", HL: "Dim", NoCopy: true, NoHover: true})
+			row = append(row, hostapi.Segment{Text: "   ", HL: hostapi.GroupDim, NoCopy: true, NoHover: true})
 		}
-		row = append(row, hostapi.Segment{Text: part, HL: "Dim", Effect: "shimmer"})
+		row = append(row, hostapi.Segment{Text: part, HL: hostapi.GroupDim, Effect: "shimmer"})
 	}
 	return row
 }
@@ -222,5 +222,5 @@ func pointAt(noun, cmd, click string) []hostapi.Segment {
 	if click == "" && strings.HasPrefix(cmd, "/") && !strings.Contains(cmd[1:], " ") {
 		click = cmd[1:]
 	}
-	return []hostapi.Segment{{Text: noun, HL: "Title", Click: click}, {Text: " " + cmd, HL: "Dim", Click: click}}
+	return []hostapi.Segment{{Text: noun, HL: hostapi.GroupTitle, Click: click}, {Text: " " + cmd, HL: hostapi.GroupDim, Click: click}}
 }

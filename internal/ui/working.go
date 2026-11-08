@@ -55,12 +55,12 @@ type workingPart struct {
 
 // plain is a part's row: its text in Dim.
 func plain(text string) []hostapi.Segment {
-	return []hostapi.Segment{{Text: text, HL: "Dim"}}
+	return []hostapi.Segment{{Text: text, HL: hostapi.GroupDim}}
 }
 
 // ruleText is a spacer the rule draws, which copies as nothing.
 func ruleText(text string) hostapi.Segment {
-	return hostapi.Segment{Text: text, HL: "Rule", NoCopy: true}
+	return hostapi.Segment{Text: text, HL: hostapi.GroupRule, NoCopy: true}
 }
 
 // workingRule draws the row: the snail, the block, and the part the row
@@ -79,7 +79,7 @@ func workingRule(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	// means there: the name takes the row's centre, the key the rule's right
 	// end, and the key is worth more than the name so a narrow rule keeps it
 	if st.View != nil {
-		parts = append(parts, workingPart{line: []hostapi.Segment{{Text: st.View.Agent, HL: "Title"}}, worth: 5, center: true})
+		parts = append(parts, workingPart{line: []hostapi.Segment{{Text: st.View.Agent, HL: hostapi.GroupTitle}}, worth: 5, center: true})
 		parts = append(parts, workingPart{line: pointAt("esc", "back", ""), worth: 6, grow: 13})
 	}
 	// the chat's pending row, carried on the rule only once the reader
@@ -174,7 +174,7 @@ func workingRule(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 			continue
 		}
 		if len(after) > 0 {
-			after = append(after, hostapi.Segment{Text: " · ", HL: "Dim"})
+			after = append(after, hostapi.Segment{Text: " · ", HL: hostapi.GroupDim})
 		}
 		after = append(after, p.line...)
 	}
@@ -209,9 +209,9 @@ func workingRule(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 		row = append(row, ruleText(" "), ruleText(strings.Repeat("─", span-block-(start+w-1))))
 	}
 	if block > 0 {
-		row = append(row, hostapi.Segment{Text: " ", HL: "Dim", NoCopy: true})
+		row = append(row, hostapi.Segment{Text: " ", HL: hostapi.GroupDim, NoCopy: true})
 		row = append(row, after...)
-		row = append(row, hostapi.Segment{Text: " ", HL: "Dim", NoCopy: true})
+		row = append(row, hostapi.Segment{Text: " ", HL: hostapi.GroupDim, NoCopy: true})
 	}
 	return [][]hostapi.Segment{row}, false
 }

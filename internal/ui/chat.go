@@ -677,14 +677,14 @@ func diffstat(diff string) []hostapi.Segment {
 	}
 	var out []hostapi.Segment
 	if add > 0 {
-		out = append(out, hostapi.Segment{Text: "+" + strconv.Itoa(add), HL: "Ok"})
+		out = append(out, hostapi.Segment{Text: "+" + strconv.Itoa(add), HL: hostapi.GroupOk})
 	}
 	if del > 0 {
 		lead := "-"
 		if add > 0 {
 			lead = " -"
 		}
-		out = append(out, hostapi.Segment{Text: lead + strconv.Itoa(del), HL: "Danger"})
+		out = append(out, hostapi.Segment{Text: lead + strconv.Itoa(del), HL: hostapi.GroupDanger})
 	}
 	return out
 }
@@ -1188,12 +1188,12 @@ func (b *chatBuilder) highlight(text, lang string) []hostapi.Segment {
 func (b *chatBuilder) user(text string, waiting bool, key int64) {
 	barHL, textHL, pin := "UserMsg", "Normal", hostapi.PinTurn
 	if waiting {
-		barHL, textHL, pin = "Queued", "Dim", hostapi.PinNone
+		barHL, textHL, pin = "Queued", hostapi.GroupDim, hostapi.PinNone
 	}
 	// every user row rises out of the queued colors: a message lands styled
 	// queued and its colors run into their own, so a sent one and one the
 	// turn just consumed blend from the same place
-	const barFrom, textFrom = "Queued", "Dim"
+	const barFrom, textFrom = "Queued", hostapi.GroupDim
 	wrapped := hostapi.WrapText(text, b.width-2)
 	// a prompt the model read whole, the chat showing its head and naming the
 	// way to the rest; only a prompt that folds carries the click
@@ -1235,7 +1235,7 @@ func (b *chatBuilder) user(text string, waiting bool, key int64) {
 func (b *chatBuilder) userFold(barHL string, pin hostapi.Pin, text, click string) []hostapi.Segment {
 	return []hostapi.Segment{
 		{Text: "▌ ", HL: barHL, From: "Queued", NoCopy: true, NoHover: true, Pin: pin, Fill: hostapi.FillPanel},
-		{Text: text, HL: "Dim", NoCopy: true, NoHover: true, Fill: hostapi.FillPanel, Click: click},
+		{Text: text, HL: hostapi.GroupDim, NoCopy: true, NoHover: true, Fill: hostapi.FillPanel, Click: click},
 	}
 }
 
@@ -1270,7 +1270,7 @@ func (b *chatBuilder) reasoning(text string, tail int, click string) {
 // thoughtRow is "│ ✻ thought 8s"; the caller draws the thought's text itself
 // when it unrolls, so this is the header row alone.
 func (b *chatBuilder) thoughtRow(d time.Duration, click string) {
-	b.push([]hostapi.Segment{barSeg(""), railMark(tools.MarkThought, click), {Text: thoughtText(d), HL: "Dim", Click: click}})
+	b.push([]hostapi.Segment{barSeg(""), railMark(tools.MarkThought, click), {Text: thoughtText(d), HL: hostapi.GroupDim, Click: click}})
 }
 
 // thinking draws the model thinking now: drawn outside the rail's own loop, so
@@ -1279,7 +1279,7 @@ func (b *chatBuilder) thoughtRow(d time.Duration, click string) {
 func (b *chatBuilder) thinking(tail string) {
 	b.frame()
 	at := len(b.lines)
-	b.push([]hostapi.Segment{barSeg(""), railMark(tools.MarkSpin, ""), {Text: "thinking", HL: "Dim", Effect: hostapi.EffectShimmer}})
+	b.push([]hostapi.Segment{barSeg(""), railMark(tools.MarkSpin, ""), {Text: "thinking", HL: hostapi.GroupDim, Effect: hostapi.EffectShimmer}})
 	b.folds.fadeLive("thinking", b.lines[at:at+1], spareRail)
 	if tail != "" {
 		b.reasoning(tail, 4, "")
@@ -1349,9 +1349,9 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 	}
 	add := func(text string) {
 		if len(tail) > 0 {
-			tail = append(tail, hostapi.Segment{Text: "   ", HL: "Dim"})
+			tail = append(tail, hostapi.Segment{Text: "   ", HL: hostapi.GroupDim})
 		}
-		tail = append(tail, hostapi.Segment{Text: text, HL: "Dim"})
+		tail = append(tail, hostapi.Segment{Text: text, HL: hostapi.GroupDim})
 	}
 	if t.status == hostapi.CallRun && !asked && t.elapsed >= time.Second {
 		add(duration(t.elapsed.Seconds(), true))
@@ -1390,7 +1390,7 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 	// a call that only looked around reads plainly, as its step's row does
 	vhl := "AgentToolName"
 	if dim {
-		vhl = "Dim"
+		vhl = hostapi.GroupDim
 	} else if looks(t) {
 		vhl = "Normal"
 	}
@@ -1403,7 +1403,7 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 	head := []hostapi.Segment{railMark(kind, ""), {Text: verbText, HL: vhl}}
 	staleHL := "Normal"
 	if dim {
-		staleHL = "Dim"
+		staleHL = hostapi.GroupDim
 	}
 	switch {
 	case code != nil && label == "":
@@ -1434,7 +1434,7 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 		if corner {
 			lead = hangLead
 		}
-		row := []hostapi.Segment{{Text: lead, HL: "Dim", NoCopy: true}}
+		row := []hostapi.Segment{{Text: lead, HL: hostapi.GroupDim, NoCopy: true}}
 		for _, sg := range segs {
 			row = append(row, hostapi.Segment{Text: sg.Text, HL: sg.HL, Click: click, NoHover: true})
 		}
@@ -1456,7 +1456,7 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 			if code != nil {
 				detail(code)
 			} else {
-				detailText(clipText(input, inner-2-_railEdge), "Dim")
+				detailText(clipText(input, inner-2-_railEdge), hostapi.GroupDim)
 			}
 		}
 		// a zoom or date row previews the line it opened: the first line only,
@@ -1467,20 +1467,20 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 				line = line[i+1:]
 			}
 			if line = clipText(oneLineText(line), inner-2-_railEdge); line != "" {
-				detailText(line, "Dim")
+				detailText(line, hostapi.GroupDim)
 			}
 		}
 		if t.detail != "" {
-			detailText(clipText(oneLineText(t.detail), inner-2-_railEdge), "Dim")
+			detailText(clipText(oneLineText(t.detail), inner-2-_railEdge), hostapi.GroupDim)
 		}
 		// the job a timed-out command went on as opens its own view; the
 		// wording holds after the job exits and after a restart
 		if t.job != "" {
-			row := []hostapi.Segment{{Text: hangLead, HL: "Dim", NoCopy: true}}
+			row := []hostapi.Segment{{Text: hangLead, HL: hostapi.GroupDim, NoCopy: true}}
 			if !corner {
 				row[0].Text = indentLead
 			}
-			row = append(row, hostapi.Segment{Text: "backgrounded as " + t.job, HL: "Dim", Click: "job:" + t.job, NoHover: true})
+			row = append(row, hostapi.Segment{Text: "backgrounded as " + t.job, HL: hostapi.GroupDim, Click: "job:" + t.job, NoHover: true})
 			b.push(row)
 			corner = false
 		}
@@ -1528,33 +1528,33 @@ func (b *chatBuilder) toolRow(t entry, oneBased int, o toolOpts) {
 		}
 		cut := "… " + count(hidden, "more line", "more lines")
 		if hidden > 0 && from > 0 {
-			detailText(cut, "Dim")
+			detailText(cut, hostapi.GroupDim)
 		}
 		for i := from; i < to; i++ {
 			if answered {
 				if q, rest, ok := strings.Cut(out[i], "\t"); ok {
 					if a, note, ok := strings.Cut(rest, "\t"); ok {
 						if ansiWidth(q)+3+ansiWidth(a) <= inner-4 {
-							detail([]hostapi.Segment{{Text: q, HL: "Dim"}, {Text: "   " + a, HL: "Normal"}})
+							detail([]hostapi.Segment{{Text: q, HL: hostapi.GroupDim}, {Text: "   " + a, HL: "Normal"}})
 						} else {
-							detailText(q, "Dim")
+							detailText(q, hostapi.GroupDim)
 							detailText(a, "Normal")
 						}
 						if note != "" {
-							detailText("note: "+note, "Dim")
+							detailText("note: "+note, hostapi.GroupDim)
 						}
 						continue
 					}
 				}
 			}
-			hl := "Dim"
+			hl := hostapi.GroupDim
 			if failed && (fromTail && i == len(out)-1 || !fromTail && i == 0) {
-				hl = "Danger"
+				hl = hostapi.GroupDanger
 			}
 			detailText(out[i], hl)
 		}
 		if hidden > 0 && from == 0 {
-			detailText(cut, "Dim")
+			detailText(cut, hostapi.GroupDim)
 		}
 	}
 	for n := first + 1; n < len(b.lines); n++ {
@@ -1632,8 +1632,8 @@ func (b *chatBuilder) digestRow(text, click string, pin hostapi.Pin, open bool) 
 		glyph = "▾ "
 	}
 	b.push([]hostapi.Segment{
-		{Text: glyph, HL: "Dim", NoCopy: true, NoHover: true, Click: click, Pin: pin},
-		{Text: clipText(text, max(b.width-_railEdge-2, 6)), HL: "Dim", Click: click, Pin: pin},
+		{Text: glyph, HL: hostapi.GroupDim, NoCopy: true, NoHover: true, Click: click, Pin: pin},
+		{Text: clipText(text, max(b.width-_railEdge-2, 6)), HL: hostapi.GroupDim, Click: click, Pin: pin},
 	})
 }
 
@@ -1644,9 +1644,9 @@ func (b *chatBuilder) noteRow(status hostapi.CallStatus, text, detail, click str
 	if !ok {
 		kind = tools.MarkNote
 	}
-	row := []hostapi.Segment{railMark(kind, click), {Text: text, HL: "Dim", Click: click}}
+	row := []hostapi.Segment{railMark(kind, click), {Text: text, HL: hostapi.GroupDim, Click: click}}
 	if detail != "" {
-		row = append(row, hostapi.Segment{Text: " (" + detail + ")", HL: "Dim", NoCopy: true, Click: click})
+		row = append(row, hostapi.Segment{Text: " (" + detail + ")", HL: hostapi.GroupDim, NoCopy: true, Click: click})
 	}
 	return row
 }
@@ -1661,7 +1661,7 @@ func (b *chatBuilder) notices(list []entry, first, last int) {
 		open := b.folds.whole[key]
 		b.push([]hostapi.Segment{
 			{Text: "  ", NoCopy: true, NoHover: true},
-			{Text: foldLabel(open, hidden), HL: "Dim", Click: "more:" + strconv.FormatInt(key, 10)},
+			{Text: foldLabel(open, hidden), HL: hostapi.GroupDim, Click: "more:" + strconv.FormatInt(key, 10)},
 		})
 		if !open {
 			first = last - _noticesKeep + 1
@@ -1718,7 +1718,7 @@ func (b *chatBuilder) rail(list []entry, first, last int, o railOpts) {
 	// kept tail draws no opening bar of its own; steps' own leading frame
 	// collapses into the air row under it
 	if n >= 2 {
-		b.push([]hostapi.Segment{barSeg(""), {Text: foldLabel(b.folds.whole[key], n), HL: "Dim", Click: "more:" + strconv.FormatInt(key, 10)}})
+		b.push([]hostapi.Segment{barSeg(""), {Text: foldLabel(b.folds.whole[key], n), HL: hostapi.GroupDim, Click: "more:" + strconv.FormatInt(key, 10)}})
 		b.push(airRow())
 	}
 	b.steps(list, from, last, o, from > first)
@@ -1858,7 +1858,7 @@ func (b *chatBuilder) unit(tr []entry, first, last int, mode runMode) {
 		}
 		b.push(append(head, hostapi.Segment{Text: m.text, HL: "Normal"}))
 		for ol := range strings.SplitSeq(m.detail, "\n") {
-			b.push([]hostapi.Segment{{Text: "  ", NoCopy: true}, {Text: ol, HL: "Dim"}})
+			b.push([]hostapi.Segment{{Text: "  ", NoCopy: true}, {Text: ol, HL: hostapi.GroupDim}})
 		}
 	case notice(m):
 		b.notices(tr, first, last)
@@ -1870,13 +1870,13 @@ func (b *chatBuilder) unit(tr []entry, first, last int, mode runMode) {
 		for text := range strings.SplitSeq(m.text, "\n") {
 			switch {
 			case n == 0 && cancelled:
-				b.push([]hostapi.Segment{railMark(tools.MarkStop, ""), {Text: text, HL: "Dim"}})
+				b.push([]hostapi.Segment{railMark(tools.MarkStop, ""), {Text: text, HL: hostapi.GroupDim}})
 			case n == 0:
-				b.push([]hostapi.Segment{railMark(tools.MarkErr, ""), {Text: text, HL: "Danger"}})
+				b.push([]hostapi.Segment{railMark(tools.MarkErr, ""), {Text: text, HL: hostapi.GroupDanger}})
 			case n == 1:
-				b.push([]hostapi.Segment{{Text: _hang, HL: "Dim", NoCopy: true}, {Text: text, HL: "Dim"}})
+				b.push([]hostapi.Segment{{Text: _hang, HL: hostapi.GroupDim, NoCopy: true}, {Text: text, HL: hostapi.GroupDim}})
 			default:
-				b.push([]hostapi.Segment{{Text: _indent, HL: "Dim", NoCopy: true}, {Text: text, HL: "Dim"}})
+				b.push([]hostapi.Segment{{Text: _indent, HL: hostapi.GroupDim, NoCopy: true}, {Text: text, HL: hostapi.GroupDim}})
 			}
 			n++
 		}
@@ -1916,9 +1916,9 @@ func (b *chatBuilder) readout(tr []entry, first, last int, m entry) int {
 	var stats []hostapi.Segment
 	stat := func(text string) {
 		if len(stats) > 0 {
-			stats = append(stats, hostapi.Segment{Text: " · ", HL: "Dim"})
+			stats = append(stats, hostapi.Segment{Text: " · ", HL: hostapi.GroupDim})
 		}
-		stats = append(stats, hostapi.Segment{Text: text, HL: "Dim"})
+		stats = append(stats, hostapi.Segment{Text: text, HL: hostapi.GroupDim})
 	}
 	if m.model != "" {
 		stat(m.model)
@@ -2151,7 +2151,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		if key.older > 0 {
 			lines = append(lines, []hostapi.Segment{{
 				Text: "… " + strconv.Itoa(key.older) + " earlier " + hostapi.Plural(key.older, "message", "messages"),
-				HL:   "Dim", NoCopy: true, NoHover: true,
+				HL:   hostapi.GroupDim, NoCopy: true, NoHover: true,
 			}})
 		}
 		if len(tr) > 0 {
@@ -2287,7 +2287,7 @@ func (b *chatBuilder) todos(todos []store.Todo) {
 	// scaled, so the meter never changes meaning
 	head := []hostapi.Segment{
 		{Text: "Todos ", HL: "TodoTitle"},
-		{Text: strconv.Itoa(len(todos)-left) + "/" + strconv.Itoa(len(todos)) + "   ", HL: "Dim"},
+		{Text: strconv.Itoa(len(todos)-left) + "/" + strconv.Itoa(len(todos)) + "   ", HL: hostapi.GroupDim},
 	}
 	cells := 2 * min(len(todos), rows)
 	// a cell fills at the done fraction, rounded up: a part-done list lights
@@ -2299,13 +2299,13 @@ func (b *chatBuilder) todos(todos []store.Todo) {
 		// the items cell n's share spans, its top bound rounded up: an item two
 		// cells wide lights both of them
 		lo, hi := (n-1)*len(todos)/cells, (n*len(todos)+cells-1)/cells
-		hl := "Rule"
+		hl := hostapi.GroupRule
 		for i := lo + 1; i <= hi && i <= len(todos); i++ {
 			if todos[i-1].Status == store.TodoInProgress {
 				hl = "TodoMark"
 			}
 		}
-		if hl == "Rule" && n <= filled {
+		if hl == hostapi.GroupRule && n <= filled {
 			hl = "TodoDone"
 		}
 		head = append(head, hostapi.Segment{Text: "━", HL: hl, NoCopy: true})
@@ -2316,17 +2316,17 @@ func (b *chatBuilder) todos(todos []store.Todo) {
 		if above {
 			text += " above"
 		}
-		b.push([]hostapi.Segment{{Text: "  … ", HL: "Dim", NoCopy: true}, {Text: text, HL: "Dim"}})
+		b.push([]hostapi.Segment{{Text: "  … ", HL: hostapi.GroupDim, NoCopy: true}, {Text: text, HL: hostapi.GroupDim}})
 	}
 	if first > 1 {
 		fold(first-1, true)
 	}
 	for n := first; n <= last; n++ {
 		td := todos[n-1]
-		tick, mhl, hl, item := "  ○ ", "Rule", "Normal", td.Content
+		tick, mhl, hl, item := "  ○ ", hostapi.GroupRule, "Normal", td.Content
 		switch td.Status {
 		case store.TodoDone:
-			tick, mhl, hl = "  ✓ ", "TodoDone", "Dim"
+			tick, mhl, hl = "  ✓ ", "TodoDone", hostapi.GroupDim
 		case store.TodoInProgress:
 			tick, mhl, hl = "  ▸ ", "TodoMark", "TodoActive"
 			if td.ActiveForm != "" {

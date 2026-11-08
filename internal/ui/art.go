@@ -74,7 +74,7 @@ func knotShade(r rune) string {
 // knotLogo is the knot, or one "zemi" row where it does not fit.
 func knotLogo(room int) [][]hostapi.Segment {
 	if room < _knotWidth {
-		return [][]hostapi.Segment{{{Text: "zemi", HL: "Title"}}}
+		return [][]hostapi.Segment{{{Text: "zemi", HL: hostapi.GroupTitle}}}
 	}
 	out := make([][]hostapi.Segment, 0, len(_knotArt))
 	for _, r := range _knotArt {
