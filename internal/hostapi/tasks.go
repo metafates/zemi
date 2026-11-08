@@ -31,7 +31,7 @@ import (
 
 // NOTE: finished runs past _maxKeptRuns are forgotten oldest first; /agents
 // still reads their transcripts from the store.
-const _maxKeptRuns = 50
+const _maxKeptRuns = 15
 
 // RunStatus is where an agent run stands.
 type RunStatus string
