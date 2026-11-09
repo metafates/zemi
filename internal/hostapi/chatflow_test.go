@@ -453,8 +453,9 @@ func TestZoomAndDateRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := dateCall(t, h, `{"id":1}`).Content; got != row.CreatedAt {
-			t.Fatalf("date = %q, want %q", got, row.CreatedAt)
+		want := time.UnixMilli(row.CreatedAt).Format(time.RFC3339)
+		if got := dateCall(t, h, `{"id":1}`).Content; got != want {
+			t.Fatalf("date = %q, want %q", got, want)
 		}
 	})
 	t.Run("n rounds up to a power of two", func(t *testing.T) {

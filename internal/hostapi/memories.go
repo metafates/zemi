@@ -322,8 +322,8 @@ func (h *Host) openMemoriesRange(l, i int64) error {
 		}
 		// the date a non-coder cannot reach anywhere else: zoom names ids,
 		// the log row's stamp is the only when
-		if ms := stampMS(row.CreatedAt); ms > 0 {
-			head += " " + time.UnixMilli(ms).Format(_previewStamp)
+		if row.CreatedAt > 0 {
+			head += " " + time.UnixMilli(row.CreatedAt).Format(_previewStamp)
 		}
 		b.WriteString(head + ": " + row.Text)
 	}

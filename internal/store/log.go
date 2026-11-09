@@ -8,7 +8,6 @@ package store
 import (
 	"database/sql"
 	"fmt"
-	"time"
 )
 
 // LogEntry is one row of the log: one message, word for word. Kind is one of
@@ -19,7 +18,7 @@ type LogEntry struct {
 	Text      string
 	MetaJSON  string // "" when none
 	PartsJSON string // "" when none
-	CreatedAt string
+	CreatedAt int64  // unix ms
 	Origin    string // the window that wrote it; '' predates the column
 }
 
@@ -47,7 +46,7 @@ type Node struct {
 	L, I    int64
 	Text    string
 	Size    int
-	BuiltAt string
+	BuiltAt int64 // unix ms
 }
 
 // NodeRef is a built node without its text, what queue and view accounting
@@ -81,7 +80,7 @@ func (s *DB) AppendLog(kind LogKind, text, metaJSON, partsJSON, nodeText string)
 		err := tx.QueryRow(`INSERT INTO log (seq, kind, text, meta_json, parts_json, created_at, origin)
 			VALUES ((SELECT COALESCE(MAX(seq), -1) + 1 FROM log), ?, ?, ?, ?, ?, ?)
 			RETURNING seq`,
-			kind, text, nullString(metaJSON), nullString(partsJSON), nowStamp(), s.Origin).Scan(&seq)
+			kind, text, nullString(metaJSON), nullString(partsJSON), now(), s.Origin).Scan(&seq)
 		if err != nil {
 			return fmt.Errorf("store: append log: %w", err)
 		}
@@ -90,7 +89,7 @@ func (s *DB) AppendLog(kind LogKind, text, metaJSON, partsJSON, nodeText string)
 		}
 		if nodeText != "" {
 			if _, err := tx.Exec(`INSERT OR IGNORE INTO nodes (l, i, text, size, built_at) VALUES (0, ?, ?, ?, ?)`,
-				seq, nodeText, len(nodeText), nowStamp()); err != nil {
+				seq, nodeText, len(nodeText), now()); err != nil {
 				return fmt.Errorf("store: append node: %w", err)
 			}
 		}
@@ -98,8 +97,6 @@ func (s *DB) AppendLog(kind LogKind, text, metaJSON, partsJSON, nodeText string)
 	})
 	return seq, err
 }
-
-func nowStamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
 const _logCols = `seq, kind, text, COALESCE(meta_json, ''), COALESCE(parts_json, ''), created_at, COALESCE(origin, '')`
 
@@ -199,7 +196,7 @@ func (s *DB) InsertNode(l, i int64, text string) (bool, error) {
 		return false, nil
 	}
 	ok, err := s.changed(`INSERT OR IGNORE INTO nodes (l, i, text, size, built_at) VALUES (?, ?, ?, ?, ?)`,
-		l, i, text, len(text), nowStamp())
+		l, i, text, len(text), now())
 	if err != nil {
 		return false, fmt.Errorf("store: insert node: %w", err)
 	}

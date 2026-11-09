@@ -77,8 +77,12 @@ CREATE TABLE IF NOT EXISTS log (
 	text TEXT NOT NULL,
 	meta_json TEXT,
 	parts_json TEXT,
-	created_at TEXT NOT NULL
+	created_at INTEGER NOT NULL,
+	-- which window wrote the row; '' since multi-window support went
+	origin TEXT NOT NULL DEFAULT ''
 );
+-- boot-time kind-filtered reads (recent user rows, export) stop scanning
+CREATE INDEX IF NOT EXISTS log_kind ON log(kind, seq);
 
 -- node(l, i) summarizes the 2^l messages from i*2^l on. INSERT OR IGNORE
 -- dedupes concurrent builders; no session id, one main log per DB.
@@ -87,7 +91,7 @@ CREATE TABLE IF NOT EXISTS nodes (
 	i INTEGER NOT NULL,
 	text TEXT NOT NULL,
 	size INTEGER NOT NULL,
-	built_at TEXT NOT NULL,
+	built_at INTEGER NOT NULL,
 	PRIMARY KEY (l, i)
 );
 

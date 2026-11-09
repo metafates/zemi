@@ -97,11 +97,8 @@ func (p *Project) readStats(stateHome string) {
 			p.Messages = int(n)
 			var latest []store.LogEntry
 			if latest, err = db.LogTail(1); err == nil && len(latest) > 0 {
-				at, perr := time.Parse(time.RFC3339Nano, latest[0].CreatedAt)
-				if perr == nil {
-					line, _, _ := strings.Cut(latest[0].Text, "\n")
-					p.Latest = &store.Session{ID: store.MainSessionID, Title: line, UpdatedAt: at.UnixMilli()}
-				}
+				line, _, _ := strings.Cut(latest[0].Text, "\n")
+				p.Latest = &store.Session{ID: store.MainSessionID, Title: line, UpdatedAt: latest[0].CreatedAt}
 			}
 		}
 	}

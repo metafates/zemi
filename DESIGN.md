@@ -1831,11 +1831,12 @@ Indexes: `messages(session_id)`,
 
 The schema is embedded goose migrations under `internal/store/migrations`,
 one transaction each, applied on open under a `zemi.db.lock` file lock so
-two opens never run one twice. A change is a new numbered file: it reaches
-every store at its next open, with no version stamp and no reset to do.
-The baseline is all `CREATE ... IF NOT EXISTS`, so a store made before
-goose only gets the version table and keeps its rows; the migrations
-build today's tables and plant the `main` anchor row.
+two opens never run one twice. The set is a single squashed baseline
+(one-time squash; later changes go back to being new numbered files): it
+reaches every store at its next open, with no version stamp and no reset
+to do. The baseline is all `CREATE ... IF NOT EXISTS`, so a store made
+before goose only gets the version table and keeps its rows; the
+migration builds today's tables and plants the `main` anchor row.
 
 An append commits in one transaction: the log row, its view line and, for
 the kinds a template can line (a tool call, a tool result), the message's

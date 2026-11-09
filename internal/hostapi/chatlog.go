@@ -792,7 +792,7 @@ func (t *dateTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fantas
 	if err != nil {
 		return fantasy.ToolResponse{}, err
 	}
-	return fantasy.NewTextResponse(row.CreatedAt), nil
+	return fantasy.NewTextResponse(time.UnixMilli(row.CreatedAt).Format(time.RFC3339)), nil
 }
 
 // chatCommands are the eternal chat's own: /note, one line into the log, a

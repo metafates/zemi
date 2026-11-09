@@ -308,7 +308,7 @@ func logRowsFor(rel func(string) string, rows []store.LogEntry, browse bool) []C
 		switch row.Kind {
 		case store.KindUser:
 			if s := strings.TrimSpace(row.Text); s != "" {
-				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: s, Seq: row.Seq, SentAt: stampMS(row.CreatedAt)})
+				tr = append(tr, ChatMessage{Role: fantasy.MessageRoleUser, Text: s, Seq: row.Seq, SentAt: row.CreatedAt})
 			}
 		case store.KindAgent:
 			if s := strings.TrimSpace(row.Text); s != "" {
@@ -433,15 +433,6 @@ func replyMeta(meta string) *TurnStat {
 		return nil // the split mark rides a split reply's meta alone, before its readout lands
 	}
 	return &m
-}
-
-// stampMS is a log stamp as unix ms, 0 when it does not parse.
-func stampMS(stamp string) int64 {
-	at, err := time.Parse(time.RFC3339Nano, stamp)
-	if err != nil {
-		return 0
-	}
-	return at.UnixMilli()
 }
 
 // historyFrom decodes a run's stored messages into model history and
