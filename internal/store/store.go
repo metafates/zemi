@@ -96,48 +96,6 @@ func OpenRead(path string) (*DB, error) {
 	return s, nil
 }
 
-// ClaimForDelete takes a store no other zemi has open, for deleting its
-// files, and returns every session id in it, subagent runs too. Leaving WAL
-// needs every other connection gone, so another zemi's idle one fails it at
-// once (ErrInUse); the exclusive lock holds until release, which runs after
-// the files are gone. A missing file, or one SQLite cannot read (garbage, no
-// sessions table, or any other read failure), is no ids: its sessions' pads
-// age out on their own.
-// NOTE: a zemi started there while the files go waits on the lock, then
-// writes to the unlinked file and loses it; two windows racing on purpose.
-func ClaimForDelete(path string) (sessions []string, release func(), err error) {
-	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
-		return nil, func() {}, nil
-	}
-	uri := url.URL{Scheme: "file", Path: path, RawQuery: "_pragma=busy_timeout(0)&_pragma=locking_mode(EXCLUSIVE)"}
-	d, err := sql.Open("sqlite", uri.String())
-	if err != nil {
-		return nil, nil, fmt.Errorf("store: open %s: %w", path, err)
-	}
-	d.SetMaxOpenConns(1)
-	// the one connection keeps the lock between these, since it is the pool's only one
-	_, err = d.Exec(`PRAGMA journal_mode = DELETE`)
-	if err == nil {
-		_, err = d.Exec(`BEGIN EXCLUSIVE`)
-	}
-	if err == nil {
-		rows, qerr := d.Query(`SELECT id FROM sessions`)
-		sessions, err = collect(rows, qerr, scanString)
-	}
-	if isBusy(err) {
-		d.Close()
-		return nil, nil, ErrInUse
-	}
-	if err != nil {
-		d.Close()
-		return nil, func() {}, nil
-	}
-	return sessions, func() {
-		_, _ = d.Exec(`ROLLBACK`)
-		d.Close()
-	}, nil
-}
-
 // ShortID returns a random 40-bit id in 8 characters, for the ids people and
 // the model read and type: sessions, agent and workflow runs, memories.
 // NOTE: a collision is a refused primary key insert, about n^2/2^41 over n rows

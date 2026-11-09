@@ -7,10 +7,8 @@ package hostapi
 import (
 	"cmp"
 	"encoding/json/v2"
-	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"charm.land/fantasy"
 	glua "github.com/yuin/gopher-lua"
@@ -612,20 +610,6 @@ func planArg(input string) string {
 		return ""
 	}
 	return in.Plan
-}
-
-func ago(t time.Time) string {
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return "now"
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	default:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
-	}
 }
 
 func (h *Host) sessionNamespace(L *glua.LState) *glua.LTable {

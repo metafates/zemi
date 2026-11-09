@@ -36,7 +36,6 @@ import (
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/store"
-	"github.com/metafates/zemi/internal/tools"
 	"github.com/metafates/zemi/internal/ui"
 	"github.com/metafates/zemi/runtime"
 )
@@ -83,9 +82,7 @@ func launch(o options) int {
 	// While the TUI is up only the renderer may write to the terminal: fd 2
 	// goes to the log, so a panic's stack or a chatty library cannot smear
 	// over the screen; restore hands the tty back for the lines below.
-	restoreStderr := func() {}
 	if restore, ok := stderrToLog(host.LogPath()); ok {
-		restoreStderr = restore
 		defer restore()
 	}
 
@@ -156,33 +153,11 @@ func launch(o options) int {
 	if bootErr := app.BootError(); bootErr != nil {
 		fmt.Fprintln(os.Stderr, "zemi: boot failed: "+bootErr.Error())
 	}
-	if dir, _ := app.RelaunchDir(); dir != "" {
-		restoreStderr() // the exec inherits the tty, and a failed one prints here
-		closeLog()      // an exec runs no defers
-		return fail(relaunch(dir))
-	}
 	// the parting word that a newer zemi is out, every exit while it is
 	if updatePending(host) {
 		fmt.Println("\n" + ui.Chip(os.Stdout, "update", "a new version is available; run `zemi update`") + "\n")
 	}
 	return 0
-}
-
-// relaunch replaces this process with zemi -C dir. Every
-// project fact (trust, origins, stores) is bound at start, so a
-// switch is a restart, never a change in place; an exec keeps the PID, so the
-// shell's wait and the terminal's foreground group do not change. The one
-// start of a program outside internal/proc besides the editor
-// probes: the children are reaped (proc.Reaped) and the terminal restored.
-// NOTE: Windows has no exec; there it names the command to run instead.
-func relaunch(dir string) error {
-	args := []string{os.Args[0], "-C", dir}
-	proc.Reaped()
-	exe, err := os.Executable()
-	if err == nil {
-		err = syscall.Exec(exe, args, os.Environ())
-	}
-	return fmt.Errorf("could not start zemi in %s (%w): run zemi -C %s", dir, err, tools.ShellQuote(dir))
 }
 
 // newHost builds the runtime and host over dirs, and the trust gate their

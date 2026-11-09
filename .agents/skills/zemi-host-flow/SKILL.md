@@ -8,13 +8,10 @@ description: "Load before changing main.go, internal/cli, internal/config, inter
 ## CLI (internal/cli/cli.go)
 
 The command line is a cobra tree (`execute`): `zemi` opens the TUI, and
-`projects` (`hostapi.ListProjects` with its
-stores read through `store.OpenRead`, which creates, migrates and
-sweeps nothing, runs `query_only` so even a write through it fails, and takes no lock a running zemi waits on;
-one line each, the absolute root at column 36 for `cut -c36-`),
-`db` (one read-only query against the project's store, its first argument whole and the rest bound to `?1`, `?2`, ..., `--global` the global one), `plugin` (bare, it lists), `docs` (`docs setup` prints short agent-facing notes that point another AI agent at the zemi skill's path, so it can configure zemi; no boot), cobra's `completion` and `help` are subcommands, each declaring its
-`Args` (cobra checks positionals only on the root). The listing ones (`projects`,
-`plugin`, `plugin marketplace list`) take `--json` (`jsonFlag`): JSON Lines through `writeJSON`, the one writer
+`db` (one read-only query through `store.OpenRead`, which creates, migrates and
+sweeps nothing, runs `query_only` so even a write through it fails, and takes no lock a running zemi waits on; its first argument whole and the rest bound to `?1`, `?2`, ..., `--global` the global one), `plugin` (bare, it lists), `docs` (`docs setup` prints short agent-facing notes that point another AI agent at the zemi skill's path, so it can configure zemi; no boot), cobra's `completion` and `help` are subcommands, each declaring its
+`Args` (cobra checks positionals only on the root). The listing ones (`plugin`,
+`plugin marketplace list`) take `--json` (`jsonFlag`): JSON Lines through `writeJSON`, the one writer
 every listing shares. Their plain lines share one `table` renderer (aligned columns,
 `paint` over `colorprofile.Detect`, basic ANSI colors and no Lua theme, which they never boot),
 with a header row there only, so a pipe reads the same bytes as always. Exit status 2 is anything that fails before the root's
@@ -22,9 +19,7 @@ with a header row there only, so a pipe reads the same bytes as always. Exit sta
 error is 1, and one that printed its own diagnostic returns `exitError`. That hook runs `-C
 dir` (`enterDir`: `PWD` follows) before anything else, then resolves `config.Dirs` once into
 `options.dirs`, which every command reads (`completionDirs` resolves its own, since cobra runs no
-hook before a completion function), and a switch from `/projects` is an exec
-of `zemi -C <dir>` (`relaunch`), so this
-run's other flags are left behind. The TUI takes a terminal on stdin and stdout, and refuses
+hook before a completion function). The TUI takes a terminal on stdin and stdout, and refuses
 a pipe on either.
 Completion offers plugin names
 from `plugin.Scan`; `completionDirs` applies `-C`, since cobra runs no hook before a
@@ -145,14 +140,9 @@ dotfiles repo is nobody's root; a linked worktree maps to its main checkout by r
 `.git` file, never by running git) and saved in `<state>/trust.json`. Order: a decision held
 for this process (`--trust`, a Later answer, `/trust` where saving is impossible), the saved
 one, then the Go-owned prompt. `$HOME` and `/` are never asked about or saved
-(`hostapi.TrustUnsaved`). `/projects` (hostapi/projects.go) lists every root zemi keeps state
-for (`ListProjects`), switches by restarting (`UIHooks.Relaunch`, past the quit veto, then
-main's exec: the project is bound at start and never changes in place; refused while a turn,
-an agent run or a workflow lives), forgets another project's decision, never granting one, and
-deletes another project's data (`deleteProject`; `store.ClaimForDelete` refuses while another
-zemi has the store open). Its rows draw from a read kept in the global store's kv
-(`projects.stats`), so no project store opens before the list does; the read that refreshes
-them lands behind it (`UIHooks.RefreshOverlay`). `/trust` reopens the prompt off the UI goroutine, saves, and calls `Host.Retrust`, which sets
+(`hostapi.TrustUnsaved`). One process runs one project: trust, origins and
+stores are bound at start and never change in place.
+`/trust` reopens the prompt off the UI goroutine, saves, and calls `Host.Retrust`, which sets
 the decision and reloads when it changed (a reload that fails before the trust step must not
 leave the old decision in force) under the reload's lock, so no other reload races it
 for the tree the change moved. `Host.ProjectTrusted()` gates project

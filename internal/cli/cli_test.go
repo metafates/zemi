@@ -20,7 +20,6 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/runtime"
@@ -100,9 +99,6 @@ func TestCLI(t *testing.T) {
 		{name: "trust false", args: []string{"--trust=false"}, want: &options{trust: new(false)}},
 		{name: "version", args: []string{"--version"}, stdout: "zemi "},
 		{name: "a failure is 1", args: []string{"db", "select * from nope"}, code: 1, stderr: `zemi: db: SQL logic error: no such table: nope`},
-		// the TUI's chat opens on the log's tail; the CLI keeps no session surface
-		{name: "projects lists", args: []string{"projects"}, stdout: "  undecided     1  " + dirs.TrustRoot() + "\n"},
-		{name: "projects as JSON", args: []string{"projects", "--json"}, stdout: `"trust":"undecided",`},
 		{name: "plugins arity", args: []string{"plugin", "enable"}, code: 2, stderr: "zemi: plugin enable takes <name>\n"},
 		{name: "a range of args", args: []string{"plugin", "install", "a", "b", "c"}, code: 2, stderr: "zemi: plugin install takes <name>[@<marketplace>]\n"},
 		{name: "marketplace add takes a url", args: []string{"plugin", "marketplace", "add"}, code: 2, stderr: "zemi: plugin marketplace add takes <source>\n"},
@@ -123,7 +119,7 @@ func TestCLI(t *testing.T) {
 		{name: "the delete took", args: []string{"plugin", "list"}, stdout: "rub", notStdout: "zzq"},
 		{name: "completion script", args: []string{"completion", "fish"}, stdout: "complete -c zemi"},
 		{name: "complete a plugin name", args: []string{"__complete", "plugin", "enable", ""}, stdout: "rub\n"},
-		{name: "-C a missing dir", args: []string{"-C", "nope", "projects"}, code: 1, stderr: "zemi: projects: -C nope: no such file or directory"},
+		{name: "-C a missing dir", args: []string{"-C", "nope", "db", "select 1"}, code: 1, stderr: "zemi: db: -C nope: no such file or directory"},
 		{name: "-C a dir", args: []string{"-C", dir}, want: &options{dir: dir}},
 		{name: "scratch is trusted for the run", args: []string{"--scratch"}, want: &options{scratch: true, trust: new(true)}},
 		{name: "scratch and -C collide", args: []string{"--scratch", "-C", dir}, code: 1, stderr: "none of the others can be"},
@@ -505,116 +501,6 @@ func TestTable(t *testing.T) {
 	anon.print(&b)
 	if got := b.String(); got != "ok     store\n" {
 		t.Errorf("unnamed heads = %q, want no header row", got)
-	}
-}
-
-// TestSessionsAcrossProjects: -a reaches the other projects' stores, grouped
-// by project.
-func TestSessionsAcrossProjects(t *testing.T) {
-	home := t.TempDir()
-	for _, env := range []string{"CONFIG", "DATA", "STATE", "CACHE"} {
-		t.Setenv("ZEMI_"+env+"_HOME", filepath.Join(home, strings.ToLower(env)))
-	}
-	base, other := t.TempDir(), t.TempDir()
-	t.Chdir(base)
-	t.Setenv("PWD", base)
-	dirs, err := config.ResolveDirs()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if perm.CanonPath(dirs.TrustRoot()) != perm.CanonPath(base) {
-		t.Fatalf("this project is %q, want %q", dirs.TrustRoot(), base)
-	}
-	for _, p := range []struct{ root, title string }{
-		{dirs.TrustRoot(), "local notes"},
-		{other, "deploy the kubelet"},
-	} {
-		global, db, err := store.OpenForDirs(dirs.StateHome, p.root)
-		if err != nil {
-			t.Fatal(err)
-		}
-		global.Close()
-		if _, err := db.AppendLog("user", p.title, "", "", ""); err != nil {
-			t.Fatal(err)
-		}
-		db.Close()
-	}
-	// a store no SQLite reads, never opened so the file stays what it is
-	garbage := t.TempDir()
-	skipDir := filepath.Dir(store.ProjectDBPath(dirs.StateHome, garbage))
-	if err := os.MkdirAll(skipDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for name, data := range map[string]string{"root": garbage + "\n", "zemi.db": "not a database"} {
-		if err := os.WriteFile(filepath.Join(skipDir, name), []byte(data), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, c := range []struct {
-		name           string
-		args           []string
-		code           int
-		stdout, stderr string
-		root           string // the project the run must start in, "" for any
-	}{
-		{name: "projects names the unreadable store", args: []string{"projects"}, stderr: "zemi: skipped 1 unreadable store: " + perm.TildePath(garbage) + ": "},
-		{name: "projects JSON carries the stats error", args: []string{"projects", "--json"}, stdout: `"stats_error":"`},
-	} {
-		var out, errOut strings.Builder
-		var got options
-		code := execute(c.args, &out, &errOut, func(o options) int {
-			got = o
-			return 0
-		})
-		if code != c.code || !strings.Contains(out.String(), c.stdout) || !strings.Contains(errOut.String(), c.stderr) {
-			t.Errorf("%s: code %d, stdout %q, stderr %q", c.name, code, out.String(), errOut.String())
-			continue
-		}
-		if c.root != "" && perm.CanonPath(got.dirs.TrustRoot()) != perm.CanonPath(c.root) {
-			t.Errorf("%s: started in %q, want %q", c.name, got.dirs.TrustRoot(), c.root)
-		}
-	}
-}
-
-// TestProjectsAllUnreadable: when every store is unreadable, /projects names
-// the skips instead of reading green over them.
-func TestProjectsAllUnreadable(t *testing.T) {
-	home := t.TempDir()
-	for _, env := range []string{"CONFIG", "DATA", "STATE", "CACHE"} {
-		t.Setenv("ZEMI_"+env+"_HOME", filepath.Join(home, strings.ToLower(env)))
-	}
-	base := t.TempDir()
-	t.Chdir(base)
-	t.Setenv("PWD", base)
-	dirs, err := config.ResolveDirs()
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := filepath.Dir(store.ProjectDBPath(dirs.StateHome, dirs.TrustRoot()))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// the root file names the trust root the hash must match: the symlinked
-	// state home resolves to a different spelling, so hash the resolved root
-	resolved, err := filepath.EvalSymlinks(base)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "root"), []byte(resolved+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "zemi.db"), []byte("not a database"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	var out, errOut strings.Builder
-	code := execute([]string{"projects"}, &out, &errOut, func(options) int { return 0 })
-	for _, want := range []string{"zemi: skipped 1 unreadable store"} {
-		if !strings.Contains(errOut.String(), want) {
-			t.Errorf("stderr %q, want %q", errOut.String(), want)
-		}
-	}
-	if code != 0 {
-		t.Errorf("code = %d, want 0; stdout %q", code, out.String())
 	}
 }
 

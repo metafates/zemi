@@ -250,7 +250,6 @@ type App struct {
 	frameDirty bool
 
 	program   *tea.Program
-	relaunch  atomic.Pointer[relaunchTarget] // RelaunchDir
 	hooks     chan tea.Msg
 	testQueue chan tea.Msg // CaptureHooks (tests): hooks wait here for Pump
 }
@@ -335,39 +334,14 @@ func (a *App) SignalBoot(err error) {
 	})
 }
 
-// relaunchTarget is where main starts zemi again after a Relaunch: a
-// directory.
-type relaunchTarget struct{ dir string }
-
-// Quit asks the program to exit (/quit).
-func (a *App) Quit() { a.quitTo("") }
-
-// Relaunch leaves like Quit, then main starts zemi again in dir.
-func (a *App) Relaunch(dir, resume string) { a.quitTo(dir) }
-
-// RelaunchDir is where a Relaunch that got past the quit veto restarts zemi:
-// the directory, "" for none.
-func (a *App) RelaunchDir() (dir, resume string) {
-	if t := a.relaunch.Load(); t != nil {
-		return t.dir, ""
-	}
-	return "", ""
-}
-
-// quitTo quits, then main starts zemi in dir unless it is "". The veto waits
-// on the interpreter and program.Quit must not run inside Update, so both run
-// on a goroutine.
-func (a *App) quitTo(dir string) {
+// Quit asks the program to exit (/quit). The veto waits on the interpreter
+// and program.Quit must not run inside Update, so both run on a goroutine.
+func (a *App) Quit() {
 	quit := func() {
 		if res := a.host.EmitVetoable(context.Background(), hostapi.EventAppQuit, map[string]any{}); res.Denied {
-			what := "Switch blocked"
-			if dir == "" {
-				what = "Quit blocked"
-			}
-			a.Notify(slog.LevelWarn, what, res.Reason)
+			a.Notify(slog.LevelWarn, "Quit blocked", res.Reason)
 			return
 		}
-		a.relaunch.Store(&relaunchTarget{dir})
 		a.leave()
 	}
 	if a.program != nil {

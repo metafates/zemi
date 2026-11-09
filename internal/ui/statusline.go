@@ -61,8 +61,7 @@ func shortPath(p string) string {
 }
 
 // statusCwd is the project, shortPath'd, the name alone when even that
-// outgrows a quarter of the row, and whether it is untrusted. A click opens
-// /projects.
+// outgrows a quarter of the row, and whether it is untrusted.
 func statusCwd(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 	p := st.Project
 	if p == "" {
@@ -74,7 +73,7 @@ func statusCwd(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 			p = strings.TrimRight(p, "/")[i+1:]
 		}
 	}
-	line := []hostapi.Segment{{Text: p, HL: hostapi.GroupDim, Click: "projects"}}
+	line := []hostapi.Segment{{Text: p, HL: hostapi.GroupDim}}
 	if st.Branch != "" {
 		line = append(line, hostapi.Segment{Text: ":" + st.Branch, HL: "Accent"})
 	}

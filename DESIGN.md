@@ -357,18 +357,12 @@ habit means untrusted until the next start (a reload does not ask again); up and
 move the cursor, enter picks it, a click answers a row. `--trust` or `--trust=false`
 decides one run without saving; a boot with no UI yet and nothing saved is
 untrusted and says so on stderr. The home directory and `/` are never
-asked about or saved (their prompt says it applies to this run only).
-`/projects` lists every root zemi keeps state for, switches to one by
-restarting zemi there (trust, origins and stores are bound at
-start, so one process runs one project), forgets another
-project's decision (the next start there asks again) and deletes its data; it
-never grants trust. Its ages are the last use: the root file is touched when
-zemi starts there and quits there. This project's row names the
+asked about or saved (their prompt says it applies to this run only). One
+process runs one project: trust, origins and stores are bound at start.
+The root file under the state dir is touched when zemi starts there and quits
+there. This project's row names the
 running decision when it differs from the saved one (`untrusted this run`),
-as the statusline does. Its row count and latest message are read from each
-project's store and kept in the global store's kv (`projects.stats`), so the
-list draws before any store opens and the read that refreshes it lands behind
-the open list: an entry is drawn only at the root file's mtime it was read at.
+as the statusline does.
 `/trust` reopens the prompt at any time, showing the current decision (Later keeps
 it), saves the answer, applies it
 before the reload it triggers when the decision changed, so a revoke holds
@@ -391,7 +385,7 @@ calls blank the user's global filter drivers too.
 Load order is a list of boot steps: host `zemi.*` namespaces
 -> builtin commands (main's own plus every domain
 file's: note, skills, agents, jobs, call, memories, workflow,
-mcp, lsp, plugins, config, projects) -> the project trust
+mcp, lsp, plugins, config) -> the project trust
 decision (the prompt above; before any config that may start an MCP
 server) -> plugins (each enabled plugin's `.zemi/init.lua`, sorted by name) ->
 user `init.lua` -> user skills' enable hooks -> the chat builder's
@@ -1963,8 +1957,7 @@ view; a reset's wipe drops the row with the chat.
   or wheel that moves the selection, disarms and then acts; a screen's own
   danger key (a workflow view's `x`) waits the same way, and any click or
   wheel drops it. A destructive command typed without the `--yes` its key's
-  run ends in (`/plugin delete x`, `/skills delete x`, `/projects delete
-  <path>`, `/mcp sign-out x`) asks the same way: its screen opens on that row
+  run ends in (`/plugin delete x`, `/skills delete x`, `/mcp sign-out x`) asks the same way: its screen opens on that row
   with that key armed (`hostapi.AskFirst`, `Overlay.Confirm`), or, for a row
   the list does not hold, a toast names the
   `--yes` form. A screenless run of such a command refuses, naming the
@@ -2341,8 +2334,7 @@ view; a reset's wipe drops the row with the chat.
   `/errors` (recent widget, keymap and event-handler errors behind the
   statusline badge), plus the ones the host steps register (`/skills`,
   `/agents`, `/jobs`, `/workflows`, `/mcp`,
-  `/keys`, `/lsp`, `/plugin`, `/note`,
-  `/projects` (the projects zemi keeps state for; switch restarts zemi there)),
+  `/keys`, `/lsp`, `/plugin`, `/note`),
   the boot's own (`/config` (§5), `/effort`, `/usage` (tokens and cost),
   `/prompt` (the system prompt the model gets), `/init` (write AGENTS.md for this project))
   and `/trust` (§5). A hidden `/call <row>` opens the view of a chat row that
@@ -2366,7 +2358,7 @@ view; a reset's wipe drops the row with the chat.
   open, which takes every click. An id the widget has no handler for runs
   as the command it names, which is how the statusline reaches `/errors`.
   The shipped statusline is clickable from
-  `internal/ui/statusline.go`: the project path `/projects`, the model the model
+  `internal/ui/statusline.go`: the model the model
   picker, the context and cost `/usage`,
   running agents `/agents`, running jobs `/jobs`. The chat widget marks a
   digest (`turn:<first
@@ -2461,7 +2453,6 @@ view; a reset's wipe drops the row with the chat.
   | command | fields per row |
   |---|---|
   | `zemi plugin marketplace list` | `name`, `source`, `added`, `entries`; an unreadable manifest an `error` |
-  | `zemi projects` | `root`, `trust`, `used`, `sessions`, `stats_error` |
   | `zemi plugin` | `name`, `version`, `local`, `enabled`, `source`, `uses` |
 
 - **Golden tests**: the TUI paints a frame of segments into a string;

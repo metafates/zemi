@@ -605,7 +605,7 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 
 // projectResolve resolves path against the project dir. With link the last
 // component stays as named (perm.Lresolve). A path under ~ spells the user's
-// home out, the way /projects takes one.
+// home out.
 func (h *Host) projectResolve(path string, link bool) (perm.Path, error) {
 	if path == "" {
 		return perm.Path{}, errors.New("empty path")

@@ -56,7 +56,6 @@ git. `proc.Command` and `CommandContext` put the child in its own session and it
 group, and cancellation, a timeout and `proc.KillAll` on exit kill the group whole; `WaitDelay`
 bounds a hung wait. A plain `exec.Command` here is a bug (a cancelled pipeline once hung the
 turn forever). The exceptions: the user's editor, which needs the controlling terminal a new
-session drops, and `relaunch` (internal/cli/boot.go), the exec that replaces zemi with `zemi -C <dir>` once the
-TUI restored the terminal and the children `proc.KillAll` killed were reaped. `proc.Refuse`
+session drops. `proc.Refuse`
 makes every start fail while it holds (`zemi plugin test`), and `proc.Shell` resolves the
 shell once, on PATH.

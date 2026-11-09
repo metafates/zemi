@@ -30,7 +30,6 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/sanitize"
 )
@@ -213,7 +212,7 @@ With no command zemi opens the TUI.`,
 	root.PersistentFlags().Bool("trust", false, "trust the project for this run; --trust=false does not")
 	_ = root.MarkPersistentFlagDirname("cd")
 
-	root.AddCommand(projectsCommand(o), pluginCommand(o), dbCommand(o), docsCommand(o), updateCommand(o))
+	root.AddCommand(pluginCommand(o), dbCommand(o), docsCommand(o), updateCommand(o))
 	return root
 }
 
@@ -492,68 +491,6 @@ func pluginCommand(o *options) *cobra.Command {
 			return status(testPlugins(ctx, args, c.OutOrStdout(), c.ErrOrStderr()))
 		},
 	})
-	return cmd
-}
-
-// sessionsCommand and printSessions are gone: the chat is one log per project,
-// its transcript opens in the TUI, and a run's rows in /agents.
-
-// projectsCommand is zemi projects: one line per project, the path last and
-// absolute at column 36, so cut -c36- hands it to zemi -C.
-func projectsCommand(o *options) *cobra.Command {
-	var asJSON *bool
-	cmd := &cobra.Command{
-		Use:   "projects",
-		Short: "list the projects zemi keeps state for, last used first",
-		Args:  cobra.NoArgs,
-		RunE: func(c *cobra.Command, _ []string) error {
-			ps := hostapi.ListProjects(o.dirs, true)
-			if len(ps) == 0 {
-				fmt.Fprintln(c.ErrOrStderr(), "zemi: no projects yet")
-			}
-			out, cp := c.OutOrStdout(), colorprofile.Detect(c.OutOrStdout(), os.Environ())
-			var unreadable []string
-			for _, p := range ps {
-				if p.StatsErr != nil {
-					unreadable = append(unreadable, fmt.Sprintf("%s: %v", perm.TildePath(p.Root), p.StatsErr))
-				}
-			}
-			if len(unreadable) > 0 {
-				fmt.Fprintf(c.ErrOrStderr(), "zemi: skipped %d unreadable %s: %s\n", len(unreadable), hostapi.Plural(len(unreadable), "store", "stores"), strings.Join(unreadable, "; "))
-			}
-			// the root at column 36, for cut -c36-
-			t := table{p: cp, cols: []tableCol{
-				{head: "used", role: "hint", width: 16},
-				{head: "trust", role: "status", width: 9},
-				{head: "sess", width: 4, right: true},
-				{head: "root"},
-			}}
-			for _, p := range ps {
-				if *asJSON {
-					statsErr := ""
-					if p.StatsErr != nil {
-						statsErr = p.StatsErr.Error()
-					}
-					writeJSON(out, struct {
-						Root       string    `json:"root"`
-						Trust      string    `json:"trust"`
-						Used       time.Time `json:"used,omitzero"`
-						Messages   int       `json:"messages"`
-						StatsError string    `json:"stats_error,omitempty"`
-					}{Root: p.Root, Trust: p.TrustWord(), Used: p.Used, Messages: p.Messages, StatsError: statsErr})
-					continue
-				}
-				used := "-"
-				if !p.Used.IsZero() {
-					used = p.Used.Format(hostapi.StampLayout)
-				}
-				t.row(used, p.TrustWord(), strconv.Itoa(p.Messages), p.Root)
-			}
-			t.print(out)
-			return nil
-		},
-	}
-	asJSON = jsonFlag(cmd)
 	return cmd
 }
 
