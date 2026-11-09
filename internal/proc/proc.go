@@ -95,6 +95,21 @@ func Start(cmd *exec.Cmd) error {
 	return nil
 }
 
+// Adopt remembers a child something other than Start started, so KillAll
+// stops its group too; the release the caller gets removes it once its Wait
+// has reaped it.
+func Adopt(cmd *exec.Cmd) (release func()) {
+	pid := cmd.Process.Pid
+	_mu.Lock()
+	_live.Add(pid)
+	_mu.Unlock()
+	return sync.OnceFunc(func() {
+		_mu.Lock()
+		_live.Remove(pid)
+		_mu.Unlock()
+	})
+}
+
 // Wait waits for cmd, then kills whatever its group left running.
 // NOTE: the group id is the leader's pid; were it reused by an unrelated
 // new session leader in the moment between exit and kill, that session

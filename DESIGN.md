@@ -49,7 +49,7 @@ migrations applied on open, §7), `charm.land/glamour/v2`
 (markdown in chat, with `alecthomas/chroma/v2` for the code block
 formatter that marks glamour's own margins), `charmbracelet/openai-go` (the SDK options an `OPENAI` provider's `body` sets, §6.3), `charmbracelet/x/exp/golden` (golden-file assertions
 for TUI output), `aymanbagabas/go-udiff` (edit previews),
-`sahilm/fuzzy` (the one list filter, §6.6),
+`sahilm/fuzzy` (the one list filter, §6.6), `modelcontextprotocol/go-sdk` (the MCP client: transports, handshake, tool list and call, OAuth — §11),
 `lucasb-eyer/go-colorful` (OKLCH for the 16-color fallback, §6.6;
 already pulled in by `x/ansi`), `golang.org/x/text`
 (the case folding APFS does, for paths),

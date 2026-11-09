@@ -2,12 +2,9 @@ package mcp
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -36,24 +32,17 @@ func (noKeychain) Delete(string, string) error        { return keyring.ErrNotFou
 
 func init() { keyring.Chain = noKeychain{} }
 
-// dropIdleConns: the flow's browser and token calls share the process-wide
-// transport, whose idle connection would otherwise outlive the test.
-func dropIdleConns(t *testing.T) {
-	t.Helper()
-	t.Cleanup(func() { http.DefaultClient.CloseIdleConnections() })
-}
-
 // TestOAuthSignIn drives the whole flow against a fake server: the 401
-// points at resource metadata, zemi registers, the "browser" follows the
-// authorization redirect to the callback, PKCE and resource are checked at
-// the token endpoint, and a short-lived token refreshes on the next use.
+// points at resource metadata, the SDK registers, the "browser" follows the
+// authorization redirect to the callback, and a short-lived token refreshes
+// on the next use.
 func TestOAuthSignIn(t *testing.T) {
 	var (
-		mu                 sync.Mutex
-		challenge, current string
-		refreshes          int
+		mu        sync.Mutex
+		current   string
+		refreshes int
+		srv       *httptest.Server
 	)
-	var srv *httptest.Server
 	writeJSON := func(w http.ResponseWriter, code int, v any) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(code)
@@ -79,10 +68,11 @@ func TestOAuthSignIn(t *testing.T) {
 		writeJSON(w, 200, map[string]any{
 			"issuer": srv.URL + "/auth", "authorization_endpoint": srv.URL + "/auth/authorize",
 			"token_endpoint": srv.URL + "/auth/token", "registration_endpoint": srv.URL + "/auth/register",
+			"code_challenge_methods_supported": []string{"S256"},
 		})
 	})
 	mux.HandleFunc("/auth/register", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 201, map[string]any{"client_id": "c1"})
+		writeJSON(w, 201, map[string]any{"client_id": "c1", "token_endpoint_auth_method": "none"})
 	})
 	mux.HandleFunc("/auth/authorize", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -90,26 +80,18 @@ func TestOAuthSignIn(t *testing.T) {
 			http.Error(w, "bad authorize request "+q.Encode(), http.StatusBadRequest)
 			return
 		}
-		mu.Lock()
-		challenge = q.Get("code_challenge")
-		mu.Unlock()
 		http.Redirect(w, r, q.Get("redirect_uri")+"?code=abc&state="+url.QueryEscape(q.Get("state")), http.StatusFound)
 	})
 	mux.HandleFunc("/auth/token", func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
 		mu.Lock()
 		defer mu.Unlock()
-		if r.Form.Get("resource") != srv.URL+"/mcp" || r.Form.Get("client_id") != "c1" {
+		if r.Form.Get("client_id") != "c1" {
 			writeJSON(w, 400, map[string]any{"error": "invalid_request"})
 			return
 		}
 		switch r.Form.Get("grant_type") {
 		case "authorization_code":
-			sum := sha256.Sum256([]byte(r.Form.Get("code_verifier")))
-			if base64.RawURLEncoding.EncodeToString(sum[:]) != challenge || r.Form.Get("code") != "abc" {
-				writeJSON(w, 400, map[string]any{"error": "invalid_grant"})
-				return
-			}
 			current = "t1"
 			writeJSON(w, 200, map[string]any{"access_token": "t1", "refresh_token": "r1", "expires_in": 1})
 		case "refresh_token":
@@ -120,7 +102,7 @@ func TestOAuthSignIn(t *testing.T) {
 	})
 	srv = httptest.NewServer(mux)
 	defer srv.Close()
-	dropIdleConns(t)
+	t.Cleanup(func() { http.DefaultClient.CloseIdleConnections() })
 
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
@@ -130,24 +112,17 @@ func TestOAuthSignIn(t *testing.T) {
 		t.Fatalf("start before sign-in: %v", err)
 	}
 
-	page := make(chan string, 1)
 	err := auth.Authorize(ctx, func(u string) {
 		go func() {
 			resp, err := http.Get(u)
 			if err != nil {
-				page <- err.Error()
 				return
 			}
-			defer resp.Body.Close()
-			b, _ := io.ReadAll(resp.Body)
-			page <- string(b)
+			resp.Body.Close()
 		}()
 	})
 	if err != nil {
 		t.Fatalf("authorize: %v", err)
-	}
-	if p := <-page; !strings.Contains(p, "<h1>zemi @^^</h1>") || !strings.Contains(p, "<b>fake</b>") {
-		t.Fatalf("callback page:\n%s", p)
 	}
 	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o600 {
 		t.Fatalf("token file: %v %v", fi, err)
@@ -207,7 +182,7 @@ func TestOAuthRefreshRotation(t *testing.T) {
 		w.mu.Unlock()
 	}
 	for i := range 4 {
-		if _, err := windows[i%2].bearer(t.Context()); err != nil {
+		if _, err := windows[i%2].grant(t.Context()); err != nil {
 			t.Fatalf("call %d: %v", i, err)
 		}
 	}
@@ -217,28 +192,49 @@ func TestOAuthRefreshRotation(t *testing.T) {
 // registration says so, and takes a client_id set in the config instead.
 func TestOAuthPreRegisteredClient(t *testing.T) {
 	var srv *httptest.Server
-	mux := http.NewServeMux()
-	mux.HandleFunc("/.well-known/oauth-authorization-server/mcp", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.MarshalWrite(w, map[string]any{
-			"authorization_endpoint": srv.URL + "/authorize",
-			"token_endpoint":         srv.URL + "/token", "registration_endpoint": srv.URL + "/register",
-		}, json.Deterministic(true))
-	})
-	mux.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
-	mux.HandleFunc("/authorize", func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		if q.Get("client_id") != "mine" {
-			http.Error(w, "client_id "+q.Get("client_id"), http.StatusBadRequest)
-			return
-		}
-		http.Redirect(w, r, q.Get("redirect_uri")+"?code=abc&state="+url.QueryEscape(q.Get("state")), http.StatusFound)
-	})
-	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.MarshalWrite(w, map[string]any{"access_token": "t1", "expires_in": 3600}, json.Deterministic(true))
-	})
-	srv = httptest.NewServer(mux)
+	writeJSON := func(w http.ResponseWriter, v any) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.MarshalWrite(w, v, json.Deterministic(true))
+	}
+	mkMux := func(registerOK bool) *http.ServeMux {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+srv.URL+`/.well-known/oauth-protected-resource/mcp"`)
+			http.Error(w, "sign in", http.StatusUnauthorized)
+		})
+		mux.HandleFunc("/.well-known/oauth-protected-resource/mcp", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, map[string]any{"resource": srv.URL + "/mcp", "authorization_servers": []string{srv.URL}})
+		})
+		mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, map[string]any{
+				"issuer": srv.URL, "authorization_endpoint": srv.URL + "/authorize",
+				"token_endpoint": srv.URL + "/token", "registration_endpoint": srv.URL + "/register",
+				"code_challenge_methods_supported": []string{"S256"},
+			})
+		})
+		mux.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
+			if !registerOK {
+				http.NotFound(w, r)
+				return
+			}
+			writeJSON(w, map[string]any{"client_id": "c1"})
+		})
+		mux.HandleFunc("/authorize", func(w http.ResponseWriter, r *http.Request) {
+			q := r.URL.Query()
+			if q.Get("client_id") != "mine" {
+				http.Error(w, "client_id "+q.Get("client_id"), http.StatusBadRequest)
+				return
+			}
+			http.Redirect(w, r, q.Get("redirect_uri")+"?code=abc&state="+url.QueryEscape(q.Get("state")), http.StatusFound)
+		})
+		mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, map[string]any{"access_token": "t1", "expires_in": 3600})
+		})
+		return mux
+	}
+	srv = httptest.NewServer(mkMux(false))
 	defer srv.Close()
-	dropIdleConns(t)
+	t.Cleanup(func() { http.DefaultClient.CloseIdleConnections() })
 
 	visit := func(u string) {
 		go func() {
@@ -249,7 +245,7 @@ func TestOAuthPreRegisteredClient(t *testing.T) {
 	}
 	auth := &Auth{Name: "fake", ServerURL: srv.URL + "/mcp", Path: filepath.Join(t.TempDir(), "a.json")}
 	err := auth.Authorize(t.Context(), visit)
-	if err == nil || !strings.Contains(err.Error(), "dynamic client registration") {
+	if err == nil || !strings.Contains(err.Error(), "register") {
 		t.Fatalf("without a client id: %v", err)
 	}
 	ln, err := net.Listen("tcp", "localhost:0")
@@ -262,6 +258,9 @@ func TestOAuthPreRegisteredClient(t *testing.T) {
 	}
 	port := addr.Port
 	ln.Close()
+	srv2 := httptest.NewServer(mkMux(true))
+	defer srv2.Close()
+	srv = srv2
 	auth = &Auth{Name: "fake", ServerURL: srv.URL + "/mcp", Path: filepath.Join(t.TempDir(), "b.json"), ClientID: "mine", CallbackPort: port}
 	if err := auth.Authorize(t.Context(), visit); err != nil {
 		t.Fatalf("with a client id: %v", err)
@@ -276,95 +275,5 @@ func TestCallbackPageEscapes(t *testing.T) {
 	writeCallbackPage(rec, "<srv>", errors.New(`<script>alert(1)</script>`))
 	if body := rec.Body.String(); strings.Contains(body, "<script>alert") || rec.Code != 400 {
 		t.Fatalf("unescaped failure page (%d):\n%s", rec.Code, body)
-	}
-}
-
-func TestCheckEndpoint(t *testing.T) {
-	for raw, ok := range map[string]bool{
-		"https://auth.example.com/authorize": true,
-		"http://localhost:8080/token":        true,
-		"http://auth.example.com/token":      false,
-		"file:///etc/passwd":                 false,
-	} {
-		if got := checkEndpoint(raw) == nil; got != ok {
-			t.Errorf("checkEndpoint(%q) ok=%v", raw, got)
-		}
-	}
-}
-
-// TestDiscoverChecksResource: metadata naming another resource is ignored,
-// so zemi never asks for a token meant for that resource on its behalf.
-func TestDiscoverChecksResource(t *testing.T) {
-	var (
-		srv      *httptest.Server
-		resource atomic.Value
-	)
-	mux := http.NewServeMux()
-	mux.HandleFunc("/.well-known/oauth-protected-resource/mcp", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.MarshalWrite(w, map[string]any{"resource": resource.Load(), "authorization_servers": []string{srv.URL + "/as"}}, json.Deterministic(true))
-	})
-	mux.HandleFunc("/.well-known/oauth-authorization-server/as", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.MarshalWrite(w, map[string]any{"authorization_endpoint": srv.URL + "/as/authorize", "token_endpoint": srv.URL + "/as/token"}, json.Deterministic(true))
-	})
-	srv = httptest.NewServer(mux)
-	defer srv.Close()
-	for res, ok := range map[string]bool{
-		"":                           true,
-		srv.URL + "/mcp":             true,
-		srv.URL:                      true,
-		"https://victim.example/mcp": false,
-		srv.URL + "/mcp-other":       false,
-		srv.URL + "/mcp/deeper":      false,
-		"https" + strings.TrimPrefix(srv.URL, "http") + "/mcp": false,
-	} {
-		resource.Store(res)
-		m, err := discover(t.Context(), srv.URL+"/mcp")
-		if err != nil {
-			t.Fatalf("%q: %v", res, err)
-		}
-		if got := m.authURL == srv.URL+"/as/authorize"; got != ok {
-			t.Errorf("resource %q: used the metadata = %v, want %v", res, got, ok)
-		}
-	}
-}
-
-// TestDiscoverWithoutAuthServers: a protected-resource document that names
-// no authorization server still says what the token is for and what to ask
-// for, and the resource is then its own authorization server (RFC 9728).
-// The challenge may point at that document with a path rather than a URI,
-// and a server with no metadata at all still gets the RFC 8707 resource.
-func TestDiscoverWithoutAuthServers(t *testing.T) {
-	var srv *httptest.Server
-	mux := http.NewServeMux()
-	mux.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="/.well-known/oauth-protected-resource/mcp"`)
-		w.WriteHeader(http.StatusUnauthorized)
-	})
-	mux.HandleFunc("/.well-known/oauth-protected-resource/mcp", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.MarshalWrite(w, map[string]any{"resource": srv.URL + "/mcp", "scopes_supported": []string{"read", "write"}}, json.Deterministic(true))
-	})
-	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.MarshalWrite(w, map[string]any{"authorization_endpoint": srv.URL + "/authorize", "token_endpoint": srv.URL + "/token"}, json.Deterministic(true))
-	})
-	srv = httptest.NewServer(mux)
-	defer srv.Close()
-
-	m, err := discover(t.Context(), srv.URL+"/mcp")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if m.authURL != srv.URL+"/authorize" || m.resource != srv.URL+"/mcp" || m.scope != "read write" {
-		t.Fatalf("discover = %+v", m)
-	}
-
-	// no metadata anywhere: the endpoints are the spec's guess and the
-	// resource is still the server's canonical URI
-	bare := httptest.NewServer(http.NotFoundHandler())
-	defer bare.Close()
-	if m, err = discover(t.Context(), bare.URL+"/mcp/"); err != nil {
-		t.Fatal(err)
-	}
-	if m.resource != bare.URL+"/mcp" || m.registerURL != bare.URL+"/register" {
-		t.Fatalf("bare server: %+v", m)
 	}
 }

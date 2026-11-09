@@ -152,8 +152,9 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   task (10s ceiling per slice), main agent only. Once approved, a changed config reloads
   before the script (`ReloadIfChanged`), whose note leads the result: the model never
   schedules a reload, since no caller can outlive the generation its reload retires.
-- **MCP** (mcp.go, internal/mcp): a dependency-free JSON-RPC client (stdio, streamable HTTP
-  with JSON or SSE replies, OAuth discovery where a server needs it; `client_id` and
+- **MCP** (mcp.go, internal/mcp): the modelcontextprotocol/go-sdk client behind a small
+  facade (stdio, streamable HTTP with JSON or SSE replies, OAuth discovery where a server
+  needs it; `client_id` and
   `callback_port` for one without dynamic registration; grants persist in the OS keychain
   with a 0600 file fallback, `internal/keyring`). Servers come from `zemi.mcp.add` (user
   origin only) or from a Claude-layout plugin's `.mcp.json` and manifest, registered by the

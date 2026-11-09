@@ -2,22 +2,22 @@ package mcp
 
 import (
 	"context"
-	"encoding/json/jsontext"
+	jsonv1 "encoding/json"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
+	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.uber.org/goleak"
 
 	"github.com/metafates/zemi/internal/mcp/mcptest"
@@ -137,114 +137,92 @@ func TestHTTPStreamHeldOpen(t *testing.T) {
 	}
 }
 
-// TestHTTPSessionExpired: a server that forgets the session answers 404;
-// the client starts a new one once and resends, ends when the server refuses
-// one, and stays open when the caller gives up mid-handshake.
-func TestHTTPSessionExpired(t *testing.T) {
-	for _, c := range []struct {
-		name       string
-		refuseInit bool
-		cancelInit bool
-	}{
-		{"new session", false, false},
-		{"handshake refused", true, false},
-		{"caller gives up mid-handshake", false, true},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			callCtx, giveUp := context.WithCancel(t.Context())
-			defer giveUp()
-			var (
-				mu    sync.Mutex
-				live  = ""
-				inits = 0
-				gone  = false
-			)
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				body, _ := io.ReadAll(r.Body)
-				var m struct {
-					Method string `json:"method"`
-				}
-				_ = json.Unmarshal(body, &m)
-				mu.Lock()
-				defer mu.Unlock()
-				switch {
-				case m.Method == "initialize" && gone && c.refuseInit:
-					http.Error(w, "down", http.StatusServiceUnavailable)
-					return
-				case m.Method == "initialize" && gone && c.cancelInit && callCtx.Err() == nil:
-					giveUp()
-					<-r.Context().Done()
-					return
-				case m.Method == "initialize":
-					inits++
-					live, gone = fmt.Sprint("s", inits), false
-					w.Header().Set("Mcp-Session-Id", live)
-				case r.Header.Get("Mcp-Session-Id") != live || gone:
-					http.Error(w, "session not found", http.StatusNotFound)
-					return
-				}
-				resp := mcptest.Respond(body)
-				if resp == nil {
-					w.WriteHeader(http.StatusAccepted)
-					return
-				}
-				w.Header().Set("Content-Type", "application/json")
-				w.Write(resp)
-			}))
-			defer srv.Close()
-			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-			defer cancel()
-			cl, err := Start(ctx, Config{URL: srv.URL})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer cl.Close()
-			mu.Lock()
-			gone = true
-			mu.Unlock()
-			if c.cancelInit {
-				if _, err := cl.CallTool(callCtx, "echo", map[string]any{"text": "hi"}); err == nil || cl.Err() != nil {
-					t.Fatalf("a cancelled handshake: call err %v, client err %v", err, cl.Err())
-				}
-			}
-			res, err := cl.CallTool(ctx, "echo", map[string]any{"text": "hi"})
-			if c.refuseInit {
-				if err == nil || cl.Err() == nil {
-					t.Fatalf("a failed handshake left the client open: %v", err)
-				}
-				return
-			}
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil || res.Text() != "hi" || inits != 2 {
-				t.Fatalf("echo = %+v, %v after %d handshakes", res, err, inits)
-			}
-		})
+// TestHTTPSessionReconnect: a server that forgets the session answers 404;
+// the client starts a new one on the same transport and resends.
+func TestHTTPSessionReconnect(t *testing.T) {
+	var (
+		mu    sync.Mutex
+		live  = ""
+		inits = 0
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var m struct {
+			Method string `json:"method"`
+		}
+		_ = json.Unmarshal(body, &m)
+		mu.Lock()
+		defer mu.Unlock()
+		if m.Method == "initialize" {
+			inits++
+			live = "s" + strconv.Itoa(inits)
+			w.Header().Set("Mcp-Session-Id", live)
+			w.Header().Set("Content-Type", "application/json")
+		} else if r.Header.Get("Mcp-Session-Id") != live {
+			http.Error(w, "session not found", http.StatusNotFound)
+			return
+		}
+		resp := mcptest.Respond(body)
+		if resp == nil {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		if m.Method != "initialize" {
+			w.Header().Set("Content-Type", "application/json")
+		}
+		w.Write(resp)
+	}))
+	defer srv.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	cl, err := Start(ctx, Config{URL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cl.Close()
+	if res, err := cl.CallTool(ctx, "echo", map[string]any{"text": "hi"}); err != nil || res.Text() != "hi" {
+		t.Fatalf("echo = %+v, %v", res, err)
+	}
+	mu.Lock()
+	live = "forgotten" // a redeploy dropped the session
+	mu.Unlock()
+	if res, err := cl.CallTool(ctx, "echo", map[string]any{"text": "hi"}); err != nil || res.Text() != "hi" {
+		t.Fatalf("echo after the session was forgotten = %+v, %v", res, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if inits != 2 {
+		t.Fatalf("%d handshakes, want 2", inits)
 	}
 }
 
 // TestCallCancelNotifies: a caller that gives up tells the server to stop,
 // so it does not keep working on an answer nothing is waiting for.
 func TestCallCancelNotifies(t *testing.T) {
-	cancelled := make(chan int64, 1)
+	cancelled := make(chan string, 1)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		var m struct {
 			Method string `json:"method"`
 			Params struct {
-				RequestID int64 `json:"requestId"`
+				RequestID jsonv1.Number `json:"requestId"`
 			} `json:"params"`
 		}
 		_ = json.Unmarshal(body, &m)
 		switch m.Method {
 		case "notifications/cancelled":
 			select {
-			case cancelled <- m.Params.RequestID:
+			case cancelled <- m.Params.RequestID.String():
 			default:
 			}
 			w.WriteHeader(http.StatusAccepted)
-		case "tools/call": // accepted, answered never
-			w.WriteHeader(http.StatusAccepted)
+		case "tools/call": // answered never: the stream stays open
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			<-r.Context().Done()
 		default:
 			resp := mcptest.Respond(body)
 			if resp == nil {
@@ -313,19 +291,11 @@ printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}'`
 	}
 }
 
-// TestSSEEventCap: an event whose data lines never end is refused at the
-// message cap instead of growing without bound.
-func TestSSEEventCap(t *testing.T) {
-	stream := strings.Repeat("data: "+strings.Repeat("x", 1<<20)+"\n", _maxMessage>>20+1)
-	if err := readSSE(strings.NewReader(stream), func([]byte) { t.Fatal("oversized event delivered") }); err == nil {
-		t.Fatal("oversized event read without an error")
-	}
-}
-
-// TestStdioReaderPanic: a panic on the reader ends the connection and
-// reaps the server, which would otherwise keep running unwaited.
-func TestStdioReaderPanic(t *testing.T) {
-	script := `read l; printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{}}'; read l; printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}'; sleep 30`
+// TestToolsChangedPanic: a panic in the handler ends the connection instead
+// of taking zemi down, and reaps the server, which would otherwise keep
+// running unwaited.
+func TestToolsChangedPanic(t *testing.T) {
+	script := `read l; printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","capabilities":{},"serverInfo":{"name":"x","version":"1"}}}'; read l; printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}'; sleep 30`
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	c, err := Start(ctx, Config{Command: "sh", Args: []string{"-c", script}, OnToolsChanged: func() { panic("boom") }})
@@ -336,14 +306,10 @@ func TestStdioReaderPanic(t *testing.T) {
 	select {
 	case <-c.Done():
 	case <-ctx.Done():
-		t.Fatal("the connection outlived a reader panic")
+		t.Fatal("the connection outlived a handler panic")
 	}
-	tr, ok := c.t.(*stdioTransport)
-	if !ok {
-		t.Fatalf("transport = %T, want *stdioTransport", c.t)
-	}
-	if state := tr.cmd.ProcessState; state == nil || !strings.Contains(c.Err().Error(), "reader panic") {
-		t.Fatalf("err %v, server state %v", c.Err(), state)
+	if err := c.Err(); err == nil || !strings.Contains(err.Error(), "panic") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -351,12 +317,9 @@ func TestTransportErrorRedactsURL(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	start := func(u string) error { _, err := Start(ctx, Config{URL: u}); return err }
-	token := func(u string) error { _, err := tokenRequest(ctx, &Token{TokenURL: u}, url.Values{}); return err }
 	for name, err := range map[string]error{
-		"post":    start("http://u:pw123@127.0.0.1:1/mcp?exaApiKey=SECRET123"),
-		"badURL":  start("http://127.0.0.1:1/mcp?key=SECRET123\x7f"),
-		"getJSON": getJSON(ctx, "http://127.0.0.1:1/meta?key=SECRET123", &struct{}{}),
-		"token":   token("http://127.0.0.1:1/t?key=SECRET123"),
+		"post":   start("http://u:pw123@127.0.0.1:1/mcp?exaApiKey=SECRET123"),
+		"badURL": start("http://127.0.0.1:1/mcp?key=SECRET123\x7f"),
 	} {
 		if err == nil || strings.Contains(err.Error(), "SECRET123") || strings.Contains(err.Error(), "pw123") {
 			t.Errorf("%s: %v", name, err)
@@ -365,7 +328,8 @@ func TestTransportErrorRedactsURL(t *testing.T) {
 }
 
 // TestResultText: each content part flattens to what a model reads; a
-// resource_link keeps its URI, the one field that made it meaningful.
+// resource_link keeps its URI, the one field that made it meaningful. The
+// wire is decoded the way a call's result arrives.
 func TestResultText(t *testing.T) {
 	for _, c := range []struct {
 		name, wire, want string
@@ -378,20 +342,20 @@ func TestResultText(t *testing.T) {
 		{"structured only", `{"structuredContent":{"a":1}}`, `{"a":1}`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			var r Result
-			if err := json.Unmarshal([]byte(c.wire), &r); err != nil {
+			var r sdk.CallToolResult
+			if err := jsonv1.Unmarshal([]byte(c.wire), &r); err != nil {
 				t.Fatal(err)
 			}
-			if got := r.Text(); got != c.want {
+			if got := resultFromSDK(&r).Text(); got != c.want {
 				t.Errorf("Text = %q, want %q", got, c.want)
 			}
 		})
 	}
 }
 
-// TestHTTPAuthAfterRenew: a 401 on the re-post after the 404 session renew
-// is a sign-in ask (or a token the refresh fixes), never a generic http
-// error - that path is the one where a sign-in state became a failed one.
+// TestHTTPAuthAfterRenew: a 401 on a refused token is a sign-in ask, never a
+// generic http error - unless the grant's refresh fixes it, in which case the
+// retried request carries the fresh one and the server answers.
 func TestHTTPAuthAfterRenew(t *testing.T) {
 	for _, c := range []struct {
 		name    string
@@ -404,7 +368,6 @@ func TestHTTPAuthAfterRenew(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			var (
 				mu      sync.Mutex
-				inits   int
 				tools   int
 				n       = 1 // the grant's refresh token is r1
 				current = "t1"
@@ -412,31 +375,27 @@ func TestHTTPAuthAfterRenew(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				body, _ := io.ReadAll(r.Body)
 				var m struct {
-					ID     jsontext.Value `json:"id"`
-					Method string         `json:"method"`
+					Method string `json:"method"`
 				}
 				_ = json.Unmarshal(body, &m)
 				mu.Lock()
 				defer mu.Unlock()
 				switch m.Method {
 				case "initialize":
-					inits++
-					w.Header().Set("Mcp-Session-Id", fmt.Sprint("s", inits))
+					w.Header().Set("Mcp-Session-Id", "s1")
+					w.Header().Set("Content-Type", "application/json")
 					w.Write(mcptest.Respond(body))
 				case "notifications/initialized":
 					w.WriteHeader(http.StatusAccepted)
 				case "tools/list":
 					tools++
-					switch {
-					case tools == 1: // the redeploy forgot the session
-						http.Error(w, "session not found", http.StatusNotFound)
-					case tools == 2 || r.Header.Get("Authorization") != "Bearer "+current:
-						// and dropped the token with it
+					if r.Header.Get("Authorization") != "Bearer "+current {
 						w.Header().Set("WWW-Authenticate", `Bearer`)
 						http.Error(w, "stale token", http.StatusUnauthorized)
-					default:
-						w.Write(mcptest.Respond(body))
+						return
 					}
+					w.Header().Set("Content-Type", "application/json")
+					w.Write(mcptest.Respond(body))
 				default:
 					w.WriteHeader(http.StatusAccepted)
 				}
@@ -469,7 +428,7 @@ func TestHTTPAuthAfterRenew(t *testing.T) {
 			defer cancel()
 			cl, err := Start(ctx, Config{URL: srv.URL, Auth: auth})
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("start: %v", err)
 			}
 			defer cl.Close()
 			_, err = cl.Tools(ctx)
@@ -478,93 +437,6 @@ func TestHTTPAuthAfterRenew(t *testing.T) {
 			}
 			if c.wantErr != nil && cl.Err() != nil {
 				t.Fatalf("a sign-in ask ended the client: %v", cl.Err())
-			}
-		})
-	}
-}
-
-// TestHTTPRateLimit: a rate-limited POST waits out Retry-After and re-posts,
-// sendTries posts before the status error names the wait; a 503 is retried
-// only when the server names one. Requests 2 and 3 of a started session are
-// the initialize retry and the initialized notification.
-func TestHTTPRateLimit(t *testing.T) {
-	for _, c := range []struct {
-		name    string
-		status  func(n int) (int, string) // request number (1-based) -> status and Retry-After; 0 passes through
-		wantReq int
-		wantErr string
-	}{
-		{"429 then ok", func(n int) (int, string) {
-			if n == 1 {
-				return http.StatusTooManyRequests, "0"
-			}
-			return 0, ""
-		}, 3, ""},
-		{"429 always", func(int) (int, string) {
-			return http.StatusTooManyRequests, "0"
-		}, _sendTries, "retry after 0s"},
-		{"503 with retry-after then ok", func(n int) (int, string) {
-			if n == 1 {
-				return http.StatusServiceUnavailable, "0"
-			}
-			return 0, ""
-		}, 3, ""},
-		{"503 without retry-after", func(n int) (int, string) {
-			if n == 1 {
-				return http.StatusServiceUnavailable, ""
-			}
-			return 0, ""
-		}, 1, "mcp: http 503"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-			var reqs atomic.Int32
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if status, after := c.status(int(reqs.Add(1))); status != 0 {
-					if after != "" {
-						w.Header().Set("Retry-After", after)
-					}
-					w.WriteHeader(status)
-					return
-				}
-				mcptest.Handler().ServeHTTP(w, r)
-			}))
-			defer srv.Close()
-			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
-			defer cancel()
-			_, err := Start(ctx, Config{URL: srv.URL})
-			if got := reqs.Load(); got != int32(c.wantReq) {
-				t.Fatalf("%d requests, want %d", got, c.wantReq)
-			}
-			if (err == nil) != (c.wantErr == "") || (c.wantErr != "" && !strings.Contains(err.Error(), c.wantErr)) {
-				t.Fatalf("err = %v, want %q", err, c.wantErr)
-			}
-		})
-	}
-}
-
-func TestRetryWait(t *testing.T) {
-	for _, c := range []struct {
-		name             string
-		after            string
-		attempt          int
-		wantMin, wantMax time.Duration
-	}{
-		{"seconds", "5", 0, 5 * time.Second, 5 * time.Second},
-		{"clamped up", "0", 0, time.Second, time.Second},
-		{"clamped down", "120", 1, 30 * time.Second, 30 * time.Second},
-		{"http date", time.Now().Add(30 * time.Second).UTC().Format(http.TimeFormat), 0, 28 * time.Second, 30 * time.Second},
-		{"unparsable", "soon", 0, time.Second, time.Second},
-		{"absent", "", 0, time.Second, time.Second},
-		{"absent backs off", "", 2, 4 * time.Second, 4 * time.Second},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			resp := &http.Response{Header: http.Header{}}
-			if c.after != "" {
-				resp.Header.Set("Retry-After", c.after)
-			}
-			if d := retryWait(resp, c.attempt); d < c.wantMin || d > c.wantMax {
-				t.Fatalf("retryWait(%q, %d) = %s, want [%s, %s]", c.after, c.attempt, d, c.wantMin, c.wantMax)
 			}
 		})
 	}

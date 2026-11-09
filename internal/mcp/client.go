@@ -1,15 +1,12 @@
-// Package mcp is a small Model Context Protocol client (DESIGN §11):
-// JSON-RPC over a child process's stdio or over streamable HTTP, with the
-// calls zemi needs: initialize, tools/list and tools/call.
+// Package mcp is a Model Context Protocol client (DESIGN §11) built on
+// github.com/modelcontextprotocol/go-sdk: the transports, the handshake and
+// the tool calls are the SDK's; this file is the facade zemi's hostapi speaks,
+// the process boundary for stdio servers, and the URL redaction.
 package mcp
 
 import (
-	"bufio"
-	"bytes"
 	"cmp"
 	"context"
-	"encoding/base64"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -17,25 +14,21 @@ import (
 	"net/http"
 	"net/url"
 	"os/exec"
-	"strconv"
+	"regexp"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
+	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/metafates/zemi/internal/proc"
-	"github.com/metafates/zemi/internal/set"
 )
 
 // ProtocolVersion is the version zemi asks for; a server answers with the
 // one it speaks.
 const ProtocolVersion = "2025-06-18"
 
-const (
-	_maxMessage    = 32 << 20
-	_sessionHeader = "Mcp-Session-Id"
-	_sendTries     = 3 // attempts per send before a rate limit fails the call
-)
+const _maxEvent = 32 << 20
 
 // Config picks the transport: Command starts a child process, URL talks
 // streamable HTTP.
@@ -58,13 +51,13 @@ type Config struct {
 // Tool is one tool a server lists. Annotations are the server's own word
 // about what the tool does.
 type Tool struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	InputSchema map[string]any `json:"inputSchema"`
+	Name        string
+	Description string
+	InputSchema map[string]any
 	Annotations *struct {
-		ReadOnlyHint    bool  `json:"readOnlyHint"`
-		DestructiveHint *bool `json:"destructiveHint"`
-	} `json:"annotations,omitempty"`
+		ReadOnlyHint    bool
+		DestructiveHint *bool
+	}
 }
 
 // ReadOnly reports a tool the server marked read-only and not destructive.
@@ -73,26 +66,26 @@ func (t Tool) ReadOnly() bool {
 	return a != nil && a.ReadOnlyHint && (a.DestructiveHint == nil || !*a.DestructiveHint)
 }
 
-// Content is one part of a tool result. Data and Resource.Blob are base64.
+// Content is one part of a tool result. Data and Resource.Blob are decoded.
 type Content struct {
-	Type     string `json:"type"`
-	Text     string `json:"text,omitempty"`
-	Data     string `json:"data,omitempty"`
-	URI      string `json:"uri,omitempty"`
-	MimeType string `json:"mimeType,omitempty"`
+	Type     string // text, image, audio, resource_link, resource
+	Text     string
+	Data     []byte
+	URI      string
+	MimeType string
 	Resource *struct {
-		URI      string `json:"uri"`
-		Text     string `json:"text,omitempty"`
-		Blob     string `json:"blob,omitempty"`
-		MimeType string `json:"mimeType,omitempty"`
-	} `json:"resource,omitempty"`
+		URI      string
+		Text     string
+		Blob     []byte
+		MimeType string
+	}
 }
 
 // Result is a tools/call result.
 type Result struct {
-	Content    []Content `json:"content"`
-	IsError    bool      `json:"isError"`
-	Structured any       `json:"structuredContent,omitempty"`
+	Content    []Content
+	IsError    bool
+	Structured any
 }
 
 // Text flattens a result for a model: text as is, other parts as a short
@@ -122,121 +115,179 @@ func (r *Result) Text() string {
 // gets it instead of Text's placeholder for it.
 func (r *Result) Media() (data []byte, mime string, ok bool) {
 	for _, c := range r.Content {
-		b64, mt := c.Data, c.MimeType
-		if c.Resource != nil && c.Resource.Blob != "" {
-			b64, mt = c.Resource.Blob, c.Resource.MimeType
+		data, mime = c.Data, c.MimeType
+		if c.Resource != nil && len(c.Resource.Blob) > 0 {
+			data, mime = c.Resource.Blob, c.Resource.MimeType
 		}
-		if b64 == "" || !strings.HasPrefix(mt, "image/") && !strings.HasPrefix(mt, "audio/") {
-			continue
-		}
-		if b, err := base64.StdEncoding.DecodeString(b64); err == nil && len(b) > 0 {
-			return b, mt, true
+		if len(data) > 0 && (strings.HasPrefix(mime, "image/") || strings.HasPrefix(mime, "audio/")) {
+			return data, mime, true
 		}
 	}
 	return nil, "", false
 }
 
-type rpcError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-func (e *rpcError) Error() string { return fmt.Sprintf("mcp error %d: %s", e.Code, e.Message) }
-
-type message struct {
-	ID     jsontext.Value `json:"id,omitempty"`
-	Method string         `json:"method,omitempty"`
-	Result jsontext.Value `json:"result,omitempty"`
-	Error  *rpcError      `json:"error,omitempty"`
-}
-
-type transport interface {
-	send(ctx context.Context, msg []byte) error
-	close() error
-}
+// NOTE: the SDK's HTTP transport logger is unexported, so some of its
+// transport warnings land in slog's discard.
 
 // Client is one server connection. Calls are safe from any goroutine.
 type Client struct {
-	t       transport
-	nextID  atomic.Int64
-	mu      sync.Mutex
-	pending map[int64]chan message
+	cfg Config
+
+	sctx   context.Context // the session context: cancelling it returns every in-flight call
+	cancel context.CancelFunc
+
+	mu  sync.Mutex
+	cs  *sdk.ClientSession
+	gen int
+
+	renewMu sync.Mutex // one re-Connect at a time
+
 	done    chan struct{}
 	endOnce sync.Once
 	endErr  error
 
-	wg      sync.WaitGroup // goroutines spawned for the connection; Close joins them
-	closing bool           // mu-guarded: set before Close waits, so no spawn slips past the wait
+	closeOnce sync.Once
 
-	onToolsChanged func()
+	cmd     *exec.Cmd // a stdio server's child
+	release func()    // proc.Adopt's, run once the child is reaped
 }
 
 // Start connects and runs the initialize handshake.
 func Start(ctx context.Context, cfg Config) (*Client, error) {
-	c := &Client{pending: map[int64]chan message{}, done: make(chan struct{}), onToolsChanged: cfg.OnToolsChanged}
-	switch {
-	case cfg.Command != "":
-		if err := startStdio(cfg, c); err != nil {
-			return nil, err
-		}
-	case cfg.URL != "":
-		c.t = &httpTransport{cfg: cfg, c: c, streams: set.Set[io.Closer]{}}
-	default:
+	if cfg.Command == "" && cfg.URL == "" {
 		return nil, errors.New("mcp: command or url is required")
 	}
-	if err := c.initialize(ctx); err != nil {
-		c.Close()
-		return nil, err
+	c := &Client{cfg: cfg, done: make(chan struct{})}
+	c.sctx, c.cancel = context.WithCancel(context.WithoutCancel(ctx))
+	if err := c.connect(ctx); err != nil {
+		return nil, redactAll(err)
 	}
+	go c.watch()
 	return c, nil
 }
 
-// initialize runs the handshake that opens a session.
-func (c *Client) initialize(ctx context.Context) error {
-	var init struct {
-		ProtocolVersion string `json:"protocolVersion"`
+// connect dials the transport and runs the handshake; the session it leaves
+// in c.cs outlives ctx.
+func (c *Client) connect(ctx context.Context) error {
+	if err := proc.Refused(); err != nil {
+		return err
 	}
-	params := map[string]any{
-		"protocolVersion": ProtocolVersion,
-		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]any{"name": "zemi", "version": "1"},
+	opts := &sdk.ClientOptions{
+		// empty on purpose: no roots advertised, so unknown server requests
+		// get method-not-found and ping is answered, the wire zemi has always
+		// spoken; the SDK default would advertise roots
+		Capabilities: &sdk.ClientCapabilities{},
 	}
-	if err := c.call(ctx, "initialize", params, &init); err != nil {
-		return fmt.Errorf("mcp: initialize: %w", err)
+	if fn := c.cfg.OnToolsChanged; fn != nil {
+		// a reader-goroutine panic must end the connection, not zemi
+		opts.ToolListChangedHandler = func(context.Context, *sdk.ToolListChangedRequest) {
+			defer func() {
+				if r := recover(); r != nil {
+					c.end(fmt.Errorf("mcp: tools changed handler panic: %v", r))
+				}
+			}()
+			fn()
+		}
 	}
-	if ht, ok := c.t.(*httpTransport); ok {
-		ht.mu.Lock()
-		ht.version = init.ProtocolVersion
-		ht.mu.Unlock()
+	client := sdk.NewClient(&sdk.Implementation{Name: "zemi", Version: "1"}, opts)
+	var transport sdk.Transport
+	switch {
+	case c.cfg.Command != "":
+		cmd := proc.Command(c.cfg.Command, c.cfg.Args...)
+		cmd.Env, cmd.Dir, cmd.Stderr = c.cfg.Env, c.cfg.Dir, c.cfg.Stderr
+		// the SDK calls Start and Wait itself; Adopt keeps the child killable
+		c.cmd = cmd
+		transport = &sdk.CommandTransport{Command: cmd, TerminateDuration: 2 * time.Second}
+	default:
+		st := &sdk.StreamableClientTransport{Endpoint: c.cfg.URL, MaxEventSize: _maxEvent}
+		if len(c.cfg.Headers) > 0 {
+			st.HTTPClient = &http.Client{Transport: headerTransport{base: &http.Transport{}, headers: c.cfg.Headers}}
+		}
+		if c.cfg.Auth != nil {
+			st.OAuthHandler = passiveHandler{c.cfg.Auth}
+		}
+		transport = st
 	}
-	return c.send(ctx, map[string]any{"jsonrpc": "2.0", "method": "notifications/initialized"})
+	cs, err := client.Connect(ctx, transport, &sdk.ClientSessionOptions{ProtocolVersion: ProtocolVersion})
+	if err != nil {
+		if c.cmd != nil {
+			proc.Kill(c.cmd) // never started or left running by a failed handshake
+		}
+		return err
+	}
+	if c.cmd != nil && c.release == nil {
+		c.release = proc.Adopt(c.cmd)
+	}
+	c.mu.Lock()
+	c.cs, c.gen = cs, c.gen+1
+	c.mu.Unlock()
+	return nil
+}
+
+// watch ends the client when its session does; a session replaced by a
+// re-Connect keeps it watching the new one.
+func (c *Client) watch() {
+	for {
+		c.mu.Lock()
+		cs, gen := c.cs, c.gen
+		c.mu.Unlock()
+		if cs == nil {
+			return
+		}
+		err := cs.Wait()
+		c.mu.Lock()
+		current := c.cs == cs && gen == c.gen
+		c.mu.Unlock()
+		if !current {
+			continue
+		}
+		c.reap(cs)
+		c.end(fmt.Errorf("mcp: %s: %w", cmp.Or(c.cfg.Command, "http"), cmp.Or(err, errors.New("exited"))))
+		return
+	}
+}
+
+// reap closes the session again (idempotent), kills the child's group and
+// forgets the pid.
+func (c *Client) reap(cs *sdk.ClientSession) {
+	if cs != nil {
+		_ = cs.Close() // idempotent; the process is killed below regardless
+	}
+	if c.cmd != nil {
+		proc.Kill(c.cmd)
+	}
+	c.mu.Lock()
+	release := c.release
+	c.release = nil
+	c.mu.Unlock()
+	if release != nil {
+		release()
+	}
 }
 
 // Tools lists every tool, following pagination. NOTE: a server still paging
 // after 100 pages is cut short, and the tools left on its later pages never
 // appear.
-func (c *Client) Tools(ctx context.Context) ([]Tool, error) {
-	var all []Tool
-	cursor := ""
-	for range 100 {
-		var params any
-		if cursor != "" {
-			params = map[string]any{"cursor": cursor}
+func (c *Client) Tools(ctx context.Context) (all []Tool, err error) {
+	err = c.withSession(ctx, func(ctx context.Context, cs *sdk.ClientSession) error {
+		all = nil
+		cursor := ""
+		for range 100 {
+			page, err := cs.ListTools(ctx, &sdk.ListToolsParams{Cursor: cursor})
+			if err != nil {
+				return err
+			}
+			for _, t := range page.Tools {
+				all = append(all, toolFromSDK(t))
+			}
+			if page.NextCursor == "" {
+				return nil
+			}
+			cursor = page.NextCursor
 		}
-		var page struct {
-			Tools      []Tool `json:"tools"`
-			NextCursor string `json:"nextCursor"`
-		}
-		if err := c.call(ctx, "tools/list", params, &page); err != nil {
-			return nil, err
-		}
-		all = append(all, page.Tools...)
-		if page.NextCursor == "" {
-			break
-		}
-		cursor = page.NextCursor
-	}
-	return all, nil
+		return nil
+	})
+	return all, redactAll(err)
 }
 
 // CallTool runs one tool. A tool-level failure is a Result with IsError;
@@ -245,11 +296,57 @@ func (c *Client) CallTool(ctx context.Context, name string, args map[string]any)
 	if args == nil {
 		args = map[string]any{}
 	}
-	var res Result
-	if err := c.call(ctx, "tools/call", map[string]any{"name": name, "arguments": args}, &res); err != nil {
-		return nil, err
+	var res *Result
+	err := c.withSession(ctx, func(ctx context.Context, cs *sdk.ClientSession) error {
+		r, err := cs.CallTool(ctx, &sdk.CallToolParams{Name: name, Arguments: args})
+		if err != nil {
+			return err
+		}
+		res = resultFromSDK(r)
+		return nil
+	})
+	return res, redactAll(err)
+}
+
+// withSession runs fn against the live session. A session the server forgot
+// (404 on a session id: a redeploy) is re-Connected once, on the same
+// transport config, and fn retried.
+func (c *Client) withSession(ctx context.Context, fn func(context.Context, *sdk.ClientSession) error) error {
+	gen := c.generation()
+	err := c.call(ctx, fn)
+	if !errors.Is(err, sdk.ErrSessionMissing) {
+		return err
 	}
-	return &res, nil
+	c.renewMu.Lock()
+	defer c.renewMu.Unlock()
+	if c.generation() == gen {
+		if err := c.connect(c.sctx); err != nil {
+			return err
+		}
+	}
+	return c.call(ctx, fn)
+}
+
+// call merges the session context into ctx, so Close returns every in-flight
+// call at once, and runs fn with the result.
+func (c *Client) call(ctx context.Context, fn func(context.Context, *sdk.ClientSession) error) error {
+	c.mu.Lock()
+	cs := c.cs
+	c.mu.Unlock()
+	if cs == nil {
+		return errors.New("mcp: closed")
+	}
+	cctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(c.sctx, cancel)
+	defer stop()
+	return fn(cctx, cs)
+}
+
+func (c *Client) generation() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.gen
 }
 
 // Done is closed when the connection ends; Err says why.
@@ -265,35 +362,20 @@ func (c *Client) Err() error {
 	}
 }
 
-// Close ends the connection, stops a child process and joins the goroutines
-// still running for it: a send wedged on a full pipe, an SSE drain. A stdio
-// server that ignores stdin EOF is killed after its grace, which bounds the
-// wait.
+// Close cancels every in-flight call, ends the session and stops a child
+// process: stdin closes first, a server that ignores that is terminated
+// after its grace, and the group kill takes what is left.
 func (c *Client) Close() error {
-	c.end(errors.New("mcp: closed"))
-	c.mu.Lock()
-	c.closing = true
-	c.mu.Unlock()
-	err := c.t.close() // first: a send waiting on the transport returns
-	c.wg.Wait()
-	return err
-}
-
-// spawn runs fn off the caller's goroutine, tracked so Close joins it. Past
-// Close it refuses: the connection fn would speak on is gone.
-func (c *Client) spawn(fn func()) bool {
-	c.mu.Lock()
-	if c.closing {
+	c.closeOnce.Do(func() {
+		c.cancel()
+		c.mu.Lock()
+		cs := c.cs
+		c.cs = nil
 		c.mu.Unlock()
-		return false
-	}
-	c.wg.Add(1)
-	c.mu.Unlock()
-	go func() {
-		defer c.wg.Done()
-		fn()
-	}()
-	return true
+		c.reap(cs)
+		c.end(errors.New("mcp: closed"))
+	})
+	return nil
 }
 
 func (c *Client) end(err error) {
@@ -303,440 +385,109 @@ func (c *Client) end(err error) {
 	})
 }
 
-func (c *Client) send(ctx context.Context, v any) error {
-	b, err := json.Marshal(v, json.Deterministic(true))
+func toolFromSDK(t *sdk.Tool) Tool {
+	out := Tool{Name: t.Name, Description: t.Description, InputSchema: schemaMap(t.InputSchema)}
+	if a := t.Annotations; a != nil {
+		ann := &struct {
+			ReadOnlyHint    bool
+			DestructiveHint *bool
+		}{ReadOnlyHint: a.ReadOnlyHint, DestructiveHint: a.DestructiveHint}
+		out.Annotations = ann
+	}
+	return out
+}
+
+// schemaMap keeps the schema a server sent as the map hostapi hands to
+// ResolveSchemaRefs; anything else arrives as nil and drops the tool.
+func schemaMap(v any) map[string]any {
+	m, _ := v.(map[string]any)
+	return m
+}
+
+func resultFromSDK(r *sdk.CallToolResult) *Result {
+	out := &Result{IsError: r.IsError, Structured: r.StructuredContent}
+	for _, c := range r.Content {
+		var fc Content
+		switch c := c.(type) {
+		case *sdk.TextContent:
+			fc = Content{Type: "text", Text: c.Text}
+		case *sdk.ImageContent:
+			fc = Content{Type: "image", Data: c.Data, MimeType: c.MIMEType}
+		case *sdk.AudioContent:
+			fc = Content{Type: "audio", Data: c.Data, MimeType: c.MIMEType}
+		case *sdk.ResourceLink:
+			fc = Content{Type: "resource_link", URI: c.URI, MimeType: c.MIMEType}
+		case *sdk.EmbeddedResource:
+			rc := &struct {
+				URI      string
+				Text     string
+				Blob     []byte
+				MimeType string
+			}{}
+			if c.Resource != nil {
+				rc.URI, rc.Text, rc.Blob, rc.MimeType = c.Resource.URI, c.Resource.Text, c.Resource.Blob, c.Resource.MIMEType
+			}
+			fc = Content{Type: "resource", Resource: rc}
+		default:
+			fc = Content{Type: "unknown"}
+		}
+		out.Content = append(out.Content, fc)
+	}
+	return out
+}
+
+// headerTransport sets a server's static headers on every request; the
+// transport's own client has no Timeout, since the standalone SSE GET is
+// long-lived.
+type headerTransport struct {
+	base    http.RoundTripper
+	headers map[string]string
+}
+
+func (t headerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	for k, v := range t.headers {
+		r.Header.Set(k, v)
+	}
+	resp, err := t.base.RoundTrip(r)
 	if err != nil {
-		return err
+		return nil, redactAll(err)
 	}
-	return c.t.send(ctx, b)
+	return resp, nil
 }
 
-func (c *Client) call(ctx context.Context, method string, params, out any) error {
-	id := c.nextID.Add(1)
-	ch := make(chan message, 1)
-	c.mu.Lock()
-	c.pending[id] = ch
-	c.mu.Unlock()
-	defer func() {
-		c.mu.Lock()
-		delete(c.pending, id)
-		c.mu.Unlock()
-	}()
-	req := map[string]any{"jsonrpc": "2.0", "id": id, "method": method}
-	if params != nil {
-		req["params"] = params
-	}
-	if err := c.send(ctx, req); err != nil {
-		return err
-	}
-	select {
-	case m := <-ch:
-		if m.Error != nil {
-			return m.Error
-		}
-		if out == nil || len(m.Result) == 0 {
-			return nil
-		}
-		return json.Unmarshal(m.Result, out)
-	case <-ctx.Done():
-		// initialize is the one request the protocol forbids cancelling;
-		// without the notice the server keeps working for nobody
-		if method != "initialize" {
-			c.sendAsync(map[string]any{
-				"jsonrpc": "2.0", "method": "notifications/cancelled",
-				"params": map[string]any{"requestId": id, "reason": "client cancelled"},
-			})
-		}
-		return ctx.Err()
-	case <-c.done:
-		return c.endErr
-	}
-}
-
-// sendAsync sends v off the caller's goroutine: the reader must not wait on
-// a server that stopped reading, and neither must a cancelled call.
-func (c *Client) sendAsync(v any) {
-	c.spawn(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		_ = c.send(ctx, v)
-	})
-}
-
-// handle routes one incoming message: a response to its caller, a server
-// request to answer, or a notification.
-func (c *Client) handle(data []byte) {
-	data = bytes.TrimSpace(data)
-	if len(data) == 0 {
-		return
-	}
-	if data[0] == '[' {
-		var batch []jsontext.Value
-		if json.Unmarshal(data, &batch) == nil {
-			for _, m := range batch {
-				c.handle(m)
-			}
-		}
-		return
-	}
-	var m message
-	if json.Unmarshal(data, &m) != nil {
-		return
-	}
-	switch {
-	case m.Method != "" && len(m.ID) > 0:
-		// Server requests zemi does not offer (sampling, roots, elicitation)
-		// get method-not-found; ping gets its empty result.
-		resp := map[string]any{"jsonrpc": "2.0", "id": m.ID}
-		if m.Method == "ping" {
-			resp["result"] = map[string]any{}
-		} else {
-			resp["error"] = rpcError{Code: -32601, Message: "method not found"}
-		}
-		c.sendAsync(resp)
-	case m.Method == "notifications/tools/list_changed":
-		if c.onToolsChanged != nil {
-			c.onToolsChanged()
-		}
-	case m.Method == "":
-		var id int64
-		if json.Unmarshal(m.ID, &id) != nil {
-			return
-		}
-		c.mu.Lock()
-		ch := c.pending[id]
-		c.mu.Unlock()
-		if ch != nil {
-			select {
-			case ch <- m:
-			default:
-			}
-		}
-	}
-}
-
-// stdio
-
-type stdioTransport struct {
-	cmd   *exec.Cmd
-	mu    sync.Mutex
-	stdin io.WriteCloser
-}
-
-var _ transport = (*stdioTransport)(nil)
-
-// startStdio sets c.t before the reader starts: handle answers server
-// requests through it. Close joins the reader, whose own defer reaps the
-// server, so neither the pipe nor the process outlives the client.
-func startStdio(cfg Config, c *Client) error {
-	cmd := proc.Command(cfg.Command, cfg.Args...)
-	cmd.Env, cmd.Dir, cmd.Stderr = cfg.Env, cfg.Dir, cfg.Stderr
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return err
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	if err := proc.Start(cmd); err != nil {
-		return fmt.Errorf("mcp: start %s: %w", cfg.Command, err)
-	}
-	c.t = &stdioTransport{cmd: cmd, stdin: stdin}
-	c.spawn(func() {
-		var err error
-		defer func() {
-			if r := recover(); r != nil {
-				err = fmt.Errorf("reader panic: %v", r)
-			}
-			// A reader that stopped early (an oversized message, a panic)
-			// leaves the server writing into a pipe nobody reads, so Wait
-			// would never return.
-			if err != nil {
-				proc.Kill(cmd)
-			}
-			if werr := proc.Wait(cmd); err == nil {
-				err = cmp.Or(werr, errors.New("exited"))
-			}
-			c.end(fmt.Errorf("mcp: %s: %w", cfg.Command, err))
-		}()
-		sc := bufio.NewScanner(stdout)
-		sc.Buffer(make([]byte, 64<<10), _maxMessage)
-		for sc.Scan() {
-			c.handle(sc.Bytes())
-		}
-		err = sc.Err()
-	})
-	return nil
-}
-
-func (t *stdioTransport) send(_ context.Context, msg []byte) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	_, err := t.stdin.Write(append(msg, '\n'))
-	return err
-}
-
-// close closes stdin, which ends a well-behaved server, and kills its
-// process group if it is still running a moment later. It skips the send
-// lock: a write blocked on a server that stopped reading returns once the
-// pipe closes.
-func (t *stdioTransport) close() error {
-	err := t.stdin.Close()
-	time.AfterFunc(2*time.Second, func() { proc.Kill(t.cmd) })
-	return err
-}
-
-// streamable HTTP
-
-type httpTransport struct {
-	cfg     Config
-	c       *Client
-	mu      sync.Mutex
-	session string
-	version string
-	streams set.Set[io.Closer] // SSE bodies draining off the request path
-	renewMu sync.Mutex         // one new session at a time
-}
-
-var _ transport = (*httpTransport)(nil)
-
-// renewing marks the handshake renew runs, whose sends must not renew again.
-type renewing struct{}
-
-// _httpConn is the transport the streams dial with, so closing a client drops
-// its idle connections instead of parking them in the process-wide pool.
-var _httpConn = &http.Transport{}
-
-var _httpClient = &http.Client{Transport: _httpConn}
-
-// send POSTs one message. The reply is JSON or an SSE stream whose events
-// are messages; both are routed through handle before send returns.
-func (t *httpTransport) send(ctx context.Context, msg []byte) error {
-	// each retry cause runs once: a second 401 is a grant the refresh does
-	// not fix, a second 404 a session the renew does not fix
-	authTried, renewed := false, false
-	for attempts := 0; ; attempts++ {
-		resp, bearer, err := t.post(ctx, msg)
-		if err != nil {
-			return err
-		}
-		if resp.StatusCode == http.StatusUnauthorized && t.cfg.Auth != nil {
-			resp.Body.Close()
-			if authTried || bearer == "" || !t.cfg.Auth.reject(bearer) {
-				return ErrAuthRequired
-			}
-			authTried = true
-			continue
-		}
-		// the server forgot the session (a redeploy): the spec says start another
-		if old := resp.Request.Header.Get(_sessionHeader); resp.StatusCode == http.StatusNotFound && old != "" && !renewed && ctx.Value(renewing{}) == nil {
-			renewed = true
-			resp.Body.Close()
-			if err := t.renew(ctx, old); err != nil {
-				return err
-			}
-			continue
-		}
-		if id := resp.Header.Get(_sessionHeader); id != "" {
-			t.mu.Lock()
-			t.session = id
-			t.mu.Unlock()
-		}
-		switch {
-		case resp.StatusCode == http.StatusAccepted:
-			resp.Body.Close()
-			return nil
-		case resp.StatusCode == http.StatusTooManyRequests || (resp.StatusCode == http.StatusServiceUnavailable && resp.Header.Get("Retry-After") != ""):
-			// A rate limit waits out Retry-After and re-posts; a 503 is the
-			// same signal only when the server names a wait.
-			body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-			resp.Body.Close()
-			err = fmt.Errorf("mcp: http %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-			if after := resp.Header.Get("Retry-After"); after != "" {
-				if secs, perr := strconv.Atoi(after); perr == nil {
-					err = fmt.Errorf("%w (retry after %ds)", err, secs)
-				} else {
-					err = fmt.Errorf("%w (retry after %s)", err, after)
-				}
-			}
-			if attempts+1 >= _sendTries {
-				return err
-			}
-			select {
-			case <-ctx.Done():
-				return err
-			case <-time.After(retryWait(resp, attempts)):
-			}
-			continue
-		case resp.StatusCode/100 != 2:
-			body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-			resp.Body.Close()
-			return fmt.Errorf("mcp: http %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-		case strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream"):
-			// A server may hold its POST stream open after answering. Reading
-			// it here would cost the caller the whole request timeout, so the
-			// stream is drained off the request path and the reply reaches the
-			// waiting call through handle.
-			t.mu.Lock()
-			t.streams.Add(resp.Body)
-			t.mu.Unlock()
-			if !t.c.spawn(func() {
-				defer func() {
-					resp.Body.Close()
-					t.mu.Lock()
-					t.streams.Remove(resp.Body)
-					t.mu.Unlock()
-				}()
-				defer func() {
-					if r := recover(); r != nil {
-						t.c.end(fmt.Errorf("mcp: sse reader panic: %v", r))
-					}
-				}()
-				_ = readSSE(resp.Body, t.c.handle)
-			}) {
-				resp.Body.Close() // Close is draining the streams; nothing would read this
-			}
-			return nil
-		}
-		body, err := io.ReadAll(io.LimitReader(resp.Body, _maxMessage))
-		resp.Body.Close()
-		if err != nil {
-			return err
-		}
-		t.c.handle(body)
+// redactAll cuts every URL in err's text to scheme://host/path: servers take
+// API keys in the query, and the text reaches the model, logs and Lua. The
+// in-chain *url.Errors are cut too, so a wrap after this one stays clean;
+// the SDK bakes url.Errors into its messages eagerly (fmt renders %w at
+// Errorf), which is why the text itself gets scrubbed.
+func redactAll(err error) error {
+	if err == nil {
 		return nil
 	}
-}
-
-// retryWait reads Retry-After (seconds or an HTTP-date), clamped to
-// [1s, 30s]; without a parsable one it backs off exponentially.
-func retryWait(resp *http.Response, attempt int) time.Duration {
-	if s := strings.TrimSpace(resp.Header.Get("Retry-After")); s != "" {
-		var d time.Duration
-		if secs, err := strconv.Atoi(s); err == nil {
-			d = time.Duration(secs) * time.Second
-		} else if t, err := http.ParseTime(s); err == nil {
-			d = time.Until(t)
-		}
-		return min(max(d, time.Second), 30*time.Second)
-	}
-	return time.Duration(1<<attempt) * time.Second
-}
-
-// renew replaces the session old unless another call already did. A handshake
-// the server fails ends the client, so the server shows as failed with a restart.
-func (t *httpTransport) renew(ctx context.Context, old string) error {
-	t.renewMu.Lock()
-	defer t.renewMu.Unlock()
-	t.mu.Lock()
-	stale := t.session == old
-	if stale {
-		t.session = ""
-	}
-	t.mu.Unlock()
-	if !stale {
-		return nil
-	}
-	err := t.c.initialize(context.WithValue(ctx, renewing{}, true))
-	if err != nil && ctx.Err() != nil {
-		// the caller gave up, not the server: the next call renews again
-		t.mu.Lock()
-		t.session = old
-		t.mu.Unlock()
-		return err
-	}
-	if err != nil {
-		t.c.end(err)
-	}
-	return err
-}
-
-// post sends one request with the session headers and, when signed in,
-// the bearer token it used.
-func (t *httpTransport) post(ctx context.Context, msg []byte) (*http.Response, string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.cfg.URL, bytes.NewReader(msg))
-	if err != nil {
-		return nil, "", redactURL(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json, text/event-stream")
-	for k, v := range t.cfg.Headers {
-		req.Header.Set(k, v)
-	}
-	bearer := ""
-	if t.cfg.Auth != nil && req.Header.Get("Authorization") == "" {
-		if bearer, err = t.cfg.Auth.bearer(ctx); err != nil {
-			return nil, "", err
-		}
-		if bearer != "" {
-			req.Header.Set("Authorization", "Bearer "+bearer)
-		}
-	}
-	t.mu.Lock()
-	if t.session != "" {
-		req.Header.Set(_sessionHeader, t.session)
-	}
-	if t.version != "" {
-		req.Header.Set("MCP-Protocol-Version", t.version)
-	}
-	t.mu.Unlock()
-	resp, err := _httpClient.Do(req)
-	return resp, bearer, redactURL(err)
-}
-
-// redactURL cuts a *url.Error's URL to scheme://host/path: servers take API
-// keys in the query, and the text reaches the model, logs and Lua.
-func redactURL(err error) error {
-	if ue, ok := errors.AsType[*url.Error](err); ok {
-		u, perr := url.Parse(ue.URL)
+	// the SDK bakes url.Errors into its messages eagerly (fmt renders %w at
+	// Errorf), so the redaction has to run on the rendered text
+	clean := _urlInText.ReplaceAllStringFunc(err.Error(), func(u string) string {
+		pu, perr := url.Parse(u)
 		if perr != nil {
-			ue.URL = "(unparsable url)"
-		} else {
-			ue.URL = u.Scheme + "://" + u.Host + u.EscapedPath()
+			return "(unparsable url)"
 		}
+		return pu.Scheme + "://" + pu.Host + pu.EscapedPath()
+	})
+	if clean == err.Error() {
+		return err
 	}
-	return err
+	return redacted{err: err, text: clean}
 }
 
-// close ends the SSE streams still draining in the background, so Close
-// leaks neither their drain goroutines nor their connections.
-func (t *httpTransport) close() error {
-	t.mu.Lock()
-	streams := t.streams
-	t.streams = set.Set[io.Closer]{}
-	t.mu.Unlock()
-	for b := range streams {
-		_ = b.Close()
-	}
-	_httpConn.CloseIdleConnections()
-	return nil
+// _urlInText finds an http(s) URL in an error's rendered text.
+var _urlInText = regexp.MustCompile(`https?://[^\s"']+`)
+
+// redacted carries an error whose rendered text had its URLs cut; errors.Is
+// and errors.As still see the original.
+type redacted struct {
+	err  error
+	text string
 }
 
-// readSSE feeds each event's data to handle until the stream ends.
-func readSSE(r io.Reader, handle func([]byte)) error {
-	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 64<<10), _maxMessage)
-	var data []string
-	size := 0
-	flush := func() {
-		if len(data) > 0 {
-			handle([]byte(strings.Join(data, "\n")))
-			data, size = nil, 0
-		}
-	}
-	for sc.Scan() {
-		line := sc.Text()
-		if line == "" {
-			flush()
-		} else if v, ok := strings.CutPrefix(line, "data:"); ok {
-			v = strings.TrimPrefix(v, " ")
-			if size += len(v); size > _maxMessage {
-				return errors.New("mcp: sse event exceeds the message cap")
-			}
-			data = append(data, v)
-		}
-	}
-	flush()
-	return sc.Err()
-}
+func (e redacted) Error() string { return e.text }
+func (e redacted) Unwrap() error { return e.err }

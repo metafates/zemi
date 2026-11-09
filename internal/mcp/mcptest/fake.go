@@ -107,13 +107,14 @@ func (a *Auth) Handler() http.Handler {
 	mux.HandleFunc("/.well-known/oauth-authorization-server/auth", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.MarshalWrite(w, map[string]any{
-			"authorization_endpoint": a.base() + "/auth/authorize",
-			"token_endpoint":         a.base() + "/auth/token", "registration_endpoint": a.base() + "/auth/register",
+			"issuer": a.base() + "/auth", "authorization_endpoint": a.base() + "/auth/authorize",
+			"token_endpoint": a.base() + "/auth/token", "registration_endpoint": a.base() + "/auth/register",
+			"code_challenge_methods_supported": []string{"S256"},
 		}, json.Deterministic(true))
 	})
 	mux.HandleFunc("/auth/register", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.MarshalWrite(w, map[string]any{"client_id": "fake"}, json.Deterministic(true))
+		_ = json.MarshalWrite(w, map[string]any{"client_id": "fake", "token_endpoint_auth_method": "none"}, json.Deterministic(true))
 	})
 	mux.HandleFunc("/auth/authorize", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
