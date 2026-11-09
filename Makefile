@@ -1,6 +1,6 @@
 GO_FILES = $(shell git ls-files -co --exclude-standard '*.go')
 
-.PHONY: all build run site first-run mcp-auth test race flake cover vet lint fmt golden luals stylua gofmt shellcheck astgrep check install clean
+.PHONY: all build run site first-run mcp-auth test race flake cover vet lint fmt golden luals stylua gofmt shellcheck astgrep check install clean clean-db
 
 LUALS ?= lua-language-server
 STYLUA ?= stylua
@@ -125,3 +125,9 @@ install:
 
 clean:
 	rm -rf bin
+
+# delete the store databases under the state home (ZEMI_STATE_HOME,
+# default ~/.local/state/zemi): the squash left pre-squash stores
+# unmigrated, this lets the next boot start fresh
+clean-db:
+	@find "$${ZEMI_STATE_HOME:-$$HOME/.local/state/zemi}" \( -name 'zemi.db' -o -name 'zemi.db-*' \) -type f -print -delete
