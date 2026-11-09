@@ -37,7 +37,7 @@ usage: zemi-lab [-n name] command [args]
   records            the OSC 7501 records the terminal holds (rex lab)
   title              the pane title
   last               the selected window's last request body
-  db | logs | status | health [args...]
+  db | logs | status
   attach             how to watch this lab
   down [--keep]      quit zemi, kill the sessions and server, delete the
                      tree; a plain down also re-tears a kept tree
@@ -1126,10 +1126,6 @@ if hits == 0:
 PYEOF
 }
 
-cmd_health() {
-	"$DIR/zemi-safe" "$TREE" -C "$TREE/proj" health "$@"
-}
-
 cmd_attach() {
 	load
 	case $BACKEND in
@@ -1258,7 +1254,6 @@ case "$CMD" in
 	db) load; cmd_db "$@" ;;
 	logs) load; cmd_logs "$@" ;;
 	status) load; cmd_status "$@" ;;
-	health) load; cmd_health "$@" ;;
 	attach) load; cmd_attach "$@" ;;
 	down) cmd_down "$@" ;;
 	*) usage ;;

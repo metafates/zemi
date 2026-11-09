@@ -2159,9 +2159,9 @@ zemi.health = {}
 
 --- Add a row to /health. The check runs under the 50 ms handler deadline
 --- and may return a detail string instead of a table. Adding a name again
---- replaces its row, but not another plugin's. `zemi health`
---- runs it right after boot, before work started on `app.ready` has
---- reported, so a row over such state says it is not read yet.
+--- replaces its row, but not another plugin's. `/health` runs it on open;
+--- work started on `app.ready` may not have reported yet, so a row over
+--- such state says it is not read yet.
 ---
 --- ```lua
 --- zemi.health.add("branch", function()

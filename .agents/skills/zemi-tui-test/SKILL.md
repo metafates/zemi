@@ -98,8 +98,7 @@ debounced, so a first action fired at once can run ungated (the gate races the d
 pause a beat after planting or expect the second action to ask; mid-turn the first one
 starts before the plugin re-loads and the one after it asks. `zemi-lab attach` sits at the
 lab in a real terminal (tmux; from a tool shell it prints the raw `open terminal failed:
-not a terminal` - expected) or prints how to open it (Rex). `zemi-lab health [args...]`
-runs `zemi-safe health` against the lab tree.
+not a terminal` - expected) or prints how to open it (Rex).
 
 ## The fake model
 

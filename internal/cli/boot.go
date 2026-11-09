@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -64,7 +63,7 @@ func launch(o options) int {
 		return 1
 	}
 	ctx := context.Background()
-	host, trust, log, closeLog, err := bootHost(o, false)
+	host, trust, log, closeLog, err := bootHost(o)
 	if err != nil {
 		return fail(err)
 	}
@@ -214,8 +213,8 @@ func newHost(dirs config.Dirs, log *slog.Logger, o options) (*hostapi.Host, *tru
 	return host, trust
 }
 
-// hostSteps is the boot of a zemi; app is nil headless (zemi health, a
-// completion), where nothing quits and a failing step says so on stderr.
+// hostSteps is the boot of a zemi; app is nil headless (the boot bench),
+// where nothing quits and a failing step says so on stderr.
 func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App) []lua.BootStep {
 	quit := func() {}
 	if app != nil {
@@ -233,46 +232,30 @@ func hostSteps(h *hostapi.Host, trust *trustGate, app *ui.App) []lua.BootStep {
 	)
 }
 
-// bootHost is the prologue a TUI boot and a headless one (zemi health, a
-// completion) share: this run's dirs, the log, the host and the trust gate
-// its steps read. An inert boot (a completion) only reads
-// config: no store, no log file, no process. closeLog releases the log, the
-// one-instance lock and, for an inert boot, the process refusal.
-func bootHost(o options, inert bool) (*hostapi.Host, *trustGate, *slog.Logger, func(), error) {
+// bootHost is the prologue a TUI boot and a headless one share: this run's
+// dirs, the log, the host and the trust gate its steps read. closeLog
+// releases the log and the one-instance lock.
+func bootHost(o options) (*hostapi.Host, *trustGate, *slog.Logger, func(), error) {
 	dirs := o.dirs
-	if !inert {
-		if err := dirs.Ensure(); err != nil {
-			return nil, nil, nil, nil, err
-		}
+	if err := dirs.Ensure(); err != nil {
+		return nil, nil, nil, nil, err
 	}
-	hostDirs, logDir, release := dirs, dirs.LogDir(), func() {}
-	if inert {
-		hostDirs.StateHome, logDir, release = "", "", proc.Refuse()
+	unlock, err := lockInstance(dirs)
+	if err != nil {
+		return nil, nil, nil, nil, err
 	}
-	unlock := func() {}
-	if !inert {
-		u, err := lockInstance(dirs)
-		if err != nil {
-			return nil, nil, nil, nil, err
-		}
-		unlock = u
-	}
-	log, level, path, closeLog := logging.New(logDir)
-	host, trust := newHost(hostDirs, log, o)
+	log, level, path, closeLog := logging.New(dirs.LogDir())
+	host, trust := newHost(dirs, log, o)
 	host.UseLogFile(level, path)
 	host.GoSafe("boot sweep", host.SweepBoot)
-	// the saved decision reads this run's dirs, which an inert boot did not open
-	trust.dirs = dirs
 	return host, trust, log, func() {
 		host.Log.Info("zemi stopped")
 		closeLog()
-		release()
 		unlock()
 	}, nil
 }
 
-// lockedError is the one-instance refusal; the TUI's launch dresses it like
-// a tip, the headless paths print its plain words.
+// lockedError is the one-instance refusal; launch dresses it like a tip.
 type lockedError struct {
 	pid int
 	msg string
@@ -305,38 +288,6 @@ func lockInstance(dirs config.Dirs) (func(), error) {
 	}
 	_ = os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())), 0o600)
 	return unlock, nil
-}
-
-// bootHeadless boots zemi with no TUI, for zemi health and the
-// flag completions; done stops what boot started (MCP and language servers)
-// and closes the log. stderr gets its diagnostics. A non-inert boot applies
-// the run's flags; an id no provider names fails the run, where the TUI
-// would toast it.
-func bootHeadless(o options, inert bool, stderr io.Writer) (*hostapi.Host, func(), error) {
-	h, trust, _, closeLog, err := bootHost(o, inert)
-	if err != nil {
-		return nil, nil, err
-	}
-	h.Inert, h.Stderr = inert, stderr
-	// a project with no saved decision runs untrusted instead of asking; the
-	// health row and --trust say what that turns off
-	trust.ask = headlessTrust()
-	done := func() {
-		proc.KillAll()
-		h.Close() // the run's stores and runtime end with it
-		closeLog()
-	}
-	steps := hostSteps(h, trust, nil)
-	markConfig := func() {}
-	if !inert {
-		markConfig = setReload(h, steps, nil)
-	}
-	if err := h.RT.Boot(context.Background(), steps); err != nil {
-		done()
-		return nil, nil, err
-	}
-	markConfig()
-	return h, done, nil
 }
 
 // pathClasses is where each origin's files live (DESIGN §5).
@@ -586,8 +537,7 @@ const _initStep = "init"
 // from stopping boot: the error goes to the log and
 // /errors, and the remaining steps and the runtime still start, like
 // neovim reporting an init.lua error and opening anyway. Headless there is
-// no /errors to open, so the error goes to stderr as well: otherwise a
-// zemi health run reads green over a boot that failed to load its config.
+// no /errors to open, so the error goes to stderr as well.
 func softStep(h *hostapi.Host, headless bool, s lua.BootStep) lua.BootStep {
 	run := s.Run
 	s.Run = func(ctx context.Context, r *lua.Runtime, g *lua.Generation) error {
@@ -632,7 +582,7 @@ func (tg *trustGate) step() lua.BootStep {
 			trusted, err := tg.decide()
 			tg.h.SetProjectTrusted(trusted)
 			// .agents/worktrees/.gitignore, so git status never lists the
-			// checkouts. An inert boot (a completion) writes nothing.
+			// checkouts. A boot with no UI writes nothing.
 			if trusted && !tg.h.Inert {
 				if _, werr := tg.dirs.WorktreesIgnore(); werr != nil {
 					tg.h.Log.Warn("cannot write .agents/worktrees/.gitignore", "origin", "trust", "error", werr)

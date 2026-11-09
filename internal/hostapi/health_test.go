@@ -1,12 +1,10 @@
 package hostapi
 
 import (
-	"context"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/lua"
@@ -197,30 +195,6 @@ func TestHealthMCPRow(t *testing.T) {
 			t.Errorf("%v: mcp row = %+v", c.statuses, row)
 		}
 	}
-}
-
-// TestWaitMCP: the wait ends when the last server leaves "starting", or
-// when its context ends.
-func TestWaitMCP(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.mcp.servers = map[string]*mcpServer{}
-	s := &mcpServer{status: "starting"}
-	h.mcp.servers["a"] = s
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	h.WaitMCP(ctx) // returns: ctx is done
-	done := make(chan struct{})
-	go func() { h.WaitMCP(t.Context()); close(done) }()
-	select {
-	case <-done:
-		t.Fatal("returned while a server is starting")
-	case <-time.After(50 * time.Millisecond):
-	}
-	s.mu.Lock()
-	s.status = "failed"
-	s.mu.Unlock()
-	<-done
 }
 
 // TestNotifyStyle: the native style falls back to a bell when the notifier

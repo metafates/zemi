@@ -150,8 +150,8 @@ func ShortID() string {
 
 // ErrUnmigrated is a store the embedded migrations have not run on, which a
 // listing command cannot read: the remedy is one real open in its project
-// (zemi health, or the TUI), which migrates - a read never does.
-var ErrUnmigrated = errors.New("store predates this zemi; run zemi health in its project once to migrate it")
+// (a boot of zemi, which migrates - a read never does).
+var ErrUnmigrated = errors.New("store predates this zemi; start zemi in its project once to migrate it")
 
 // ProjectDBPath is the per-project database location: a hash of the
 // project root keeps the filename filesystem-safe. The caller passes the

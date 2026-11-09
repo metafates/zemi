@@ -99,7 +99,6 @@ func TestCLI(t *testing.T) {
 		{name: "print flag is gone", args: []string{"-p", "hi"}, code: 2, stderr: "unknown shorthand flag: 'p'"},
 		{name: "trust false", args: []string{"--trust=false"}, want: &options{trust: new(false)}},
 		{name: "version", args: []string{"--version"}, stdout: "zemi "},
-		{name: "health takes no args", args: []string{"health", "x"}, code: 2, stderr: "Run 'zemi health --help'"},
 		{name: "a failure is 1", args: []string{"db", "select * from nope"}, code: 1, stderr: `zemi: db: SQL logic error: no such table: nope`},
 		// the TUI's chat opens on the log's tail; the CLI keeps no session surface
 		{name: "projects lists", args: []string{"projects"}, stdout: "  undecided     1  " + dirs.TrustRoot() + "\n"},
@@ -124,7 +123,7 @@ func TestCLI(t *testing.T) {
 		{name: "the delete took", args: []string{"plugin", "list"}, stdout: "rub", notStdout: "zzq"},
 		{name: "completion script", args: []string{"completion", "fish"}, stdout: "complete -c zemi"},
 		{name: "complete a plugin name", args: []string{"__complete", "plugin", "enable", ""}, stdout: "rub\n"},
-		{name: "-C a missing dir", args: []string{"-C", "nope", "health"}, code: 1, stderr: "zemi: health: -C nope: no such file or directory"},
+		{name: "-C a missing dir", args: []string{"-C", "nope", "projects"}, code: 1, stderr: "zemi: projects: -C nope: no such file or directory"},
 		{name: "-C a dir", args: []string{"-C", dir}, want: &options{dir: dir}},
 		{name: "scratch is trusted for the run", args: []string{"--scratch"}, want: &options{scratch: true, trust: new(true)}},
 		{name: "scratch and -C collide", args: []string{"--scratch", "-C", dir}, code: 1, stderr: "none of the others can be"},
@@ -320,13 +319,6 @@ func TestTrustCommand(t *testing.T) {
 	}
 }
 
-// TestHeadlessTrust: a headless run with no saved decision never trusts.
-func TestHeadlessTrust(t *testing.T) {
-	if got := headlessTrust()("/repo", "/repo", ""); got != "later" {
-		t.Fatalf("answer %q", got)
-	}
-}
-
 func newTrustGate(t *testing.T) (*trustGate, *hostapi.Host, *lua.Runtime) {
 	t.Helper()
 	project := t.TempDir()
@@ -339,9 +331,9 @@ func newTrustGate(t *testing.T) (*trustGate, *hostapi.Host, *lua.Runtime) {
 	return &trustGate{h: h, dirs: dirs}, h, r
 }
 
-// TestTrustGateInertWritesNothing: zemi health and a completion
-// boot the project trust step too, and an inert boot may not leave a
-// .agents/worktrees/.gitignore in the user's repository.
+// TestTrustGateInertWritesNothing: a boot with no UI runs the project trust
+// step too, and may not leave a .agents/worktrees/.gitignore in the user's
+// repository.
 func TestTrustGateInertWritesNothing(t *testing.T) {
 	for _, c := range []struct {
 		name       string

@@ -12,9 +12,9 @@ The command line is a cobra tree (`execute`): `zemi` opens the TUI, and
 stores read through `store.OpenRead`, which creates, migrates and
 sweeps nothing, runs `query_only` so even a write through it fails, and takes no lock a running zemi waits on;
 one line each, the absolute root at column 36 for `cut -c36-`),
-`db` (one read-only query against the project's store, its first argument whole and the rest bound to `?1`, `?2`, ..., `--global` the global one), `plugin` (bare, it lists), `health`, `docs` (`docs setup` prints short agent-facing notes that point another AI agent at the zemi skill's path, so it can configure zemi; no boot), cobra's `completion` and `help` are subcommands, each declaring its
+`db` (one read-only query against the project's store, its first argument whole and the rest bound to `?1`, `?2`, ..., `--global` the global one), `plugin` (bare, it lists), `docs` (`docs setup` prints short agent-facing notes that point another AI agent at the zemi skill's path, so it can configure zemi; no boot), cobra's `completion` and `help` are subcommands, each declaring its
 `Args` (cobra checks positionals only on the root). The listing ones (`projects`,
-`plugin`, `health`, `plugin marketplace list`) take `--json` (`jsonFlag`): JSON Lines through `writeJSON`, the one writer
+`plugin`, `plugin marketplace list`) take `--json` (`jsonFlag`): JSON Lines through `writeJSON`, the one writer
 every listing shares. Their plain lines share one `table` renderer (aligned columns,
 `paint` over `colorprofile.Detect`, basic ANSI colors and no Lua theme, which they never boot),
 with a header row there only, so a pipe reads the same bytes as always. Exit status 2 is anything that fails before the root's
@@ -28,18 +28,17 @@ run's other flags are left behind. The TUI takes a terminal on stdin and stdout,
 a pipe on either.
 Completion offers plugin names
 from `plugin.Scan`; `completionDirs` applies `-C`, since cobra runs no hook before a
-completion function. A completion boots
-inert (`bootHeadless` with `Host.Inert`): no store, no log file, `proc.Refuse`, and four
-guards (`resolveModel` calls no model, `luaGate` refuses all but reads, `addMCP` starts no
-server, `installNamespaces` syncs no files), so a tab press runs nothing config asks for.
+completion function. A completion runs no boot: no store, no log file, no process.
+A host with no UI keeps the guards for it (`resolveModel` calls no model, `luaGate`
+refuses all but reads, `addMCP` starts no server, `installNamespaces` syncs no files),
+so a turn nobody sees runs nothing config asks for.
 Flags apply after boot so they win over `init.lua`, except `--trust`, which the trust boot step
 reads. `/model <provider/model>` and `zemi.model.set` write `models.default`, so a pick moves what the
 conversation runs on.
 `Host.SetModel` parses the rest of `/model` and `Host.CompleteModel` offers the same grammar.
 
-`zemi health` boots headless (`bootHeadless`, the TUI's
-steps without it; its `stderr` is `Host.Stderr`). None of them sends a prompt: a host with no
-UI never runs a turn. It still drops what
+A host with no
+UI (the plugin test, the boot bench) never runs a turn. It still drops what
 needs a user (`_headlessExcluded`: a no-UI host cannot answer a question or approve a plan).
 With no UI `Host.Notify` prints a
 warning or an error to `Host.Stderr` as "zemi: <title>: <body>", so an early failure is never
@@ -112,8 +111,7 @@ this run. Every runtime write goes through `Host.writeSetting` (`setWatched`, an
 `zemi.config.set` and `zemi.model.set` past boot), whose `keepPick` keeps the value in the
 global store's kv as `config:<path>`, or deletes the row when the value is `cfgBase` (config's
 last write when init.lua wrote the key, else the default). It keeps nothing while booting or
-before `Host.KeepPicks`, which launch turns on after the TUI's flags apply, so a flag and
-`zemi health` keep none.
+before `Host.KeepPicks`, which launch turns on after the TUI's flags apply, so a flag keeps none.
 `NewHost` applies the rows before any Lua (`loadPicks`, each through `Settings.Check`), so init.lua still wins; per user, not per project.
 A plugin key's row waits unchecked in `picked` until `zemi.config.add` registers the key and
 applies it, and `sweepPluginState` drops a deleted or reinstalled plugin's rows.

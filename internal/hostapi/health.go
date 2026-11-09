@@ -515,25 +515,6 @@ func (h *Host) HealthRows() []HealthRow {
 	return append(h.goHealthRows(), h.luaHealthRows()...)
 }
 
-// WaitMCP returns once no MCP server is starting, or when ctx ends. A
-// command-line run calls it first: its one send builds the tool set, and a
-// server that is not ready then has no tools in it.
-func (h *Host) WaitMCP(ctx context.Context) {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second) // startMCP's own cap
-	defer cancel()
-	for slices.ContainsFunc(h.mcp.list(), func(s *mcpServer) bool {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		return s.status == StatusStarting
-	}) {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(20 * time.Millisecond):
-		}
-	}
-}
-
 // _healthActions labels the command a check's detail view runs; its initial
 // is the key.
 var _healthActions = map[string]string{"errors": "Show errors", "trust": "Change trust", "mcp": "Open MCP servers", "plugin": "Open plugins"}
@@ -552,7 +533,7 @@ func healthAction(run string) (label, key string, ok bool) {
 func (h *Host) OpenHealth() error {
 	ui, err := h.Screen()
 	if err != nil {
-		return fmt.Errorf("%w; zemi health prints the checks", err)
+		return err
 	}
 	// A Go command runs on the key loop, and the checks do file IO and call
 	// Lua under the veto deadline: collect them off it, then open.

@@ -33,7 +33,6 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/sanitize"
-	"github.com/metafates/zemi/internal/ui"
 )
 
 // _envHelp ends the root's help only.
@@ -214,23 +213,7 @@ With no command zemi opens the TUI.`,
 	root.PersistentFlags().Bool("trust", false, "trust the project for this run; --trust=false does not")
 	_ = root.MarkPersistentFlagDirname("cd")
 
-	var healthJSON *bool
-	health := &cobra.Command{
-		Use:   "health",
-		Short: "run the /health checks; 1 if any failed",
-		Args:  cobra.NoArgs,
-		RunE: func(c *cobra.Command, _ []string) error {
-			h, done, err := bootHeadless(*o, false, os.Stderr) // the trust row says it
-			if err != nil {
-				return err
-			}
-			defer done()
-			return status(printHealth(h, c.OutOrStdout(), *healthJSON))
-		},
-	}
-	healthJSON = jsonFlag(health)
-
-	root.AddCommand(projectsCommand(o), pluginCommand(o), dbCommand(o), health, docsCommand(o), updateCommand(o))
+	root.AddCommand(projectsCommand(o), pluginCommand(o), dbCommand(o), docsCommand(o), updateCommand(o))
 	return root
 }
 
@@ -922,47 +905,6 @@ func (o *options) readStdin(stdin *os.File) error {
 	}
 	msg := "stdin is piped; the TUI does not read it"
 	return errors.New(msg)
-}
-
-// headlessTrust answers the trust prompt when nobody can: not now.
-func headlessTrust() func(root, cwd, state string) string {
-	return func(root, _, _ string) string {
-		return ui.TrustLater
-	}
-}
-
-// printHealth writes the /health checks for a headless run; any failed
-// check makes the exit status 1, so a script can gate on it. MCP servers
-// settle first, so their row says what a run would get.
-func printHealth(h *hostapi.Host, stdout io.Writer, asJSON bool) int {
-	ctx, stop := signalContext()
-	defer stop()
-	if h.WaitMCP(ctx); ctx.Err() != nil {
-		return _interrupted
-	}
-	code, p := 0, colorprofile.Detect(stdout, os.Environ())
-	rows := h.HealthRows()
-	t := table{p: p, cols: []tableCol{
-		{role: "status", width: 5},
-		{role: ""},
-		{role: ""},
-	}}
-	for _, r := range rows {
-		if r.Level == hostapi.HealthError {
-			code = 1
-		}
-		if asJSON {
-			writeJSON(stdout, struct {
-				Level  hostapi.HealthLevel `json:"level"`
-				Name   string              `json:"name"`
-				Detail string              `json:"detail"`
-			}{Level: r.Level, Name: r.Name, Detail: r.Detail})
-			continue
-		}
-		t.row(string(r.Level), r.Name, r.Detail)
-	}
-	t.print(stdout)
-	return code
 }
 
 // signalContext ends on an interrupt, a kill or the terminal closing, which

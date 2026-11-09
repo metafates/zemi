@@ -30,7 +30,7 @@
    ```
 
    It is the frame the user is looking at, at their real terminal width, with styling and padding dropped (a plugin's overlay and its rows are checked by `test.overlay` in its tests, `plugins.md`). Save one before a change and one after and diff them. Colors and attributes do not survive it, so for a highlight question read the group in `internal/hostapi/themes.go` and run `make golden`, whose frames keep the truecolor SGRs. A layout question is `internal/ui/layout.go`'s `screen` tree, or the golden frame's rows. SKILL.md's Check a change runs these reads as one script against a config change.
-5. A `print()` or `zemi.log` line from config code (a keymap, a timer, an event handler) is in `/logs` and `zemi.log.list()`, the last 100, newest first. Without a TUI (`zemi health`) it goes only to the log file, as `msg="print: ..."` lines.
+5. A `print()` or `zemi.log` line from config code (a keymap, a timer, an event handler) is in `/logs` and `zemi.log.list()`, the last 100, newest first. Without a TUI it goes only to the log file, as `msg="print: ..."` lines.
 6. Read the log of the run (reading the log directory needs the user's approval: MCP and LSP server output is logged as written and may hold tokens). One file per start:
 
    ```sh

@@ -6,6 +6,7 @@
 package cli
 
 import (
+	"context"
 	"io"
 	"path/filepath"
 	"strings"
@@ -27,10 +28,17 @@ func BenchmarkBootHeadless(b *testing.B) {
 		b.Fatal(err)
 	}
 	for b.Loop() {
-		_, done, err := bootHeadless(options{dirs: dirs}, false, io.Discard)
+		h, trust, _, closeLog, err := bootHost(options{dirs: dirs})
 		if err != nil {
 			b.Fatal(err)
 		}
-		done()
+		h.Stderr = io.Discard
+		if err := h.RT.Boot(context.Background(), hostSteps(h, trust, nil)); err != nil {
+			h.Close()
+			closeLog()
+			b.Fatal(err)
+		}
+		h.Close()
+		closeLog()
 	}
 }

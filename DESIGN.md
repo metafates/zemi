@@ -803,7 +803,7 @@ A runtime pick outlives the process: the global store keeps it per key as
 and a start applies the rows before any Lua. The layers are schema default <
 saved pick < init.lua < this run: init.lua always wins a restart, and a pick
 over a key it sets lasts the run. A pick back to what the key would be without
-it forgets the row. Flags and `zemi health` keep nothing. zemi never edits
+it forgets the row. Flags keep nothing. zemi never edits
 init.lua; `/config lua` shows the settings as lines to copy, and the agent edits
 config files through the gated file tools. zemi makes no commits.
 
@@ -1783,7 +1783,7 @@ table naming the reader's or writer's settings (an unknown name raises;
 `insert`, `submit`, `history_prev`, `history_next`, `paste`, `edit`, over
 a snapshot the UI publishes and edits it applies on its own goroutine;
 the same actions are `zemi.composer.*` keymap strings), `zemi.health` (`add(name, fn)`,
-whose rows join the Go checks in `/health` and `zemi health`, and `list`, which reads
+whose rows join the Go checks in `/health`, and `list`, which reads
 those rows back from Lua),
 `zemi.workflow` (`run`, `list`; inside a workflow script `agent`, `parallel`, `pipeline`,
 `phase`, `log` and `args` instead), `zemi.lsp` (`add`, `del`, `list`),
@@ -2463,7 +2463,7 @@ view; a reset's wipe drops the row with the chat.
   | `zemi plugin marketplace list` | `name`, `source`, `added`, `entries`; an unreadable manifest an `error` |
   | `zemi projects` | `root`, `trust`, `used`, `sessions`, `stats_error` |
   | `zemi plugin` | `name`, `version`, `local`, `enabled`, `source`, `uses` |
-  | `zemi health` | `level`, `name`, `detail`; an `error` level makes the exit status 1 |
+
 - **Golden tests**: the TUI paints a frame of segments into a string;
   golden files of whole frames, one per screen and state, via `charmbracelet/x/exp/golden`
   (`make golden`, which runs `go test ./internal/ui -update`, then the diff is read).

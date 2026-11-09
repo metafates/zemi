@@ -150,7 +150,7 @@ func TestOpenReadUnmigrated(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := OpenRead(path)
-	if !errors.Is(err, ErrUnmigrated) || !strings.Contains(err.Error(), perm.TildePath(path)) || !strings.Contains(err.Error(), "zemi health") {
+	if !errors.Is(err, ErrUnmigrated) || !strings.Contains(err.Error(), perm.TildePath(path)) || !strings.Contains(err.Error(), "start zemi") {
 		t.Fatalf("a 0-byte store: %v, want ErrUnmigrated naming the store and the remedy", err)
 	}
 
