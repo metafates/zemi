@@ -27,6 +27,12 @@ func chipLine(p colorprofile.Profile, chip string, c chip) string {
 	return line + " " + c.text
 }
 
+// Chip draws one chip line: a bold label naming the kind of word (busy,
+// update) and the text after it, in the terminal's own colors.
+func Chip(w io.Writer, name, text string) string {
+	return chipLine(colorprofile.Detect(w, os.Environ()), " "+name+" ", chip{text: text})
+}
+
 // Busy is the one-instance refusal: a chip names the trouble, the holder's
 // pid rides as the keycap when the lock knows it.
 func Busy(w io.Writer, pid int) string {
@@ -35,9 +41,4 @@ func Busy(w io.Writer, pid int) string {
 		c.key = "pid " + strconv.Itoa(pid)
 	}
 	return chipLine(colorprofile.Detect(w, os.Environ()), " busy ", c)
-}
-
-// Update is the parting notice that a newer release is available.
-func Update(w io.Writer) string {
-	return chipLine(colorprofile.Detect(w, os.Environ()), " update ", chip{text: "a new version is available; run `zemi update`"})
 }

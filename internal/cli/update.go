@@ -2,9 +2,10 @@ package cli
 
 // update.go is the release check: once a day, opening the TUI, zemi asks the
 // module proxy whether a newer tag exists, remembers one and says so when it
-// exits; `zemi update` installs the latest tag. No version is ever named to
-// the user: the remembered one can go stale, the installed one is what the
-// proxy resolves at install time.
+// exits; `zemi update` installs the latest tag. A build is at or past the tag
+// its version names (v0.1.0+6dd0c22.dirty), so only a strictly greater tag
+// moves it. No version is ever named to the user: the remembered one can go
+// stale, the installed one is what the proxy resolves at install time.
 
 import (
 	"context"
@@ -26,6 +27,7 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/proc"
 	"github.com/metafates/zemi/internal/store"
+	"github.com/metafates/zemi/internal/ui"
 )
 
 const (
@@ -42,12 +44,9 @@ func checkForUpdate(h *hostapi.Host) {
 	if h.GlobalDB == nil || !h.Settings.Bool(config.KeyUpdatesCheck) {
 		return
 	}
-	cur := baseVersion(h.Version)
-	if cur == "" { // a build with no tag: nothing to compare against
-		return
-	}
+	cur := h.Version
 	if raw, err := h.GlobalDB.GetKV(_kvUpdateLatest); err == nil {
-		if latest, uerr := strconv.Unquote(raw); uerr == nil && semver.Compare(latest, cur) <= 0 {
+		if latest, uerr := strconv.Unquote(raw); uerr == nil && !newerRelease(latest, cur) {
 			_, _ = h.GlobalDB.DelKV(_kvUpdateLatest) // this build caught up; checking resumes
 		}
 		return // a newer version is already remembered: it installs before we ask again
@@ -64,9 +63,19 @@ func checkForUpdate(h *hostapi.Host) {
 		return
 	}
 	_ = h.GlobalDB.SetKV(_kvUpdateSeen, strconv.FormatInt(time.Now().Unix(), 10))
-	if semver.Compare(latest, cur) > 0 {
+	if newerRelease(latest, h.Version) {
 		_ = h.GlobalDB.SetKV(_kvUpdateLatest, strconv.Quote(latest))
 	}
+}
+
+// newerRelease says whether latest is a release this build should move to:
+// the build answers to its base tag plus an optional commit suffix
+// (v0.1.0+6dd0c22.dirty), so it is at or past that tag already, and a build
+// with no tag ("dev+6dd0c22") is past every tag the proxy can name. Only a
+// strictly greater tag counts; prerelease tags order below their release.
+func newerRelease(latest, version string) bool {
+	base := baseVersion(version)
+	return base != "" && semver.IsValid(latest) && semver.Compare(latest, base) > 0
 }
 
 // updatePending says whether a remembered release is still newer than this
@@ -80,7 +89,7 @@ func updatePending(h *hostapi.Host) bool {
 		return false
 	}
 	latest, err := strconv.Unquote(raw)
-	return err == nil && semver.Compare(latest, baseVersion(h.Version)) > 0
+	return err == nil && newerRelease(latest, h.Version)
 }
 
 // baseVersion strips what the build added to its tag (v0.1.0+6dd0c22.dirty);
@@ -155,6 +164,16 @@ func updateCommand() *cobra.Command {
 }
 
 func runUpdate(c *cobra.Command) error {
+	say := c.OutOrStdout()
+	cur := versionString()
+	if baseVersion(cur) == "" {
+		fmt.Fprintln(say, ui.Chip(say, "update", "this build is not from a tagged release; nothing to update"))
+		return nil
+	}
+	if latest, err := proxyLatest(c.Context()); err == nil && !newerRelease(latest, cur) {
+		fmt.Fprintln(say, ui.Chip(say, "update", "zemi is up to date"))
+		return nil
+	} // the proxy ask failed: install anyway, @latest resolves it again
 	go_, err := exec.LookPath("go")
 	if err != nil {
 		return errors.New("go is not on PATH; install zemi with `go install " + _module + "@latest`")
@@ -171,10 +190,9 @@ func runUpdate(c *cobra.Command) error {
 	if out := runGo(c, go_, "install", _module+"@latest"); out.err != nil {
 		return fmt.Errorf("%w\n%s", out.err, out.out)
 	}
-	say := c.OutOrStdout()
-	fmt.Fprintln(say, "installed the latest zemi; restart zemi to run it")
+	fmt.Fprintln(say, ui.Chip(say, "update", "installed the latest zemi; restart zemi to run it"))
 	if here, eerr := os.Executable(); eerr == nil && filepath.Clean(here) != filepath.Clean(filepath.Join(gobin, "zemi")) {
-		fmt.Fprintf(say, "zemi: this run came from %s, the new binary went to %s\n", here, filepath.Join(gobin, "zemi"))
+		fmt.Fprintln(say, ui.Chip(say, "update", "this run came from "+here+"; the new binary went to "+filepath.Join(gobin, "zemi")))
 	}
 	return nil
 }

@@ -19,6 +19,34 @@ func TestBaseVersion(t *testing.T) {
 	}
 }
 
+// TestNewerRelease: a build sits at or past the tag its version names, so
+// only a strictly greater tag is a newer release; a build with no tag is past
+// every tag.
+func TestNewerRelease(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		latest, version string
+		want            bool
+	}{
+		{"v0.1.0", "v0.1.0", false},
+		{"v0.1.0", "v0.1.0+6dd0c22.dirty", false}, // a dev build is past the tag
+		{"v0.1.0", "v0.1.0+6dd0c22", false},
+		{"v0.1.1", "v0.1.0+6dd0c22.dirty", true},
+		{"v0.1.1", "v0.1.1+6dd0c22.dirty", false}, // past the remembered tag too
+		{"v0.1.0", "v0.1.1+6dd0c22.dirty", false},
+		{"v0.1.0", "dev+6dd0c22", false},
+		{"v0.1.0", "dev", false},
+		{"v0.0.9", "v0.1.0", false},
+		{"v0.2.0-rc.1", "v0.1.0", true},
+		{"", "v0.1.0", false},
+		{"garbage", "v0.1.0", false},
+	} {
+		if got := newerRelease(c.latest, c.version); got != c.want {
+			t.Errorf("newerRelease(%q, %q) = %v, want %v", c.latest, c.version, got, c.want)
+		}
+	}
+}
+
 func TestProxyURL(t *testing.T) {
 	for _, c := range []struct {
 		goproxy, want string

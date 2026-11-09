@@ -34,7 +34,7 @@ func TestBusy(t *testing.T) {
 // TestUpdate: the parting notice names no version.
 func TestUpdate(t *testing.T) {
 	t.Parallel()
-	got := Update(&colorprofile.Writer{})
+	got := Chip(&colorprofile.Writer{}, "update", "a new version is available; run `zemi update`")
 	if !strings.Contains(got, "a new version is available; run `zemi update`") {
 		t.Fatalf("update drew %q", got)
 	}

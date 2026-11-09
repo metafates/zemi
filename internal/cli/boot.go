@@ -164,7 +164,7 @@ func launch(o options) int {
 	}
 	// the parting word that a newer zemi is out, every exit while it is
 	if updatePending(host) {
-		fmt.Println("\n" + ui.Update(os.Stdout) + "\n")
+		fmt.Println("\n" + ui.Chip(os.Stdout, "update", "a new version is available; run `zemi update`") + "\n")
 	}
 	return 0
 }
