@@ -90,6 +90,8 @@ func (h *Host) SetTranscript(tr []ChatMessage) {
 	h.session.Transcript, h.view = slices.Clone(tr), nil
 	h.trEpoch.Add(1)
 	h.tMu.Unlock()
+	// the swap follows a wipe: the quiet seqs it kept name the dead log
+	h.quietDropped()
 	h.stampReset(tr)
 	h.scroll(ScrollBottom)
 	h.refresh()
@@ -223,6 +225,38 @@ func (h *Host) stampReset(tr []ChatMessage) {
 	h.stampRow = len(tr)
 	h.stampFrom = h.stampedTail(tr)
 	h.tMu.Unlock()
+}
+
+// recordQuiet notes a log row the transcript draws nothing of: an echo or
+// the reset's own note.
+func (h *Host) recordQuiet(seq int64) {
+	h.trQuiet.mu.Lock()
+	h.trQuiet.seqs = append(h.trQuiet.seqs, seq)
+	h.trQuiet.mu.Unlock()
+}
+
+// quietBelow counts the quiet rows below seq and keeps the count: the head
+// count runs per render, so the subtraction must hold for the same seq.
+func (h *Host) quietBelow(seq int64) int {
+	h.trQuiet.mu.Lock()
+	defer h.trQuiet.mu.Unlock()
+	kept := h.trQuiet.seqs[:0]
+	for _, q := range h.trQuiet.seqs {
+		if q < seq {
+			h.trQuiet.counted++
+		} else {
+			kept = append(kept, q)
+		}
+	}
+	h.trQuiet.seqs = kept
+	return h.trQuiet.counted
+}
+
+// quietDropped forgets the quiet seqs of a log that is gone (a reset's swap).
+func (h *Host) quietDropped() {
+	h.trQuiet.mu.Lock()
+	h.trQuiet.seqs, h.trQuiet.counted = nil, 0
+	h.trQuiet.mu.Unlock()
 }
 
 // stampable reports whether a transcript row comes from a log row the

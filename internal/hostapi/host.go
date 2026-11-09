@@ -584,9 +584,15 @@ type Host struct {
 	// for the rest of a long chat. A whole replacement leaves it; the chat
 	// re-adopts it when the epoch hands it a new window.
 	trCut atomic.Int64
-	// trHeadNote says the log opens with the reset's own note: the transcript
-	// drops it, and the head count must not name it an earlier message.
-	trHeadNote atomic.Bool
+	// trQuiet holds the seqs of the log rows the transcript draws nothing of:
+	// echoes and the reset's own note. They take a seq below the window's
+	// first stamped row all the same, and the head count must not name them
+	// earlier messages. counted is how many the head count has absorbed.
+	trQuiet struct {
+		mu      sync.Mutex
+		seqs    []int64
+		counted int
+	}
 
 	watches *watchReg
 	hookReg *hookReg
@@ -833,7 +839,11 @@ func NewHost(rt *lua.Runtime, log *slog.Logger, settings *config.Store, dirs con
 		// no resume, only more of itself. The tail is read with slack so
 		// its head can sit on a turn start, not an answer's shed remains.
 		if rows, err := h.DB.LogTail(_chatWindowRows * 3); err == nil {
-			h.trHeadNote.Store(len(rows) > 0 && systemNote(rows[0]))
+			for _, row := range rows {
+				if row.Kind == store.KindEcho || systemNote(row) {
+					h.recordQuiet(row.Seq)
+				}
+			}
 			h.session.Transcript = alignTrim(logRows(h.relPath, rows))
 			h.stampReset(h.session.Transcript)
 			h.markDeadTail()

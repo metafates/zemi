@@ -242,13 +242,10 @@ func (h *Host) ScreenState(width, height int, state UIState) *ScreenState {
 		shown := int64(0)
 		for i := range transcript {
 			if transcript[i].Seq != NoSeq {
-				n := max(int(transcript[i].Seq-shown), 0)
-				// the reset's note opens the log and draws nothing: no message
-				// sits behind the window's head on its account
-				if h.trHeadNote.Load() && n > 0 {
-					n--
-				}
-				return n
+				// the quiet rows (echoes, the reset's note) open the log and
+				// draw nothing: no message sits behind the window's head on
+				// their account
+				return max(int(transcript[i].Seq-shown)-h.quietBelow(transcript[i].Seq), 0)
 			}
 			shown++
 		}

@@ -150,7 +150,10 @@ func (c *chatLog) systemNote(text string) error {
 	if err != nil {
 		return err
 	}
-	_, _, err = c.append(store.KindNote, text, string(meta), "")
+	seq, _, err := c.append(store.KindNote, text, string(meta), "")
+	if err == nil {
+		c.h.recordQuiet(seq)
+	}
 	return err
 }
 
@@ -262,6 +265,8 @@ type echoRow struct {
 // Echo logs one tool result, clipped to head and tail: the one kind of long
 // text that is cut, never split. The call's settled row rides the meta, so
 // the rebuilt row draws the diff and the run a live turn drew.
+// Echo logs one tool call's output row: the transcript folds it into the
+// call's own row, so it draws nothing and rides the quiet list.
 func (c *chatLog) Echo(name string, ok bool, output string, call StreamTool) error {
 	status := call.Status
 	if status == "" {
@@ -275,9 +280,11 @@ func (c *chatLog) Echo(name string, ok bool, output string, call StreamTool) err
 		return err
 	}
 	clipped := clipMiddle(tools.StripReminder(output), _echoClipChars)
-	if _, err := c.h.DB.AppendLog(store.KindEcho, clipped, string(meta), "", echoLeaf(name, ok, clipped)); err != nil {
+	seq, err := c.h.DB.AppendLog(store.KindEcho, clipped, string(meta), "", echoLeaf(name, ok, clipped))
+	if err != nil {
 		return err
 	}
+	c.h.recordQuiet(seq)
 	c.wake()
 	return nil
 }

@@ -106,6 +106,12 @@ func TestResetChat(t *testing.T) {
 		t.Fatalf("todos %+v survived the reset", todos)
 	}
 
+	// an attachment's echo lands before its user row and draws nothing of the
+	// log: behind it the fresh chat names no earlier message either
+	if err := h.chat.Echo("attach", true, "<attached-files>x", StreamTool{}); err != nil {
+		t.Fatal(err)
+	}
+
 	// a next turn works, behind the reset's note, and the log restarts at 0
 	replyStub(t, h, "fresh reply")
 	if err := h.AgentSend("again"); err != nil {
@@ -113,8 +119,8 @@ func TestResetChat(t *testing.T) {
 	}
 	waitIdle(t, h)
 	rows, err := h.DB.LogFrom(0, 10)
-	if err != nil || len(rows) != 3 || rows[0].Seq != 0 || rows[0].Kind != store.KindNote ||
-		rows[1].Kind != store.KindUser || rows[2].Kind != store.KindAgent {
+	if err != nil || len(rows) != 4 || rows[0].Seq != 0 || rows[0].Kind != store.KindNote ||
+		rows[1].Kind != store.KindEcho || rows[2].Kind != store.KindUser || rows[3].Kind != store.KindAgent {
 		t.Fatalf("the next turn logged %+v, %v", rows, err)
 	}
 	waitFor(t, func() error {
@@ -123,11 +129,11 @@ func TestResetChat(t *testing.T) {
 		}
 		return nil
 	})
-	if tr := h.Session().Transcript; len(tr) == 0 || tr[0].Text != "again" || tr[0].Seq != 1 {
+	if tr := h.Session().Transcript; len(tr) == 0 || tr[0].Text != "again" || tr[0].Seq != 2 {
 		t.Fatalf("the chat restarted with %+v", tr)
 	}
-	// the reset's note sits at seq 0 below the window's head, but it draws
-	// nothing: no earlier message stands behind the fresh chat
+	// the reset's note and the attachment's echo sit below the window's head
+	// and draw nothing: no earlier message stands behind the fresh chat
 	if n := h.ScreenState(80, 24, UIState{}).LogRows(); n != 0 {
 		t.Fatalf("the fresh chat names %d earlier messages, want none", n)
 	}
