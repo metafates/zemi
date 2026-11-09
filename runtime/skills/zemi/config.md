@@ -56,7 +56,7 @@ A slot is a target as well: `zemi.model.add(name, { desc, model, classify = true
 - `lsp.auto`: under MCP and language servers.
 - `log.level`: what the launch log file records, `debug` (default), `info`, `warn` or `error`; one file per start under `~/.local/state/zemi/logs`, pruned to the newest 20 before the new one is written (so a fresh log can leave 21; `/logs` names the current one).
 
-- `agent.max_background`, `session.recap` (a duration; `0` turns the recap off), `ui.cursor` (the input caret's shape: `bar`, `block` or `underline`), `ui.mouse` and `ui.tips` (the tip line zemi prints as it exits): the schema's description covers them.
+- `agent.max_background`, `session.recap` (a duration; `0` turns the recap off), `ui.cursor` (the input caret's shape: `bar`, `block` or `underline`), `ui.mouse` and `updates.check` (the daily release check, its exit notice and `zemi update`): the schema's description covers them.
 
 ## Permissions
 

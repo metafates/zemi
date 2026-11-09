@@ -35,7 +35,7 @@ const (
 	KeyUIMouse            Key = "ui.mouse"
 	KeyUINotify           Key = "ui.notify"
 	KeyUICursor           Key = "ui.cursor"
-	KeyUITips             Key = "ui.tips"
+	KeyUpdatesCheck       Key = "updates.check"
 	KeyLogLevel           Key = "log.level"
 )
 
@@ -171,7 +171,7 @@ func (s *Store) defineDefaults() {
 		{Path: KeyUIMouse, Kind: KindBool, Default: true, Desc: "drag to select and copy, click rows (false leaves selection to the terminal)"},
 		{Path: KeyUINotify, Kind: KindString, Default: NotifyOSC, Choices: _notifyStyles, Desc: "how zemi alerts while its window is unfocused, as a turn ends, a prompt waits, or background work completes: osc (default; a terminal notification), native (osascript or notify-send), bell"},
 		{Path: KeyUICursor, Kind: KindString, Default: "bar", Choices: _cursorShapes, Desc: "the input caret's shape: bar (default), block or underline"},
-		{Path: KeyUITips, Kind: KindBool, Default: true, Desc: "the discovery tip zemi prints as one line when it exits; false keeps the exit quiet"},
+		{Path: KeyUpdatesCheck, Kind: KindBool, Default: true, Desc: "check the Go proxy once a day for a newer release, and say so when zemi exits; false keeps zemi off the network and the exit quiet"},
 		{Path: KeyLogLevel, Kind: KindString, Default: "debug", Choices: _logLevels, Desc: "what the launch log file (~/.local/state/zemi/logs) records: debug, info, warn or error"},
 	}
 	for _, def := range defaults {

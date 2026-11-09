@@ -230,7 +230,7 @@ With no command zemi opens the TUI.`,
 	}
 	healthJSON = jsonFlag(health)
 
-	root.AddCommand(projectsCommand(o), pluginCommand(o), dbCommand(o), health, docsCommand(o))
+	root.AddCommand(projectsCommand(o), pluginCommand(o), dbCommand(o), health, docsCommand(o), updateCommand())
 	return root
 }
 

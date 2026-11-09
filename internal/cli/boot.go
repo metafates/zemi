@@ -12,7 +12,6 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
-	"math/rand/v2"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -73,6 +72,7 @@ func launch(o options) int {
 	app := ui.NewApp(host, log)
 	host.SetUIHooks(app)
 	trust.ask = app.AskTrust
+	host.GoSafe("update check", func() { checkForUpdate(host) })
 
 	steps := hostSteps(host, trust, app)
 	p := tea.NewProgram(app)
@@ -162,9 +162,9 @@ func launch(o options) int {
 		closeLog()      // an exec runs no defers
 		return fail(relaunch(dir))
 	}
-	// the parting discovery tip, one exit in five
-	if host.Settings.Bool(config.KeyUITips) && rand.N(5) == 0 {
-		fmt.Println("\n" + ui.Tip(os.Stdout) + "\n")
+	// the parting word that a newer zemi is out, every exit while it is
+	if updatePending(host) {
+		fmt.Println("\n" + ui.Update(os.Stdout) + "\n")
 	}
 	return 0
 }
