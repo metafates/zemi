@@ -1,7 +1,14 @@
 package cli
 
 import (
+	"context"
+	"errors"
+	"path/filepath"
+	"strconv"
 	"testing"
+	"time"
+
+	"github.com/metafates/zemi/internal/store"
 )
 
 func TestBaseVersion(t *testing.T) {
@@ -44,6 +51,39 @@ func TestNewerRelease(t *testing.T) {
 		if got := newerRelease(c.latest, c.version); got != c.want {
 			t.Errorf("newerRelease(%q, %q) = %v, want %v", c.latest, c.version, got, c.want)
 		}
+	}
+}
+
+// TestUpdateCheck: a remembered newer release answers without asking, a
+// build that caught up drops the memory, a day-old answer stands, and a
+// spent day asks the proxy (off here, so the ask says so).
+func TestUpdateCheck(t *testing.T) {
+	t.Setenv("GOPROXY", "off")
+	db, err := store.Open(filepath.Join(t.TempDir(), "zemi.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+
+	if err := db.SetKV(_kvUpdateLatest, strconv.Quote("v99.0.0")); err != nil {
+		t.Fatal(err)
+	}
+	if newer, err := updateCheck(ctx, db, "v0.1.0"); !newer || err != nil {
+		t.Fatalf("remembered newer: newer=%v err=%v", newer, err)
+	}
+
+	_ = db.SetKV(_kvUpdateSeen, strconv.FormatInt(time.Now().Unix(), 10))
+	if newer, err := updateCheck(ctx, db, "v99.1.0"); newer || err != nil {
+		t.Fatalf("caught up within the day: newer=%v err=%v", newer, err)
+	}
+	if _, err := db.GetKV(_kvUpdateLatest); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the stale memory stayed: %v", err)
+	}
+
+	_, _ = db.DelKV(_kvUpdateSeen)
+	if _, err := updateCheck(ctx, db, "v0.1.0"); err == nil {
+		t.Fatal("a spent day with no proxy asked nothing")
 	}
 }
 

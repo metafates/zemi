@@ -37,35 +37,44 @@ const (
 	_updateEvery    = 24 * time.Hour
 )
 
-// checkForUpdate runs on a boot goroutine: at most once a day, and never
-// while a newer version is already remembered, it asks the proxy. Every
+// checkForUpdate runs the daily check on a boot goroutine, silent; every
 // failure is silent — the check tries again the next open.
 func checkForUpdate(h *hostapi.Host) {
 	if h.GlobalDB == nil || !h.Settings.Bool(config.KeyUpdatesCheck) {
 		return
 	}
-	cur := h.Version
-	if raw, err := h.GlobalDB.GetKV(_kvUpdateLatest); err == nil {
-		if latest, uerr := strconv.Unquote(raw); uerr == nil && !newerRelease(latest, cur) {
-			_, _ = h.GlobalDB.DelKV(_kvUpdateLatest) // this build caught up; checking resumes
+	_, _ = updateCheck(context.Background(), h.GlobalDB, h.Version)
+}
+
+// updateCheck is the one check the boot goroutine and `zemi update --check`
+// share: a remembered newer release answers instantly, else at most once a
+// day it asks the proxy and remembers. A build that caught up drops the
+// memory; a failed ask is remembered as nothing and tried again the next
+// open, the error returned for the caller that can show it.
+func updateCheck(ctx context.Context, db *store.DB, version string) (newer bool, err error) {
+	if raw, err := db.GetKV(_kvUpdateLatest); err == nil {
+		if latest, uerr := strconv.Unquote(raw); uerr == nil && newerRelease(latest, version) {
+			return true, nil
 		}
-		return // a newer version is already remembered: it installs before we ask again
+		_, _ = db.DelKV(_kvUpdateLatest) // this build caught up; checking resumes
 	} else if !errors.Is(err, store.ErrNotFound) {
-		return
+		return false, err
 	}
-	if raw, err := h.GlobalDB.GetKV(_kvUpdateSeen); err == nil {
+	if raw, err := db.GetKV(_kvUpdateSeen); err == nil {
 		if t, perr := strconv.ParseInt(raw, 10, 64); perr == nil && time.Since(time.Unix(t, 0)) < _updateEvery {
-			return
+			return false, nil // asked within the day
 		}
 	}
-	latest, err := proxyLatest(context.Background())
+	latest, err := proxyLatest(ctx)
 	if err != nil {
-		return
+		return false, err
 	}
-	_ = h.GlobalDB.SetKV(_kvUpdateSeen, strconv.FormatInt(time.Now().Unix(), 10))
-	if newerRelease(latest, h.Version) {
-		_ = h.GlobalDB.SetKV(_kvUpdateLatest, strconv.Quote(latest))
+	_ = db.SetKV(_kvUpdateSeen, strconv.FormatInt(time.Now().Unix(), 10))
+	if newerRelease(latest, version) {
+		_ = db.SetKV(_kvUpdateLatest, strconv.Quote(latest))
+		return true, nil
 	}
+	return false, nil
 }
 
 // newerRelease says whether latest is a release this build should move to:
@@ -151,16 +160,44 @@ func proxyURL() string {
 }
 
 // updateCommand is `zemi update`: go install the latest tag, then say whether
-// the binary the user runs is the one that got written.
-func updateCommand() *cobra.Command {
-	return &cobra.Command{
+// the binary the user runs is the one that got written; --check runs the
+// daily check against the global store and answers without installing.
+func updateCommand(o *options) *cobra.Command {
+	var check bool
+	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "install the latest tagged zemi",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
+			if check {
+				return runUpdateCheck(c, o)
+			}
 			return runUpdate(c)
 		},
 	}
+	cmd.Flags().BoolVar(&check, "check", false, "only say whether a newer version is available")
+	return cmd
+}
+
+// runUpdateCheck opens the global store the boot check reads and answers with
+// the same words the exit notice uses.
+func runUpdateCheck(c *cobra.Command, o *options) error {
+	global, err := store.Open(filepath.Join(o.dirs.StateHome, "zemi.db"))
+	if err != nil {
+		return err
+	}
+	defer global.Close()
+	newer, err := updateCheck(c.Context(), global, versionString())
+	if err != nil {
+		return err
+	}
+	say := c.OutOrStdout()
+	if newer {
+		fmt.Fprintln(say, ui.Chip(say, "update", "a new version is available; run `zemi update`"))
+	} else {
+		fmt.Fprintln(say, ui.Chip(say, "update", "zemi is up to date"))
+	}
+	return nil
 }
 
 func runUpdate(c *cobra.Command) error {
