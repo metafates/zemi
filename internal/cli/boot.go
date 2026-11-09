@@ -109,21 +109,6 @@ func launch(o options) int {
 			return
 		}
 		markConfig()
-		// an edit made mid-turn applies after it, or at the lua tool's next call
-		host.GoSafe("config watch", func() {
-			t := time.NewTicker(time.Second)
-			defer t.Stop()
-			for {
-				select {
-				case <-stop:
-					return
-				case <-t.C:
-					if !host.AgentActive() {
-						host.ReloadIfChanged()
-					}
-				}
-			}
-		})
 		host.KeepPicks.Store(true)
 		// here, not in app.ready: once per process, never on a reload
 		host.OfferModel()
@@ -739,8 +724,8 @@ func readyStep(h *hostapi.Host, reflect bool) lua.BootStep {
 			case moved:
 			default:
 				// a fetch that moved nothing still rewrote the clones'
-				// FETCH_HEAD, which the watcher reads: the quiet run is not
-				// a config change
+				// FETCH_HEAD, which the reload's fingerprint reads: the
+				// quiet run is not a config change
 				h.MarkConfig()
 			}
 		})

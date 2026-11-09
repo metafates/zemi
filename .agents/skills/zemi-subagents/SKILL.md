@@ -149,8 +149,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
   agent's script is denied outright, never asked. A new API member is guarded until added to
   `_luaReadOnly`; `TestLuaToolDefaultDeny` checks every member. Not a new origin: the gate is a
   flag on the chunk name (`lua-tool#<n>` for an approved run). Runs on the interpreter as a
-  task (10s ceiling per slice), main agent only. Once approved, a changed config reloads
-  before the script (`ReloadIfChanged`), whose note leads the result: the model never
+  task (10s ceiling per slice), main agent only. No reload rides it: config applies only
+  when the user runs `/reload`, and the model never
   schedules a reload, since no caller can outlive the generation its reload retires.
 - **MCP** (mcp.go, internal/mcp): the modelcontextprotocol/go-sdk client behind a small
   facade (stdio, streamable HTTP with JSON or SSE replies, OAuth discovery where a server

@@ -46,8 +46,7 @@ warning or an error to `Host.Stderr` as "zemi: <title>: <body>", so an early fai
 swallowed. A command that opens a screen gets `Host.Screen`'s `ErrNeedsTUI` there, which
 `RunCommand` names ("/help needs the TUI", status 1).
 
-`zemi plugin [verb]` (`pluginCommand`) runs `plugin.Run` and exits (`marketplace list` prints itself from `plugin.Marketplaces`, as the listing commands do): no Lua boot, TUI, trust or store, so it works beside a running TUI, whose config watcher
-reloads on the change. `delete` asks on the terminal, `--yes` answers, and off a terminal it refuses,
+`zemi plugin [verb]` (`pluginCommand`) runs `plugin.Run` and exits (`marketplace list` prints itself from `plugin.Marketplaces`, as the listing commands do): no Lua boot, TUI, trust or store, so it works beside a running TUI. `delete` asks on the terminal, `--yes` answers, and off a terminal it refuses,
 so an agent's command cannot delete a plugin. `test` is the one verb that boots Lua (below). `/plugin` (hostapi/plugincmd.go) takes the same verbs plus `toggle`,
 `open`, `new` and `modify <name> [what to change]`, which send the agent a prompt (they run
 before the UI attaches too) pointing at the zemi skill's plugins.md. A usage error names only its verb's grammar (`pluginsErr`), which fits a toast. Its list is built
@@ -98,9 +97,9 @@ marketplace clone's manifest and `FETCH_HEAD` (the pull's fingerprint, a
 code-only commit included) and each cache clone's `FETCH_HEAD`,
 `pluginRoots`;
 an untrusted project's `.agents` is not in it, a trusted one's is, `worktrees` aside), whose
-baseline every reload moves. Once a second while no turn is active the watcher calls
-`Host.ReloadIfChanged`, which reloads when the fingerprint moved; only the TUI's launch runs the
-watcher. A replay that writes a key the
+baseline every reload moves. Config never reloads on its own: the user runs `/reload`, and the
+only implicit reloads are the ones a user action carries with it - a `/trust` decision and a
+`/plugin toggle`, whose changed-check reads the fingerprint. A replay that writes a key the
 same way as the last boot is skipped (`cfgReplayed`, which `zemi.config.set` and the setters with
 a key of their own, `zemi.model.set`, all
 run a valid value through) and a key the new config writes fewer
@@ -157,7 +156,7 @@ zemi has the store open). Its rows draw from a read kept in the global store's k
 (`projects.stats`), so no project store opens before the list does; the read that refreshes
 them lands behind it (`UIHooks.RefreshOverlay`). `/trust` reopens the prompt off the UI goroutine, saves, and calls `Host.Retrust`, which sets
 the decision and reloads when it changed (a reload that fails before the trust step must not
-leave the old decision in force) under the watcher's lock, so the watcher does not reload first
+leave the old decision in force) under the reload's lock, so no other reload races it
 for the tree the change moved. `Host.ProjectTrusted()` gates project
 `.agents` (`Dirs.ProjectConfigDir`, at the repo root only: skills, agents,
 commands), instruction files (AGENTS.md, else CLAUDE.md, per directory),
@@ -396,8 +395,8 @@ applied one. A store made before goose only gains its version table: the baselin
   `ProjectTrusted`, whether the model takes images, each tool's name and input schema, since a stale
   schema fails calls). `deleteRecipe` clears its key (`dropPin`: `/prompt` and a running turn
   keep the text, and a
-  build a drop overtook is not stored); a reset keeps it, and a reload drops nothing, since the config watcher reloads on
-  any config-tree write, the model's own skill writes included. So instruction files, skills,
+  build a drop overtook is not stored); a reset keeps it, and a reload drops nothing, since config
+  reloads only when the user asks. So instruction files, skills,
   descriptions (saved workflows, agent definitions) and `agent.assemble` output are read only
   when it is built, and a hit costs no file read and no Lua. The one exception, an instruction
   file edited by hand, rides the next user message once (`instructionEdits`, DESIGN §6.3).

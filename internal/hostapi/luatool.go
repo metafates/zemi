@@ -196,8 +196,6 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 		h.scripts.Store(rel, script)
 		defer h.scripts.Delete(rel)
 	}
-	// the script sees what is on disk, and the result says whether it loaded
-	note := h.ReloadIfChanged()
 	out, err := h.runModelLua(ctx, src, rel)
 	switch {
 	case err != nil:
@@ -211,7 +209,7 @@ func (t *luaEvalTool) Run(ctx context.Context, call fantasy.ToolCall) (reply fan
 	case out == "":
 		out = "(no output)"
 	}
-	reply = fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "lua", strings.TrimSpace(note+"\n"+out)))
+	reply = fantasy.NewTextResponse(h.truncOutput(t.pipe.Pad, "lua", strings.TrimSpace(out)))
 	reply.IsError = err != nil
 	return reply, nil
 }

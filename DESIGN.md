@@ -447,13 +447,14 @@ also drops the
 `zemi.state` keys of a plugin whose directory is gone or holds another
 install: the install's id comes from its `marketplaces.json` row, else from
 the clone's `.git`, and the key `plugin:<name>` keeps the one that wrote
-them. The one-second config
-watcher reads `local/` whole, `.zemi` included, the `disabled` file,
-`marketplaces.json`, each marketplace clone's manifest and `FETCH_HEAD`, and
-each cache clone's `FETCH_HEAD`, so an edit, a toggle, an install, a delete
-and - the point of the links - every marketplace pull reload; a pull that
-only moved code moves `FETCH_HEAD`, so the installed plugins follow without
-a manifest change. `readyStep`'s once-per-process work ends with the daily
+them. Config never reloads on its own: it applies when the user runs
+`/reload` (or restarts), and the only implicit reloads are the ones a user
+action carries with it - a `/trust` decision and a `/plugin toggle` (whose
+changed-check is a fingerprint over `local/` whole, `.zemi` included, the
+`disabled` file, `marketplaces.json`, each marketplace clone's manifest and
+`FETCH_HEAD`, and each cache clone's `FETCH_HEAD`; a pull that
+only moved code moves `FETCH_HEAD`, so a `/reload` brings the installed
+plugins along without a manifest change). `readyStep`'s once-per-process work ends with the daily
 sweep: when `marketplaces.json`'s last one is a day old, zemi pulls every
 registered marketplace in the background (`plugins.auto_update`, on by
 default - off only fetches and toasts which marketplaces have updates, the
@@ -1331,9 +1332,8 @@ fails calls: a change there rebuilds it. Otherwise it is rebuilt only
 where the cache is gone anyway: `/skills delete`. Nothing edited
 mid-session moves it: instruction files,
 skills, saved workflows, agent definitions and `agent.assemble`
-handlers wait for the next rebuild, and `/reload` and the config watcher
-rebuild nothing, since the watcher reloads on any config-tree write, the
-model's own skill writes included. The one exception is an instruction
+handlers wait for the next rebuild, and `/reload`
+rebuilds nothing, since config reloads only when the user asks. The one exception is an instruction
 file the prompt holds, or one created where it would load, that the user
 edited by hand: its new text rides the next user message once, in the
 same `<instructions>` block a read uses, unless the model read or wrote

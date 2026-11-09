@@ -107,7 +107,7 @@ this binary's path (`skillNote`); embedded and rewritten to `<data>/builtin-skil
 every sync) and plugin (`skill.Plugin`, each enabled plugin's `skills/`, body only), all in the
 table and enabled by default. A trusted project adds its own (`.agents/skills`): body only,
 enabled, never in the table or `skillsReg`, scanned by `SetProjectTrusted`, which every reload
-runs, so a skill written mid-session loads with the reload the config watcher starts. Recipes (`skill.Recipe`) are the project's
+runs, so a skill written mid-session loads with the next `/reload`. Recipes (`skill.Recipe`) are the project's
 private skills under `<state>/projects/<hash>/skills` (`recipesDir`): trusted only, body only, enabled, and they lose every name clash. The
 pinned prompt (`ag.pin`, below) lists the ones found when it was built; `skillIndex` and
 `enabledSkills` discover the dir live, so a recipe written mid-session loads without moving the
@@ -138,7 +138,7 @@ and drops the pinned prompt. Invariants:
 `runtime/types/zemi.lua` is the LuaLS (`---@meta`) description of the whole `zemi.*` API, never
 loaded by the interpreter. `syncTypes` rewrites it plus a copy of `runtime/lua/` to
 `<data>/types/` on every start, and the `.luarc.json` and `.emmyrc.json` in `<config>` and in each
-local plugin whenever their content moved (an editor reloads on each write; the config watcher
+local plugin whenever their content moved (an editor reloads on each write; the fingerprint
 skips them): the second is EmmyLua's, which reads a lua-language-server severity as an unknown
 value and drops the whole config, zemi's library included. `/workflows` writes both in
 `<state>/scratch` before it opens a run's script. `TestTypes*` keep it

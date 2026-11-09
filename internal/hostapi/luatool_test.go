@@ -3,7 +3,6 @@ package hostapi
 import (
 	"context"
 	"encoding/json/v2"
-	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -14,7 +13,6 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/tools"
 )
@@ -208,55 +206,6 @@ func TestLuaToolPath(t *testing.T) {
 		if !strings.HasPrefix(resp.Content, c.want) || len(ui.asked) != 0 {
 			t.Errorf("%s: %q, %d asks", c.path, resp.Content, len(ui.asked))
 		}
-	}
-}
-
-// TestLuaToolReloads: a script runs on the config on disk, reloaded first
-// when it moved, and the result leads with how the reload went.
-func TestLuaToolReloads(t *testing.T) {
-	for _, c := range []struct {
-		name    string
-		changed bool
-		step    func(h *Host) error // a boot step of the reload; nil fails before the replay
-		want    string
-	}{
-		{"nothing changed, no reload", false, nil, "return: true"},
-		{"a change reloads before the script", true, func(h *Host) error {
-			_, err := h.Settings.SetQuiet("ui.mouse", false)
-			return err
-		}, "(zemi reloaded the changed config)\nreturn: false"},
-		{"errors the reload recorded are listed", true, func(h *Host) error {
-			h.RecordError("boot", "plugins", "plugin x: init.lua:3: boom")
-			h.RecordError("render", "", "not the reload's")
-			return nil
-		}, "(zemi reloaded the changed config; 1 error)\nerror: boot plugins: plugin x: init.lua:3: boom\nreturn: true"},
-		{"a replay that stopped says why", true, func(*Host) error {
-			return errors.New("config: boom")
-		}, "(zemi reloaded the changed config; 1 error)\nerror: boot step config: config: boom\nerror: zemi: lua runtime is hot, reload required"},
-		{
-			"a reload that kept the generation says the old config runs", true, nil,
-			"(the changed config did not load; the old one still runs)\nerror: init.lua:3: unexpected symbol\nreturn: true",
-		},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-			h, _ := newTestHost(t)
-			h.SetProjectTrusted(true)
-			changed := c.changed
-			h.SetReload(func() error {
-				changed = false
-				if c.step == nil {
-					return errors.New("init.lua:3: unexpected symbol")
-				}
-				step := lua.BootStep{Name: "config", Run: func(context.Context, *lua.Runtime, *lua.Generation) error { return c.step(h) }}
-				return h.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep(), step})
-			}, func() bool { return changed })
-			input, _ := json.Marshal(map[string]string{"about": "x", "script": `return zemi.config.get("ui.mouse")`}, json.Deterministic(true))
-			resp, err := h.luaEvalTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "lua", Input: string(input)})
-			if err != nil || resp.Content != c.want || changed {
-				t.Fatalf("%q (%v), still changed %v", resp.Content, err, changed)
-			}
-		})
 	}
 }
 
