@@ -570,8 +570,7 @@ func remove(d config.Dirs, name string) error {
 			dir = "" // the link is gone; nothing else to delete
 		}
 	}
-	// a real tree moves aside first, so the config watcher never loads half
-	// of it
+	// a real tree moves aside first, so a reload never loads half of it
 	if dir != "" {
 		del := filepath.Join(filepath.Dir(dir), "."+name+".del")
 		os.RemoveAll(del)
@@ -1081,7 +1080,6 @@ const _sweepEvery = 24 * time.Hour
 // every marketplace and moves the plugins installed from them, with auto off
 // it only fetches and names the marketplaces whose remote moved. The news
 // lines are the caller's toast, and moved says the marketplaces' material
-// changed, which the config watcher should see. Checked dates only a run
 // that finished clean, so a failed one retries at the next open; the lock
 // keeps two windows from pulling one clone at once.
 func AutoUpdate(ctx context.Context, d config.Dirs, auto bool) (news []string, moved bool, err error) {

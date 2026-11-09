@@ -395,7 +395,7 @@ func maxArgs(n int) cobra.PositionalArgs {
 }
 
 // pluginCommand is zemi plugin: no Lua boot, TUI, trust or store, so it
-// works beside a running TUI, whose config watcher reloads on the change.
+// works beside a running TUI; the change applies on the next /reload.
 func pluginCommand(o *options) *cobra.Command {
 	yes := false
 	// git clones and fetches: an interrupt stops them and exits with 130
