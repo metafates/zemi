@@ -200,16 +200,26 @@ func TestReadStdin(t *testing.T) {
 }
 
 func TestNormalizeVersion(t *testing.T) {
-	for in, want := range map[string]string{
-		"":                             "dev",
-		"(devel)":                      "dev",
-		"v0.0.0-20240101120000-abcdef": "dev",
-		"v0.1.1-0.20260928120000-abcdef123456+dirty": "dev",
-		"v1.2.3":       "v1.2.3",
-		"v1.2.3+dirty": "v1.2.3+dirty",
+	for _, c := range []struct {
+		name  string
+		v     string
+		rev   string
+		dirty bool
+		want  string
+	}{
+		{"no version", "", "", false, "dev"},
+		{"devel", "(devel)", "", false, "dev"},
+		{"no vcs info", "v0.1.1-0.20260928120000-abcdef123456", "", false, "dev"},
+		{"past a tag", "v0.1.1-0.20260928120000-abcdef123456", "abcdef1234567890", false, "v0.1.0+abcdef1"},
+		{"past a tag, dirty", "v0.1.1-0.20260928120000-abcdef123456", "abcdef1234567890", true, "v0.1.0+abcdef1.dirty"},
+		{"no tag reachable", "v0.0.0-20240101120000-abcdef", "abcdef1234567890", false, "dev+abcdef1"},
+		{"exact tag", "v1.2.3", "abcdef1234567890", false, "v1.2.3+abcdef1"},
+		{"exact tag, dirty as go stamps it", "v1.2.3+dirty", "abcdef1234567890", true, "v1.2.3+abcdef1.dirty"},
+		{"exact tag, dirty, no vcs", "v1.2.3+dirty", "", true, "v1.2.3.dirty"},
+		{"release ldflags", "v1.2.3", "", false, "v1.2.3"},
 	} {
-		if got := normalizeVersion(in); got != want {
-			t.Errorf("normalizeVersion(%q) = %q, want %q", in, got, want)
+		if got := normalizeVersion(c.v, c.rev, c.dirty); got != c.want {
+			t.Errorf("%s: normalizeVersion(%q, %q, %v) = %q, want %q", c.name, c.v, c.rev, c.dirty, got, c.want)
 		}
 	}
 }

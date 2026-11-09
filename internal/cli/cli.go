@@ -862,22 +862,55 @@ func confirm(c *cobra.Command, question string) bool {
 
 func versionString() string {
 	if _version != "" {
-		return normalizeVersion(_version)
+		return normalizeVersion(_version, "", false)
 	}
 	if bi, ok := debug.ReadBuildInfo(); ok {
-		return normalizeVersion(bi.Main.Version)
+		var rev string
+		dirty := false
+		for _, s := range bi.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				rev = s.Value
+			case "vcs.modified":
+				dirty = s.Value == "true"
+			}
+		}
+		return normalizeVersion(bi.Main.Version, rev, dirty)
 	}
-	return normalizeVersion("")
+	return normalizeVersion("", "", false)
 }
 
 // normalizeVersion is the one name a build answers to: --version, the
-// splash and /health all print this. A pseudo-version (a commit past a tag,
-// or no tag at all) says nothing to a person, so it reads "dev".
-func normalizeVersion(v string) string {
-	if v == "" || v == "(devel)" || module.IsPseudoVersion(v) {
-		return "dev"
+// splash and /health all print this. The commit and the dirty state come
+// from the build's VCS stamps when it has them (v0.1.0+6dd0c22.dirty);
+// a build with no tag reachable reads "dev+<sha>", one with no VCS info
+// at all leaves "dev".
+func normalizeVersion(v, rev string, dirty bool) string {
+	var tag string
+	switch {
+	case v == "" || v == "(devel)":
+		tag = "dev"
+	case module.IsPseudoVersion(v):
+		if rev == "" {
+			return "dev" // the base tag alone would lie: the build is past it
+		}
+		tag, _ = module.PseudoVersionBase(v)
+	default:
+		tag = v
 	}
-	return v
+	if s, ok := strings.CutSuffix(tag, "+dirty"); ok { // go stamps "+dirty" on the base too
+		tag, dirty = s, true
+	}
+	if tag == "" || tag == "v0.0.0" {
+		tag = "dev"
+	}
+	if len(rev) >= 7 {
+		tag += "+" + rev[:7]
+	}
+	if dirty {
+		tag += ".dirty"
+	}
+	return tag
 }
 
 // readStdin refuses a piped stdin: the TUI needs the terminal on it.
