@@ -30,6 +30,9 @@ type widget struct {
 	// dip dips the widget's lines through its curtain when their words
 	// change: the old words sink, the new rise after. 0 swaps the bytes.
 	dip time.Duration
+	// dipWhole has such a dip dissolve every cell when the model changed,
+	// where a plain dip keeps what the words share
+	dipWhole bool
 	// solo marks widgets that share their region's seat (the chat and the
 	// splash): one yields while another still draws, so the region hands
 	// over through the outgoing one's sink

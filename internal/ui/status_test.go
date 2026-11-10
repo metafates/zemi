@@ -356,3 +356,55 @@ func TestContextDip(t *testing.T) {
 		t.Fatalf("the dipped pill kept a fade of %v", got.Fade)
 	}
 }
+
+// TestModelDipWhole: a model change sinks the model pill and the ctx pill
+// whole at the appear's speed — a name sharing a prefix with the old one
+// fades with it, and the ctx pill rides the change with its count's words
+// unchanged — where a plain dip keeps what the words share.
+func TestModelDipWhole(t *testing.T) {
+	_, host := statusApp(t)
+	app := &App{
+		host:    host,
+		widgets: statuslineWidgets(),
+		rises:   map[string]*anim.Curtain{},
+		caches:  map[string]*widgetCache{},
+		now:     func() time.Time { return time.UnixMilli(500) },
+	}
+	model, ctx := "statusline.model", "statusline.context"
+	draw := func(gen int64, name, count string, at time.Time) {
+		app.now = func() time.Time { return at }
+		for _, w := range []struct{ id, text string }{{model, name}, {ctx, count + " ctx"}} {
+			app.onWidgetRendered(widgetRender{
+				id: w.id, lines: [][]hostapi.Segment{{{Text: w.text, HL: "Dim"}}},
+				gen: gen, seq: gen, width: 80, height: 14, model: name,
+			})
+		}
+	}
+	up := time.UnixMilli(500).Add(_barDelay + _riseDuration)
+
+	draw(1, "AgentLLM-big", "1k/2k", time.UnixMilli(500))
+	if got := app.caches[model].lines[0][0]; got.Fade != 1 {
+		t.Fatalf("the pill's first draw drew at fade %v, want fully sunk", got.Fade)
+	}
+	draw(2, "AgentLLM-big", "1k/2k", up)
+	if got := app.caches[model].lines[0][0]; got.Text != "AgentLLM-big" || got.Fade != 0 {
+		t.Fatalf("the risen pill did not draw clean: %+v", got)
+	}
+	// the model change sinks both pills whole, the ctx count's words unchanged
+	draw(3, "AgentLLM-small", "1k/2k", up)
+	for id, want := range map[string]string{model: "AgentLLM-big", ctx: "1k/2k ctx"} {
+		if got := app.caches[id].lines[0][0]; got.Text != want || got.Fade != 0 {
+			t.Fatalf("the sink did not take %s's old words whole: %+v", id, got)
+		}
+	}
+	draw(4, "AgentLLM-small", "1k/2k", up.Add(_riseDuration/2))
+	for _, id := range []string{model, ctx} {
+		if row := app.caches[id].lines[0]; len(row) != 1 || row[0].Fade < 0.4 || row[0].Fade > 0.6 {
+			t.Fatalf("%s did not sink whole mid-dip: %+v", id, row)
+		}
+	}
+	draw(5, "AgentLLM-small", "1k/2k", up.Add(_riseDuration))
+	if got := app.caches[model].lines[0][0]; got.Text != "AgentLLM-small" || got.Fade != 1 {
+		t.Fatalf("the dip did not hand over to the new name: %+v", got)
+	}
+}

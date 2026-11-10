@@ -247,6 +247,7 @@ type Curtain struct {
 	from    [][]hostapi.Segment // the rows a dip in flight dissolves from
 	sinking bool
 	dip     bool // a change's sink in flight: the kept rows sink, the next draw's rise
+	whole   bool // the dip in flight dissolves the rows whole
 	drawn   bool // the curtain ever drew rows: it has owned its seat
 }
 
@@ -267,7 +268,16 @@ func (c *Curtain) Dip(dur time.Duration, now time.Time) {
 	}
 	c.fade.Delay = 0 // a change's rise is not a boot's first paint: it starts at once
 	c.from, c.dip, c.fade.Dur = c.rows, true, dur
+	c.whole = false
 	c.fade.Set(false, now) // the sink starts where the rows stand
+}
+
+// DipWhole dips like Dip and dissolves the rows whole: the old words sink
+// all of themselves and the new rise all of themselves, where a plain dip
+// keeps what the words share.
+func (c *Curtain) DipWhole(dur time.Duration, now time.Time) {
+	c.Dip(dur, now)
+	c.whole = true
 }
 
 // Owned reports a curtain that ever drew rows: the seat it took.
@@ -297,7 +307,11 @@ func (c *Curtain) Draw(rows [][]hostapi.Segment, now time.Time) (out [][]hostapi
 		if c.dip {
 			if a := c.fade.Alpha(now); a > 0 && !c.fade.Shown() && len(c.rows) > 0 {
 				c.sinking = true
-				return dissolveRows(c.rows, rows, 1-a, false), false // the changed cells of the old words, sinking
+				to := rows
+				if c.whole {
+					to = nil
+				}
+				return dissolveRows(c.rows, to, 1-a, false), false // the changed cells of the old words, sinking
 			}
 			// the old words landed: the new ones rise against the rows they
 			// replace, and a change mid-rise sinks them from where they stand
@@ -306,7 +320,11 @@ func (c *Curtain) Draw(rows [][]hostapi.Segment, now time.Time) (out [][]hostapi
 				c.fade.Set(true, now)
 			}
 			if a := c.fade.Alpha(now); a < 1 {
-				return dissolveRows(c.from, rows, 1-a, true), false
+				from := c.from
+				if c.whole {
+					from = nil
+				}
+				return dissolveRows(from, rows, 1-a, true), false
 			}
 			c.from = nil
 			c.dip, c.fade.Dur = false, c.Dur

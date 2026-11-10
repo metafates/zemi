@@ -30,9 +30,9 @@ func statuslineWidgets() []*widget {
 		},
 		{id: "statusline.quit", region: _regionStatusLeft, priority: 110, eases: true, render: statusQuit},
 
-		{id: "statusline.model", region: _regionStatusRight, priority: 8, eases: true, render: statusModel},
+		{id: "statusline.model", region: _regionStatusRight, priority: 8, eases: true, dip: _dipDuration, dipWhole: true, render: statusModel},
 		{id: "statusline.effort", region: _regionStatusRight, priority: 9, eases: true, render: statusEffort},
-		{id: "statusline.context", region: _regionStatusRight, priority: 40, rank: 42, eases: true, dip: _dipDuration, render: statusContext},
+		{id: "statusline.context", region: _regionStatusRight, priority: 40, rank: 42, eases: true, dip: _dipDuration, dipWhole: true, render: statusContext},
 		{id: "statusline.cost", region: _regionStatusRight, priority: 42, rank: 40, eases: true, dip: _dipDuration, render: statusCost},
 		{id: "statusline.hints", region: _regionStatusRight, priority: 130, eases: true, render: statusHints},
 	}

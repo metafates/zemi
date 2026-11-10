@@ -275,6 +275,8 @@ type widgetCache struct {
 	// last wrap's row count: a streaming frame allocates neither again
 	spare map[*hostapi.Segment][][]hostapi.Segment
 	wrapN int
+
+	model string // the model the lines were drawn from: a whole dip fires on its change
 }
 
 // NewApp builds the root model; host hooks are attached by the caller via
@@ -384,6 +386,7 @@ type widgetRender struct {
 	width, height int
 	gen, seq      int64
 	err           error
+	model         string // the model the lines were drawn from: a whole dip fires on its change
 }
 
 type (
@@ -1022,7 +1025,7 @@ func (a *App) renderMissingWidgets() {
 			lines, more, err := a.renderWidget(w, st)
 			a.onWidgetRendered(widgetRender{
 				id: w.ID, lines: lines, more: more, width: w.width, height: w.height,
-				gen: a.frameGen, seq: a.renderSeq, err: err,
+				gen: a.frameGen, seq: a.renderSeq, err: err, model: st.Model,
 			})
 			if !more || !anchored || err != nil {
 				break
@@ -1049,7 +1052,7 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 			c = &widgetCache{}
 			a.caches[msg.id] = c
 		}
-		c.gen, c.seq, c.width, c.height = msg.gen, msg.seq, msg.width, msg.height
+		c.gen, c.seq, c.width, c.height, c.model = msg.gen, msg.seq, msg.width, msg.height, msg.model
 		// a dropped request (hot mode, a reload) keeps the lines unflagged,
 		// and the repeat test reads the panic's first line only: the stack
 		// under it differs every render
@@ -1063,7 +1066,7 @@ func (a *App) onWidgetRendered(msg widgetRender) {
 		)
 		return
 	}
-	c := &widgetCache{lines: a.widgetFaded(msg), width: msg.width, height: msg.height, gen: msg.gen, seq: msg.seq, partial: msg.more}
+	c := &widgetCache{lines: a.widgetFaded(msg), width: msg.width, height: msg.height, gen: msg.gen, seq: msg.seq, partial: msg.more, model: msg.model}
 	old := a.caches[msg.id]
 	if old != nil {
 		c.wrapW, c.lineRows, c.spare, c.wrapN = old.wrapW, old.lineRows, old.spare, old.wrapN
@@ -1119,11 +1122,17 @@ func (a *App) widgetFaded(msg widgetRender) [][]hostapi.Segment {
 		}
 	}
 	if w.dip > 0 && len(msg.lines) > 0 {
-		if old := a.caches[msg.id]; old != nil && linesDiffer(old.lines, msg.lines) {
+		if old := a.caches[msg.id]; old != nil && (old.model != msg.model || linesDiffer(old.lines, msg.lines)) {
 			// a dip in flight finishes first: a new count mid-rise would
 			// re-sink it and the pill would churn while a turn streams
 			if c := a.rises[w.id]; c != nil && c.Shown() && !c.Sinking() && !c.Dipping() {
-				c.Dip(w.dip, a.now())
+				if w.dipWhole && old.model != msg.model {
+					// a model change dips the pill whole at the appear's
+					// speed, its own words changed or not
+					c.DipWhole(_riseDuration, a.now())
+				} else {
+					c.Dip(w.dip, a.now())
+				}
 				a.wakeTick()
 			}
 		}
@@ -1286,7 +1295,7 @@ func (a *App) renderStaleWidgetsCmd(sizeOnly bool) tea.Cmd {
 		for _, w := range stale {
 			screen := a.host.ScreenState(w.width, w.height, st)
 			lines, more, err := a.renderWidget(w, screen)
-			out = append(out, widgetRender{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: gen, seq: seq, err: err})
+			out = append(out, widgetRender{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: gen, seq: seq, err: err, model: screen.Model})
 		}
 		return out
 	}
