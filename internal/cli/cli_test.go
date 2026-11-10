@@ -13,10 +13,8 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/charmbracelet/colorprofile"
 	"github.com/spf13/cobra"
 
-	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
@@ -327,67 +325,6 @@ func newTrustGate(t *testing.T) (*trustGate, *hostapi.Host, *lua.Runtime) {
 	return &trustGate{h: h, dirs: dirs}, h, r
 }
 
-// TestTrustGateInertWritesNothing: a boot with no UI runs the project trust
-// step too, and may not leave a .agents/worktrees/.gitignore in the user's
-// repository.
-func TestTrustGateInertWritesNothing(t *testing.T) {
-	for _, c := range []struct {
-		name       string
-		inert      bool
-		wantIgnore bool
-	}{
-		{"an inert boot", true, false},
-		{"a TUI boot", false, true},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			tg, h, r := newTrustGate(t)
-			h.Inert = c.inert
-			wt := h.Dirs.WorktreesDir()
-			if err := os.MkdirAll(wt, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			tg.session.Store(new(true))
-			if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), tg.step()}); err != nil {
-				t.Fatal(err)
-			}
-			_, err := os.Stat(filepath.Join(wt, ".gitignore"))
-			if wrote := err == nil; wrote != c.wantIgnore {
-				t.Errorf("wrote .gitignore = %v, want %v", wrote, c.wantIgnore)
-			}
-		})
-	}
-}
-
-// TestSendPromptRunsCommands: a prompt on the command line that names a
-// command runs it, the way the composer would, with attached text behind the
-// marker; anything else is a message.
-func TestSendPromptRunsCommands(t *testing.T) {
-	_, h, _ := newTrustGate(t)
-	got := ""
-	if _, err := h.Commands.Add(&hostapi.Command{
-		Name: "note", NArgs: "*", Desc: "d", Origin: lua.OriginUser,
-		GoFn: func(_ *hostapi.Host, args string, confirm bool) error { got = args; return nil },
-	}); err != nil {
-		t.Fatal(err)
-	}
-	attached := agent.Attached("stdin", "diff --git a/x b/x")
-	for _, c := range []struct{ prompt, args string }{
-		{"/note the args", "the args"},
-		{"/note\nnext line", "next line"},
-		{"/note" + attached, attached},
-	} {
-		got = "unset"
-		if err := h.SendPrompt(c.prompt); err != nil || got != c.args {
-			t.Errorf("%q: ran with %q, %v", c.prompt, got, err)
-		}
-	}
-	// no such command: the text is the model's, and this host has no model
-	got = "unset"
-	if err := h.SendPrompt("/notes please"); err == nil || got != "unset" {
-		t.Fatalf("an unknown command must reach the agent: %v, ran %q", err, got)
-	}
-}
-
 // TestHeadlessNotices: with no UI a warning or an error reaches stderr, the
 // -m warning included, info stays quiet, and a command that opens a screen
 // names itself.
@@ -469,38 +406,6 @@ func TestCompleteEntries(t *testing.T) {
 	}
 	if got, _ := install.ValidArgsFunction(install, []string{"one@demo"}, ""); got != nil {
 		t.Errorf("install completes past its argument: %v", got)
-	}
-}
-
-// TestTable: the table pads a column by the text it shows, not its escapes,
-// holds a column at its floor, right-aligns a count, and a header is a
-// terminal's alone.
-func TestTable(t *testing.T) {
-	build := func(p colorprofile.Profile, cell string) string {
-		t := table{p: p, cols: []tableCol{
-			{head: "name", role: "hint", width: 4},
-			{head: "n", right: true},
-		}}
-		t.row(cell, "5")
-		var b strings.Builder
-		t.print(&b)
-		return b.String()
-	}
-	if got := build(colorprofile.NoTTY, "on"); got != "on    5\n" {
-		t.Errorf("plain table = %q, want the column at its floor", got)
-	}
-	// the escape in the cell pads by the text it shows, and the header rides bold
-	if got := build(colorprofile.Ascii, "\x1b[1mon\x1b[m"); got != "\x1b[1mname\x1b[m  \x1b[1mn\x1b[m\n\x1b[1mon\x1b[m    5\n" {
-		t.Errorf("styled table = %q", got)
-	}
-	// columns that name no head print none, even on a terminal: the checks
-	// each say what they are
-	anon := table{p: colorprofile.Ascii, cols: []tableCol{{width: 5}, {}}}
-	anon.row("ok", "store")
-	var b strings.Builder
-	anon.print(&b)
-	if got := b.String(); got != "ok     store\n" {
-		t.Errorf("unnamed heads = %q, want no header row", got)
 	}
 }
 

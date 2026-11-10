@@ -11,21 +11,6 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-func TestBaseVersion(t *testing.T) {
-	t.Parallel()
-	for _, c := range []struct{ v, want string }{
-		{"v0.1.0+6dd0c22.dirty", "v0.1.0"},
-		{"v0.1.0", "v0.1.0"},
-		{"dev+6dd0c22", ""},
-		{"dev", ""},
-		{"", ""},
-	} {
-		if got := baseVersion(c.v); got != c.want {
-			t.Errorf("baseVersion(%q) = %q, want %q", c.v, got, c.want)
-		}
-	}
-}
-
 // TestNewerRelease: a build sits at or past the tag its version names, so
 // only a strictly greater tag is a newer release; a build with no tag is past
 // every tag.

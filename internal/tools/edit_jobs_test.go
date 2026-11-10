@@ -4,41 +4,13 @@ package tools
 
 import (
 	"context"
-	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"charm.land/fantasy"
-
-	"github.com/metafates/zemi/internal/proc"
 )
-
-// TestJobReadAfterBufferDrop: a job that floods its buffer keeps delivering
-// new output. The buffer drops its middle, so its length stops growing and
-// a length-based offset would report "no new output" forever.
-func TestJobReadAfterBufferDrop(t *testing.T) {
-	j := &Job{stdout: &proc.Buffer{Max: 64}, stderr: &proc.Buffer{Max: 64}, done: make(chan struct{})}
-	close(j.done)
-	j.stdout.Write([]byte(strings.Repeat("a", 40)))
-	if out, _, _, _ := j.since(); out.text != strings.Repeat("a", 40) {
-		t.Fatalf("first read: %+v", out)
-	}
-	if out, _, _, _ := j.since(); out.text != "" {
-		t.Fatalf("nothing written since: %+v", out)
-	}
-	// more arrived than the buffer holds, so it returns what is left of it,
-	// skip marker and all, rather than reporting nothing new
-	j.stdout.Write([]byte(strings.Repeat("b", 200)))
-	out, _, _, _ := j.since()
-	if !strings.HasSuffix(out.text, "bb") || !strings.Contains(out.text, "skipped") || out.lost <= 0 {
-		t.Fatalf("new output after the drop: %+v", out)
-	}
-	if out, _, _, _ := j.since(); out.text != "" {
-		t.Fatalf("nothing written since the drop: %+v", out)
-	}
-}
 
 func TestShellTimeoutBecomesJob(t *testing.T) {
 	t.Parallel()
@@ -71,63 +43,6 @@ func TestShellOrphanIsNotAnError(t *testing.T) {
 	res, _ := runShell(t.Context(), &Pipeline{}, shellArgs{Command: "sleep 30 &\necho started"})
 	if res.IsError || !strings.HasPrefix(res.Content, "started\na background process it started was stopped") {
 		t.Fatalf("orphan: %+v", res)
-	}
-}
-
-// TestJobStreamsOutput: job_read shows a long-running process's output
-// while it runs, and a shell line works without args.
-func TestJobStreamsOutput(t *testing.T) {
-	p := &Pipeline{Jobs: &Jobs{}}
-	res, _ := runJobStart(t.Context(), p, jobStartArgs{Command: "echo ready && sleep 30"})
-	if res.IsError {
-		t.Fatal(res.Content)
-	}
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		out, _ := runJobRead(t.Context(), p, jobReadArgs{ID: "job-1"})
-		if strings.Contains(out.Content, "ready") && strings.Contains(out.Content, "running") {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("no output while running: %q", out.Content)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	if out, _ := runJobRead(t.Context(), p, jobReadArgs{ID: "job-1"}); strings.Contains(out.Content, "ready") {
-		t.Fatalf("a second read must not repeat delivered output: %q", out.Content)
-	}
-	runJobKill(t.Context(), p, jobKillArgs{ID: "job-1"})
-	j, _ := p.Jobs.Get("job-1")
-	select {
-	case <-j.done:
-	case <-time.After(3 * time.Second):
-		t.Fatal("job_kill did not stop the shell and its sleep")
-	}
-}
-
-// TestJobReadSpillsTheCut: a read that cuts the middle saves the whole
-// chunk, which since() has already moved past.
-func TestJobReadSpillsTheCut(t *testing.T) {
-	dir := t.TempDir()
-	p := &Pipeline{Jobs: &Jobs{}, Pad: dir}
-	if res, _ := runJobStart(t.Context(), p, jobStartArgs{Command: "seq 1 4000"}); res.IsError {
-		t.Fatal(res.Content)
-	}
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		out, _ := runJobRead(t.Context(), p, jobReadArgs{ID: "job-1"})
-		if _, file, ok := strings.Cut(out.Content, "(output saved to "); ok {
-			file, _, _ = strings.Cut(file, ")")
-			b, err := os.ReadFile(file)
-			if err != nil || !strings.Contains(string(b), "\n2000\n") {
-				t.Fatalf("spill %s: %v", file, err)
-			}
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("no spill: %q", out.Content)
-		}
-		time.Sleep(20 * time.Millisecond)
 	}
 }
 

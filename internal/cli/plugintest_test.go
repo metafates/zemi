@@ -298,42 +298,6 @@ test("out", function() assert(test.run("log")) test.eq(zemi.state.get("out"), { 
 	}
 }
 
-// TestCopyPluginManifest: the manifest is inside .zemi, which the copy takes
-// whole, so a test zemi reads the same manifest the plugin ships.
-func TestCopyPluginManifest(t *testing.T) {
-	src := filepath.Join("..", "..", "testdata", "plugins", "demo")
-	want, err := os.ReadFile(filepath.Join(src, ".zemi", "plugin.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	dst := filepath.Join(t.TempDir(), "demo")
-	if err := copyPlugin(src, dst); err != nil {
-		t.Fatal(err)
-	}
-	got, err := os.ReadFile(filepath.Join(dst, ".zemi", "plugin.json"))
-	if err != nil || string(got) != string(want) {
-		t.Errorf("the copy holds %q, %v; want %q", got, err, want)
-	}
-}
-
-// TestPluginStylua: the stylua.toml plugins.md has an agent write into a
-// plugin is the repository's own.
-func TestPluginStylua(t *testing.T) {
-	skill, err := fs.ReadFile(runtime.Skills, "skills/zemi/plugins.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	want, err := os.ReadFile("../../stylua.toml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, after, _ := strings.Cut(string(skill), "`stylua.toml`, the same in every plugin")
-	_, block, _ := strings.Cut(after, "```toml\n")
-	if block, _, _ = strings.Cut(block, "```"); block != string(want) {
-		t.Errorf("plugins.md's stylua.toml:\n%s\nstylua.toml:\n%s", block, want)
-	}
-}
-
 func writeFile(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

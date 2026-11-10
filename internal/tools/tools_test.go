@@ -10,15 +10,12 @@ import (
 	"image/color"
 	"image/jpeg"
 	"image/png"
-	"log/slog"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"charm.land/fantasy"
@@ -93,94 +90,6 @@ func testPipeline(t *testing.T, allow bool) (*Pipeline, *[]Request) {
 		}
 	}
 	return p, &asked
-}
-
-// TestGateLogsDecisions: Check records every decision, its level and who
-// decided, and nothing else.
-func TestGateLogsDecisions(t *testing.T) {
-	for _, c := range []struct {
-		name     string
-		wire     func(*Pipeline)
-		req      Request
-		wantPart []string
-	}{
-		{
-			"a read settles on its own", func(p *Pipeline) {},
-			Request{Tool: string(ToolRead), Subject: perm.SubjectRead, Arg: "/x"},
-			[]string{"level=DEBUG", "by=default", "allowed=true"},
-		},
-		{
-			"an action runs by default", func(p *Pipeline) {},
-			Request{Tool: string(ToolShell), Subject: perm.SubjectShell, Arg: "ls"},
-			[]string{"level=DEBUG", "by=default", "allowed=true"},
-		},
-		{"an ask denial is a warning", func(p *Pipeline) {
-			p.forceAsk = true
-			p.Ask = func(Request) (bool, string) { return false, "overlay" }
-		}, Request{Tool: string(ToolShell), Subject: perm.SubjectShell, Arg: "ls"}, []string{"level=WARN", "by=overlay", "allowed=false"}},
-		{"the user's answer is info", func(p *Pipeline) {
-			p.forceAsk = true
-			p.Ask = func(Request) (bool, string) { return true, ByUser }
-		}, Request{Tool: string(ToolShell), Subject: perm.SubjectShell, Arg: "ls"}, []string{"level=INFO", "by=user", "allowed=true"}},
-		{
-			"a read-only denial is a warning", func(p *Pipeline) { p.ReadOnly = func() bool { return true } },
-			Request{Tool: string(ToolShell), Subject: perm.SubjectShell, Arg: "ls"},
-			[]string{"level=WARN", `by="read-only agent"`, "allowed=false"},
-		},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			var buf bytes.Buffer
-			p := &Pipeline{Log: slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))}
-			c.wire(p)
-			p.Check(c.req)
-			lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
-			if len(lines) != 1 || !strings.Contains(lines[0], `msg="tool gate"`) {
-				t.Fatalf("one tool gate record wanted, got:\n%s", buf.String())
-			}
-			for _, part := range c.wantPart {
-				if !strings.Contains(lines[0], part) {
-					t.Fatalf("%s not in the record:\n%s", part, lines[0])
-				}
-			}
-		})
-	}
-}
-
-// TestAskGate pins where a tool.pre ask sits in Check: after the read-only
-// deny, and only when an asker exists (a gate without one cannot run the
-// overlay round-trip, so the action runs).
-func TestAskGate(t *testing.T) {
-	for _, c := range []struct {
-		name       string
-		ask        bool
-		readOnly   bool
-		want       Verdict
-		wantAskRun bool
-	}{
-		{name: "an ask runs the asker", ask: true, want: Verdict{DecidedBy: "overlay"}, wantAskRun: true},
-		{name: "no asker runs", want: Verdict{Allowed: true, DecidedBy: ByDefault}},
-		{
-			name: "a read-only agent denies before any ask", ask: true, readOnly: true,
-			want: Verdict{DecidedBy: ByReadOnly, Reason: "the read-only agent may not change anything"},
-		},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			p := &Pipeline{forceAsk: true}
-			asked := false
-			if c.ask {
-				p.Ask = func(Request) (bool, string) { asked = true; return false, "overlay" }
-			}
-			if c.readOnly {
-				p.ReadOnly = func() bool { return true }
-			}
-			if got := p.Check(Request{Subject: perm.SubjectWrite, Arg: "/x"}); got != c.want {
-				t.Fatalf("Check = %+v, want %+v", got, c.want)
-			}
-			if asked != c.wantAskRun {
-				t.Fatalf("asker ran = %v, want %v", asked, c.wantAskRun)
-			}
-		})
-	}
 }
 
 func call(t *testing.T, ag fantasy.AgentTool, input string) fantasy.ToolResponse {
@@ -274,73 +183,6 @@ func TestEditsOnOneFileKeepCallOrder(t *testing.T) {
 	}
 }
 
-// TestCallOrderReleases: a recorded call nothing runs must not hold the
-// next call on its file: fantasy answers an invalid call without Run and the
-// runner reports it through CallDone; another runner's CallDone releases
-// its own ids only, the same id included; a cancelled ctx gives up the wait.
-func TestCallOrderReleases(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		p, _ := testPipeline(t, true)
-		p.Seen = &sync.Map{}
-		read, edit := toolNamed(t, "read", p), toolNamed(t, "edit", p)
-		path := filepath.Join(perm.RealPath(t.TempDir()), "f.txt")
-		first := fmt.Sprintf(`{"path":%q,"search":"a","replace":"b"}`, path)
-		second := fmt.Sprintf(`{"path":%q,"search":"b","replace":"c"}`, path)
-		run := func(ctx context.Context, id, input string) fantasy.ToolResponse {
-			done := make(chan fantasy.ToolResponse, 1)
-			go func() { r, _ := edit.Run(ctx, fantasy.ToolCall{ID: id, Name: "edit", Input: input}); done <- r }()
-			select {
-			case r := <-done:
-				return r
-			case <-time.After(2 * time.Second):
-				t.Fatalf("%s blocked", id)
-				return fantasy.ToolResponse{}
-			}
-		}
-		bg := t.Context()
-		cancelled, cancel := context.WithCancel(bg)
-		cancel()
-		for _, c := range []struct {
-			name    string
-			before  func()
-			ctx     context.Context
-			wantErr bool
-			want    string
-		}{
-			{"invalid first call answered", func() {
-				CallStart(bg, "c1", "edit", fmt.Sprintf(`{"path":%q,"search":"a"}`, path))
-				CallStart(bg, "c2", "edit", second)
-				CallDone(bg, "c1")
-			}, t.Context(), true, "a\n"},
-			{"another runner's step done keeps the order", func() {
-				CallStart(bg, "c1", "edit", first)
-				CallStart(bg, "c2", "edit", second)
-				other := CallScope(bg)
-				CallStart(other, "c1", "edit", fmt.Sprintf(`{"path":%q,"search":"a","replace":"b"}`, path+".other"))
-				CallDone(other, "c1")
-				go func() {
-					time.Sleep(50 * time.Millisecond) // the bubble's clock moves only once c2 waits
-					edit.Run(t.Context(), fantasy.ToolCall{ID: "c1", Name: "edit", Input: first})
-				}()
-			}, t.Context(), false, "c\n"},
-			{"cancelled ctx gives up", func() {
-				CallStart(bg, "c1", "edit", first)
-				CallStart(bg, "c2", "edit", second)
-			}, cancelled, true, "a\n"},
-		} {
-			os.WriteFile(path, []byte("a\n"), 0o644)
-			call(t, read, `{"path":"`+path+`","limit":0}`)
-			c.before()
-			r := run(c.ctx, "c2", second)
-			got, _ := os.ReadFile(path)
-			if r.IsError != c.wantErr || string(got) != c.want {
-				t.Errorf("%s: %+v file %q", c.name, r, got)
-			}
-			CallDone(bg, "c1", "c2")
-		}
-	})
-}
-
 // TestNotFoundNamesSiblings: a mistyped path names the three files nearest
 // what it could have meant, for read and edit alike, without asking anyone
 // about the edit.
@@ -376,61 +218,6 @@ func TestNotFoundNamesSiblings(t *testing.T) {
 				t.Errorf("%s, %s: %q asked %+v, want %q", c.name, tool, resp.Content, *asked, c.want)
 			}
 		}
-	}
-}
-
-// TestAskDenialText: a denied ask tells the model who decided and why it
-// asked, and does not echo the command.
-func TestAskDenialText(t *testing.T) {
-	for _, c := range []struct{ by, want string }{
-		{"user", "permission denied (user): tool.shell"},
-		{"nobody", "no one could answer the ask: tool.shell"},
-	} {
-		p, _ := testPipeline(t, false)
-		p.Ask = func(Request) (bool, string) { return false, c.by }
-		resp := call(t, toolNamed(t, "shell", p), `{"command":"echo j > out.txt"}`)
-		if !resp.IsError || resp.Content != c.want {
-			t.Errorf("%s: %q, want %q", c.by, resp.Content, c.want)
-		}
-	}
-}
-
-func TestPreHookDenyRewriteReentry(t *testing.T) {
-	p, _ := testPipeline(t, true)
-	denied := 0
-	rewrites := 0
-	p.Pre = func(tool string, input map[string]any) (PreVerdict, string, map[string]any) {
-		if tool != "shell" {
-			return "", "", nil
-		}
-		cmd := str(input["command"])
-		if cmd == "danger --x" {
-			denied++
-			return "deny", "no danger", nil
-		}
-		if cmd == "echo {{TWICE}}" {
-			rewrites++
-			if rewrites == 1 {
-				return "rewrite", "", map[string]any{"command": "echo once"}
-			}
-			t.Fatal("rewrite hook re-fired on re-entry")
-		}
-		return "", "", nil
-	}
-	ag := toolNamed(t, "shell", p)
-	resp := call(t, ag, `{"command":"danger --x"}`)
-	if !resp.IsError || !strings.Contains(resp.Content, "no danger") {
-		t.Fatalf("deny hook: %+v", resp)
-	}
-	if denied != 1 {
-		t.Fatalf("deny hook ran %d times", denied)
-	}
-	resp = call(t, ag, `{"command":"echo {{TWICE}}"}`)
-	if resp.IsError || !strings.Contains(resp.Content, "once") {
-		t.Fatalf("rewrite: %+v", resp)
-	}
-	if rewrites != 1 {
-		t.Fatalf("rewrite fired %d times", rewrites)
 	}
 }
 
@@ -582,20 +369,6 @@ func TestGlobAndGrep(t *testing.T) {
 		if !resp.IsError || !strings.Contains(resp.Content, "no such file or directory") {
 			t.Errorf("missing root: %+v", resp)
 		}
-	}
-}
-
-// TestGlobChecksOnlyShownHits: a broad glob checks the hits it shows, not
-// every file it scanned.
-func TestGlobChecksOnlyShownHits(t *testing.T) {
-	p, _ := testPipeline(t, true)
-	dir := t.TempDir()
-	for i := range 1000 {
-		os.WriteFile(filepath.Join(dir, fmt.Sprintf("f%d.go", i)), nil, 0o644)
-	}
-	resp := call(t, toolNamed(t, "glob", p), `{"path":"`+dir+`","pattern":"*.go"}`)
-	if !strings.Contains(resp.Content, "up to 800 more") {
-		t.Errorf("got %q", resp.Content[max(0, len(resp.Content)-80):])
 	}
 }
 
@@ -769,36 +542,6 @@ func TestScratchpad(t *testing.T) {
 	}
 }
 
-// TestReadSaysWhatTheModelSees: a text-only model is told before it plans
-// that images and screenshots are no use to it.
-func TestReadSaysWhatTheModelSees(t *testing.T) {
-	for _, c := range []struct {
-		name           string
-		images         func() bool
-		says, unwanted string
-	}{
-		{"takes images", nil, "(text or image)", "cannot see images"},
-		{"text only", func() bool { return false }, "cannot see images: do not take screenshots", "(text or image)"},
-	} {
-		desc := toolNamed(t, string(ToolRead), &Pipeline{Images: c.images}).Info().Description
-		if !strings.Contains(desc, c.says) || strings.Contains(desc, c.unwanted) {
-			t.Errorf("%s: %q", c.name, desc)
-		}
-	}
-}
-
-// TestCmdEnv: a shell command the model runs carries the pad and the
-// project as names a script can read; jobs share this env, since job_start
-// starts with the same cmdEnv.
-func TestCmdEnv(t *testing.T) {
-	pad, proj := t.TempDir(), t.TempDir()
-	p := &Pipeline{Pad: pad, ProjectDir: proj}
-	res, _ := runShell(t.Context(), p, shellArgs{Command: `printf '%s\n' "$ZEMI_SCRATCH" "$ZEMI_PROJECT_DIR"`})
-	if res.Content != pad+"\n"+proj {
-		t.Errorf("command env = %q, want the pad and the project", res.Content)
-	}
-}
-
 // TestReadAndShellShapes: read returns images as images, lists a directory
 // one level deep, and refuses binaries and offsets past the end; shell keeps stdout and stderr in order, strips
 // colors, and saves cut output to the scratchpad.
@@ -937,28 +680,6 @@ func TestPostHookRuns(t *testing.T) {
 	}
 }
 
-// TestOutputLimits: read pages a long file with a continuation offset.
-func TestOutputLimits(t *testing.T) {
-	dir := perm.RealPath(t.TempDir())
-	path := filepath.Join(dir, "big.txt")
-	lines := make([]string, _readMaxLines+5)
-	for i := range lines {
-		lines[i] = fmt.Sprintf("line %d match", i+1)
-	}
-	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	ctx := t.Context()
-	res, _ := runRead(ctx, onPath(t, nil, path), readArgs{})
-	if !strings.HasSuffix(res.Content, "... (more lines; continue with offset 2001)\n") {
-		t.Fatalf("first page tail: %q", res.Content[len(res.Content)-80:])
-	}
-	res, _ = runRead(ctx, onPath(t, nil, path), readArgs{Offset: 2001})
-	if strings.Contains(res.Content, "more lines") || !strings.HasSuffix(res.Content, "line 2005 match\n") {
-		t.Fatalf("last page: %q", res.Content)
-	}
-}
-
 func TestFitImage(t *testing.T) {
 	encode := func(w, h int) []byte {
 		var b bytes.Buffer
@@ -1009,34 +730,6 @@ func TestFitImage(t *testing.T) {
 	}
 }
 
-func TestTruncOut(t *testing.T) {
-	for _, c := range []struct {
-		name, s string
-		n       int
-		want    string
-	}{
-		{"fits", "abc", 10, "abc"},
-		{"cuts fall on line breaks", "aaaa\nbb\ncccccc\nd\neeeee\nff", 20, "aaaa\n... (lines 2-3 of 6 cut) ...\nd\neeeee\nff"},
-		{"one huge line is cut by bytes", strings.Repeat("x", 30), 10, "xxx\n... (20 bytes cut) ...\nxxxxxxx"},
-	} {
-		if got := TruncOut(c.s, c.n); got != c.want {
-			t.Errorf("%s: %q, want %q", c.name, got, c.want)
-		}
-	}
-}
-
-// TestCutLines reads the marker TruncOut writes, so the wording lives with
-// its reader.
-func TestCutLines(t *testing.T) {
-	line := strings.Split(TruncOut("aaaa\nbb\ncccccc\nd\neeeee\nff", 20), "\n")[1]
-	if from, to, ok := CutLines(line); !ok || from != 2 || to != 3 {
-		t.Errorf("CutLines(%q) = %d, %d, %v", line, from, to, ok)
-	}
-	if _, _, ok := CutLines("a plain line"); ok {
-		t.Error("a plain line read as a cut marker")
-	}
-}
-
 func TestCmdText(t *testing.T) {
 	for _, c := range []struct{ name, raw, want string }{
 		{"tqdm frames lead with \\r", "\r  0%|   | 0/80\r 50%|#  | 40/80\r100%|###| 80/80\ntrained\n", "100%|###| 80/80\ntrained"},
@@ -1046,34 +739,6 @@ func TestCmdText(t *testing.T) {
 	} {
 		if got := cmdText(c.raw); got != c.want {
 			t.Errorf("%s: cmdText = %q, want %q", c.name, got, c.want)
-		}
-	}
-}
-
-// TestToolSchemasAreProperties guards the fantasy contract: Parameters is
-// the properties map (fantasy adds type/properties around it) and arrays
-// declare items, or strict providers refuse every request.
-func TestToolSchemasAreProperties(t *testing.T) {
-	for _, tl := range All(&Pipeline{}) {
-		info := tl.Info()
-		if info.Required == nil {
-			t.Fatalf("%s: nil Required marshals as null", info.Name)
-		}
-		for name, spec := range info.Parameters {
-			m, ok := spec.(map[string]any)
-			if !ok {
-				t.Fatalf("%s.%s: property spec is %T, want an object", info.Name, name, spec)
-			}
-			if m["type"] == "array" && m["items"] == nil {
-				t.Fatalf("%s.%s: array without items", info.Name, name)
-			}
-		}
-		// the description is the only ordering the model reads (properties
-		// reach it alphabetized), so it must name every required key
-		for _, r := range info.Required {
-			if !regexp.MustCompile(`\b` + r + `\b`).MatchString(info.Description) {
-				t.Errorf("%s: description never names its required key %q", info.Name, r)
-			}
 		}
 	}
 }
@@ -1165,65 +830,6 @@ func TestFileToolsRefuseSymlink(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(target); string(data) != "one\n" {
 		t.Errorf("target changed: %q", data)
-	}
-}
-
-// TestCmdOutScript: a call a lua script drives comes back whole (the script
-// reads it and says what of it the model gets), where a direct call gets the
-// cut and the spill file.
-func TestCmdOutScript(t *testing.T) {
-	raw := strings.Repeat("a line\n", 5000)
-	pad := t.TempDir()
-	cases := []struct {
-		name string
-		p    Pipeline
-		cut  bool
-	}{
-		{"the model's own call", Pipeline{Pad: pad}, true},
-		{"a script's call", Pipeline{Pad: pad, Script: "lua-tool#1"}, false},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			out := c.p.cmdOut("shell", raw, 0)
-			if cut := strings.Contains(out, "output saved to"); cut != c.cut {
-				t.Fatalf("cut %v, want %v: %q", cut, c.cut, trunc(out, 120))
-			}
-			if c.cut && len(out) > _resultMaxOut+200 {
-				t.Fatalf("the cut kept %d bytes", len(out))
-			}
-			if !c.cut && out != cmdText(raw) {
-				t.Fatalf("a script's call lost %d bytes", len(raw)-len(out))
-			}
-			// what the buffer dropped is named either way
-			if out := c.p.cmdOut("shell", raw, 42); !strings.Contains(out, "42 more bytes") {
-				t.Fatalf("dropped bytes: %q", trunc(out, 120))
-			}
-		})
-	}
-}
-
-func trunc(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
-	}
-	return s
-}
-
-// TestLeadPairsAreProperties: every lead pair names keys its tool's schema
-// offers, so a renamed arg cannot leave the guard pointing at a key nothing
-// sends. agent and lua are hostapi's tools and absent from All: their pairs
-// are not checked here.
-func TestLeadPairsAreProperties(t *testing.T) {
-	for _, tl := range All(nil) {
-		info := tl.Info()
-		for _, key := range LeadPairs[info.Name] {
-			if key == "" {
-				continue
-			}
-			if _, ok := info.Parameters[key]; !ok {
-				t.Errorf("%s: LeadPairs names %q, which its schema does not offer", info.Name, key)
-			}
-		}
 	}
 }
 

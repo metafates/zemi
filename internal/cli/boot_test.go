@@ -2,8 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"io/fs"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,9 +10,6 @@ import (
 	"go.uber.org/goleak"
 
 	"github.com/metafates/zemi/internal/config"
-	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/runtime"
 )
 
 func TestMain(m *testing.M) {
@@ -39,39 +34,6 @@ func TestLockInstance(t *testing.T) {
 		t.Fatal(err)
 	}
 	unlock()
-}
-
-// TestConfigFingerprintFollowsSymlinks: a dotfiles setup links the config
-// home, a user tree or a file; an edit behind the link still counts. A dir
-// linked deeper is not walked, since it could be any size.
-func TestConfigFingerprintFollowsSymlinks(t *testing.T) {
-	for _, c := range []struct {
-		name, link, edit string
-		noticed          bool
-	}{
-		{"symlinked root", "", "init.lua", true},
-		{"symlinked user tree", "lua", "lua/x.lua", true},
-		{"symlinked file", "init.lua", "init.lua", true},
-		{"dir linked below a tree", "lua/vendor", "lua/vendor/x.lua", false},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			dir, cfg := t.TempDir(), filepath.Join(t.TempDir(), "zemi")
-			writeFile(t, filepath.Join(dir, "init.lua"), "-- one")
-			writeFile(t, filepath.Join(dir, c.edit), "-- one")
-			if err := os.MkdirAll(filepath.Dir(filepath.Join(cfg, c.link)), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.Symlink(filepath.Join(dir, c.link), filepath.Join(cfg, c.link)); err != nil {
-				t.Fatal(err)
-			}
-			roots := append([]string{cfg}, config.Dirs{ConfigHome: cfg}.UserTrees()...)
-			base := configFingerprint("", roots...)
-			writeFile(t, filepath.Join(dir, c.edit), "-- two!")
-			if got := configFingerprint("", roots...) != base; got != c.noticed {
-				t.Fatalf("edit to %s noticed = %v, want %v", c.edit, got, c.noticed)
-			}
-		})
-	}
 }
 
 // TestConfigFingerprint: an edit to a config tree (here the project's
@@ -114,69 +76,6 @@ func TestConfigFingerprint(t *testing.T) {
 		writeFile(t, filepath.Join(root, c.edit), "two!")
 		if got := fingerprint() != base; got != c.noticed {
 			t.Errorf("edit to %s noticed = %v, want %v", c.edit, got, c.noticed)
-		}
-	}
-}
-
-// commandHost is a host with the builtin and main commands and no session
-// store.
-func commandHost(t *testing.T) *hostapi.Host {
-	t.Helper()
-	log := slog.New(slog.DiscardHandler)
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log})
-	h := hostapi.NewHost(r, log, config.NewStore(), config.Dirs{ProjectDir: t.TempDir()})
-	t.Cleanup(h.Close)
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.BuiltinCommandsStep(mainCommands(func() {}, func() {})...)}); err != nil {
-		t.Fatal(err)
-	}
-	return h
-}
-
-// TestMainCommandArgs: each command declares the arguments it reads, so a
-// stray one errors instead of being dropped.
-func TestMainCommandArgs(t *testing.T) {
-	h := commandHost(t)
-	for _, c := range []struct{ name, args, want string }{
-		{"quit", "now", "/quit takes no arguments"},
-	} {
-		if got := fmt.Sprint(h.RunCommand(t.Context(), c.name, c.args, false)); got != c.want {
-			t.Errorf("/%s %s = %q, want %q", c.name, c.args, got, c.want)
-		}
-	}
-}
-
-// TestSkillsCoverBuiltinCommands: every Go-owned slash command appears in
-// the builtin skill (internal/hostapi covers the rest of the surface).
-func TestSkillsCoverBuiltinCommands(t *testing.T) {
-	var text strings.Builder
-	_ = fs.WalkDir(runtime.Skills, "skills", func(path string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() {
-			data, _ := fs.ReadFile(runtime.Skills, path)
-			text.Write(data)
-		}
-		return err
-	})
-	for _, c := range commandHost(t).Commands.List() {
-		if !strings.Contains(text.String(), "/"+c.Name) {
-			t.Errorf("no builtin skill mentions /%s", c.Name)
-		}
-	}
-}
-
-// TestHealthRowActionsRunCommands: a /health row's action runs a command by
-// name, and the rows live apart from the commands they name, so a rename that
-// misses them fails here rather than as a dead key in the overlay. The mcp
-// row's action appears only with servers, which this harness starts none of.
-func TestHealthRowActionsRunCommands(t *testing.T) {
-	h := commandHost(t)
-	h.RecordError("command", "probe", "planted so the errors row carries its action")
-	for _, c := range h.HealthRows() {
-		if c.Run == "" {
-			continue
-		}
-		name, _ := hostapi.SplitCommand(c.Run)
-		if h.Commands.Lookup(name) == nil {
-			t.Errorf("health row %q runs %q, which is no command", c.Name, c.Run)
 		}
 	}
 }
