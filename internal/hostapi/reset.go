@@ -21,6 +21,16 @@ func (h *Host) ResetChat(yes bool) error {
 	if h.DB == nil || h.chat == nil {
 		return Usagef("no chat log in this boot")
 	}
+	// nothing the chat draws: a first ever open has no rows and a reset
+	// leaves only its own system note (nothing else follows a wipe), so a
+	// /reset here is a no-op - no ask, no wipe
+	rows, err := h.DB.LogTail(1)
+	if err != nil {
+		return err
+	}
+	if len(rows) == 0 || systemNote(rows[0]) {
+		return nil
+	}
 	ag := h.agents
 	ag.mu.Lock()
 	if ag.active {
@@ -38,7 +48,7 @@ func (h *Host) ResetChat(yes bool) error {
 	if !yes {
 		return AskFirst("reset --yes", "", h.openReset)
 	}
-	err := func() error {
+	err = func() error {
 		h.cutMu.Lock()
 		defer h.cutMu.Unlock()
 		// the builder first: its in-flight calls abort - a reset deletes

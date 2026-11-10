@@ -10,6 +10,37 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
+// TestResetEmptyChat: a chat with nothing drawn — no rows at all, or the
+// last wipe's system note alone — gives /reset nothing to do: no ask, no
+// wipe, no row.
+func TestResetEmptyChat(t *testing.T) {
+	h, _ := newTestHostDB(t)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	// a first ever open, asked and confirmed alike
+	for _, yes := range []bool{false, true} {
+		if err := h.ResetChat(yes); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, _ := h.DB.LogCount(); n != 0 {
+		t.Fatalf("a reset on an empty chat logged %d rows", n)
+	}
+	if len(ui.overlays()) != 0 {
+		t.Fatal("a reset on an empty chat still asked")
+	}
+	// the log a reset leaves holds only the wipe's note: still a no-op
+	if err := h.chat.systemNote("the chat was reset"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ResetChat(false); err != nil {
+		t.Fatal(err)
+	}
+	if len(ui.overlays()) != 0 {
+		t.Fatal("a reset behind the wipe's note still asked")
+	}
+}
+
 // TestResetChat: /reset refuses mid-turn, asks alone (the armed screen),
 // wipes the log, the tree and the view once answered, clears the todos and
 // the goal, and the next turn is the log's seq 0 again on a builder that

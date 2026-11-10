@@ -341,6 +341,8 @@ applied one. A store made before goose only gains its version table: the baselin
   compaction view whole and then vacuums and truncates the WAL so the text leaves
   the file; the todo list clears, every goal drops, and the transcript swaps to the empty
   log. It refuses a live turn or run, and asks through `AskFirst`'s armed key or `--yes`.
+  A chat with nothing drawn — no rows, or the last wipe's own system note — is a no-op:
+  no ask, no wipe.
   Between the last confirmation and the wipe sits no model call and no deferred step: the
   quiesce aborts the builder's in-flight calls instead of waiting out their provider calls
   (a provider wedged past its own cancellation still refuses at `quiesceWait`). The armed
