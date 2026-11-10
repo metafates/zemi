@@ -597,9 +597,16 @@ type scrollState struct {
 
 	anchor    []string
 	anchorOff int
-	filling   bool         // the rows drawn are a fill's latest, older ones still to land above
-	rect      uv.Rectangle // where it was drawn on the last frame
-	region    region
+	// the unit the anchor row belongs to (its Segment.Anchor), and the row's
+	// place in that unit: a shed-stable identity, so rows added above and
+	// below at once (a fill, a streaming tail) still re-anchor exactly where
+	// the row-count guesses below cannot
+	anchorID      int
+	anchorUnitOff int
+	anchorTop     int
+	filling       bool         // the rows drawn are a fill's latest, older ones still to land above
+	rect          uv.Rectangle // where it was drawn on the last frame
+	region        region
 	// the last paint's rows, shared with the widget cache, which replaces
 	// rows whole and never writes them in place
 	lines  [][]hostapi.Segment
@@ -743,6 +750,8 @@ func (a *App) paintScrolled(n *node, r uv.Rectangle) [][]hostapi.Segment {
 		}
 	}
 	st.anchor, st.anchorOff = nil, 0
+	moved := st.top != st.anchorTop
+	st.anchorTop = st.top
 	for i := st.top; i < len(lines) && i < st.top+h; i++ {
 		if strings.TrimSpace(hostapi.SegsText(lines[i])) == "" {
 			continue
@@ -750,6 +759,15 @@ func (a *App) paintScrolled(n *node, r uv.Rectangle) [][]hostapi.Segment {
 		st.anchorOff = i - st.top
 		for j := i; j < len(lines) && j < i+_anchorRows; j++ {
 			st.anchor = append(st.anchor, hostapi.SegsText(lines[j]))
+		}
+		if moved {
+			if at := rowAnchor(lines[i]); at > 0 {
+				if from, _ := unitSpan(lines, at); from >= 0 {
+					st.anchorID, st.anchorUnitOff = at, i-from
+				}
+			} else {
+				st.anchorID, st.anchorUnitOff = 0, 0
+			}
 		}
 		break
 	}
@@ -1085,6 +1103,16 @@ func reanchor(lines [][]hostapi.Segment, st *scrollState, prevRows int) int {
 	tops := []int{st.top, st.top + st.rows - prevRows}
 	if st.filling {
 		slices.Reverse(tops)
+	}
+	// the anchored row carries a unit id: the fill and a streaming tail both
+	// move it, and only the id says where it went — the text probes below
+	// match any look-alike row and hold a stale place
+	if st.anchorID > 0 {
+		if from, _ := unitSpan(lines, st.anchorID); from >= 0 {
+			if top := from + st.anchorUnitOff - st.anchorOff; top >= 0 {
+				return top
+			}
+		}
 	}
 	for _, top := range tops {
 		if anchoredAt(lines, top+st.anchorOff, st.anchor) {
