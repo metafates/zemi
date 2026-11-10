@@ -21,7 +21,7 @@ node's height is the most rows it could get, never its last draw, so a widget th
 its region's height can still shrink. Hit testing reads the painted segments, never the tree.
 
 `screenLayout` keeps what the rest of the app asks of a solved frame: the stage's cells, the
-composer's (`App.floatPopup` anchors the palette and the completion list to it), the scrolled
+composer's (`App.floatPopup` anchors the composer popup to it), the scrolled
 region (`regionChat`: `App.scrolls`, `pendingScroll` and `pendingAnchor` are keyed by region)
 and the leaves a selection may not leave. A `composer` node with `Frame` draws the square
 frame around the composer and puts its `Top` region's first row in the top rule
@@ -61,8 +61,8 @@ mark the frame dirty or View-driven tests recompose stale bytes.
 - **No editor modes.** The composer has the keys; commands are slash commands typed
   in the composer. Keymaps are keys or key sequences (`<leader>` is `keymap.leader`; a key name
   the terminal never reports raises, `checkKey`). Printable and composer editing keys stay with
-  the composer - scrolling is not on them (DESIGN §8, Default keymaps) - and chrome, an open
-  palette and completion popups keep their keys before keymaps are consulted; the chat cursor
+  the composer - scrolling is not on them (DESIGN §8, Default keymaps) - and chrome and the
+  composer popups keep their keys before keymaps are consulted; the chat cursor
   `tab` hands the keys to, between popup and keymap (`App.chatCursorKey`), and any key it does
   not take is ignored while the chat holds focus (`App.chatFoldKey` works the selected run's
   rail, or a long prompt's fold, through the widget's own click path). A `list = true`

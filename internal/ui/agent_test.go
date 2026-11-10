@@ -876,10 +876,10 @@ func lastToast(app *App) string {
 	return app.toasts[len(app.toasts)-1].body
 }
 
-// TestPaletteArgumentCompletion: past "/name " the palette lists the
-// command's argument candidates, tab fills the argument under the cursor,
-// enter runs the command with the highlighted one once the user moved to it
-// and a bare "/name " as typed.
+// TestPaletteArgumentCompletion: past "/name " the popup lists the command's
+// argument candidates, tab fills the argument under the cursor, enter runs
+// the command with the highlighted one once the user moved to it and a bare
+// "/name " as typed.
 func TestPaletteArgumentCompletion(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 20)
@@ -919,11 +919,11 @@ func TestPaletteArgumentCompletion(t *testing.T) {
 			}
 		}
 		var args []string
-		for _, a := range app.palette.args {
+		for _, a := range app.completion.argRows {
 			args = append(args, a.label)
 		}
-		if app.composer.text != c.text || strings.Join(args, " ") != c.args || app.palette.open != (c.args != "") || len(app.palette.matches) != 0 {
-			t.Errorf("%q: composer %q, args %v (open=%v, matches %d), want %q and %q", c.keys, app.composer.text, args, app.palette.open, len(app.palette.matches), c.text, c.args)
+		if app.composer.text != c.text || strings.Join(args, " ") != c.args || (app.completion.argRows != nil && len(args) > 0) != (c.args != "") || len(app.completion.cmdRows) != 0 {
+			t.Errorf("%q: composer %q, args %v (rows %v), want %q and %q", c.keys, app.composer.text, args, app.completion.argRows != nil, c.text, c.args)
 		}
 	}
 	for _, c := range []struct {

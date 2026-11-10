@@ -2,12 +2,14 @@ package ui
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -45,6 +47,11 @@ type wordCompleter struct {
 	entityRows []listItem               // the entities narrowed to the token
 	paths      []listItem               // directory candidates: rows of the words they insert
 	extra      []listItem               // the Lua sources' items, ahead of the sections
+	cmdRows    []listItem               // the commands a draft starting with "/" matches
+	argRows    []listItem               // the command's argument candidates, past "/name "
+	argStart   int                      // rune index the argument under the cursor starts at
+	query      string                   // what the argument list was narrowed by
+	moved      bool                     // the user moved the selection in this list
 	selected   int
 	view       viewport
 	size       boxSize // the last drawn size, kept for a frame with no matches to show
@@ -74,15 +81,17 @@ const _dirListWait = 2 * time.Second
 
 const _completionMaxRows = 10
 
-// updateCompletion recomputes both popups after a composer edit: the
-// palette, and the completion whose token is the text between a trigger
-// that starts a word and the cursor; anything else closes it. Lua sources
-// run on the worker, never on the key path. The returned cmd launches a
-// file scan when an "@" popup just opened.
+// updateCompletion recomputes the composer's popup after an edit: a draft
+// starting with "/" lists commands and then their arguments, any other word
+// a trigger starts ("@") lists what its sections and Lua sources offer.
+// Anything else closes it. Lua sources run on the worker, never on the key
+// path. The returned cmd launches a file scan when an "@" popup just opened.
 func (a *App) updateCompletion() tea.Cmd {
-	a.updatePalette()
 	r := a.composer.runes()
 	cur := a.composer.cursor
+	if len(r) > 0 && r[0] == '/' {
+		return a.updateSlash()
+	}
 	i := wordStart(r, cur)
 	files := i < cur && r[i] == '@'
 	lua := i < cur && a.host.HasCompletions(string(r[i]), "")
@@ -90,6 +99,101 @@ func (a *App) updateCompletion() tea.Cmd {
 		a.completion.close()
 		return nil
 	}
+	return a.updateWord(r, i, cur, lua)
+}
+
+// updateSlash recomputes the popup for a draft starting with "/": while the
+// cursor sits in the first word it lists the commands the typed name
+// matches, past it the command's argument candidates. The list never holds
+// the line back: an unknown name submits as a message, a pasted path among
+// the things that ride it.
+func (a *App) updateSlash() tea.Cmd {
+	f := &a.completion
+	r := a.composer.runes()
+	cur := a.composer.cursor
+	nameEnd := 1
+	for nameEnd < len(r) && r[nameEnd] != ' ' && r[nameEnd] != '\n' {
+		nameEnd++
+	}
+	if !f.open || f.trigger != '/' {
+		f.close()
+	}
+	f.trigger, f.start, f.open = '/', 0, true
+	if cur <= nameEnd {
+		query, args := string(r[1:nameEnd]), strings.TrimSpace(string(r[nameEnd:])) != ""
+		f.cmdRows, f.argRows, f.argStart = f.cmdRows[:0], nil, 0
+		cmds := a.host.Commands.List()
+		if string(r) == "/reload" { // enter reloads, so no row may claim it
+			cmds = nil
+		}
+		names := make([]string, len(cmds))
+		for i, c := range cmds {
+			names[i] = c.Name
+		}
+		hits := hostapi.Match(query, names, nil)
+		if query != "" {
+			hits = hostapi.Rank(hits, names, len(hits))
+		}
+		for _, h := range hits {
+			// hidden commands stay out of the list until their name is typed;
+			// with arguments after the name only the names it begins list,
+			// since a fuzzy hit would rewrite a line the user may have meant
+			// as typed
+			if (!cmds[h.Index].Hidden || h.Prefix) && (!args || h.Prefix || query == "") {
+				pos := make([]int, len(h.Pos))
+				for i, at := range h.Pos {
+					pos[i] = at + 1 // past the "/"
+				}
+				f.cmdRows = append(f.cmdRows, listItem{label: "/" + cmds[h.Index].Name, desc: cmds[h.Index].Desc, match: pos})
+			}
+		}
+		return nil
+	}
+	// Past "/name ": the argument candidates under the cursor, from the
+	// command's Go or Lua completer and its completion sources, matched and
+	// ranked in one place (CompleteCommand) before the cap.
+	start := cur
+	for start > nameEnd && r[start-1] != ' ' {
+		start--
+	}
+	name, typed, line := string(r[1:nameEnd]), string(r[start:cur]), string(r[:cur])
+	show := func(cands []listItem, narrow bool) {
+		f.cmdRows = nil
+		if f.argRows == nil || f.argStart != start { // a new list: the name's gave way, or another argument's
+			f.selected, f.moved, f.view = 0, false, viewport{}
+		} else if f.query != typed {
+			f.selected, f.moved = 0, false
+		}
+		f.query, f.argStart = typed, start
+		f.argRows = matchRows(cands, typed, narrow)
+		f.selected = max(0, min(f.selected, len(f.argRows)-1))
+	}
+	lua := a.host.HasCompletions("", name)
+	if c := a.host.Commands.Lookup(name); !lua && (c == nil || c.Complete == nil || c.GoComplete != nil) {
+		show(candRows(a.host.CompleteCommand(context.Background(), name, typed, line), ""), false)
+		return nil
+	}
+	// A Lua completer or source runs on the worker, since the key loop never
+	// waits on Lua; its answer is dropped once the line before the cursor
+	// moved on. Until it lands, the rows it gave narrow by the typed word.
+	show(f.argRows, true)
+	a.background(func() {
+		cands := a.host.CompleteCommand(context.Background(), name, typed, line)
+		if lua {
+			cands = append(cands, a.host.Complete(context.Background(), "", name, typed, line)...)
+		}
+		a.do(func() {
+			if !f.open || f.trigger != '/' || a.composer.cursor > len(a.composer.runes()) || string(a.composer.runes()[:a.composer.cursor]) != line {
+				return // the draft moved on
+			}
+			show(candRows(cands, ""), false)
+		})
+	})
+	return nil
+}
+
+// updateWord recomputes the completion for the word a trigger starts at i.
+func (a *App) updateWord(r []rune, i, cur int, lua bool) tea.Cmd {
 	f := &a.completion
 	opening := !f.open || f.trigger != r[i]
 	if opening {
@@ -116,6 +220,7 @@ func (a *App) updateCompletion() tea.Cmd {
 			})
 		})
 	}
+	files := i < cur && r[i] == '@'
 	if !files {
 		return nil
 	}
@@ -280,11 +385,12 @@ func (f *wordCompleter) close() {
 	f.matches, f.extra = f.matches[:0], nil
 	f.skillRows, f.entityRows, f.paths = nil, nil, nil
 	f.entities = nil
+	f.cmdRows, f.argRows, f.argStart, f.query, f.moved = nil, nil, 0, "", false
 	f.dirDir, f.dirList, f.dirPending = "", nil, ""
 }
 
 func (f *wordCompleter) count() int {
-	n := len(f.skillRows) + len(f.entityRows) + len(f.paths) + len(f.matches)
+	n := len(f.skillRows) + len(f.entityRows) + len(f.paths) + len(f.matches) + len(f.cmdRows) + len(f.argRows)
 	if kind, _ := hostapi.SplitKind(f.token); kind == "" { // a kind filter is not a Lua source's
 		n += len(f.extra)
 	}
@@ -292,14 +398,21 @@ func (f *wordCompleter) count() int {
 }
 
 // shown reports whether the popup is drawn and takes its keys: a Lua
-// trigger with nothing to offer stays out of the way of prose.
-func (f *wordCompleter) shown() bool { return f.open && (f.trigger == '@' || f.count() > 0) }
+// trigger with nothing to offer stays out of the way of prose, while the
+// composer's own triggers draw their empty list ("No matches.") so the
+// reader sees why nothing picks.
+func (f *wordCompleter) shown() bool {
+	return f.open && (f.trigger == '@' || f.trigger == '/' || f.count() > 0)
+}
 
 // title names what the popup lists for the triggers zemi knows the meaning
 // of; a Lua source's own trigger names nothing here.
 func (f *wordCompleter) title() string {
-	if f.trigger == '@' {
+	switch f.trigger {
+	case '@':
 		return "Attach"
+	case '/':
+		return "Commands"
 	}
 	return ""
 }
@@ -607,10 +720,23 @@ func matchRows(rows []listItem, query string, narrow bool) []listItem {
 // @ word for it. A name another kind also answers is inserted with its
 // kind spelled out - @file:review - the word the expander forces; a name
 // one kind holds rides alone.
-func (a *App) acceptCompletion() {
+func (a *App) acceptCompletion() tea.Cmd {
 	f := &a.completion
 	if !f.open || f.selected >= f.count() {
-		return
+		return nil
+	}
+	if f.trigger == '/' {
+		// a name fills "/name " and asks what comes next; an argument
+		// replaces the one under the cursor
+		if f.cmdRows != nil {
+			a.composer.text = f.cmdRows[f.selected].label + " "
+			a.composer.moveEnd()
+			f.close()
+			return a.updateCompletion()
+		}
+		a.composer.replace(f.argStart, f.argRows[f.selected].label+" ")
+		f.close()
+		return nil
 	}
 	n, mt, p, s := 0, len(f.matches), len(f.paths), len(f.skillRows)
 	kind, rest := hostapi.SplitKind(f.token)
@@ -644,8 +770,7 @@ func (a *App) acceptCompletion() {
 				word = string(q) + word
 			}
 			a.composer.replace(f.start+1, pre+word)
-			a.updateCompletion()
-			return
+			return a.updateCompletion()
 		}
 		ins := strings.TrimPrefix(a.host.AttachWord(filepath.Join(a.host.Session().CWD, rel)), "@")
 		// a bare name another kind answers spells its kind out, the word
@@ -678,8 +803,7 @@ func (a *App) acceptCompletion() {
 				word = string(q) + body
 			}
 			a.composer.replace(f.start+1, pre+word)
-			a.updateCompletion()
-			return
+			return a.updateCompletion()
 		}
 		body, q := word, byte(0)
 		if c := word[0]; c == '"' || c == '\'' {
@@ -703,6 +827,7 @@ func (a *App) acceptCompletion() {
 		a.composer.replace(f.start+1, f.kindWord(row.kind, row.label)+" ")
 		f.close()
 	}
+	return nil
 }
 
 // claims counts the kinds that answer a bare name: the file corpus, the
@@ -808,6 +933,16 @@ func (a *App) completionRows(maxW, room, minW int) [][]hostapi.Segment {
 	note := func(text string) []hostapi.Segment {
 		return []hostapi.Segment{{Text: text, HL: hostapi.ChromeHint}}
 	}
+	if f.trigger == '/' {
+		items := f.cmdRows
+		if items == nil {
+			items = f.argRows
+		}
+		if len(items) == 0 {
+			return emptyRows(_noMatches, maxW)
+		}
+		return listRowsW(items, items, f.selected, &f.view, min(_completionMaxRows, room), minW, maxW)
+	}
 	kind, rest := hostapi.SplitKind(f.token)
 	if f.count() == 0 {
 		if f.scanning && len(f.files) == 0 && (kind == "" || kind == hostapi.AttachFile) && !pathHeaded(unquoteToken(rest)) {
@@ -900,4 +1035,96 @@ func walkFiles(ctx context.Context, root string) []string {
 type filesScannedMsg struct {
 	gen   int
 	files []string
+}
+
+// clearComposer empties the draft and closes the popup. The paste map
+// stays: the undo stack still holds the tokens of the draft being cleared,
+// and without their text a ctrl+z sends the placeholder to the model.
+func (a *App) clearComposer() {
+	a.composer.text, a.composer.cursor = "", 0
+	a.completion.close()
+}
+
+// submitComposer routes the composer submit: a line naming a command runs
+// it and leaves the reader where they are, everything else goes through the
+// vetoable composer.submit event and the agent (DESIGN §6.2, §6.3) - a "/"
+// line that names no command is a message like any other, a pasted path
+// among them. A draft the cap refuses (a recalled message, a paste token's
+// text) refuses whole, the draft kept for trimming.
+func (a *App) submitComposer() {
+	text := strings.TrimSpace(a.composer.expand(a.composer.text))
+	if text == "" {
+		return
+	}
+	if utf8.RuneCountInString(text) > _maxDraftChars {
+		a.draftCapToastNow()
+		return
+	}
+	if raw, ok := strings.CutPrefix(text, "/"); ok {
+		if raw == "reload" { // the Go-reserved force reload (DESIGN §4)
+			a.clearComposer()
+			// off the UI goroutine: replaying the boot may ask for trust
+			a.host.GoSafe("reload", a.host.Reload)
+			return
+		}
+		name, args := hostapi.SplitCommand(raw)
+		if cmd := a.host.Commands.Lookup(name); cmd != nil {
+			a.clearComposer()
+			a.runCommand(cmd.Name, args, false)
+			return
+		}
+	}
+	a.followStage()
+	a.sendMessage(text)
+}
+
+// sendMessage runs the composer.submit vetoable event, then appends the
+// message to the transcript and drives the agent. A rewrite verdict replaces
+// the text the user typed, before it is sent.
+func (a *App) sendMessage(text string) {
+	res := a.host.EmitVetoable(context.Background(), hostapi.EventComposerSubmit, map[string]any{"text": text})
+	if res.Denied {
+		a.pushToast(slog.LevelWarn, "Message blocked", res.Reason)
+		return
+	}
+	if res.Text != "" {
+		text = res.Text
+	}
+	draft := a.composer.text
+	a.composer.pushHistory(text)
+	a.clearComposer()
+	if id := a.host.ViewedAgent(); id != "" {
+		if a.host.MessageAgent(id, text) == nil {
+			return
+		}
+		_ = a.host.ViewAgent("") // the run is over: messages go to the session, so show it
+		a.applyScroll(hostapi.ScrollBottom, _regionNone)
+	}
+	if err := a.host.AgentSendUser(text); err != nil {
+		a.pushToast(slog.LevelError, "Could not send", err.Error())
+		a.composer.text = draft
+		a.composer.moveEnd()
+		a.publishComposer()
+	}
+}
+
+// restoreQueue moves queued steering messages back into the composer,
+// ahead of any draft, so they can be edited and sent again, and returns how
+// many it restored. The joined text joins the history: AgentTakeQueue
+// consumed it, so history is all that keeps it when an undo takes the draft
+// back.
+func (a *App) restoreQueue() int {
+	q := a.host.AgentTakeQueue()
+	if len(q) == 0 {
+		return 0
+	}
+	if !a.composer.empty() {
+		q = append(q, a.composer.text)
+	}
+	text := strings.Join(q, "\n\n")
+	a.composer.pushHistory(text)
+	a.composer.text = text
+	a.composer.moveEnd()
+	a.completion.close()
+	return len(q)
 }

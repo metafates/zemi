@@ -195,7 +195,7 @@ func TestComposerRowMoves(t *testing.T) {
 		{"down from a row's end", "ab\ncd", "down", "ab\ncd", 2, 5},
 		{"down clamps to the row below", "abcdefghij\nx", "down", "abcdefghij\nx", 5, 10},
 		{"up clamps to the row above", "abcdefghij\nx", "up", "abcdefghij\nx", 10, 1},
-		{"a slash draft wraps two cells short", "/" + nine + nine, "up", "/" + nine + nine, 11, 4},
+		{"a slash draft wraps like any line", "/" + nine + nine, "up", "/" + nine + nine, 11, 2},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, _, _ = app.composerRows(10, "")
@@ -278,9 +278,8 @@ func TestWrapComposer(t *testing.T) {
 	}
 }
 
-// TestComposerGutter: a plain draft starts at the frame's inner edge with no
-// gutter down its rows; a slash draft says so with its own glyph on the first
-// row and holds the cells it opens on the ones after it.
+// TestComposerGutter: a draft starts at the frame's inner edge with no
+// gutter down its rows, a slash draft among them.
 func TestComposerGutter(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
 	app.composer.text = "one\ntwo"
@@ -295,20 +294,16 @@ func TestComposerGutter(t *testing.T) {
 	}
 	app.composer.text = "/ls\ntwo"
 	rows, _, _ = app.composerRows(40, "")
-	if got := rows[0][0]; got.Text != "/ " || got.HL != "PromptCommand" || hostapi.SegsText(rows[0]) != "/ ls" {
-		t.Fatalf("command prompt %+v", rows[0])
+	if got := hostapi.SegsText(rows[0]); got != "/ls" {
+		t.Fatalf("command row %+v", rows[0])
 	}
-	if got := rows[1][0]; got.Text != "  " || got.HL != "" || hostapi.SegsText(rows[1]) != "  two" {
-		t.Fatalf("command gutter %+v", rows[1])
-	}
-	// a full row ends at the cell the cursor mark keeps free, and a glyphed row
-	// a cell short of that, its glyph standing in for the draft's own first one
+	// a full row ends at the cell the cursor mark keeps free
 	for _, c := range []struct {
 		name, text string
 		want       int
 	}{
 		{"plain", strings.Repeat("a", 60), 39},
-		{"slash", "/" + strings.Repeat("a", 60), 38},
+		{"slash", "/" + strings.Repeat("a", 60), 39},
 	} {
 		app.composer.text = c.text
 		row, _, _ := app.composerRows(40, "")
@@ -941,7 +936,8 @@ func TestPaletteDispatch(t *testing.T) {
 	}
 	// What is highlighted beside "enter run" is what runs: any hit while the
 	// name is being typed, only a name the typed one begins once arguments
-	// follow.
+	// follow. A line no row stands for goes to the model, and with no model
+	// the draft stays.
 	for _, c := range []struct {
 		name, text string
 		cursor     int
@@ -951,13 +947,13 @@ func TestPaletteDispatch(t *testing.T) {
 	}{
 		{"a fuzzy hit runs", "/eho", 4, nil, "/echo", "echo ", ""},
 		{"a prefix hit runs with the arguments", "/ec hi", 3, nil, "/echo", "echo hi", ""},
-		{"a fuzzy hit is not listed before arguments", "/eho hi", 4, nil, "", "", ""},
+		{"a fuzzy hit is not listed before arguments", "/eho hi", 4, nil, "", "", "/eho hi"},
 		{"the moved-to row runs over a typed name", "/zq hi", 3, []string{"down"}, "/zqa", "zqa hi", ""},
 		{"the reserved reload lists no row to claim it", "/reload", 7, nil, "", "", ""},
 	} {
 		ran = ""
 		app.composer.text, app.composer.cursor = c.text, c.cursor
-		app.updatePalette()
+		app.updateCompletion()
 		for _, key := range c.keys {
 			app.composerKey(key, tea.KeyPressMsg{})
 		}
@@ -998,6 +994,27 @@ func TestSubmitFailed(t *testing.T) {
 	}
 }
 
+// TestUnknownCommandIsAMessage: a "/" line that names no command goes to the
+// model like any message - a pasted path among them - the popup it opened
+// gone once the send is away.
+func TestUnknownCommandIsAMessage(t *testing.T) {
+	app := newTestApp(t, t.TempDir())
+	for _, r := range "/tmp/notes.txt" {
+		app.composerKey(string(r), tea.KeyPressMsg{Text: string(r)})
+	}
+	if !app.completion.shown() {
+		t.Fatal("the / popup did not open")
+	}
+	app.composerKey("enter", tea.KeyPressMsg{})
+	c := app.composer
+	if c.text != "/tmp/notes.txt" || c.cursor != len(c.runes()) || len(c.history) != 1 {
+		t.Errorf("text %q cursor %d history %v", c.text, c.cursor, c.history)
+	}
+	if len(app.toasts) != 1 || !strings.HasPrefix(app.toasts[0].body, "no model yet") {
+		t.Errorf("toasts %+v", app.toasts)
+	}
+}
+
 // TestRestoreQueue: an interrupt hands the queue back as one draft that
 // history keeps, with the popups a slash draft held closed.
 func TestRestoreQueue(t *testing.T) {
@@ -1008,21 +1025,20 @@ func TestRestoreQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 	app.composer.text, app.composer.cursor = "/he", 3
-	app.updatePalette()
-	if !app.palette.open {
-		t.Fatal("the palette did not open")
+	app.updateCompletion()
+	if !app.completion.shown() {
+		t.Fatal("the popup did not open")
 	}
-	app.composerKey("esc", tea.KeyPressMsg{}) // the esc abandons the palette and its line
-	app.composerKey("esc", tea.KeyPressMsg{})
+	app.composerKey("esc", tea.KeyPressMsg{}) // the esc closes the popup, the line stays
+	app.composerKey("esc", tea.KeyPressMsg{}) // arms
 	app.composerKey("esc", tea.KeyPressMsg{}) // and interrupts
-	if app.composer.text != "queued" || app.palette.open || app.completion.shown() {
-		t.Fatalf("restore left text %q, palette %v, completion %v", app.composer.text, app.palette.open, app.completion.shown())
+	if !strings.HasPrefix(app.composer.text, "queued") || app.completion.shown() {
+		t.Fatalf("restore left text %q, completion %v", app.composer.text, app.completion.shown())
 	}
-	// the esc'd slash line is gone; the queue text is not lost with the
-	// draft: the restored draft recalls from history
+	// the restored draft (the queue and the line) recalls from history
 	app.clearComposer()
 	app.composerKey("ctrl+p", tea.KeyPressMsg{})
-	if app.composer.text != "queued" {
+	if !strings.HasPrefix(app.composer.text, "queued") {
 		t.Fatalf("history does not hold the restored text: %q", app.composer.text)
 	}
 }
@@ -1034,12 +1050,12 @@ func TestComposerEditRecomputes(t *testing.T) {
 	app, _ := bootAgentApp(t, 60, 12)
 	app.composer.text, app.composer.cursor = "/he", 3
 	app.updateCompletion()
-	if !app.palette.open {
-		t.Fatal("the palette did not open")
+	if !app.completion.shown() {
+		t.Fatal("the popup did not open")
 	}
 	runLua(t, app, `zemi.composer.set("hello")`)
-	if app.palette.open {
-		t.Fatal("set left the palette open over the new text")
+	if app.completion.shown() {
+		t.Fatal("set left the popup open over the new text")
 	}
 	runLua(t, app, `zemi.composer.insert(" see @no")`)
 	if !app.completion.shown() {

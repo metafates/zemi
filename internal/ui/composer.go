@@ -224,8 +224,7 @@ func rowStarts(rows [][]rune, soft []bool) []int {
 // keeping the column; false on the first or last row, where up and down
 // recall history instead.
 func (a *App) composerMove(delta int) bool {
-	glyph, _, _ := a.draftMode()
-	row, col, rows, soft := a.wrapComposer(draftWrap(a.composerW, glyph))
+	row, col, rows, soft := a.wrapComposer(draftWrap(a.composerW))
 	to := row + delta
 	if to < 0 || to >= len(rows) {
 		return false
@@ -410,26 +409,18 @@ func (c *composerState) histNext() {
 const _composerMaxRows = 8
 
 // draftWrap is the cells a draft row wraps at on w: one kept free for the
-// cursor mark, two more where the slash glyph opens the gutter.
-func draftWrap(w int, glyph string) int {
-	if glyph != "" {
-		return w - 3
-	}
-	return w - 1
-}
+// cursor mark.
+func draftWrap(w int) int { return w - 1 }
 
 // composerRows renders the composer as visual rows wrapped to width w: at
 // most composerMaxRows rows, scrolled to keep the cursor row in view with a
 // row of headroom below it, the rows past either edge fading toward the
-// panel. A plain draft starts at the frame's inner edge; a slash (/) draft
-// keeps its glyph on the first row and the gutter it opens down the
-// others. An empty draft shows placeholder dim under the cursor, where typing
+// panel. An empty draft shows placeholder dim under the cursor, where typing
 // replaces it without moving a cell. When the composer holds the keys it
 // also returns the caret's cell relative to its first row, for the
 // terminal's own cursor; without the keys the cursor is not drawn at all.
 func (a *App) composerRows(w int, placeholder string) (rows [][]hostapi.Segment, cell uv.Position, ok bool) {
-	glyph, promptHL, _ := a.draftMode()
-	wrap := draftWrap(w, glyph)
+	wrap := draftWrap(w)
 	a.composerW = w
 	cursorRow, cursorCol, all, soft := a.wrapComposer(wrap)
 	start := max(0, cursorRow-_composerMaxRows+1)
@@ -440,17 +431,6 @@ func (a *App) composerRows(w int, placeholder string) (rows [][]hostapi.Segment,
 	ok = a.composerHoldsKeys()
 	var out [][]hostapi.Segment
 	for i := start; i < len(all) && len(out) < _composerMaxRows; i++ {
-		text := all[i]
-		var gutter []hostapi.Segment
-		switch {
-		case glyph == "":
-		case i == 0:
-			// the glyph stands for the draft's own first character, so the row leaves it out
-			text = text[1:]
-			gutter = []hostapi.Segment{{Text: glyph + " ", HL: promptHL, NoCopy: true}}
-		default:
-			gutter = []hostapi.Segment{{Text: "  ", NoCopy: true}}
-		}
 		var segs []hostapi.Segment
 		switch {
 		case a.composer.text == "" && placeholder != "":
@@ -460,35 +440,16 @@ func (a *App) composerRows(w int, placeholder string) (rows [][]hostapi.Segment,
 			segs = []hostapi.Segment{{Text: placeholder, HL: hostapi.GroupDim, NoCopy: true}}
 			segs = truncateSegs(segs, max(wrap, 1)) // a row never comes out empty
 		default:
-			segs = []hostapi.Segment{{Text: string(text), HL: "Normal"}}
-		}
-		if len(gutter) > 0 {
-			segs = append(gutter, segs...)
+			segs = []hostapi.Segment{{Text: string(all[i]), HL: "Normal"}}
 		}
 		segs[len(segs)-1].Soft = soft[i] // a wrapped row copies as one line
 		out = append(out, segs)
 	}
 	edgeRamp(out, start, len(all)-start-len(out), _boxFade, func(i int) bool { return i == cursorRow-start })
 	if ok {
-		col := cursorCol
-		if glyph != "" {
-			if cursorRow == 0 {
-				col = max(col-1, 0) // the glyph stands for the draft's first rune
-			}
-			col += 2 // the gutter
-		}
-		cell = uv.Position{X: col, Y: cursorRow - start}
+		cell = uv.Position{X: cursorCol, Y: cursorRow - start}
 	}
 	return out, cell, ok
-}
-
-// draftMode is what a draft's first character turns the composer into: a "/"
-// runs a slash command; it never reaches the model.
-func (a *App) draftMode() (glyph, promptHL, ruleHL string) {
-	if strings.HasPrefix(a.composer.text, "/") {
-		return "/", "PromptCommand", "RuleCommand"
-	}
-	return "", "", ""
 }
 
 // composerHoldsKeys reports whether the composer has the keys, so the
@@ -507,9 +468,6 @@ func frameInner(w int) int { return max(w-4, 1) }
 // nothing above it reflows.
 func (a *App) composerFrame(n *node, w int) ([][]hostapi.Segment, uv.Position, bool) {
 	hl := hostapi.GroupRule
-	if _, _, rule := a.draftMode(); rule != "" {
-		hl = rule // a command draft tints the whole frame, not just its glyph
-	}
 	inner := frameInner(w)
 	// the top region draws its rule corner to corner; its Rule cells take the
 	// frame's tint, and its plain rule runs join what stands on them

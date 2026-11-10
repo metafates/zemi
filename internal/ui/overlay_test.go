@@ -263,7 +263,7 @@ func TestOverlaySelectOffKeyLoop(t *testing.T) {
 }
 
 // TestPaletteLuaCompleterOffKeyLoop: typing past "/name " returns while the
-// interpreter is busy, and the Lua completer's answer fills the palette once
+// interpreter is busy, and the Lua completer's answer fills the popup once
 // it is free.
 func TestPaletteLuaCompleterOffKeyLoop(t *testing.T) {
 	t.Parallel()
@@ -275,7 +275,7 @@ func TestPaletteLuaCompleterOffKeyLoop(t *testing.T) {
 	}
 	pressWhileLuaBusy(t, app, keys...)()
 	deadline := time.After(2 * time.Second)
-	for !app.palette.open {
+	for len(app.completion.argRows) == 0 {
 		select {
 		case msg := <-app.hooks:
 			app.Update(msg)
@@ -283,15 +283,15 @@ func TestPaletteLuaCompleterOffKeyLoop(t *testing.T) {
 			t.Fatal("the completer never answered")
 		}
 	}
-	if len(app.palette.args) != 1 || app.palette.args[0].label != "bob" {
-		t.Fatalf("palette args %v", app.palette.args)
+	if len(app.completion.argRows) != 1 || app.completion.argRows[0].label != "bob" {
+		t.Fatalf("argument rows %v", app.completion.argRows)
 	}
 	// the next key keeps the popup and its rows until the completer answers
 	app.renderSync(t)
-	size := app.palette.size
+	size := app.completion.size
 	app.Update(tea.KeyPressMsg{Code: 'o', Text: "o"})
-	if !app.palette.open || app.palette.size != size {
-		t.Fatalf("open=%v size %v, was %v", app.palette.open, app.palette.size, size)
+	if !app.completion.shown() || app.completion.size != size {
+		t.Fatalf("shown=%v size %v, was %v", app.completion.shown(), app.completion.size, size)
 	}
 }
 
@@ -1137,11 +1137,11 @@ func TestListAlias(t *testing.T) {
 		{"ctrl+j moves an overlay's selection", func(a *App) {
 			a.openOverlay(hostapi.Overlay{ID: "o", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "a"}, {Text: "b"}}})
 		}, "ctrl+j", func(a *App) string { return fail(a.overlays[0].selected == 1, "not moved") }},
-		{"ctrl+j moves the palette's selection", func(a *App) {
+		{"ctrl+j moves the popup's selection", func(a *App) {
 			runLua(t, a, `zemi.command.add("aa", function() end) zemi.command.add("ab", function() end)`)
 			pressKeys(a, "/a")
 		}, "ctrl+j", func(a *App) string {
-			return fail(a.palette.open && a.palette.selected == 1, "not moved")
+			return fail(a.completion.shown() && a.completion.selected == 1, "not moved")
 		}},
 		{"ctrl+j on the bare composer scrolls the chat", func(a *App) { pressKeys(a, "hi") }, "ctrl+j", func(a *App) string {
 			return fail(a.composer.text == "hi", fmt.Sprintf("composer %q", a.composer.text))

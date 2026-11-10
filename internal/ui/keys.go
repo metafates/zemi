@@ -89,7 +89,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// an armed key acts only when pressed again right away on the bare
 	// composer: an esc that answers a box in between does not count, and a
 	// held key prefix never outlives a key that bypasses keySequence
-	elsewhere := top != _noModal || a.palette.open || a.completion.shown()
+	elsewhere := top != _noModal || a.completion.shown()
 	// a list alias (zemi.keymap.set with list = true) swaps the key before
 	// any list, popup or prompt sees it, but for a move a typed line edits with
 	if b := a.host.Keymaps.ListAlias(key); elsewhere && b != nil && !(lineKey(b.RHS.Move) && a.typing(top)) {
@@ -106,7 +106,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// printable keys stay with the composer, and an open popup keeps its
 	// keys. The composer is Go-drawn, so typing must not bump the frame
 	// generation: that would re-render every widget on every keystroke.
-	if a.chatFocus && top == _noModal && !a.palette.open && !a.completion.shown() && key != "ctrl+c" {
+	if a.chatFocus && top == _noModal && !a.completion.shown() && key != "ctrl+c" {
 		// the chat cursor's keys: an esc here leaves focus, it never arms
 		// the interrupt, and a held sequence never outlives the focus
 		a.armed, a.keySeq = armed{}, nil
@@ -117,7 +117,7 @@ func (a *App) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	if top == _noModal && key != "ctrl+c" {
-		if a.palette.open || a.completion.shown() {
+		if a.completion.shown() {
 			return a.composerKey(key, msg)
 		}
 		ok, replay := a.keySequence(key)
@@ -310,48 +310,32 @@ func (a *App) composerKey(key string, msg tea.KeyPressMsg) tea.Cmd {
 	// Popups take the list moves but for the ones that edit the draft: a
 	// printable key (j, k, g) types, it never jumps.
 	popupMove := !slices.Contains([]string{"k", "j", "g", "G"}, key) && !lineKey(key)
-	if p := &a.palette; p.open {
-		if popupMove && moveSel(&p.selected, p.count(), p.view.viewH, key) {
-			p.moved = true
-			a.frameDirty = true
-			return nil
-		}
-		switch key {
-		case "tab":
-			return a.acceptPalette()
-		case "esc":
-			a.dismissPalette()
-			a.frameDirty = true
-			return nil
-		case "enter":
-			// the highlighted argument replaces a typed or picked one, so a
-			// bare "/name " runs as typed, and the highlighted command
-			// replaces a typed name that is none or that the user moved off
-			name, args := hostapi.SplitCommand(strings.TrimPrefix(c.text, "/"))
-			switch {
-			case p.args != nil && p.selected < len(p.args) && (p.moved || c.cursor > p.argStart):
-				c.replace(p.argStart, p.args[p.selected].label)
-			case p.selected < len(p.matches) && (p.moved || a.host.Commands.Lookup(name) == nil):
-				c.text = strings.TrimSpace("/" + p.matches[p.selected].Name + " " + args)
-			}
-		}
-		// enter falls through: it submits the "/name args" line
-	}
-
 	if f := &a.completion; f.shown() {
 		if popupMove && cycleSel(&f.selected, f.count(), f.view.viewH, key) {
+			f.moved = true
 			a.frameDirty = true
 			return nil
 		}
 		switch {
 		case key == "esc":
-			a.completion.close()
+			f.close()
 			a.frameDirty = true
 			return nil
+		case key == "enter" && f.trigger == '/':
+			// enter falls through to submit; the highlighted argument
+			// replaces a typed or picked one, so a bare "/name " runs as
+			// typed, and the highlighted command replaces a typed name that
+			// is none or that the user moved off
+			name, args := hostapi.SplitCommand(strings.TrimPrefix(c.text, "/"))
+			switch {
+			case f.argRows != nil && f.selected < len(f.argRows) && (f.moved || c.cursor > f.argStart):
+				c.replace(f.argStart, f.argRows[f.selected].label)
+			case f.selected < len(f.cmdRows) && (f.moved || a.host.Commands.Lookup(name) == nil):
+				c.text = strings.TrimSpace(f.cmdRows[f.selected].label + " " + args)
+			}
 		case key != "tab" && key != "enter":
 		case a.completion.count() > 0:
-			a.acceptCompletion()
-			return nil
+			return a.acceptCompletion()
 		default: // no matches: the key is the composer's
 			a.completion.close()
 		}
@@ -884,8 +868,6 @@ func (a *App) boxScroll() (text *viewport, sel *int, n int, ok bool) {
 		switch {
 		case a.popRect.Empty():
 			return nil, nil, 0, false
-		case a.palette.open:
-			sel, n = &a.palette.selected, a.palette.count()
 		default:
 			sel, n = &a.completion.selected, a.completion.count()
 		}

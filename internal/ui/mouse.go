@@ -236,8 +236,6 @@ func (a *App) dismissOutside(x, y int) bool {
 		a.cancelMenu()
 	case a.topChrome() != _noModal:
 		return false
-	case a.palette.open && out(a.popRect):
-		a.dismissPalette()
 	case a.completion.shown() && out(a.popRect):
 		a.completion.close()
 	default:
@@ -499,10 +497,6 @@ func (a *App) target(x, y int) (spans []cellSpan, act func(), ok bool) {
 		f := &a.completion
 		spans, ok := item(f.count())
 		return spans, func() { f.selected = hit - 1; a.acceptCompletion() }, ok
-	case y >= a.popRect.Min.Y && y < a.popRect.Max.Y && a.palette.open:
-		p := &a.palette
-		spans, ok := item(p.count())
-		return spans, func() { p.selected = hit - 1; a.acceptPalette() }, ok
 	case top == _noModal && pinSpan.hi > 0:
 		// found by where it is: a Hit would light it as a list row, and a
 		// Click with no widget runs a command. The header lands on its own

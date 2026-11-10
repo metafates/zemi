@@ -63,8 +63,8 @@ assert(not ok and tostring(err):find("one punctuation"), tostring(err))`)
 	pressKeys(app, "/greet ")
 	for app.Pump() {
 	}
-	if p := app.palette; !p.open || len(p.args) != 1 || p.args[0].label != "bob" {
-		t.Fatalf("argument candidates: %+v", p)
+	if f := app.completion; !f.shown() || len(f.argRows) != 1 || f.argRows[0].label != "bob" {
+		t.Fatalf("argument candidates: %+v", f.argRows)
 	}
 
 	app.clearComposer()

@@ -19,16 +19,15 @@ var _shippedGroups = withKnots(map[string]HLSpec{
 	"Rule":   {Fg: "rule"},
 	"Title":  {Fg: "accent", Bold: new(true)},
 
-	"RuleCommand": {Link: "Accent"},
-	"Literal":     {Fg: "literal"},
-	"Danger":      {Fg: "danger"},
-	"Warn":        {Fg: "warn"},
-	"Ok":          {Fg: "ok"},
-	"Snail":       {Link: "Accent"},
-	"UserMsg":     {Link: "Accent"},
-	"ToastInfo":   {Link: "Title"},
-	"ToastWarn":   {Link: "Warn", Bold: new(true)},
-	"ToastErr":    {Link: "Danger", Bold: new(true)},
+	"Literal":   {Fg: "literal"},
+	"Danger":    {Fg: "danger"},
+	"Warn":      {Fg: "warn"},
+	"Ok":        {Fg: "ok"},
+	"Snail":     {Link: "Accent"},
+	"UserMsg":   {Link: "Accent"},
+	"ToastInfo": {Link: "Title"},
+	"ToastWarn": {Link: "Warn", Bold: new(true)},
+	"ToastErr":  {Link: "Danger", Bold: new(true)},
 
 	"MarkdownHeading": {Link: "Title"},
 	// an inline span reads by its color: a filled background hangs off the
@@ -57,11 +56,10 @@ var _shippedGroups = withKnots(map[string]HLSpec{
 	"TodoDone":   {Link: "Ok"},
 	"TodoActive": {Fg: "fg", Bold: new(true)},
 
-	// the shell glyph: what follows goes to the shell, not to the model
-	"PromptShell":   {Link: "Warn", Bold: new(true)},
-	"PromptCommand": {Link: "Title"},
-	"Queued":        {Link: "Dim"},
-	"SplashKey":     {Link: "Accent"},
+	// the shell echo: what follows went to a shell, not to the model
+	"PromptShell": {Link: "Warn", Bold: new(true)},
+	"Queued":      {Link: "Dim"},
+	"SplashKey":   {Link: "Accent"},
 
 	"ScrollbarTrack": {Link: "Rule"},
 	"ScrollbarThumb": {Link: "Accent"},

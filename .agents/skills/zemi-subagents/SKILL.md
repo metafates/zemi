@@ -83,7 +83,8 @@ description: "Load before changing a subagent, a fork, an agent run, the workflo
     message is never accepted and then dropped. A foreground `agent` or
   `workflow` call waits for
   its run off the turn's goroutine (a workflow run is `startFlow` and its `flowRun.done`); the
-  user's own typed line (`Host.AgentSendUser`, from the composer's `sendMessage` in palette.go,
+  user's own typed line (`Host.AgentSendUser`, from the composer's `sendMessage` in
+  internal/ui/complete.go,
   and never a report, a plugin send or a loop) hands the
   run off: the call answers with the background text and the run's end delivers its report as a
   message. `flowRun.detach`/`agentRun.detach` take the handoff under the run's own lock and

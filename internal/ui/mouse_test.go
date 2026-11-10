@@ -116,7 +116,7 @@ func TestMouseClicks(t *testing.T) {
 }
 
 // TestMouseHover: hovering a choice lights it, moving off clears it, and
-// hovering a palette row then clicking it fills the composer.
+// hovering a popup row then clicking it fills the composer.
 func TestMouseHover(t *testing.T) {
 	t.Parallel()
 	app, _ := bootAgentApp(t, 80, 20)
@@ -440,7 +440,7 @@ func TestScrollbarDrag(t *testing.T) {
 					app.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
 				}
 			}, false,
-			func(app *App) bool { return app.scrolls[_regionChat].top == 0 && app.palette.selected == 0 },
+			func(app *App) bool { return app.scrolls[_regionChat].top == 0 && app.completion.selected == 0 },
 		},
 		"help list": {
 			func(_ *App, host *hostapi.Host) { host.OpenHelp() }, true,

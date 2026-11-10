@@ -107,7 +107,7 @@ Layers and ownership:
   stops, retries); built-in tools and the tool pipeline (hooks,
   permissions, execution) live in `internal/tools`.
 - **UI core** (`internal/ui`): bubbletea program, region layout, widget
-  registry, theme/highlight resolution, slash palette, overlay stack.
+  registry, theme/highlight resolution, the composer popups, overlay stack.
 - **Chat** (`internal/hostapi/chatlog.go`, `memtree.go`): the eternal log's
   writer, the builder that compresses it into the summary tree, and the zoom
   and date tools. `internal/sanitize` strips escapes at the render boundary
@@ -593,7 +593,7 @@ registered the way zemi runs it: `run`, `keys`, `tool` (through the
 adapter the model's call runs), `emit` (to the plugin's
 own handlers, `tool.post` as tasks and vetoable events with their
 deadline), `complete` (a command's completer and the plugin's
-`zemi.composer.add` sources, as the palette asks them), `overlay`,
+`zemi.composer.add` sources, as the popups ask them), `overlay`,
 `answer` and `set` (one of the plugin's settings by its bare key, as
 `/config` writes it),
 each refusing another origin's target, a Go command and a host
@@ -1673,23 +1673,23 @@ UI extensibility contract:
   composer (there are no modes), the chat cursor (`tab`, below) between
   popup and keymap while it holds the keys. Overlays capture first,
   user maps override defaults, and `zemi.keymap.del` unmaps.
-- Slash palette: typing `/` in the composer opens a popup listing registered
-  commands, matched fuzzily as you type and ranked best first, a name the
-  typed one begins leading; `up`/`down`
-  navigate, `tab` accepts (fills `/name ` and lists its arguments, or the
-  next argument's), `enter` submits the typed
-  line, so `/name args` runs the command instead of sending to the
-  model; the highlighted command runs in place of a typed name that is
-  none or that the user moved off, so what is highlighted is what runs;
-  once arguments follow the name the list holds only the names it begins,
-  and an unknown name with no row toasts and does not send; `esc` closes and
-  `ctrl+space` reopens whatever popup the cursor's word takes. Past
-  `/name ` the list holds the command's argument candidates, its Go or Lua
-  completer's matched and ranked in one place (`CompleteCommand`) before the
-  cap of 50, a completion source's (below) as it returned them, none past
-  the last argument its `nargs` takes. The
-  exact, case-sensitive `/reload` is Go-reserved: it is checked on
-  composer submit before any Lua-visible command lookup (§4).
+- Slash completion: `/` as the draft's first character is the composer's
+  command trigger - the same popup machinery the `@` word takes (below),
+  titled `Commands`. While the cursor sits in the first word it lists the
+  registered commands, matched fuzzily as you type and ranked best first, a
+  name the typed one begins leading; past `/name ` it lists the command's
+  argument candidates, its Go or Lua completer's matched and ranked in one
+  place (`CompleteCommand`) before the cap of 50, a completion source's
+  (below) as it returned them, none past the last argument its `nargs`
+  takes. `up`/`down` navigate, `tab` accepts (fills `/name ` and lists its
+  arguments, or the next argument's), `enter` submits the typed line, the
+  highlighted command standing in for a typed name that is none or that the
+  user moved off; `esc` closes and `ctrl+space` reopens whatever popup the
+  cursor's word takes. The popup never holds a line back: a submit whose
+  name names no command sends the line to the model as a message, so a
+  pasted `/absolute/path` rides with the words around it. The exact,
+  case-sensitive `/reload` is Go-reserved: it is checked on composer submit
+  before any Lua-visible command lookup (§4).
 - Completion sources: `zemi.composer.add({ id, trigger | command,
   items })` adds rows to the popup after a punctuation character that
   starts a word (a `#` issue list; a source's rows go ahead of the files,
@@ -1701,9 +1701,9 @@ UI extensibility contract:
   keeps while an answer is pending. A trigger popup with nothing to offer
   is not drawn and takes no keys, so prose with a `#` in it still submits. A
   popup's top border names what it lists where zemi knows the name: `Attach`
-  for `@`, `Commands` for the palette; a source's own trigger titles nothing,
+  for `@`, `Commands` for `/`; a source's own trigger titles nothing,
   since zemi cannot know what it means.
-- The composer has one word trigger, `@`: one popup titled "Attach",
+- The `@` word opens one popup titled "Attach",
   four sections under headers - `Files`, then `Skills`, then `Workflows`,
   then `Agents` - each
   dropped, header included, when nothing matches it. Skills complete by
@@ -1741,7 +1741,7 @@ UI extensibility contract:
   of the path when only the path matches. `+` is free for a completion
   source again: no trigger is reserved but `/`.
 - One matcher (`hostapi.Match`, over `sahilm/fuzzy`) filters every list a
-  human narrows by typing: the palette, argument candidates, `@` files
+  human narrows by typing: the `/` popup, its argument candidates, `@` files
   and overlays. Every word of the query must match a row: its
   label fuzzily when the label is one token (a name, an id, a path, a
   dotted key), or as a substring when the label is prose (it holds a
@@ -1753,7 +1753,7 @@ UI extensibility contract:
   or of the path when only the path matches. Every list draws the matched
   runes of a label in the accent (`listRowsW`, `matchSegs`), bold on the
   selected row. The selection is its own channel: a band (`Segment.Fill`,
-  the palette's `band`) under the row, the accent `›` and bold text, in every list
+  the popups' `band`) under the row, the accent `›` and bold text, in every list
   and every prompt's buttons, so a match and the selection never share a
   color. It changes only colors, never a row's width, and never underlines:
   that means a click acts. Model-facing lookups
@@ -1976,7 +1976,7 @@ view; a reset's wipe drops the row with the chat.
   moves text; a tag there (`current`, `follows chat`) names, in the accent.
   Enter's hint names its act in one word shared by every list: `open` a
   detail or another screen, `pick` a value (a picker, `zemi.ui.select`, the
-  `@` popup), `run` a command (the palette, `/help`), `toggle` a toggle
+  `@` popup), `run` a command (the `/` popup, `/help`), `toggle` a toggle
   list's row, `fill` the composer, `copy`, and `go` for a following list's
   row with no level under it, whose enter closes the menu keeping the place
   it scrolled the chat to while its esc says `back` and puts the chat where
@@ -2340,7 +2340,7 @@ view; a reset's wipe drops the row with the chat.
   the boot's own (`/config` (§5), `/effort`, `/usage` (tokens and cost),
   `/prompt` (the system prompt the model gets), `/init` (write AGENTS.md for this project))
   and `/trust` (§5). A hidden `/call <row>` opens the view of a chat row that
-  its own click opens, listed in /help and out of the palette's default list.
+  its own click opens, listed in /help and out of the `/` popup's default list.
   `/jobs` is the background processes on a screen of their own, apart from
   `/agents`: running first, each row its state and the clock it has run, `s`
   stopping the selected one without closing the list (so they go one at a
@@ -2422,7 +2422,7 @@ view; a reset's wipe drops the row with the chat.
   theme can recolor the prompt but not hide it; Go draws it itself and Lua text never renders
   inside that chrome, so nothing Lua draws can fake a permission prompt. Modal
   chrome (overlays and prompts) draws over everything but the toast tray,
-  as do the completion and palette popups, which are not modal; while a
+  as do the composer popups, which are not modal; while a
   modal is open everything outside the top box, plugin overlays and widget
   regions too, keeps its own styles sunk toward the canvas to the same
   ambient depth (`modalFade`), and a box covers its own cells and nothing
@@ -2431,7 +2431,7 @@ view; a reset's wipe drops the row with the chat.
   terminal's background digs into what the box stands over; at any other time a plugin
   overlay carries a Go-stamped origin badge (`plugin:<name>`, `project:<file>`). While a box
   stays open its width and height only grow (a filter narrowing a menu,
-  a question batch's tabs, a detail view, the palette as you type), and a
+  a question batch's tabs, a detail view, the popup as you type), and a
   click outside it closes it. Opening a detail view is navigation: it keeps
   its list's width, widened to show its breadcrumb title where the screen has
   room, and takes its own height; a field repeating the title's item (a

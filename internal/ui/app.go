@@ -149,11 +149,9 @@ type App struct {
 	stepLanded     []hostapi.Overlay
 
 	completion wordCompleter
-	palette    cmdPalette
-
-	overlays []overlayState
-	trust    *trustPrompt
-	toasts   []toast
+	overlays   []overlayState
+	trust      *trustPrompt
+	toasts     []toast
 	// the trust answer's guard: the box a boot opens right after the answer
 	// (a first run lands on the model picker) must not act on the key that
 	// answered, so the router drops the first key that reaches it
@@ -1689,13 +1687,12 @@ func (a *App) fadeRows(rows [][]hostapi.Segment) [][]hostapi.Segment {
 	return out
 }
 
-// floatPopup draws the open composer popup, the palette or the completion
-// list, over rows, in line with the composer: standing on its frame like an
-// anchored overlay (anchorBottom) in the draft's rule tint, in the bottom
-// rows of the stage when the stage is above the composer, else beside the
-// composer on the side with more rows. It covers only its own cells and ends
-// in its hint row; each list refits every frame it has rows. It returns the
-// cells it covers.
+// floatPopup draws the open composer popup, the completion list, over rows,
+// in line with the composer: standing on its frame like an anchored overlay
+// (anchorBottom), in the bottom rows of the stage when the stage is above
+// the composer, else beside the composer on the side with more rows. It
+// covers only its own cells and ends in its hint row; each list refits every
+// frame it has rows. It returns the cells it covers.
 func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.Rectangle {
 	h := len(rows)
 	var render func(maxW, room, minW int) [][]hostapi.Segment
@@ -1703,23 +1700,21 @@ func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.R
 	var hints []hintPair
 	var title string
 	switch {
-	case a.palette.open:
-		if a.palette.count() > 0 {
-			a.palette.size = boxSize{} // the list refits every frame: erasing a letter narrows the popup back
-		}
-		render, size, title = a.paletteRows, &a.palette.size, "Commands"
-		hints = []hintPair{{key: "enter", verb: "run"}, {key: "tab", verb: "complete"}, {key: "esc", verb: "close"}}
-		if a.palette.count() == 0 { // enter still runs the typed line
-			hints = slices.Delete(hints, 1, 2)
-		}
 	case a.completion.shown():
 		if a.completion.count() > 0 {
 			a.completion.size = boxSize{} // the list refits every frame: erasing a token narrows the popup back
 		}
 		render, size, title = a.completionRows, &a.completion.size, a.completion.title()
-		hints = []hintPair{{key: "enter", verb: "pick"}, {key: "esc", verb: "close"}}
-		if a.completion.count() == 0 {
-			hints = hints[1:]
+		if a.completion.trigger == '/' { // a slash line runs as typed, tab completes instead
+			hints = []hintPair{{key: "enter", verb: "run"}, {key: "tab", verb: "complete"}, {key: "esc", verb: "close"}}
+			if a.completion.count() == 0 {
+				hints = slices.Delete(hints, 1, 2)
+			}
+		} else {
+			hints = []hintPair{{key: "enter", verb: "pick"}, {key: "esc", verb: "close"}}
+			if a.completion.count() == 0 {
+				hints = hints[1:]
+			}
 		}
 	default:
 		return uv.Rectangle{}
@@ -1742,8 +1737,7 @@ func (a *App) floatPopup(rows [][]hostapi.Segment, lay screenLayout, w int) uv.R
 	body := append(render(maxW, bottom-top-4, size.w), nil, hint(maxW, hints...))
 	box := promptBox(title, "", body, width, bottom-top, 100, size)
 	if up {
-		_, _, rule := a.draftMode()
-		return anchorBottom(rows, box, uv.Rect(x, top, width, bottom-top), c, ruleAt(rows, c), false, cmp.Or(rule, hostapi.ChromeRule), w)
+		return anchorBottom(rows, box, uv.Rect(x, top, width, bottom-top), c, ruleAt(rows, c), false, hostapi.ChromeRule, w)
 	}
 	// NOTE: below the composer the popup covers the statusline row: there is
 	// no rule under the frame for it to stand on
