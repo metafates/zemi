@@ -37,6 +37,9 @@ func (h *Host) CopyReply(args string) error {
 		return err
 	}
 	text = sanitize.String(text)
+	// the <tldr> summary is chat furniture, not text to copy; SplitTLDR's
+	// short-body rule matches what the chat view draws
+	text, _ = SplitTLDR(text)
 	if text == "" {
 		h.Notify(slog.LevelWarn, "Nothing to copy yet", "")
 		return nil

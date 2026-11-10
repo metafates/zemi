@@ -2265,7 +2265,7 @@ view; a reset's wipe drops the row with the chat.
   The rendered view is derived from host-held blocks: the raw message text
   is always in the log, reachable via
   `zoom` (any line whole, by its id) and `/copy` (the last reply as the
-  model wrote it), so no widget can hide what the model actually received.
+  model wrote it, the trailing `<tldr>` summary left out), so no widget can hide what the model actually received.
 - **Composer**: zemi's own Go editor (`internal/ui/composer.go`), not a
   bubbles textarea; `enter` sends, `shift+enter`, `alt+enter` and `ctrl+enter` newline
   (configurable); a large paste folds into a token that expands on submit.
@@ -2330,7 +2330,7 @@ view; a reset's wipe drops the row with the chat.
   answered in an overlay, from the view so far,
   never stored), `/note <text>` (one note-kind row into the chat, a chapter
   mark, mid-turn too), `/copy [reply|code [n]]` (the last reply or its code blocks as
-  written; bare over a reply with code blocks opens their picker), `/logs` (recent
+  written, no trailing `<tldr>`; bare over a reply with code blocks opens their picker), `/logs` (recent
   `print` and `zemi.log` lines), `/health` (one row per check, problems first: store,
   providers, catalog, model, context window, git, shell, notify,
   the chat builder (§10), skills, the Lua runtime, plugins,

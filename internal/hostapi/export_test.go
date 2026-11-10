@@ -53,6 +53,24 @@ func TestCopyReply(t *testing.T) {
 	}
 }
 
+// TestCopyReplyTldr: the trailing <tldr> summary a long reply ends with is
+// chat furniture, left out of every copy.
+func TestCopyReplyTldr(t *testing.T) {
+	t.Parallel()
+	h, _ := newTestHostDB(t)
+	reply := strings.Repeat("long body. ", 80) + "\n<tldr>the summary</tldr>"
+	replyStub(t, h, reply)
+	if err := h.AgentSend("ping"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, h)
+	ui := &fakeUI{}
+	h.SetUIHooks(ui)
+	if err := h.CopyReply("reply"); err != nil || ui.copied != strings.TrimRight(strings.Repeat("long body. ", 80), " ") {
+		t.Errorf("/copy reply = %q, %v", ui.copied, err)
+	}
+}
+
 // TestCopyRunReply: with a run's transcript in view, /copy takes the run's
 // last reply, not the chat's.
 func TestCopyRunReply(t *testing.T) {
