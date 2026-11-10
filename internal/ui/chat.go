@@ -2018,6 +2018,10 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 			tailFirst--
 		}
 	}
+	liveFirst := 0
+	if st.Agent.Text == "" {
+		liveFirst = tailFirst
+	}
 	// The settled transcript draws the same rows until it, the width, the rail
 	// view or a fold changes: a frame hands back the rows it built last time,
 	// so neither the reader's wrap cache nor the app rebuilds them.
@@ -2040,8 +2044,11 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 			if !activity(tr[first]) {
 				return _runNone
 			}
-			// the turn's live rows read whole in the live section; every settled
-			// run folds, the one an agent view shows included
+			// the live turn's own run reads whole; every other run folds, the one
+			// an agent view shows included
+			if first+1 == liveFirst {
+				return _runRail
+			}
 			if f.unfolded[keyOf(st.TranscriptCut, first+1)] {
 				return _runUnfold
 			}
@@ -2118,7 +2125,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 				span := [2]int{int(b.st.TranscriptCut) + u.first, int(b.st.TranscriptCut) + u.last}
 				if f.builtSpan[id] != span {
 					delete(f.built, id)
-				} else if f.touched(b.st.TranscriptCut, u.first, u.last) || u.first+1 == livePrev {
+				} else if f.touched(b.st.TranscriptCut, u.first, u.last) || u.first+1 == livePrev || u.first+1 == liveFirst {
 					f.built[id] = unitLines(k)
 				}
 			}
