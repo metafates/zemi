@@ -1770,6 +1770,8 @@ func TestDigestCountsEveryFamily(t *testing.T) {
 		{name: "workflow", tools: []string{"workflow"}, want: "▸ 1 workflow: x"},
 		{name: "lua", tools: []string{"lua"}, want: "▸ 1 script: x"},
 		{name: "tool_search", tools: []string{"tool_search"}, want: "▸ 1 tool: x"},
+		{name: "zoom", tools: []string{"zoom"}, want: "▸ 1 zoom: x"},
+		{name: "zoom and date", tools: []string{"zoom", "date"}, want: "▸ 1 zoom: x, 1 date line: x"},
 		{name: "mixed names the unlabelled command", want: "▸ 1 file: a.go, 1 command: make", rows: []hostapi.ChatMessage{
 			{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"},
 			{Role: "assistant", Kind: "tool", Tool: "shell", Text: "make", Status: "ok"},

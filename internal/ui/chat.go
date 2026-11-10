@@ -436,6 +436,8 @@ var _countFamilies = map[tools.ToolName]noun{
 	tools.ToolWorkflow: {"ran", "workflow", "workflows"},
 	tools.ToolLua:      {"ran", "script", "scripts"},
 	tools.ToolSearch:   {"looked for", "tool", "tools"},
+	tools.ToolZoom:     {"zoomed", "zoom", "zooms"},
+	tools.ToolDate:     {"opened", "date line", "date lines"},
 }
 
 // family is the family a call counts as, false for a call whose name has
@@ -532,7 +534,13 @@ func looks(e entry) bool { return counted(e) && e.diff == "" }
 
 // grouped is whether a call folds into its step's counted row: the same test
 // steps groups by, so a fold can walk a rail's entries without drawing them.
-func grouped(e entry) bool { return looks(e) && e.label == "" }
+// A zoom or date keeps its row: the line it opened is the row's point.
+func grouped(e entry) bool {
+	if e.name() == string(tools.ToolZoom) || e.name() == string(tools.ToolDate) {
+		return false
+	}
+	return looks(e) && e.label == ""
+}
 
 // nextStep is the entry after the step starting at i, for a fold that needs
 // the entry count and the kept tail's first entry before any row is built.

@@ -46,8 +46,8 @@ func frameText(rows [][]hostapi.Segment) string {
 
 // TestZoomAndDateRowsPreviewTheirLine: a zoom row previews the text of the
 // line it opened, alone: its child's address stays behind the click, as the
-// second child does. A failed zoom's error draws once folded, from the digest
-// the run folds into, and again as its own row open.
+// second child does. The run folds counting its calls, and the failed zoom's
+// error draws once, on its own row.
 func TestZoomAndDateRowsPreviewTheirLine(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 80, 40)
@@ -75,18 +75,18 @@ func TestZoomAndDateRowsPreviewTheirLine(t *testing.T) {
 	if strings.Contains(open, "16032+4|") || strings.Contains(open, "second child line") {
 		t.Fatalf("the zoom preview is not the opened line's text alone:\n%s", open)
 	}
-	if n := strings.Count(open, "no line 9+8 in a chat of 10 messages"); n != 2 {
-		t.Fatalf("the failed zoom's error drew %d times open, want the digest and its row:\n%s", n, open)
+	if n := strings.Count(open, "no line 9+8 in a chat of 10 messages"); n != 1 {
+		t.Fatalf("the failed zoom's error drew %d times open, want its row's once:\n%s", n, open)
 	}
 	folded := func() string {
 		// the digest's own click folds the run back: the fold lives in the
 		// widget, not the state
-		x, y := findCell(t, app, "zoom failed")
+		x, y := findCell(t, app, "1 failed call")
 		clickAt(app, x, y)
 		return frameText(renderAt(t, app, "chat", host.ScreenState(78, 40, app.uiState())))
 	}()
-	if n := strings.Count(folded, "no line 9+8 in a chat of 10 messages"); n != 1 {
-		t.Fatalf("the failed zoom's error drew %d times folded, want its digest's once:\n%s", n, folded)
+	if n := strings.Count(folded, "no line 9+8 in a chat of 10 messages"); n != 0 || !strings.Contains(folded, "1 failed call") {
+		t.Fatalf("folded, the failed zoom's error drew %d times, want the digest's count alone:\n%s", n, folded)
 	}
 }
 
