@@ -22,7 +22,15 @@ Every new line must be deserved, and the best change deletes code. Before adding
 it need to exist, does the tree already have it, does the stdlib or an installed dependency do
 it. No abstractions nobody asked for, no speculative options, fewest files. A report names a
 symptom: find the root cause and fix the class it belongs to in the shared primitive, never the
-one case per screen or per caller.
+one case per screen or per caller. A fix removes or simplifies the code it touches rather
+than working around it: each line is a maintenance cost and a future bug source, so the fix
+that adds a guard over existing complexity is wrong when deleting the complexity would do.
+Adding code is the fallback, not the default: rare, and only once fixing without it has failed
+or would regress.
+
+A change that touches what the user sees or how the UI behaves (layout, folding, colors,
+keybindings, wording the UI draws) is asked for permission first unless the user explicitly
+requested that exact change.
 
 Breaking changes are welcome, architecture and the Lua API included, when they make the result
 simpler. No compatibility shims, no deprecated aliases, no "the old key is still read": remove
