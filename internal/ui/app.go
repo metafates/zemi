@@ -229,6 +229,7 @@ type App struct {
 	recapStop    context.CancelFunc
 
 	bootErr        error
+	booted         bool
 	bootView       viewport          // the boot-failure box's error text
 	streamPending  atomic.Bool       // a stream agentStreamMsg is queued
 	wake           chan struct{}     // a bump while the frame tick sleeps idle
@@ -320,6 +321,7 @@ func (a *App) SetProgram(p *tea.Program) { a.program = p }
 // through the hook channel; safe from any goroutine).
 func (a *App) SignalBoot(err error) {
 	a.do(func() {
+		a.booted = true
 		a.bootErr = err
 		if err != nil {
 			a.log.Error("boot failed", "origin", "ui", "error", err)
@@ -948,6 +950,7 @@ func (a *App) uiState() hostapi.UIState {
 		InterruptArmed: a.isArmed("esc") && a.armed.what == "interrupt",
 		RowsBelow:      a.rowsBelow(),
 		Cancelling:     a.cancelling, Editing: a.editing,
+		Booted: a.booted,
 	}
 	if len(a.keySeq) > 0 && a.now().Sub(a.keySeqAt) <= _keySeqTimeout {
 		st.KeySeq = strings.Join(a.keySeq, " ")

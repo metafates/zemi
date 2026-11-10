@@ -14,6 +14,7 @@ import (
 // it, and the roles list rebuilt with the pick once that list closes.
 func TestGoldenModelRoles(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 16)
+	app.SignalBoot(nil) // the statusline's model pill waits out the boot
 	runLua(t, app, `
 		zemi.provider.add({ id = "anthropic", kind = "openai_compat", base_url = "http://x", api_key = "k", models = {
 			{ id = "claude-sonnet-4-5", display = "Claude Sonnet 4.5" }, { id = "claude-haiku-4-5", display = "Claude Haiku 4.5" } } })

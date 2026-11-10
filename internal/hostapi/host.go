@@ -1790,6 +1790,7 @@ type UIState struct {
 	Cancelling     bool    // interrupt sent, turn not finished yet
 	Editing        string  // title of the file open in the editor
 	Waiting        Waiting // while a prompt holds the turn
+	Booted         bool    // the boot goroutine reported back; a reload reports too
 }
 
 // usageTable is the session token tally for widgets (DESIGN §8): totals

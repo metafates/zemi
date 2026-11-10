@@ -199,6 +199,7 @@ func TestContextMeter(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			app, host := bootAgentApp(t, 100, 12)
+			app.SignalBoot(nil) // the meter waits out the boot
 			// a known windowless model: the tok fallback is its readout, and a
 			// spec-less boot (no provider yet) shows nothing at all
 			runLua(t, app, `zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", models = { { id = "m" } } })`)

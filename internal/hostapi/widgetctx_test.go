@@ -7,8 +7,32 @@ import (
 	"testing"
 	"time"
 
+	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/store"
 )
+
+// TestScreenWaitsOutTheBoot: while the boot steps run the live model is the
+// catalog's fallback, so the statusline's model-derived pills read nothing;
+// the boot reported back, they fill from the live state once, actual.
+func TestScreenWaitsOutTheBoot(t *testing.T) {
+	t.Parallel()
+	h := newTestHostUI(t)
+	err := h.Providers.Register(agent.Spec{
+		ID: "fake", Kind: agent.KindOpenAICompat, BaseURL: "http://x",
+		Models: []agent.Model{{ID: "m", ContextWindow: 1000}},
+	}, "k", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.SeedStream(StreamSnapshot{LastIn: 795, SessionIn: 500, SessionCost: 0.27})
+	if st := h.ScreenState(60, 1, UIState{}); st.Model != "" || st.Context.Window != 0 || st.Usage.Total != 0 {
+		t.Fatalf("the boot's frames read model %q ctx %+v usage %+v, want nothing provisional", st.Model, st.Context, st.Usage)
+	}
+	st := h.ScreenState(60, 1, UIState{Booted: true})
+	if st.Model != "fake/m" || st.Context.Window != 1000 || st.Usage.In != 500 {
+		t.Fatalf("the booted screen reads model %q ctx %+v usage %+v", st.Model, st.Context, st.Usage)
+	}
+}
 
 // TestViewedRunIsTheLiveOne: while an agent run is shown the ctx reports that
 // run's own state, not the session's, so the chat draws its last activity run

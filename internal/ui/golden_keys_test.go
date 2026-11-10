@@ -26,6 +26,7 @@ func registerKeys(t *testing.T, host *hostapi.Host) {
 // config set, and the builtins waiting for a key.
 func TestGoldenKeys(t *testing.T) {
 	app, host := bootAgentApp(t, 80, 20)
+	app.SignalBoot(nil) // the statusline's model pill waits out the boot
 	registerKeys(t, host)
 	host.Providers.Reset(agent.Catalog{
 		Specs: []agent.Spec{

@@ -43,6 +43,7 @@ func TestGoldenWorkflows(t *testing.T) {
 
 	_, cfg := tempHome(t)
 	app, host := bootAgentAppIn(t, 80, 30, _tipClock, cfg, "/tmp/zemi-golden-project")
+	app.SignalBoot(nil) // the statusline's model pill waits out the boot
 	host.SetProjectTrusted(true)
 	ctx := t.Context()
 	reloadUI(t, host)
