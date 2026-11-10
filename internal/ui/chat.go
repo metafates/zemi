@@ -695,7 +695,7 @@ func diffstat(diff string) []hostapi.Segment {
 // first call, or "6 files, 8 commands · thought 8s"; "" when it holds neither,
 // so its rail stays.
 func digest(rows []entry, first, last int, cwd, home string) string {
-	var calls, fails, works []entry
+	var calls, fails, works, news []entry
 	var secs time.Duration
 	reasoned := false
 	for i := first; i <= last; i++ {
@@ -706,6 +706,11 @@ func digest(rows []entry, first, last int, cwd, home string) string {
 			reasoned = true
 		case digests(m):
 			calls = append(calls, m)
+		case counted(m):
+			// a call whose diff is news keeps out of the digest; a lone one
+			// still names itself, as a thought does, or its one-row rail
+			// stands with no fold row to close it
+			news = append(news, m)
 		case m.kind == hostapi.RowTool && (m.status == hostapi.CallErr || gateStopped(m)):
 			// a failed call leaves no count, so the digest says it did: the
 			// model's reply repeating the error is otherwise the only trace.
@@ -725,6 +730,11 @@ func digest(rows []entry, first, last int, cwd, home string) string {
 	}
 	if at > last+1 && !reasoned {
 		secs += rows[at-1].thought
+	}
+	// the run's lone news call counts after all, its diff a click away like an
+	// edit's; with more of them the rail stands, the diffs its own rows' news
+	if len(calls) == 0 && len(news) == 1 {
+		calls = news
 	}
 	var parts []string
 	if len(calls) > 0 {
@@ -1044,6 +1054,29 @@ func (f *chatFolds) toggle(kind string, key int64) {
 			}
 		}
 	}
+}
+
+// open says whether the fold a chat click id names stands open: the cursor's
+// keys work the state, not the glyph the last paint drew, which a toggle this
+// frame has not redrawn yet.
+func (f *chatFolds) open(id string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	kind, num, ok := strings.Cut(id, ":")
+	if !ok {
+		return false
+	}
+	key, err := strconv.ParseInt(num, 10, 64)
+	if err != nil {
+		return false
+	}
+	switch kind {
+	case "turn":
+		return f.unfolded[key]
+	case "prompt":
+		return f.prompts[key]
+	}
+	return false
 }
 
 // click runs the chat's own click ids and hands the rest back, so a command

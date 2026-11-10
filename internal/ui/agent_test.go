@@ -1782,6 +1782,9 @@ func TestDigestCountsEveryFamily(t *testing.T) {
 		{name: "a denied call stays in the digest", want: "▸ write denied by you", rows: []hostapi.ChatMessage{
 			{Role: "assistant", Kind: "tool", Tool: "write", Text: "b.go", Output: "permission denied (user): fs.write b.go: untrusted", Status: "stopped"},
 		}},
+		{name: "a lone command with a diff folds into its digest", want: "▸ 1 command: make a mess", rows: []hostapi.ChatMessage{
+			{Role: "assistant", Kind: "tool", Tool: "shell", Text: "make", Label: "make a mess", Status: "ok", Diff: "--- a\n+++ a\n@@\n-a\n-b"},
+		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			host.AppendMessage("user", "go")

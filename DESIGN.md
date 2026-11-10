@@ -2164,7 +2164,9 @@ view; a reset's wipe drops the row with the chat.
   call a family counts (a read, a search, a file change, a command that changed
   nothing, gone well, an agent run, a workflow, a script, an MCP call under its
   server) or a thought to name: a run with neither keeps
-  its whole rail. A run a reply has closed folds this
+  its whole rail, but a run holding one call a family counts names it even
+  when its diff is news, so no single-row rail stands with no fold row to
+  close it. A run a reply has closed folds this
   way at once, while the reply still streams and after it settles, so only the
   run the turn is working in, the one it thinks and calls in, stays open, and an
   agent run's view folds it the same way, so what a run shows behaves like the
