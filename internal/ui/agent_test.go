@@ -328,6 +328,27 @@ func TestColdChatRender(t *testing.T) {
 	}
 }
 
+// TestShedKeepsBuilds: once the chat passes its window, every appended row
+// sheds the head, and the shed must not throw the built units away — a
+// rebuild of the whole transcript per landed row is the scroll flicker.
+func TestShedKeepsBuilds(t *testing.T) {
+	app, host := bootAgentAppOn(t, 140, 40, &lagClock{}, "")
+	seedResumedChat(host, 550)
+	f := app.chatFolds()
+	for more := true; more; {
+		_, more = renderChat(t, app, 138, 30, app.uiState())
+	}
+	before := len(f.built)
+	host.AppendMessage("user", "one more")
+	_, more := renderChat(t, app, 138, 30, app.uiState())
+	if len(f.built) <= before/2 {
+		t.Fatalf("a shed kept %d of %d builds", len(f.built), before)
+	}
+	if more {
+		t.Fatal("the fill owes units after a shed kept the builds")
+	}
+}
+
 // addRunMessage stores one model message in a run's child session, which
 // loadRun reads back into transcript rows.
 func addRunMessage(t *testing.T, db *store.DB, session string, m fantasy.Message) {

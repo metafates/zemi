@@ -876,11 +876,11 @@ type chatFolds struct {
 	settledKey  settledKey
 	settledPrev blockKind
 	fillUnit    int
-	built       map[int][][]hostapi.Segment
-	builtFrom   settledKey     // the state the builds belong to, with rows aside
-	builtSpan   [][2]int       // each built unit's transcript span
-	ver         int            // the folds' version: any change draws the rows again
-	dirty       map[int64]bool // fold keys toggled since the last build: their unit rebuilds at once
+	built       map[int64][][]hostapi.Segment
+	builtFrom   settledKey       // the state the builds belong to, with rows aside
+	builtSpan   map[int64][2]int // each built unit's transcript span, absolute (cut-added)
+	ver         int              // the folds' version: any change draws the rows again
+	dirty       map[int64]bool   // fold keys toggled since the last build: their unit rebuilds at once
 }
 
 // foldSet is one view's folds: the session's chat and a run's transcript
@@ -2100,28 +2100,33 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 			// until the fill caught back up. A tail that moved (a turn's first
 			// call landing, the reply it closes starting to stream) only moves
 			// the mode of the run it names, and a fold toggle one unit: those
-			// rebuild at once, still without dipping the total.
-			// a folds version that only toggles wrote (a click) rides the same
+			// rebuild at once, still without dipping the total. A shed head
+			// moves every index and none of the rows: builds key on the row's
+			// own place in the log, which a trim shifts without renumbering.
+			// a folds version that only toggled wrote (a click) rides the same
 			// rule: the touched unit rebuilds, the builds beside it stand
 			now, prev := key, f.builtFrom
 			now.rows, prev.rows = 0, 0
+			now.older, prev.older = 0, 0
+			now.cut, prev.cut = 0, 0
 			tailPrev, repPrev := prev.tail, prev.replying
 			now.tail, prev.tail, now.replying, prev.replying = 0, 0, false, false
 			now.folds, prev.folds = 0, 0
-			if now != prev {
-				f.built = map[int][][]hostapi.Segment{}
-				f.builtSpan = nil
-			} else {
-				livePrev := 0
-				if repPrev {
-					livePrev = tailPrev
-				}
-				for k, u := range units {
-					if k >= len(f.builtSpan) || f.builtSpan[k] != [2]int{u.first, u.last} {
-						delete(f.built, k)
-					} else if f.touched(b.st.TranscriptCut, u.first, u.last) || u.first+1 == livePrev || u.first+1 == liveFirst {
-						f.built[k] = unitLines(k)
-					}
+			if now != prev { // a reset, an edit, a view or a width change: nothing survives
+				f.built = map[int64][][]hostapi.Segment{}
+				f.builtSpan = map[int64][2]int{}
+			}
+			livePrev := 0
+			if repPrev {
+				livePrev = tailPrev
+			}
+			for k, u := range units {
+				id := keyOf(b.st.TranscriptCut, u.first+1)
+				span := [2]int{int(b.st.TranscriptCut) + u.first, int(b.st.TranscriptCut) + u.last}
+				if f.builtSpan[id] != span {
+					delete(f.built, id)
+				} else if f.touched(b.st.TranscriptCut, u.first, u.last) || u.first+1 == livePrev || u.first+1 == liveFirst {
+					f.built[id] = unitLines(k)
 				}
 			}
 			clear(f.dirty)
@@ -2131,7 +2136,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		if !fresh && len(rising) > 0 {
 			for k, u := range units {
 				if rising[keyOf(b.st.TranscriptCut, u.first+1)] {
-					f.built[k] = unitLines(k)
+					f.built[keyOf(b.st.TranscriptCut, u.first+1)] = unitLines(k)
 				}
 			}
 		}
@@ -2141,9 +2146,11 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		newX, covered, t0 := f.fillUnit, 0, time.Now()
 		for newX > 0 {
 			k := newX - 1
-			if _, ok := f.built[k]; !ok {
-				f.built[k] = unitLines(k)
-				covered += len(f.built[k])
+			id := keyOf(b.st.TranscriptCut, k+1)
+			if _, ok := f.built[id]; !ok {
+				f.built[id] = unitLines(k)
+				f.builtSpan[id] = [2]int{int(b.st.TranscriptCut) + units[k].first, int(b.st.TranscriptCut) + units[k].last}
+				covered += len(f.built[id])
 			}
 			newX = k
 			if covered >= b.st.Height+_fillSlack && (fresh || time.Since(t0) >= _fillBudget) {
@@ -2168,14 +2175,14 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 			for k := range slices.Backward(units) {
 				if e := tr[units[k].first]; e.role == fantasy.MessageRoleUser && e.kind == hostapi.RowMessage {
 					if k >= headEnd && k < newX {
-						f.built[k] = unitLines(k)
+						f.built[keyOf(b.st.TranscriptCut, k+1)] = unitLines(k)
 					}
 					break
 				}
 			}
 			for k := range headEnd {
-				if _, ok := f.built[k]; !ok {
-					f.built[k] = unitLines(k)
+				if _, ok := f.built[keyOf(b.st.TranscriptCut, k+1)]; !ok {
+					f.built[keyOf(b.st.TranscriptCut, k+1)] = unitLines(k)
 				}
 			}
 		}
@@ -2192,7 +2199,7 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 			lines = append(lines, []hostapi.Segment{{Text: ""}})
 		}
 		for k := range units {
-			if l, ok := f.built[k]; ok {
+			if l, ok := f.built[keyOf(b.st.TranscriptCut, k+1)]; ok {
 				lines = append(lines, l...)
 			}
 		}
@@ -2200,9 +2207,21 @@ func (f *chatFolds) render(h *hostapi.Host, st *hostapi.ScreenState) ([][]hostap
 		f.fillUnit = newX
 		f.settledPrev, f.settledKey = _blockNone, key
 		f.builtFrom = key
-		f.builtSpan = make([][2]int, len(units))
+		if f.builtSpan == nil {
+			f.builtSpan = map[int64][2]int{}
+		}
+		current := make(map[int64]bool, len(units))
 		for k, u := range units {
-			f.builtSpan[k] = [2]int{u.first, u.last}
+			id := keyOf(b.st.TranscriptCut, k+1)
+			current[id] = true
+			f.builtSpan[id] = [2]int{int(b.st.TranscriptCut) + u.first, int(b.st.TranscriptCut) + u.last}
+		}
+		// units the window shed leave stale entries behind: their builds go too
+		for id := range f.builtSpan {
+			if !current[id] {
+				delete(f.builtSpan, id)
+				delete(f.built, id)
+			}
 		}
 		if len(units) > 0 {
 			f.settledPrev = blockOf(len(units) - 1)
