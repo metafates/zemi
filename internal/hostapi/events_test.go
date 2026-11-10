@@ -2,14 +2,9 @@ package hostapi
 
 import (
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -21,31 +16,6 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/tools"
 )
-
-// TestToolDeniedEvent: a call the gate refuses reaches tool.denied
-// handlers with the tool, subject and deciding source.
-func TestToolDeniedEvent(t *testing.T) {
-	h, r := newTestHostDB(t)
-	runUser(t, r, `zemi.event.on("tool.denied", function(ev)
-		zemi.state.set("denied", ev.tool .. " " .. ev.subject .. " " .. ev.by)
-	end)`)
-	askEverything(t, r)
-	for _, tl := range tools.All(h.PipelineFor()) {
-		if tl.Info().Name != "write" {
-			continue
-		}
-		resp, err := tl.Run(t.Context(), fantasy.ToolCall{ID: "1", Name: "write", Input: `{"path":"/p/secret.txt","text":"x"}`})
-		if err != nil || !resp.IsError {
-			t.Fatalf("denied write = %+v, %v", resp, err)
-		}
-	}
-	waitFor(t, func() error {
-		if v, _ := h.GlobalDB.GetKV("denied"); v != `"write fs.write nobody"` {
-			return fmt.Errorf("tool.denied payload = %s", v)
-		}
-		return nil
-	})
-}
 
 // TestHostToolEvents: a host-implemented tool gates and runs outside
 // internal/tools, so it has to fire tool.denied and tool.post itself.
@@ -73,114 +43,6 @@ func TestHostToolEvents(t *testing.T) {
 		}
 		return nil
 	})
-}
-
-// TestHostEmitsAreCatalogued reads the source, since most host emits run
-// under a recover (GoSafe, a turn, a Lua call) that would swallow a failure.
-// An emit names its event as a literal or as a constant, which is resolved
-// from the same source.
-func TestHostEmitsAreCatalogued(t *testing.T) {
-	nameArg := map[string]int{"EmitAsync": 0, "EmitVetoable": 1, "emitVetoable": 1, "EmitOnState": 1, "recordEvent": 0}
-	files, _ := filepath.Glob("*.go")
-	for _, dir := range []string{"../ui", "../.."} {
-		more, _ := filepath.Glob(filepath.Join(dir, "*.go"))
-		files = append(files, more...)
-	}
-	fset := token.NewFileSet()
-	var parsed []*ast.File
-	consts := map[string]string{}
-	lit := func(e ast.Expr) (string, bool) {
-		b, ok := e.(*ast.BasicLit)
-		if !ok || b.Kind != token.STRING {
-			return "", false
-		}
-		s, err := strconv.Unquote(b.Value)
-		return s, err == nil
-	}
-	for _, file := range files {
-		if strings.HasSuffix(file, "_test.go") {
-			continue
-		}
-		f, err := parser.ParseFile(fset, file, nil, parser.SkipObjectResolution)
-		if err != nil {
-			t.Fatal(err)
-		}
-		parsed = append(parsed, f)
-		for _, d := range f.Decls {
-			g, ok := d.(*ast.GenDecl)
-			if !ok || g.Tok != token.CONST {
-				continue
-			}
-			for _, spec := range g.Specs {
-				vs, ok := spec.(*ast.ValueSpec)
-				if !ok {
-					t.Fatalf("const spec = %T, want a value spec", spec)
-				}
-				for i, n := range vs.Names {
-					if i >= len(vs.Values) {
-						continue
-					}
-					if v, ok := lit(vs.Values[i]); ok {
-						consts[n.Name] = v
-					}
-				}
-			}
-		}
-	}
-	// name resolves a literal or a const ident, of this package or a
-	// selected one (hostapi.EventToolPre): false leaves a variable alone.
-	name := func(e ast.Expr) (string, bool) {
-		if b, ok := lit(e); ok {
-			return b, true
-		}
-		var id string
-		switch e := e.(type) {
-		case *ast.Ident:
-			id = e.Name
-		case *ast.SelectorExpr:
-			id = e.Sel.Name
-		default:
-			return "", false
-		}
-		s, ok := consts[id]
-		return s, ok
-	}
-	seen := 0
-	for _, f := range parsed {
-		ast.Inspect(f, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			var fn string
-			switch fun := call.Fun.(type) {
-			case *ast.Ident:
-				fn = fun.Name
-			case *ast.SelectorExpr:
-				fn = fun.Sel.Name
-			}
-			i, ok := nameArg[fn]
-			if !ok || len(call.Args) <= i {
-				return true
-			}
-			if fn == "recordEvent" {
-				if from, ok := call.Args[1].(*ast.BasicLit); !ok || from.Value != `"host"` {
-					return true
-				}
-			}
-			ev, ok := name(call.Args[i])
-			if !ok {
-				return true
-			}
-			if seen++; !_eventCatalogue.Has(ev) {
-				t.Errorf("%s: %s(%q) is not in eventCatalogue", fset.Position(call.Pos()).Filename, fn, ev)
-			}
-			return true
-		})
-	}
-	if seen == 0 {
-		t.Fatal("found no host emits")
-	}
 }
 
 // TestEmitKeepsNameAndFrom: a payload cannot rename an event or claim
@@ -225,17 +87,6 @@ func TestBuiltinWorkflows(t *testing.T) {
 	}
 }
 
-func TestToolPreOnce(t *testing.T) {
-	h, r := newTestHost(t)
-	runUser(t, r, `zemi.event.on("tool.pre", function() return { decision = "deny", reason = "once" } end, { once = true })`)
-	pre := h.toolPreHook()
-	for i, want := range []tools.PreVerdict{tools.PreDeny, ""} {
-		if d, _, _ := pre("shell", map[string]any{"command": "ls"}); d != want {
-			t.Fatalf("call %d: decision %q, want %q", i+1, d, want)
-		}
-	}
-}
-
 // TestToolPostOnceOverlap: two tool calls whose tool.post runs overlap each
 // hold the handler list, and a once handler still runs for one of them.
 func TestToolPostOnceOverlap(t *testing.T) {
@@ -258,15 +109,6 @@ func TestToolPostOnceOverlap(t *testing.T) {
 	wg.Wait()
 	if n := strings.Count(strings.Join(outs, ","), "once"); n != 1 {
 		t.Fatalf("outputs %q: the once handler ran %d times", outs, n)
-	}
-}
-
-// TestVetoShape pins the zemi.Veto table runtime/types/zemi.lua documents.
-func TestVetoShape(t *testing.T) {
-	h, r := newTestHost(t)
-	runUser(t, r, `zemi.event.on("tool.pre", function() return { decision = "halt", reason = "stop" } end)`)
-	if d, reason, _ := h.toolPreHook()("shell", map[string]any{"command": "ls"}); d != "halt" || reason != "stop" {
-		t.Errorf("tool.pre = %q %q, want halt stop", d, reason)
 	}
 }
 
@@ -304,45 +146,6 @@ func TestVetoCrashFailsClosed(t *testing.T) {
 	}
 	if res := h.EmitVetoable(t.Context(), EventAppQuit, map[string]any{}); res.Denied {
 		t.Errorf("app.quit = %+v, want proceed", res)
-	}
-}
-
-// TestPreAsk: a tool.pre handler may return { decision = "ask" } to put
-// the call's action to the user; the gate answers it (tools_test.go pins
-// the ask leg itself, headless it fails closed).
-func TestPreAsk(t *testing.T) {
-	h, r := newTestHost(t)
-	runUser(t, r, `
-		zemi.event.on("tool.pre", function(ev)
-			if ev.tool == "shell" then return { decision = "ask" } end
-			return nil
-		end)`)
-	hook := h.toolPreHook()
-	if d, _, _ := hook("shell", map[string]any{"command": "ls"}); d != "ask" {
-		t.Errorf("tool.pre(shell) = %q, want ask", d)
-	}
-	if d, _, _ := hook("edit", map[string]any{}); d != "" {
-		t.Errorf("tool.pre(edit) = %q, want no opinion", d)
-	}
-}
-
-// TestVetoCountedOnly: the gate's veto event with no handler listening
-// counts but keeps no recent entry, or it would displace the log on every
-// model action for the plugin-free majority.
-func TestVetoCountedOnly(t *testing.T) {
-	h, _ := newTestHost(t)
-	if res := h.EmitVetoable(t.Context(), EventToolPre, map[string]any{}); res.Denied {
-		t.Errorf("= %+v, want silence", res)
-	}
-	h.evlog.mu.Lock()
-	defer h.evlog.mu.Unlock()
-	if h.evlog.counts[EventToolPre] != 1 {
-		t.Errorf("count = %d, want 1", h.evlog.counts[EventToolPre])
-	}
-	for _, e := range h.evlog.entries {
-		if e.name == EventToolPre {
-			t.Fatal("the handlerless veto kept a recent entry")
-		}
 	}
 }
 

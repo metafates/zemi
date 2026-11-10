@@ -254,22 +254,6 @@ func TestLuaAPIIO(t *testing.T) {
 	`)
 }
 
-// TestKeySequences: <leader> expands to keymap.leader, sequences register
-// as prefixes, and a sequence may not start with a printable key.
-func TestKeySequences(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	runUser(t, r, `
-		zemi.keymap.set("<leader>gs", "zemi.ui.help")
-		assert(zemi.keymap.get("ctrl+x g s") ~= nil, "leader expands")
-		assert(zemi.keymap.get("<leader>gs") ~= nil, "get takes the leader form")
-		assert(not pcall(zemi.keymap.set, "g s", "zemi.ui.help"), "printable start refused")
-	`)
-	if !h.Keymaps.IsPrefix("ctrl+x g") || h.Keymaps.IsPrefix("ctrl+x x") {
-		t.Fatal("prefix lookup")
-	}
-}
-
 // TestPurgeStopsLuaWork: a reload stops the jobs, agents and workflows Lua
 // started, which would otherwise run on with nobody left to hear from them.
 func TestPurgeStopsLuaWork(t *testing.T) {

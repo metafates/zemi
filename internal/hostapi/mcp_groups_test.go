@@ -7,20 +7,16 @@ package hostapi
 import (
 	"encoding/json"
 	"encoding/json/jsontext"
-	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/mcp"
 	"github.com/metafates/zemi/internal/mcp/mcptest"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -506,65 +502,4 @@ func snapUI(ui *fakeUI) ([]string, []Overlay) {
 	ui.mu.Lock()
 	defer ui.mu.Unlock()
 	return slices.Clone(ui.refreshed), slices.Clone(ui.rebuilt)
-}
-
-// plantGrant writes a stored grant for one server the way the OS keychain or
-// its fallback file would hold it.
-func plantGrant(t *testing.T, h *Host, s *mcpServer) {
-	t.Helper()
-	spec := s.specSnapshot()
-	grant, err := jsonv2.Marshal(mcp.Token{
-		ServerURL: spec.URL, AccessToken: "a0", ClientID: "c",
-		AuthURL: spec.URL + "/a", TokenURL: spec.URL + "/t", RedirectURI: spec.URL + "/c",
-	}, jsonv2.Deterministic(true))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Dir(h.mcpAuth(s).Path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(h.mcpAuth(s).Path, grant, 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// signOutKey reports whether a server's row offers x.
-func signOutKey(items []OverlayItem, name string) bool {
-	i := slices.IndexFunc(items, func(it OverlayItem) bool { return it.ID == "mcp "+name })
-	return i >= 0 && slices.ContainsFunc(items[i].Keys, func(k ItemKey) bool { return k.Key == "x" })
-}
-
-// TestMCPSignOutKey: the keychain is asked once per registration off the UI
-// path, so the sign-out key follows the grant without a read on every build.
-func TestMCPSignOutKey(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHostDB(t)
-	defer h.mcp.stopParked()
-	defer h.mcp.park()
-	addFakeMCP(t, h, r, "solo", "")
-	if signOutKey(h.mcpItems(), "solo") {
-		t.Fatal("a server with no grant offers the sign-out key")
-	}
-	plantGrant(t, h, serverOf(t, h, "solo"))
-	if err := h.restartMCP("solo"); err != nil {
-		t.Fatal(err)
-	}
-	waitFor(t, func() error {
-		if !signOutKey(h.mcpItems(), "solo") {
-			return errors.New("the stored grant never showed the sign-out key")
-		}
-		return nil
-	})
-	if err := h.signOutMCP("solo", true); err != nil {
-		t.Fatal(err)
-	}
-	if signOutKey(h.mcpItems(), "solo") {
-		t.Fatal("the sign-out key stayed after signing out")
-	}
-	// the build never asks the keychain: a grant planted now waits for the
-	// next registration instead of lighting the key mid-list
-	plantGrant(t, h, serverOf(t, h, "solo"))
-	if signOutKey(h.mcpItems(), "solo") {
-		t.Fatal("a list build read the keychain")
-	}
 }

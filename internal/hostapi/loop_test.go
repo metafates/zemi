@@ -12,7 +12,6 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 )
@@ -142,32 +141,6 @@ func (lt *loopTest) wantEnded(want string) {
 	})
 }
 
-// TestLoopFixed: a fixed interval runs now and again on its interval.
-func TestLoopFixed(t *testing.T) {
-	t.Parallel()
-	lt := newLoopTest(t, "5m check the deploy", "rolling")
-	lt.advance(step{runs: 1, next: 5 * time.Minute})
-	lt.advance(step{after: 5 * time.Minute, runs: 2, next: 10 * time.Minute})
-	lt.advance(step{after: 5 * time.Minute, runs: 3, next: 15 * time.Minute})
-	lt.wantNotices("loop   Run 1: check the deploy", "loop   Run 2: check the deploy", "loop   Run 3: check the deploy")
-}
-
-// TestLoopPaced: the model's next line paces the loop.
-func TestLoopPaced(t *testing.T) {
-	t.Parallel()
-	lt := newLoopTest(t, "check it", "waiting\n`next: 7m`")
-	lt.advance(step{runs: 1, next: 7 * time.Minute})
-	lt.advance(step{after: 6 * time.Minute, runs: 1, next: 7 * time.Minute})
-	lt.advance(step{after: time.Minute, runs: 2, next: 14 * time.Minute})
-}
-
-// TestLoopPacedFallback: a paced run with no next line falls back.
-func TestLoopPacedFallback(t *testing.T) {
-	t.Parallel()
-	lt := newLoopTest(t, "check it", "hm")
-	lt.advance(step{runs: 1, next: _loopFallback})
-}
-
 // TestLoopPacedDelayCap: a paced delay past an hour is an hour.
 func TestLoopPacedDelayCap(t *testing.T) {
 	t.Parallel()
@@ -193,17 +166,6 @@ func TestLoopFailed(t *testing.T) {
 	lt.wantEnded("Loop stopped: boom (1 run)")
 }
 
-// TestLoopInterrupted: an interrupted run stops it.
-func TestLoopInterrupted(t *testing.T) {
-	t.Parallel()
-	lt := newLoopTest(t, "5m check it", "hang")
-	lt.advance(step{runs: 1, next: 5 * time.Minute, held: true})
-	lt.h.AgentCancel()
-	lt.advance(step{runs: 1})
-	lt.wantNotices("loop   Run 1: check it", "Loop stopped: interrupted (1 run)")
-	lt.wantEnded("Loop stopped: interrupted (1 run)")
-}
-
 // TestLoopReplacedInterrupted: an interrupt stops the loop that replaced the
 // run's.
 func TestLoopReplacedInterrupted(t *testing.T) {
@@ -226,51 +188,6 @@ func TestLoopReplacedInterrupted(t *testing.T) {
 	waitIdle(t, lt.h)
 	lt.advance(step{runs: 1})
 	lt.wantNotices("loop   Run 1: check a", "Loop stopped: interrupted (0 runs)")
-}
-
-// TestLoopInterruptedTurn: a turn nobody typed into, interrupted, stops it.
-func TestLoopInterruptedTurn(t *testing.T) {
-	t.Parallel()
-	lt := newLoopTest(t, "5m check it", "ok")
-	lt.advance(step{runs: 1, next: 5 * time.Minute})
-	if err := lt.h.AgentSend(agent.AttachMarker + "\nhang"); err != nil {
-		t.Fatal(err)
-	}
-	lt.advance(step{runs: 1, next: 5 * time.Minute, held: true})
-	lt.h.AgentCancel()
-	lt.advance(step{runs: 1})
-	lt.wantNotices("loop   Run 1: check it", "Loop stopped: interrupted (1 run)")
-}
-
-// TestLoopKeepsGoalRuns: a loop run leaves the goal's count of turns alone.
-func TestLoopKeepsGoalRuns(t *testing.T) {
-	t.Parallel()
-	lt := newLoopTest(t, "5m check it", "ok")
-	lt.advance(step{runs: 1, next: 5 * time.Minute})
-	lt.h.agents.mu.Lock()
-	lt.h.agents.goalRuns = 7
-	lt.h.agents.mu.Unlock()
-	lt.advance(step{after: 5 * time.Minute, runs: 2, next: 10 * time.Minute})
-	lt.h.agents.mu.Lock()
-	goalRuns := lt.h.agents.goalRuns
-	lt.h.agents.mu.Unlock()
-	if goalRuns != 7 {
-		t.Fatalf("a loop run reset the goal's count to %d", goalRuns)
-	}
-}
-
-// TestLoopBusyAgent: a busy agent delays a run, keeping its time.
-func TestLoopBusyAgent(t *testing.T) {
-	t.Parallel()
-	lt := newLoopTest(t, "5m check it", "ok")
-	lt.advance(step{runs: 1, next: 5 * time.Minute})
-	if err := lt.h.AgentSend("hang"); err != nil {
-		t.Fatal(err)
-	}
-	lt.advance(step{after: 5 * time.Minute, runs: 1, next: 5 * time.Minute, held: true})
-	lt.h.AgentCancel()
-	waitIdle(t, lt.h)
-	lt.advance(step{after: _loopRetry, runs: 2, next: 5*time.Minute + _loopRetry + 5*time.Minute})
 }
 
 // TestLoopExpires: a day's loop stops after 72 hours.

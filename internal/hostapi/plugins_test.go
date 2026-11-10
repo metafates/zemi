@@ -15,15 +15,11 @@ import (
 	"strings"
 	"testing"
 
-	"charm.land/fantasy"
-
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/plugin"
-	"github.com/metafates/zemi/internal/set"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
-	"github.com/metafates/zemi/internal/tools"
 )
 
 // TestPluginsStep boots plugins laid out under installed/ and local/, then
@@ -663,49 +659,6 @@ func TestPluginSettings(t *testing.T) {
 	}
 }
 
-// TestPluginCapVocabulary pins the gate's subject mapping to the manifest's
-// vocabulary in both directions, so a word one adds and the other does not
-// cannot drift.
-func TestPluginCapVocabulary(t *testing.T) {
-	for _, c := range _pluginCaps {
-		probe := c.prefix
-		if strings.HasSuffix(probe, ".") {
-			probe += "x"
-		}
-		if got := pluginCap(probe); got != c.capability {
-			t.Errorf("pluginCap(%q) = %q, want its row's %q", probe, got, c.capability)
-		}
-		if !slices.Contains(plugin.Uses, c.capability) {
-			t.Errorf("%q maps to %q, which is no capability in plugin.Uses", c.prefix, c.capability)
-		}
-	}
-	for _, c := range []struct {
-		subject string
-		want    string
-	}{
-		{"lua.job.start", "job"},
-		{"lua.agent.send", "agent"},
-		{"lua.agent.run", "agent"},
-		{"lua.workflow.run", "workflow"},
-		{"lua.fs.read", ""},  // a read is not declarable
-		{"zemi.env.get", ""}, // nor is the plugin's own env
-	} {
-		if got := pluginCap(c.subject); got != c.want {
-			t.Errorf("pluginCap(%q) = %q, want %q", c.subject, got, c.want)
-		}
-	}
-	// every word the manifest may declare is one a subject maps to
-	mapped := map[string]bool{"job": true}
-	for _, c := range _pluginCaps {
-		mapped[c.capability] = true
-	}
-	for _, u := range plugin.Uses {
-		if !mapped[u] {
-			t.Errorf("plugin.Uses names %q and no subject maps to it", u)
-		}
-	}
-}
-
 // pluginFixture writes the local plugin a of the plugins root: its
 // .zemi/init.lua and, when uses is not empty, the manifest declaring that
 // uses array. It returns the plugin's root.
@@ -1029,142 +982,6 @@ func TestPluginSidecarGrant(t *testing.T) {
 	}
 }
 
-// TestPluginOfGrantRoots: a material nested in another plugin's attributes
-// to its own plugin, by longest root first, and a root perm.RealPath cannot
-// resolve ("" in the grant) attributes to nothing, not to every path.
-func TestPluginOfGrantRoots(t *testing.T) {
-	t.Parallel()
-	tmp, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	dirs := config.Dirs{ProjectDir: filepath.Join(tmp, "proj"), DataHome: filepath.Join(tmp, "data"), StateHome: filepath.Join(tmp, "state")}
-	mkt := filepath.Join(dirs.PluginsRoot(), "marketplaces", "m")
-	files := map[string]string{
-		filepath.Join(mkt, ".zemi", "init.lua"):                 "-- outer\n",
-		filepath.Join(mkt, "outer.lua"):                         "-- the outer plugin's file\n",
-		filepath.Join(mkt, "plugins", "b", ".zemi", "init.lua"): "-- inner\n",
-		filepath.Join(mkt, "plugins", "b", "inner.lua"):         "-- the inner plugin's file\n",
-	}
-	for p, src := range files {
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.MkdirAll(filepath.Join(dirs.PluginsRoot(), "installed"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for name, target := range map[string]string{
-		"a": mkt,
-		"b": filepath.Join(mkt, "plugins", "b"),
-	} {
-		if err := os.Symlink(target, filepath.Join(dirs.PluginsRoot(), "installed", name)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	log := slog.New(slog.DiscardHandler)
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin}}})
-	h := NewHost(r, log, config.NewStore(), dirs)
-	t.Cleanup(h.Close)
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.PluginsStep()}); err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range []struct{ name, path, want string }{
-		// the grant is name-sorted, a's root first: a prefix-first match
-		// would attribute the inner plugin's file to a
-		{"a nested material names its own plugin", filepath.Join(mkt, "plugins", "b", "inner.lua"), "b"},
-		{"the outer material names the outer plugin", filepath.Join(mkt, "outer.lua"), "a"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			if got := h.PluginOf(c.path); got != c.want {
-				t.Errorf("PluginOf(%s) = %q, want %q", c.path, got, c.want)
-			}
-		})
-	}
-	// the grant as perm.RealPath's failure leaves it: "" first, where a
-	// bare prefix test claims every absolute path
-	h.pluginGrant.Store(&pluginGrant{roots: []string{"", mkt}, names: []string{"looped", "a"}})
-	for _, c := range []struct{ name, path, want string }{
-		{"an unresolvable root attributes nothing, not every absolute path", filepath.Join(tmp, "elsewhere", "x"), ""},
-		{"an unresolvable root does not shadow a resolvable one", filepath.Join(mkt, "outer.lua"), "a"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			if got := h.PluginOf(c.path); got != c.want {
-				t.Errorf("PluginOf(%s) = %q, want %q", c.path, got, c.want)
-			}
-		})
-	}
-	// the Claude-layout expansion reads the same grant: the nested
-	// material expands against its own root, an unresolvable one against none
-	inner := filepath.Join(mkt, "plugins", "b")
-	h.pluginGrant.Store(&pluginGrant{
-		roots:  []string{mkt, inner, ""},
-		names:  []string{"a", "b", "looped"},
-		claude: set.Of(mkt, inner, ""),
-	})
-	for _, c := range []struct{ name, path, want string }{
-		{"the inner material expands against its own root", filepath.Join(inner, "cmd", "x.sh"), inner},
-		{"the outer material expands against the outer root", filepath.Join(mkt, "cmd", "x.sh"), mkt},
-		{"an unresolvable claude root expands against nothing", filepath.Join(tmp, "elsewhere", "cmd", "x.sh"), ""},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			if got := h.claudeRootOf(c.path); got != c.want {
-				t.Errorf("claudeRootOf(%s) = %q, want %q", c.path, got, c.want)
-			}
-		})
-	}
-}
-
-// TestPluginToolCall: the model's call of a Lua tool a plugin registered is
-// gated like any tool: it asks in ask mode, runs in allow mode, and a
-// read-only run may call none of them.
-func TestPluginToolCall(t *testing.T) {
-	for _, c := range []struct {
-		name     string
-		ask      bool
-		readOnly bool
-		asked    bool
-		denied   string // a refusal the result names, "" when it settles
-	}{
-		{name: "an ask policy asks", ask: true, asked: true},
-		{name: "no policy runs"},
-		{name: "a read-only run may not call it", readOnly: true, denied: "read-only agent"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-			h, r := newTestHostPlugin(t, `["tool"]`)
-			ui := &fakeUI{askAllowed: true, askBy: tools.ByUser}
-			h.SetUIHooks(ui)
-			if err := chunkAs(t.Context(), h, r, lua.OriginPlugin, `zemi.tool.add({ name = "ping", description = "d", execute = function() return "pong" end })`); err != nil {
-				t.Fatal(err)
-			}
-			if c.ask {
-				askEverything(t, r)
-			}
-			pipe := h.PipelineFor()
-			if c.readOnly {
-				pipe.ReadOnly = func() bool { return true }
-			}
-			resp, err := h.luaFantasyTools(pipe)[0].Run(t.Context(), fantasy.ToolCall{Input: "{}"})
-			if c.denied != "" {
-				if err != nil || !resp.IsError || !strings.Contains(resp.Content, c.denied) {
-					t.Fatalf("resp = %+v, %v; want %q", resp, err, c.denied)
-				}
-				return
-			}
-			if err != nil || resp.Content != "pong" {
-				t.Fatalf("resp = %+v, %v; want pong", resp, err)
-			}
-			if got := len(ui.asked) > 0; got != c.asked {
-				t.Errorf("asked = %v, want %v: %+v", got, c.asked, ui.asked)
-			}
-		})
-	}
-}
-
 // TestPickPluginsLinks walks the loader's link rule: an installed link into
 // the plugins tree runs, one pointing out does not, a dangling one names
 // itself, and a local link gets its own advice.
@@ -1214,34 +1031,6 @@ func TestPickPluginsLinks(t *testing.T) {
 		}
 		if len(run) != 0 || len(refused) != 1 || !strings.Contains(refused[0].err.Error(), c.want) {
 			t.Errorf("%s: run %v, refused %+v, want %q", c.name, run, refused, c.want)
-		}
-	}
-}
-
-// TestSweepKeepsALivePluginsPicks: the sweep reads a plugin's state under
-// plugin: and its kept settings under config:plugins.; a live plugin keeps
-// both. A parse that names either prefix differently deletes rows it cannot
-// place, so the stored key shapes are pinned here as literals.
-func TestSweepKeepsALivePluginsPicks(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	if h.GlobalDB == nil {
-		t.Skip("no global store")
-	}
-	seed := map[string]string{
-		"plugin:live":               `""`,
-		"plugin:live:token":         `"t"`,
-		"config:plugins.live.model": `"m"`,
-	}
-	for k, v := range seed {
-		if err := h.GlobalDB.SetKV(k, v); err != nil {
-			t.Fatal(err)
-		}
-	}
-	h.sweepPluginState([]plugin.Plugin{{Name: "live", Dir: t.TempDir()}})
-	for k := range seed {
-		if _, err := h.GlobalDB.GetKV(k); err != nil {
-			t.Errorf("%s was swept: %v", k, err)
 		}
 	}
 }

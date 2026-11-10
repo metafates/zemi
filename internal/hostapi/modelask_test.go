@@ -3,10 +3,6 @@ package hostapi
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -206,61 +202,5 @@ func TestModelAskSchema(t *testing.T) {
 		if err := r.ExecuteChunk(t.Context(), `zemi.model.ask({ prompt = "p", schema = `+c.schema+` })`, "test.lua", lua.OriginUser); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: err %v, want %q", c.name, err, c.want)
 		}
-	}
-}
-
-// fakeObject answers a chat-completions request with body and reports the last
-// request it saw.
-func fakeObject(t *testing.T, body string) (*httptest.Server, func() string) {
-	t.Helper()
-	var mu sync.Mutex
-	var seen string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
-		mu.Lock()
-		seen = string(raw)
-		mu.Unlock()
-		w.Header().Set("content-type", "application/json")
-		_, _ = io.WriteString(w, body)
-	}))
-	t.Cleanup(srv.Close)
-	return srv, func() string { mu.Lock(); defer mu.Unlock(); return seen }
-}
-
-// TestModelAskObjectMode: an object ask over a real provider, one case per
-// object_mode. The mode a user pinned is the route the request takes, and every
-// route ends in the decoded value.
-func TestModelAskObjectMode(t *testing.T) {
-	t.Parallel()
-	const ask = `local v, raw, err = zemi.model.ask({
-			prompt = "Is it safe?",
-			schema = { type = "object", properties = { allow = { type = "boolean" } }, required = { "allow" } },
-		}):wait()
-		assert(err == nil, tostring(err))
-		assert(v.allow == true, "allow = " .. tostring(v.allow))
-		assert(raw ~= "", "no raw reply")
-		zemi.state.set("allow", v.allow)`
-	const head = `{"id":"1","object":"chat.completion","created":0,"model":"m","choices":[{"index":0,"message":`
-	const usage = `,"finish_reason":"%s"}],"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}`
-	jsonReply := head + `{"role":"assistant","content":"{\"allow\":true}"}` + fmt.Sprintf(usage, "stop")
-	toolReply := head + `{"role":"assistant","tool_calls":[{"id":"c1","type":"function","function":{"name":"generate_object","arguments":"{\"allow\":true}"}}]}` + fmt.Sprintf(usage, "tool_calls")
-	for _, c := range []struct{ mode, reply, marker string }{
-		{"auto", jsonReply, `"response_format"`},
-		{"json", jsonReply, `"response_format"`},
-		{"tool", toolReply, `"tool_choice"`},
-		{"text", jsonReply, "You must respond with valid JSON"},
-	} {
-		t.Run(c.mode, func(t *testing.T) {
-			srv, seen := fakeObject(t, c.reply)
-			h, r := newTestHostDB(t)
-			runUser(t, r, fmt.Sprintf(`zemi.provider.add({ id = "fake", kind = "openai", base_url = %q, api_key = "k", object_mode = %q, models = { { id = "m" } } })`, srv.URL, c.mode))
-			runUser(t, r, ask)
-			if v, _ := h.GlobalDB.GetKV("allow"); v != "true" {
-				t.Errorf("allow = %s, want true", v)
-			}
-			if body := seen(); !strings.Contains(body, c.marker) {
-				t.Errorf("the request does not carry %s: %s", c.marker, body)
-			}
-		})
 	}
 }

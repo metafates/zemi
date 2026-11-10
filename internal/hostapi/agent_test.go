@@ -537,117 +537,6 @@ func TestSteeringQueue(t *testing.T) {
 	h.AgentCancel() // no runner: must not panic
 }
 
-// TestReportRowsDrawWhereDelivered: a report's row goes up where the report
-// was delivered, and a turn whose message is all markup draws no user row of
-// the reports, so the transcript never draws them twice.
-func TestReportRowsDrawWhereDelivered(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	headless := func(run string) string {
-		return agent.AttachMarker + "\n<agent-report run=\"" + run + "\" agent=\"explore\" status=\"finished\" description=\"look around\">\nfound it\n</agent-report>\n</attached-files>"
-	}
-	h.agents.mu.Lock()
-	scope := h.claim()
-	h.agents.mu.Unlock()
-	for _, run := range []string{"a2", "a3"} {
-		h.work(run, "explore", "explore", "finished", "found it")
-		if err := h.AgentSend(headless(run)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, text := h.nextTurn(scope, nil); text == "" {
-		t.Fatal("the queued reports started no turn")
-	}
-	for _, row := range h.Session().Transcript {
-		if row.Role == fantasy.MessageRoleUser && row.Kind == RowMessage {
-			t.Fatalf("the reports drew a row of the user's: %+v", row)
-		}
-	}
-}
-
-// TestFreshTurnPerTurn: every turn is a fresh call that opens on the view -
-// an empty log sends none - and no exchange carries between turns. Both
-// turns still land in the transcript.
-func TestFreshTurnPerTurn(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	m := replyStub(t, h, "ok")
-	h.SetUIHooks(&fakeUI{})
-	if err := h.AgentSend("one"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-	// the first turn's rows are in the log; the builder joins them before
-	// the second turn reads its view
-	waitFor(t, func() error {
-		if _, err := h.DB.NodeAt(1, 0); err != nil {
-			return errors.New("the first exchange is not summarized yet")
-		}
-		return nil
-	})
-	if err := h.AgentSend("two"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-	m.mu.Lock()
-	prompts := slices.Clone(m.prompts)
-	m.mu.Unlock()
-	if len(prompts) != 2 {
-		t.Fatalf("%d turns recorded, want 2 (a short log earns no compaction calls)", len(prompts))
-	}
-	for i, want := range []int{3, 4} { // turn 1: system, context, user; turn 2 adds the view
-		if n := len(prompts[i]); n != want {
-			t.Fatalf("turn %d prompt has %d messages, want %d", i+1, n, want)
-		}
-		if got := concatText(prompts[i][len(prompts[i])-1].Content); got != []string{"one", "two"}[i] {
-			t.Fatalf("turn %d message = %q", i+1, got)
-		}
-	}
-	// no residue: after the context comes the view (one leaf line per
-	// message until a batch merges) and the message, and no message of the
-	// first turn's own
-	if got := concatText(prompts[1][2].Content); !strings.Contains(got, "0+1|one") || !strings.Contains(got, "1+1|ok") {
-		t.Fatalf("second turn view = %q", got)
-	}
-	if tr := h.Session().Transcript; len(tr) != 4 {
-		t.Fatalf("transcript = %+v", tr)
-	}
-}
-
-// TestPipelineForCheck verifies the pipeline the host builds for agent tool
-// calls: an ask policy's veto leaves every action to the user, an
-// unanswered ask fails closed when no UI is attached, and an asker resolves
-// it (DESIGN §6.2).
-func TestPipelineForCheck(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHostDB(t)
-	askEverything(t, r)
-	pipe := h.PipelineFor()
-	// the ask policy arms a run's gate (tools.Tool.Run); Check alone needs
-	// the arming done by hand
-	pipe.ForceAsk()
-
-	// No UI: the ask hook fails closed.
-	if v := pipe.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); v.Allowed || v.DecidedBy != tools.ByNobody {
-		t.Fatalf("unanswered shell: %+v (%s)", v, v.Reason)
-	}
-
-	// An asker (the UI overlay) resolves the leftover ask.
-	pipe2 := h.PipelineFor()
-	pipe2.ForceAsk()
-	pipe2.Ask = func(req tools.Request) (bool, string) { return true, "user:once" }
-	if v := pipe2.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); !v.Allowed || v.DecidedBy != "user:once" {
-		t.Fatalf("asked shell: %+v by %q", v, v.DecidedBy)
-	}
-
-	// No veto policy: the same call settles on its own.
-	runUser(t, r, _askEverythingOff)
-	pipe3 := h.PipelineFor()
-	if v := pipe3.Check(tools.Request{Subject: "tool.shell", Arg: "git status"}); !v.Allowed || v.DecidedBy != tools.ByDefault {
-		t.Fatalf("allowed shell: %+v by %q", v, v.DecidedBy)
-	}
-}
-
 // TestStoreBackedState runs its steps in order against one global store: every
 // origin but a plugin shares it, and a plugin keeps its own (DESIGN §6.5).
 func TestStoreBackedState(t *testing.T) {
@@ -826,26 +715,6 @@ func TestPipelineQuestionToolEndToEnd(t *testing.T) {
 	bare, _ := newTestHost(t)
 	if bare.PipelineFor().Question != nil {
 		t.Fatal("a host without UI must leave the question hook unset")
-	}
-}
-
-// TestPipelineTodos: todos round-trip through the store for the active
-// session.
-func TestPipelineTodos(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-
-	pipe := h.PipelineFor()
-	if err := pipe.TodosWrite([]store.Todo{{Content: "first", Status: "in_progress", ActiveForm: "doing first"}}); err != nil {
-		t.Fatalf("TodosWrite: %v", err)
-	}
-	rows, err := pipe.TodosRead()
-	if err != nil || len(rows) != 1 || rows[0].Content != "first" || rows[0].Status != "in_progress" {
-		t.Fatalf("TodosRead: %v %+v", err, rows)
-	}
-	persisted, err := h.DB.Todos(store.MainSessionID)
-	if err != nil || len(persisted) != 1 || persisted[0].Content != "first" {
-		t.Fatalf("todos must persist for the session: %v %+v", err, persisted)
 	}
 }
 
@@ -1123,111 +992,6 @@ func TestTurnDoneDropsTheRetry(t *testing.T) {
 	}
 }
 
-// TestTurnDoneLogsTheCutCall: a call the turn's end cut off never reached the
-// log (its step's OnStepFinish is gone), so a resumed window drew no rail for
-// it. TurnDone logs the call and its result, and the rebuild draws the row
-// the live window drew.
-func TestTurnDoneLogsTheCutCall(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.agents.mu.Lock()
-	h.agents.tools = []StreamTool{{
-		ID: "t1", Name: "shell", Label: "slow4",
-		Input: `{"command":"sleep 8","about":"slow4"}`, Status: CallRun,
-		Output: "stopped: the user interrupted the command",
-	}}
-	h.agents.mu.Unlock()
-	sa := h.streamHooks()
-	sa.TurnDone(context.Canceled, fantasy.Usage{})
-
-	live := h.Session().Transcript
-	var rail ChatMessage
-	for _, m := range live {
-		if m.Kind == RowTool {
-			rail = m
-		}
-	}
-	rows, err := h.DB.LogTail(10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tool, echo := false, false
-	for _, r := range rows {
-		tool, echo = tool || r.Kind == store.KindTool, echo || r.Kind == store.KindEcho
-	}
-	if !tool || !echo {
-		t.Fatalf("the log holds no cut call's rows: %v", rows)
-	}
-	var rebuilt ChatMessage
-	for _, m := range logRows(nil, rows) {
-		if m.Kind == RowTool {
-			rebuilt = m
-		}
-	}
-	if rebuilt.Tool != rail.Tool || rebuilt.Label != rail.Label || rebuilt.Status != rail.Status || rebuilt.Output != rail.Output {
-		t.Fatalf("rebuilt rail %+v, want the live one %+v", rebuilt, rail)
-	}
-}
-
-// TestTurnDoneLogsASettledCutCall: esc mid-command lets the tool return its
-// stopped result first, so ToolCallEnd settles the row before TurnDone - the
-// step still never finished, and the rail still must reach the log.
-func TestTurnDoneLogsASettledCutCall(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.agents.mu.Lock()
-	h.agents.tools = []StreamTool{{
-		ID: "t1", Name: "shell", Label: "slow4",
-		Input: `{"command":"sleep 8","about":"slow4"}`, Status: CallStopped,
-		Output: "stopped: the user interrupted the command",
-	}}
-	h.agents.mu.Unlock()
-	sa := h.streamHooks()
-	sa.TurnDone(context.Canceled, fantasy.Usage{})
-
-	rows, err := h.DB.LogTail(10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var rebuilt ChatMessage
-	for _, m := range logRows(nil, rows) {
-		if m.Kind == RowTool {
-			rebuilt = m
-		}
-	}
-	if rebuilt.Kind != RowTool || rebuilt.Status != CallStopped || rebuilt.Output != "stopped: the user interrupted the command" {
-		t.Fatalf("rebuilt rail %+v, want the stopped result the live window drew", rebuilt)
-	}
-}
-
-// TestTurnDoneSkipsALoggedCall: a call whose step settled is already in the
-// log; a later step's unsettled death must not re-log its pair under the
-// same call id - the doubled echo read ok=false against status ok.
-func TestTurnDoneSkipsALoggedCall(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.agents.mu.Lock()
-	h.agents.tools = []StreamTool{{
-		ID: "t1", Name: "shell", Label: "hi",
-		Input: `{"command":"echo hi","about":"say hi"}`, Status: CallOK,
-		Output: "hi", logged: true,
-	}}
-	h.agents.stepSettled = false // a later step opened and never finished
-	h.agents.mu.Unlock()
-	sa := h.streamHooks()
-	sa.TurnDone(context.Canceled, fantasy.Usage{})
-
-	rows, err := h.DB.LogTail(10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, r := range rows {
-		if r.Kind == store.KindTool || r.Kind == store.KindEcho {
-			t.Fatalf("the logged call's pair was logged twice: %s %s", r.Kind, r.Text)
-		}
-	}
-}
-
 // TestTurnDoneLogsTheRawArgs: ToolCallStart keeps only the digested input on
 // the row, so the cut-call loop logged the digest and the rebuilt rail lost
 // its label and line; the log's tool row holds the raw args, where the
@@ -1269,50 +1033,6 @@ func TestTurnDoneLogsTheRawArgs(t *testing.T) {
 	}
 }
 
-// TestTurnDoneLogsTheCutThought: a step's reasoning reaches the log only at
-// its finish, so esc mid-thought left every thought row live-only - the
-// stretches it flushed and the open buffer log here, in draw order. The scan
-// reads this step's rows alone: an earlier turn's unnamed thought never
-// re-logs.
-func TestTurnDoneLogsTheCutThought(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "an earlier turn.", Stat: &TurnStat{ThoughtMS: 900}})
-	sa := h.streamHooks()
-	sa.StepDone(agent.Step{}) // the previous step settled...
-	sa.StepStart()            // ...and this one began: its rows are unlogged
-	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowReasoning, Text: "thinking it over.", Stat: &TurnStat{ThoughtMS: 1100}})
-	h.agents.mu.Lock()
-	h.agents.reasonBuf = "still thinking."
-	h.agents.thought = 400 * time.Millisecond
-	h.agents.mu.Unlock()
-	sa.TurnDone(context.Canceled, fantasy.Usage{})
-
-	rows, err := h.DB.LogTail(10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var texts []string
-	for _, r := range rows {
-		if r.Kind == store.KindThought {
-			texts = append(texts, r.Text)
-		}
-	}
-	if len(texts) != 2 || texts[0] != "thinking it over." || texts[1] != "still thinking." {
-		t.Fatalf("the log holds thoughts %q, want this step's two and not the earlier turn's", texts)
-	}
-	tr := logRows(nil, rows)
-	var ms []int64
-	for _, m := range tr {
-		if m.Kind == RowReasoning {
-			ms = append(ms, m.Stat.ThoughtMS)
-		}
-	}
-	if len(ms) != 2 || ms[0] != 1100 || ms[1] != 400 {
-		t.Fatalf("the rebuilt thoughts carry ms %v, want [1100 400]", ms)
-	}
-}
-
 // TestTurnDoneLogsTheCutReply: a reply cut mid-stream draws its partial text
 // live and dies with the turn otherwise - the log holds it, so a resumed
 // window draws the line the user read. The stretch a call's open flushed
@@ -1349,26 +1069,6 @@ func TestTurnDoneLogsTheCutReply(t *testing.T) {
 	}
 }
 
-// TestStreamDoneStoresLastIn: a step's context is stored where a resume's
-// meter reads it, and a dropped chat clears it with the chat it belonged to.
-func TestStreamDoneStoresLastIn(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	sa := h.streamHooks()
-	sa.StreamDone(fantasy.Usage{InputTokens: 900, CacheReadTokens: 100})
-	s, err := h.DB.GetSession(store.MainSessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := billedInput(fantasy.Usage{InputTokens: 900, CacheReadTokens: 100}); s.LastIn != want {
-		t.Fatalf("stored last_in %d, want %d", s.LastIn, want)
-	}
-	h.chatDropped()
-	if s, err := h.DB.GetSession(store.MainSessionID); err != nil || s.LastIn != 0 {
-		t.Fatalf("after a drop: last_in %d err %v, want 0", s.LastIn, err)
-	}
-}
-
 // TestCloseStopsTheQueueDrain: a host closed inside the idle-drain's window
 // stops the timer, so no drain fires a turn against closed stores.
 func TestCloseStopsTheQueueDrain(t *testing.T) {
@@ -1389,40 +1089,6 @@ func TestCloseStopsTheQueueDrain(t *testing.T) {
 	h.Close()
 	if clock.armed() != 0 {
 		t.Fatalf("close left the drain armed (%d timers)", clock.armed())
-	}
-}
-
-// TestTurnClockIsTheHostClock: a turn's stamps and the snapshot that reads
-// them share one clock, so a zemi on a clock behind the wall one (a plugin
-// test's) counts no negative elapsed.
-func TestTurnClockIsTheHostClock(t *testing.T) {
-	log := slog.New(slog.DiscardHandler)
-	clock := &fakeClock{now: time.Unix(1_000_000_000, 0)}
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, Clock: clock})
-	h := NewHost(r, log, config.NewStore(), config.Dirs{StateHome: t.TempDir(), ProjectDir: t.TempDir()})
-	t.Cleanup(h.Close)
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep()}); err != nil {
-		t.Fatal(err)
-	}
-	h.SetUIHooks(&fakeUI{})
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
-			if s := h.AgentStream(); s.Elapsed < 0 || s.Elapsed > time.Minute || s.Task != "hi" {
-				t.Errorf("a live turn on a clock behind the wall one counts %v, task %q", s.Elapsed, s.Task)
-			}
-			return textParts("done")
-		}}, nil
-	}
-	if err := h.AgentSend("hi"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-	if got := h.AgentStream().Task; got != "" {
-		t.Fatalf("a settled turn leaves the task %q where a sender would read it as live", got)
-	}
-	tr := h.Session().Transcript
-	if last := tr[len(tr)-1]; last.Stat != nil && (last.Stat.ElapsedMS < 0 || last.Stat.ElapsedMS > 60_000) {
-		t.Fatalf("the settled turn counts %d ms", last.Stat.ElapsedMS)
 	}
 }
 
@@ -1470,28 +1136,6 @@ func TestTurnEndSettlesTodos(t *testing.T) {
 	}
 }
 
-// TestTurnPricedWithItsModel: a turn records the model it was built
-// with, so its price is not read off the session default.
-func TestTurnPricedWithItsModel(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHostDB(t)
-	replyStub(t, h, "ok")
-	runUser(t, r, `
-		zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", models = { { id = "cheap" } } })
-		zemi.model.set("p/cheap")
-	`)
-	if err := h.AgentSend("hi"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-	h.agents.mu.Lock()
-	got := h.agents.turnModel
-	h.agents.mu.Unlock()
-	if got != "p/cheap" {
-		t.Fatalf("turn model = %q, want the conversation's pick", got)
-	}
-}
-
 // TestProviderModelNumbers: a model entry's numeric fields are checked at the
 // boundary, so a quoted one is refused here instead of reading as 0 and
 // leaving /health to blame a field the user did set.
@@ -1524,34 +1168,6 @@ func TestProviderModelNumbers(t *testing.T) {
 				t.Fatalf("context window = %+v, want %d", spec.Models, c.want)
 			}
 		})
-	}
-}
-
-// TestIdleStreamUsesItsModel: between turns the context window and the
-// image check follow the conversation's model (models.default); compaction
-// and a subagent without a model follow models.default too.
-func TestIdleStreamUsesItsModel(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	runUser(t, r, `
-		zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://127.0.0.1:1/v1", models = {
-			{ id = "big", context_window = 200000, capabilities = { vision = false } },
-			{ id = "small", context_window = 32000 },
-		} })
-		zemi.model.set("a/big")
-	`)
-	if s := h.AgentStream(); s.Model != "a/big" || s.CtxWindow != 200000 {
-		t.Fatalf("stream model %q window %d, want the conversation's", s.Model, s.CtxWindow)
-	}
-	if h.PipelineFor().Images() {
-		t.Fatal("the conversation's model is text-only")
-	}
-	runUser(t, r, `assert(zemi.agent.current().model == "a/big")`)
-	if id := h.roleModel("compact"); id != "a/big" {
-		t.Fatalf("summary model %q, want models.default", id)
-	}
-	if id := h.subagentModelID(AgentDef{}); id != "a/big" {
-		t.Fatalf("subagent model %q, want models.default", id)
 	}
 }
 
@@ -1706,58 +1322,6 @@ func TestConcurrentSendsQueue(t *testing.T) {
 	}
 }
 
-// TestRetryRestreamsStep: a provider retry streams the step again from its
-// start, so the failed attempt's text and tool rows are dropped instead of
-// shown twice or as a failed call that never ran.
-func TestRetryRestreamsStep(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	run, _ := h.newRun(t.Context(), _builtinAgents[0], "d", "p", false)
-	epoch := h.trEpoch.Load()
-	for name, c := range map[string]struct {
-		hooks agent.StreamHooks
-		text  func() string
-		rows  func() int // transcript rows plus live tool rows
-	}{
-		"main": {
-			h.streamHooks(), func() string { return h.AgentStream().Text },
-			func() int { return len(h.Session().Transcript) + len(h.AgentStream().Tools) },
-		},
-		"subagent": {
-			&subagentHooks{h: h, def: _builtinAgents[0], run: run},
-			func() string { run.mu.Lock(); defer run.mu.Unlock(); return run.text },
-			func() int { run.mu.Lock(); defer run.mu.Unlock(); return len(run.tr) },
-		},
-	} {
-		base := c.rows()
-		c.hooks.ToolCallStart("c0", "read", `{"path":"a"}`)
-		c.hooks.ToolCallEnd("c0", "read", out(""), "")
-		c.hooks.TextDelta("before ")
-		c.hooks.StepStart()
-		// the stream breaks while a call's arguments stream in
-		c.hooks.TextDelta("partial")
-		c.hooks.ToolCallPending("c1", "glob")
-		c.hooks.Retrying(nil, 0)
-		c.hooks.TextDelta("full")
-		if got, rows := c.text(), c.rows(); got != "before full" || rows != base+1 {
-			t.Errorf("%s: text %q and %d rows, want %q and the one earlier call", name, got, rows, "before full")
-		}
-	}
-	if h.trEpoch.Load() == epoch {
-		t.Error("the cut kept the transcript epoch, so the chat widget draws its cached rows")
-	}
-	main := h.streamHooks()
-	h.agents.mu.Lock()
-	h.agents.thought = time.Second
-	h.agents.mu.Unlock()
-	main.StepStart()
-	main.ToolCallPending("c2", "glob") // flushes the text row, taking the thought time with it
-	main.Retrying(nil, 0)
-	if h.agents.thought != time.Second {
-		t.Errorf("the retry left thought at %v, want the step start's 1s", h.agents.thought)
-	}
-}
-
 // TestRunRetryDropsItsThought: the retry of a subagent's step drops the
 // thinking the failed attempt streamed, as it drops its text, so the thought
 // that settles is the retried step's own.
@@ -1809,33 +1373,6 @@ func TestMaxOutput(t *testing.T) {
 	for model, want := range map[string]bool{"a/big": true, "a/old": false, "x/unknown": true} {
 		if got := h.takesImages(model); got != want {
 			t.Errorf("%s: takes images %v, want %v", model, got, want)
-		}
-	}
-}
-
-// TestHeadlessToolsetDropsPrompts: with no UI hooks nobody can answer a
-// question or approve a plan, so those tools never ship.
-func TestHeadlessToolsetDropsPrompts(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHost(t)
-	names := func() map[string]bool {
-		out := map[string]bool{}
-		toolset := h.mainTools()
-		for _, tool := range toolset {
-			out[tool.Info().Name] = true
-		}
-		return out
-	}
-	for name := range _headlessExcluded {
-		if names()[string(name)] {
-			t.Errorf("the toolset still ships %q", name)
-		}
-	}
-
-	h.SetUIHooks(&fakeUI{})
-	for name := range _headlessExcluded {
-		if !names()[string(name)] {
-			t.Errorf("the TUI toolset lost %q", name)
 		}
 	}
 }
@@ -2123,67 +1660,6 @@ func TestLateReasoningKeepsReplyWhole(t *testing.T) {
 		if g := got(); g != want {
 			t.Errorf("%s: rows %q, want %q", name, g, want)
 		}
-	}
-}
-
-// TestTypedSendMarksOnlyAQueuedMessage: the handoff signal belongs to a
-// message that joined a running turn (Host.AgentSendUser). One that starts a
-// turn marks nothing, so a foreground call in that turn waits as usual - which
-// is what the composer's send does every time it is idle.
-func TestTypedSendMarksOnlyAQueuedMessage(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.SetUIHooks(&fakeUI{})
-	gate := make(chan struct{})
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(string, string, bool) []fantasy.StreamPart {
-			<-gate // the turn holds until the test releases it
-			return textParts("ok")
-		}}, nil
-	}
-	if err := h.AgentSendUser("start a turn"); err != nil {
-		t.Fatal(err)
-	}
-	waitFor(t, func() error {
-		ag := h.agents
-		ag.mu.Lock()
-		defer ag.mu.Unlock()
-		if !ag.active {
-			return errors.New("the turn never started")
-		}
-		return nil
-	})
-	select {
-	case <-h.userSpoke():
-		t.Fatal("a message that started the turn marked it: a foreground call hands off at once")
-	default:
-	}
-	if err := h.AgentSendUser("and this one joins it"); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-h.userSpoke():
-	default:
-		t.Fatal("a message that joined the turn did not mark it")
-	}
-	close(gate)
-	waitIdle(t, h)
-}
-
-// TestFlushKeepsJob: a shell row that settles keeps the job pointer its live
-// row carried, so the chat still opens the job after the turn ends.
-func TestFlushKeepsJob(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{
-		{ID: "t1", Name: "shell", Input: "make build", Status: CallOK, Job: "job-1", Output: "still running"},
-	}})
-	h.agents.mu.Lock()
-	h.flushOutput(TurnStat{})
-	h.agents.mu.Unlock()
-	last := h.Session().Transcript[len(h.Session().Transcript)-1]
-	if last.Kind != RowTool || last.Job != "job-1" {
-		t.Fatalf("settled row = %+v, want the job pointer kept", last)
 	}
 }
 

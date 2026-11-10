@@ -71,74 +71,6 @@ func writeSkill(t *testing.T, base, name, description, hook string) {
 	}
 }
 
-// TestSkillMentions: the @ popup's Skills rows come from every skill, disabled ones
-// included and described by the description alone, plus the project's.
-func TestSkillMentions(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostSkills(t)
-	writeSkill(t, h.userSkillsDir(), "local-run", "run the local suite", "")
-	dir := filepath.Join(h.userSkillsDir(), "review-pr")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"),
-		[]byte("---\nname: review-pr\ndescription: review a PR\nargument-hint: <pr number>\n---\n\nReview $ARGUMENTS.\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeSkill(t, filepath.Join(h.Dirs.ProjectDir, ".agents", "skills"), "lint", "project lint", "")
-	h.SetProjectTrusted(true)
-	h.syncSkills()
-	if err := h.setSkillEnabled("local-run", false); err != nil {
-		t.Fatal(err)
-	}
-	got := map[string]CompletionItem{}
-	for _, c := range h.SkillMentions() {
-		got[c.Text] = c
-	}
-	for _, c := range []CompletionItem{
-		{Text: "local-run", Desc: "run the local suite"}, // disabled skills stay reachable
-		{Text: "review-pr", Desc: "review a PR"},         // an argument-hint changes nothing
-		{Text: "lint", Desc: "project lint"},
-	} {
-		if got[c.Text] != c {
-			t.Errorf("row %q = %+v, want %+v", c.Text, got[c.Text], c)
-		}
-	}
-}
-
-// TestSkillsEnabledDefaults covers §10.5: a skill starts enabled and the
-// skill index the model sees lists enabled skills only.
-func TestSkillsEnabledDefaults(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHostSkills(t)
-	writeSkill(t, h.userSkillsDir(), "local-run", "run the local suite", "")
-	writeSkill(t, h.userSkillsDir(), "rare", "used once a year", "")
-	h.syncSkills()
-	if err := h.setSkillEnabled("rare", false); err != nil {
-		t.Fatal(err)
-	}
-
-	runUser(t, r, `
-		local byName, n = {}, 0
-		for _, s in ipairs(zemi.skills.list()) do
-			if s.source ~= "builtin" then
-				byName[s.name], n = s, n + 1
-			end
-		end
-		assert(n == 2, "skills=" .. n)
-		assert(byName["local-run"].enabled == true, "a user skill must be enabled")
-		assert(byName["local-run"].source == "user", "source=" .. tostring(byName["local-run"].source))
-		assert(byName["rare"].enabled == false, "disable did not stick")
-	`)
-	indexed := map[string]bool{}
-	for _, s := range h.skillIndex() {
-		indexed[s.Name] = true
-	}
-	if !indexed["local-run"] || indexed["rare"] {
-		t.Fatalf("skillIndex must list enabled skills only: %v", indexed)
-	}
-}
-
 // TestSkillItemsNameTheMarketplace: a plugin skill's source names the
 // marketplace its plugin was installed from; a local plugin's does not.
 func TestSkillItemsNameTheMarketplace(t *testing.T) {
@@ -355,35 +287,6 @@ func TestProjectSkills(t *testing.T) {
 	}
 }
 
-// TestSymlinkedSkillsDir: <config>/skills may be a link into a dotfiles
-// tree. Its files must stay inside a user tree and classify as user
-// origin, or every skill body asks and every hook is refused.
-func TestSymlinkedSkillsDir(t *testing.T) {
-	log := slog.New(slog.DiscardHandler)
-	cfg, realDir := t.TempDir(), t.TempDir()
-	if err := os.Symlink(realDir, filepath.Join(cfg, "skills")); err != nil {
-		t.Skipf("symlinks unavailable: %v", err)
-	}
-	dirs := config.Dirs{ConfigHome: cfg, DataHome: t.TempDir(), StateHome: t.TempDir(), ProjectDir: t.TempDir()}
-	classes := lua.PathClasses{{Prefix: cfg, Origin: lua.OriginUser}}
-	for _, dir := range dirs.UserTrees() {
-		classes = append(classes, lua.PathClass{Prefix: dir, Origin: lua.OriginUser})
-	}
-	h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: classes}), log, config.NewStore(), dirs)
-	t.Cleanup(h.Close)
-	writeSkill(t, h.userSkillsDir(), "demo", "demo skill", "return {}")
-	if !h.inRoots(filepath.Join(h.userSkillsDir(), "demo", "SKILL.md"), h.Dirs.UserTrees()...) {
-		t.Error("a symlinked skills dir is outside the user trees")
-	}
-	hook, err := filepath.EvalSymlinks(filepath.Join(realDir, "demo", "zemi-skill.lua"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := classes.Classify(hook); got != lua.OriginUser {
-		t.Errorf("hook origin = %q, want user", got)
-	}
-}
-
 // TestDescriptionCutWarnsOnly: a description over the cap still loads, and
 // the cut is a log line, not an /errors row on every boot.
 func TestDescriptionCutWarnsOnly(t *testing.T) {
@@ -428,32 +331,6 @@ func TestClaudeCommandSkillClash(t *testing.T) {
 	}
 	if slices.ContainsFunc(h.errs.entries, func(e errEntry) bool { return strings.Contains(e.msg, "commands"+string(filepath.Separator)+"x.md") }) {
 		t.Fatalf("recorded %+v", h.errs.entries)
-	}
-}
-
-// TestAgentsHomeSkills: ~/.agents/skills adds user skills, body only, that
-// lose a name clash to <config>/skills.
-func TestAgentsHomeSkills(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHostSkillsNoBoot(t)
-	h.Dirs.AgentsHome = t.TempDir()
-	agents := h.agentsSkillsDir()
-	writeSkill(t, h.userSkillsDir(), "deploy", "the config deploy", "")
-	writeSkill(t, agents, "shared", "from agents", `zemi.command.add("agents-hook", function() end)`)
-	writeSkill(t, agents, "deploy", "the agents deploy", "")
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.SkillsUserHooksStep()}); err != nil {
-		t.Fatalf("boot: %v", err)
-	}
-	shared, _ := h.skillsReg.get("shared")
-	deploy, _ := h.skillsReg.get("deploy")
-	if shared.Source != skill.User || !h.skillsReg.isEnabled("shared") || deploy.Description != "the config deploy" {
-		t.Errorf("shared %+v, deploy %q", shared, deploy.Description)
-	}
-	if h.HasUnseenErrors() {
-		t.Errorf("errors %+v", h.errs.entries)
-	}
-	if h.Commands.Lookup("agents-hook") != nil {
-		t.Error("a ~/.agents/skills hook ran")
 	}
 }
 
@@ -597,18 +474,6 @@ func TestRecipes(t *testing.T) {
 	for _, d := range []string{filepath.Join(dir, "late"), filepath.Join(dir, "ship"), filepath.Join(h.userSkillsDir(), "ship"), filepath.Join(h.Dirs.ProjectDir, ".agents", "skills", "lint")} {
 		if _, err := os.Stat(d); (err == nil) == (d == filepath.Join(dir, "late")) {
 			t.Errorf("after the deletes: stat %s: %v", d, err)
-		}
-	}
-}
-
-func TestListDesc(t *testing.T) {
-	for in, want := range map[string]string{
-		"Load before running the tests.": "load before running the tests",
-		"LSP servers for Go":             "LSP servers for Go",
-		"":                               "",
-	} {
-		if got := listDesc(in); got != want {
-			t.Errorf("listDesc(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

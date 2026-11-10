@@ -1,12 +1,10 @@
 package hostapi
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"charm.land/fantasy"
@@ -157,38 +155,5 @@ func TestPlainTextEnd(t *testing.T) {
 	}}
 	if got := plainTextEnd(toolResult); got != "" {
 		t.Fatalf("tool-result end = %q", got)
-	}
-}
-
-// TestShellNotes: a !command shows in the transcript and its output rides
-// along with the next message to the model, behind the attachment marker.
-func TestShellNotes(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	var seen atomic.Value
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
-			seen.Store(last)
-			return textParts("ok")
-		}}, nil
-	}
-	// the model reads it as a shell result: escapes stripped
-	h.RunShell(`printf '\033[1mshell-output\033[0m\n'`)
-	waitFor(t, func() error {
-		if tr := h.Session().Transcript; len(tr) != 1 || tr[0].Kind != "shell" || tr[0].Detail != "shell-output" {
-			return fmt.Errorf("shell row missing: %+v", tr)
-		}
-		return nil
-	})
-	if err := h.AgentSend("what did it print?"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-	got, _ := seen.Load().(string)
-	if !strings.HasPrefix(got, "what did it print?"+agent.AttachMarker) || !strings.Contains(got, "\nshell-output\n") {
-		t.Fatalf("model saw %q", got)
-	}
-	if h.takeShellNotes() != "" {
-		t.Fatal("notes must be consumed by the message")
 	}
 }

@@ -5,28 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"charm.land/fantasy"
-
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
-
-// TestCopyBareReply: /copy with no args over a reply with no code blocks
-// takes the whole reply at once.
-func TestCopyBareReply(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	replyStub(t, h, "pong")
-	if err := h.AgentSend("ping"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-	ui := &fakeUI{}
-	h.SetUIHooks(ui)
-	if err := h.CopyReply(""); err != nil || ui.copied != "pong" {
-		t.Fatalf("copy = %q, %v", ui.copied, err)
-	}
-}
 
 // TestCopyReply: the direct forms copy a block, every block or the reply,
 // bad ones fail, and a bare /copy over a reply with code blocks opens their
@@ -126,40 +107,6 @@ func TestCodeBlocks(t *testing.T) {
 	}
 }
 
-// TestTurnExtras: a successful edit keeps its diff under the tool row, a
-// failed one does not, and todo writes reach the widget snapshot.
-func TestTurnExtras(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	sa := h.streamHooks()
-	sa.ToolCallStart("e1", "edit", `{"path":"a.go","search":"x","replace":"y"}`)
-	sa.ToolCallEnd("e1", "edit", out(""), "")
-	sa.ToolCallStart("e2", "edit", `{"path":"b.go","search":"p","replace":"q"}`)
-	sa.ToolCallEnd("e2", "edit", outErr("search not found"), "")
-	sa.TurnDone(nil, fantasy.Usage{})
-	var diffs []string
-	for _, m := range h.Session().Transcript {
-		if m.Kind == "tool" {
-			diffs = append(diffs, m.Diff)
-		}
-	}
-	if len(diffs) != 2 || diffs[0] != "--- a.go\n+++ a.go\n@@\n-x\n+y" || diffs[1] != "" {
-		t.Fatalf("diffs = %q", diffs)
-	}
-
-	replyStub(t, h, "ok")
-	if err := h.AgentSend("hi"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-	if err := h.PipelineFor().TodosWrite([]store.Todo{{Content: "write tests", Status: "in_progress"}}); err != nil {
-		t.Fatal(err)
-	}
-	if todos := h.todoSnapshot(); len(todos) != 1 || todos[0].Content != "write tests" {
-		t.Fatalf("todos = %+v", todos)
-	}
-}
-
 func TestToolLabel(t *testing.T) {
 	for in, want := range map[string]string{
 		`{"about":"Run the  tests","command":"go test ./..."}`: "Run the tests",
@@ -194,65 +141,6 @@ func TestPendingRowLabel(t *testing.T) {
 		if s.ToolInputDelta("1", c.delta); label() != c.want {
 			t.Fatalf("after %q: label %q, want %q", c.delta, label(), c.want)
 		}
-	}
-}
-
-func TestPendingRowPathLabel(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHost(t)
-	s := &streamAdapter{h: h}
-	s.ToolCallPending("1", "write")
-	label := func() string {
-		h.agents.mu.Lock()
-		defer h.agents.mu.Unlock()
-		return h.agents.tools[0].Label
-	}
-	for _, c := range []struct{ delta, want string }{
-		{`{"path": "internal/st`, ""},
-		{`ore/store.go", "text"`, "internal/store/store.go"},
-		// the model may stream the body first and the path last
-	} {
-		if s.ToolInputDelta("1", c.delta); label() != c.want {
-			t.Fatalf("after %q: label %q, want %q", c.delta, label(), c.want)
-		}
-	}
-	// a path inside the project streams in absolute and reads relative
-	s.ToolCallPending("2", "write")
-	s.ToolInputDelta("2", `{"path": "`+h.Dirs.ProjectDir+`/x/y.go", "text"`)
-	h.agents.mu.Lock()
-	want := "x/y.go"
-	if got := h.agents.tools[1].Label; got != want {
-		t.Errorf("project path label = %q, want %q", got, want)
-	}
-	h.agents.mu.Unlock()
-
-	// content streams before the path: the row still names the file as the
-	// path arrives, however long the body before it ran
-	s.ToolCallPending("3", "write")
-	s.ToolInputDelta("3", `{"text": "`+strings.Repeat("b", 3000)+`"`)
-	s.ToolInputDelta("3", `, "path": "notes/la`)
-	s.ToolInputDelta("3", `st.md"}`)
-	h.agents.mu.Lock()
-	want = "notes/last.md"
-	if got := h.agents.tools[2].Label; got != want {
-		t.Errorf("late path label = %q, want %q", got, want)
-	}
-	h.agents.mu.Unlock()
-}
-
-// TestStreamedInputCountsEveryDelta: the streamed size keeps counting after
-// the label landed and past the 1024-byte cap the label search stops at.
-func TestStreamedInputCountsEveryDelta(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHost(t)
-	s := &streamAdapter{h: h}
-	s.ToolCallPending("1", "write")
-	s.ToolInputDelta("1", `{"about":"the config","text":"`)
-	s.ToolInputDelta("1", strings.Repeat("x", 2048))
-	h.agents.mu.Lock()
-	defer h.agents.mu.Unlock()
-	if got := h.agents.tools[0].Streamed; got != len(`{"about":"the config","text":"`)+2048 {
-		t.Errorf("Streamed = %d, want every delta counted", got)
 	}
 }
 

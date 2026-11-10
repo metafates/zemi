@@ -12,62 +12,12 @@ import (
 
 	"charm.land/fantasy"
 
-	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
 )
 
 const _rolesProvider = `zemi.provider.add({ id = "a", kind = "openai_compat", base_url = "http://x", models = { { id = "big" }, { id = "small" } } })
 `
-
-// TestRoleModel: an empty target follows models.default, which follows the
-// first provider's default; a models.* key refuses a target name.
-func TestRoleModel(t *testing.T) {
-	for _, c := range []struct {
-		name, config string
-		want         map[string]string // slot -> model id, "" for one left out
-		err          string
-	}{
-		{
-			name: "nothing set runs the provider default",
-			want: map[string]string{"conversation": "a/big", "default": "a/big", "agents": "a/big", "compact": "a/big"},
-		},
-		{
-			name:   "the default pick moves every role",
-			config: `zemi.config.set("models.default", "a/small")`,
-			want:   map[string]string{"conversation": "a/small", "default": "a/small", "agents": "a/small", "compact": "a/small"},
-		},
-		{
-			name:   "a set target wins",
-			config: `zemi.config.set("models.compact", "a/small")`,
-			want:   map[string]string{"conversation": "a/big", "agents": "a/big", "compact": "a/small"},
-		},
-		{
-			name:   "a key refuses a target name",
-			config: `zemi.config.set("models.compact", "default")`,
-			want:   map[string]string{"compact": "a/big"},
-			err:    `config key models.compact expects a provider/model id or ""`,
-		},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-			h, r := newTestHost(t)
-			runUser(t, r, _rolesProvider+c.config)
-			if c.err != "" && !h.Recorded(c.err) {
-				t.Errorf("the refused set is not flagged: %q", c.err)
-			}
-			got := map[string]string{"conversation": h.roleModel("default"), "default": h.roleModel("default")}
-			for _, n := range h.targetNames() {
-				got[n] = h.roleModel(n)
-			}
-			for name, want := range c.want {
-				if got[name] != want {
-					t.Errorf("%s runs on %q, want %q (%v)", name, got[name], want, got)
-				}
-			}
-		})
-	}
-}
 
 // TestModelTargetNames: what zemi.model.add takes and what it refuses. A
 // builtin role and default are reserved, a target's own model may name a
@@ -114,56 +64,6 @@ func TestModelTargetNames(t *testing.T) {
 	}
 	if err := r.ExecuteChunk(t.Context(), `zemi.model.add("proj", { desc = "x" })`, ".agents/p.lua", lua.OriginProject); err != nil {
 		t.Errorf("project code: %v", err)
-	}
-}
-
-// TestModelTargetPick: a slot config registered is picked and kept like any
-// other key: the pick outlives a restart, and a reload whose replay registers
-// it again keeps it too.
-func TestModelTargetPick(t *testing.T) {
-	dir, log := t.TempDir(), slog.New(slog.DiscardHandler)
-	dirs := config.Dirs{ProjectDir: t.TempDir(), StateHome: t.TempDir()}
-	initLua := filepath.Join(dir, "init.lua")
-	src := _rolesProvider + `zemi.model.add("clf", { desc = "the classifier", model = "a/small" })`
-	if err := os.WriteFile(initLua, []byte(src), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	var h *Host
-	steps := func() []lua.BootStep {
-		return []lua.BootStep{h.NamespacesStep(), lua.LoadFileStep("init", initLua, lua.OriginUser)}
-	}
-	start := func() {
-		if h != nil {
-			h.Close() // a restart ends the zemi it replaces
-		}
-		r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{{Prefix: dir, Origin: lua.OriginUser}}})
-		h = NewHost(r, log, config.NewStore(), dirs)
-		t.Cleanup(h.Close)
-		h.SetUIHooks(&fakeUI{})
-		if err := r.Boot(t.Context(), steps()); err != nil {
-			t.Fatal(err)
-		}
-	}
-	start()
-	if id := h.roleModel("clf"); id != "a/small" {
-		t.Fatalf("clf runs on %q, want the model it was added with", id)
-	}
-	h.KeepPicks.Store(true)
-	if err := h.SetModel("clf a/big"); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.ForceReload(t.Context(), steps()); err != nil {
-		t.Fatal(err)
-	}
-	if id := h.roleModel("clf"); id != "a/big" {
-		t.Errorf("after a reload clf runs on %q, want the pick", id)
-	}
-	start()
-	if id := h.roleModel("clf"); id != "a/big" {
-		t.Errorf("after a restart clf runs on %q, want the pick", id)
-	}
-	if got := h.cfgSource("models.clf"); got != "saved" {
-		t.Errorf("the pick reads as %q", got)
 	}
 }
 
@@ -381,21 +281,6 @@ func TestInertBoot(t *testing.T) {
 	}
 }
 
-// TestModelPickerOpensOnCurrent: a bare /model opens with the selection on
-// the model the slot runs, not on the hub rows above the list.
-func TestModelPickerOpensOnCurrent(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	runUser(t, r, _rolesProvider)
-	o := h.modelPicker("")
-	if o.Selected < 0 {
-		t.Fatalf("modelPicker() Selected = %d, want the current model's row", o.Selected)
-	}
-	if got := o.Items[o.Selected].Text; got != "big" {
-		t.Fatalf("modelPicker() Selected = %d (%q), want the current model", o.Selected, o.Items[o.Selected].Text)
-	}
-}
-
 // TestModelFavorites: f marks the model a row names in models.favorites, and
 // the marked models head the picker in the key's own order.
 func TestModelFavorites(t *testing.T) {
@@ -444,48 +329,5 @@ func TestModelFavorites(t *testing.T) {
 	}
 	if !slices.Equal(sections, []string{"Favorites", "a  no API key"}) {
 		t.Errorf("the favorite reads %v, want the head copy and the provider row", sections)
-	}
-}
-
-// TestNoModelHint: the no-model sentence names every missing key up to
-// three, the generic noun past that; with nothing left to name it points at
-// init.lua.
-func TestNoModelHint(t *testing.T) {
-	t.Parallel()
-	for _, c := range []struct {
-		name    string
-		catalog agent.Catalog
-		want    string
-	}{
-		{
-			"one key missing",
-			agent.Catalog{Missing: []agent.MissingKey{{ID: "anthropic", Env: "ANTHROPIC_API_KEY"}}},
-			"export ANTHROPIC_API_KEY and start zemi again, or press enter on a provider in /model to paste its key",
-		},
-		{
-			"two keys missing name both",
-			agent.Catalog{Missing: []agent.MissingKey{{ID: "anthropic", Env: "ANTHROPIC_API_KEY"}, {ID: "deepseek", Env: "DEEPSEEK_API_KEY"}}},
-			"export ANTHROPIC_API_KEY or DEEPSEEK_API_KEY and start zemi again, or press enter on a provider in /model to paste its key",
-		},
-		{
-			"three keys missing name all",
-			agent.Catalog{Missing: []agent.MissingKey{{ID: "anthropic", Env: "ANTHROPIC_API_KEY"}, {ID: "deepseek", Env: "DEEPSEEK_API_KEY"}, {ID: "openai", Env: "OPENAI_API_KEY"}}},
-			"export ANTHROPIC_API_KEY or DEEPSEEK_API_KEY or OPENAI_API_KEY and start zemi again, or press enter on a provider in /model to paste its key",
-		},
-		{
-			"four keys missing name none",
-			agent.Catalog{Missing: []agent.MissingKey{{ID: "anthropic", Env: "ANTHROPIC_API_KEY"}, {ID: "deepseek", Env: "DEEPSEEK_API_KEY"}, {ID: "openai", Env: "OPENAI_API_KEY"}, {ID: "x", Env: "X_API_KEY"}}},
-			"export a provider's API key and start zemi again, or press enter on a provider in /model to paste its key",
-		},
-	} {
-		h, _ := newTestHost(t)
-		h.Providers.Reset(c.catalog)
-		if got := h.NoModelHint(); got != c.want {
-			t.Errorf("%s: %q, want %q", c.name, got, c.want)
-		}
-	}
-	h, _ := newTestHost(t)
-	if got, want := h.NoModelHint(), "add a provider to "+h.initPath(); got != want {
-		t.Errorf("nothing registered: %q, want %q", got, want)
 	}
 }

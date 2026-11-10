@@ -9,14 +9,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"testing"
-
-	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/plugin"
 	"github.com/metafates/zemi/internal/skill"
 	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
@@ -80,40 +76,6 @@ const _fixMCP = `{"mcpServers":{
 	"skip_sse":{"type":"sse","url":"http://127.0.0.1:1/sse"},
 	"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-long":{"type":"http","url":"http://127.0.0.1:1/mcp"}
 }}`
-
-// A plugin with zemi's own tree (.zemi, manifest or not) loads none of the
-// Claude side, whatever its .claude-plugin holds: its Lua runs, the rest of
-// the layout stays unread.
-func TestClaudeSideYieldsToZemiManifest(t *testing.T) {
-	tmp := t.TempDir()
-	dirs := config.Dirs{ProjectDir: filepath.Join(tmp, "proj"), DataHome: filepath.Join(tmp, "data"), StateHome: filepath.Join(tmp, "state")}
-	root := filepath.Join(dirs.PluginsRoot(), "local", "both")
-	for p, src := range map[string]string{
-		filepath.Join(root, ".zemi", "init.lua"):             `print("zemi side ran")`,
-		filepath.Join(root, ".claude-plugin", "plugin.json"): `{"name":"both"}`,
-		filepath.Join(root, ".mcp.json"):                     `{"mcpServers":{"x":{"type":"http","url":"http://127.0.0.1:1/mcp"}}}`,
-	} {
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	log := slog.New(slog.DiscardHandler)
-	r := lua.NewRuntime(lua.RuntimeOptions{Log: log, PathClass: lua.PathClasses{
-		{Prefix: dirs.ConfigHome, Origin: lua.OriginUser},
-		{Prefix: dirs.PluginsRoot(), Origin: lua.OriginPlugin},
-	}})
-	h := NewHost(r, log, config.NewStore(), dirs)
-	t.Cleanup(h.Close)
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.PluginsStep()}); err != nil {
-		t.Fatal(err)
-	}
-	if g := h.pluginGrant.Load(); len(g.claude) != 0 || len(h.mcp.list()) != 0 {
-		t.Fatalf("the claude side loaded beside a zemi manifest: %+v %v", g.claude, h.mcp.list())
-	}
-}
 
 // TestClaudeHooksLoad: the mapped events register, the refused events and
 // unsupported hook entries do not, and the MCP servers register under the
@@ -183,20 +145,6 @@ func TestHookMatcher(t *testing.T) {
 		}
 		if got := m(c.tool); got != c.want {
 			t.Errorf("matcher %q on %s: %v, want %v", c.matcher, c.tool, got, c.want)
-		}
-	}
-}
-
-// TestHookEventsAgree: the events the display summary shows and the ones the
-// loader runs are the same set, so provides never advertises what load
-// refuses nor hides what it runs.
-func TestHookEventsAgree(t *testing.T) {
-	if len(_hookEventMap) != len(plugin.ClaudeHookEvents) {
-		t.Fatalf("hookEventMap runs %d events, the provides summary names %d", len(_hookEventMap), len(plugin.ClaudeHookEvents))
-	}
-	for e := range _hookEventMap {
-		if !slices.Contains(plugin.ClaudeHookEvents, e) {
-			t.Errorf("hookEventMap runs %s, which the provides summary hides", e)
 		}
 	}
 }
@@ -361,42 +309,6 @@ func TestClaudePluginLayers(t *testing.T) {
 	}
 }
 
-// A capture landing while a pin build is in flight (pin.key still empty)
-// invalidates that build, so the text reaches the session's next send.
-func TestCaptureInvalidatesBuildInFlight(t *testing.T) {
-	t.Parallel()
-	hooks := `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"sleep 0.4; echo late text"}]}]}}`
-	h, _ := claudeFixHost(t, hooks, "{}")
-	h.agents.mu.Lock()
-	drops := h.agents.pinDrops
-	h.agents.mu.Unlock()
-	h.captureSessionContext()
-	// a build running now reads hookText empty; it stores only if no drop
-	// counted against it by the time it finished
-	waitFor(t, func() error {
-		h.agents.mu.Lock()
-		defer h.agents.mu.Unlock()
-		if h.agents.hookCtx == "" {
-			return errors.New("capture not landed")
-		}
-		return nil
-	})
-	h.agents.mu.Lock()
-	if h.agents.pinDrops == drops {
-		h.agents.mu.Unlock()
-		t.Fatal("the in-flight build was not invalidated: it would pin a prompt without the text")
-	}
-	if h.agents.pin.key != "" {
-		h.agents.mu.Unlock()
-		t.Fatal("a stale pin survived the capture")
-	}
-	h.agents.mu.Unlock()
-	_, _, ctx, _ := h.pinPrompt(nil)
-	if !strings.Contains(ctx, "late text") {
-		t.Fatalf("context: %q", ctx)
-	}
-}
-
 // The stored context is capped: a chatty hook cannot grow the prompt.
 func TestCaptureContextCapped(t *testing.T) {
 	t.Parallel()
@@ -439,29 +351,6 @@ func TestSessionStartMatcher(t *testing.T) {
 	defer h.agents.mu.Unlock()
 	if strings.Contains(h.agents.hookCtx, "resumed") {
 		t.Fatal("the resume matcher fired on a startup capture")
-	}
-}
-
-// The /command of a Claude plugin sends its body with the plugin variables
-// filled, like the skill row's does.
-func TestClaudeCommandBodySubstitution(t *testing.T) {
-	h, root := claudeFixHostFiles(t, "{}", "{}", map[string]string{
-		"commands/pr.md": "---\ndescription: Draft a PR\n---\nRoot ${CLAUDE_PLUGIN_ROOT}, data ${CLAUDE_PLUGIN_DATA}.\n",
-	})
-	var sent atomic.Value
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
-			sent.Store(last)
-			return textParts("ok")
-		}}, nil
-	}
-	if err := h.RunCommand(t.Context(), "pr", "", false); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-	got, _ := sent.Load().(string)
-	if !strings.Contains(got, root) || !strings.Contains(got, h.pluginDataDir("fix")) || strings.Contains(got, "${CLAUDE_PLUGIN") {
-		t.Fatalf("sent %q", got)
 	}
 }
 

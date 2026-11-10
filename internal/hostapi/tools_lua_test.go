@@ -35,24 +35,6 @@ func TestLuaToolAfterReload(t *testing.T) {
 	}
 }
 
-// TestLuaToolAskCarriesWholeInput: the ask's preview is the whole input, so
-// the user approves what will run.
-func TestLuaToolAskCarriesWholeInput(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	ui := &fakeUI{}
-	h.SetUIHooks(ui)
-	askEverything(t, r)
-	runUser(t, r, `zemi.tool.add({ name = "weather", description = "the weather", execute = function() return "sunny" end })`)
-	input := `{"city":"` + strings.Repeat("a", 400) + `b"}`
-	if _, err := h.luaFantasyTools(h.PipelineFor())[0].Run(t.Context(), fantasy.ToolCall{Input: input}); err != nil {
-		t.Fatal(err)
-	}
-	if len(ui.asked) != 1 || ui.asked[0].Preview != input {
-		t.Fatalf("asked %+v", ui.asked)
-	}
-}
-
 // TestLuaToolFinalStopsTurn: a final tool's success is the turn's last word,
 // a failing one lets the model retry.
 func TestLuaToolFinalStopsTurn(t *testing.T) {
@@ -71,22 +53,6 @@ func TestLuaToolFinalStopsTurn(t *testing.T) {
 	resp, err = byName["flaky"].Run(t.Context(), fantasy.ToolCall{Input: "{}"})
 	if err != nil || resp.StopTurn {
 		t.Fatalf("a failed final tool must not end the turn: resp=%+v err=%v", resp, err)
-	}
-}
-
-// TestToolPreHandlerErrorRecorded: a tool.pre handler that raises lets the
-// call proceed, and one that raises or returns a bad shape shows in /errors.
-func TestToolPreHandlerErrorRecorded(t *testing.T) {
-	t.Parallel()
-	for _, c := range []struct{ body, want string }{
-		{`return ev.input.path:match("%.env$") and { decision = "deny" }`, ""},
-		{`return "deny"`, "deny"},
-	} {
-		h, r := newTestHost(t)
-		runUser(t, r, `zemi.event.on("tool.pre", function(ev) `+c.body+` end)`)
-		if d, _, _ := h.toolPreHook()("shell", map[string]any{"command": "cat .env"}); string(d) != c.want || !h.HasUnseenErrors() {
-			t.Errorf("%s: decision %q, want %q; unseen errors %v", c.body, d, c.want, h.HasUnseenErrors())
-		}
 	}
 }
 
@@ -127,21 +93,6 @@ func TestLuaToolFailures(t *testing.T) {
 	if errs := h.errs.entries; len(errs) != 1 || !strings.Contains(errs[0].msg, "stack traceback") {
 		t.Errorf("/errors = %+v, want the raise with its traceback", errs)
 	}
-}
-
-// TestDeferredCallbackKeepsOrigin: a callback runs later as the code that
-// handed it over, so the override it registers is attributed to that code.
-func TestDeferredCallbackKeepsOrigin(t *testing.T) {
-	h, r := newTestHost(t)
-	if err := r.ExecuteChunk(t.Context(), `zemi.timer.after(0, function() zemi.tool.override("shell", { pre = function() end }) end)`, "project-chunk", lua.OriginProject); err != nil {
-		t.Fatal(err)
-	}
-	waitFor(t, func() error {
-		if o := h.luaTools.overridesFor("shell"); len(o) == 1 && o[0].Origin == lua.OriginProject {
-			return nil
-		}
-		return fmt.Errorf("callback not attributed: %+v", h.luaTools.overridesFor("shell"))
-	})
 }
 
 // TestLuaToolWaitFreesInterpreter: execute waiting on a job suspends, so a

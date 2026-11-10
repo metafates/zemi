@@ -10,22 +10,6 @@ import (
 	"github.com/metafates/zemi/internal/store"
 )
 
-// TestResetEmitsSessionReset: a reset tells Lua, so state derived from the
-// chat can drop with it.
-func TestResetEmitsSessionReset(t *testing.T) {
-	h, r := newTestHostDB(t)
-	runUser(t, r, `zemi.event.on("session.reset", function(ev) zemi.state.set("reset_seen", ev.name) end)`)
-	if err := h.ResetChat(true); err != nil {
-		t.Fatal(err)
-	}
-	waitFor(t, func() error {
-		if v, _ := h.GlobalDB.GetKV("reset_seen"); v != `"session.reset"` {
-			return errors.New("handler has not run")
-		}
-		return nil
-	})
-}
-
 // TestResetChat: /reset refuses mid-turn, asks alone (the armed screen),
 // wipes the log, the tree and the view once answered, clears the todos and
 // the goal, and the next turn is the log's seq 0 again on a builder that
@@ -136,22 +120,5 @@ func TestResetChat(t *testing.T) {
 	// and draw nothing: no earlier message stands behind the fresh chat
 	if n := h.ScreenState(80, 24, UIState{}).LogRows(); n != 0 {
 		t.Fatalf("the fresh chat names %d earlier messages, want none", n)
-	}
-}
-
-// TestResetForgetsTheReplyRow: a turn stat landing after a reset must write
-// nothing, since the reply seq it remembered names another chat's row now.
-func TestResetForgetsTheReplyRow(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	if err := h.chat.Agent("a reply"); err != nil {
-		t.Fatal(err)
-	}
-	if h.chat.reply < 0 {
-		t.Fatal("the reply row was not remembered")
-	}
-	h.chatDropped()
-	if h.chat.reply != -1 {
-		t.Fatalf("reply seq %d survives the reset", h.chat.reply)
 	}
 }

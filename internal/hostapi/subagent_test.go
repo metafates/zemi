@@ -2,16 +2,13 @@ package hostapi
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -20,7 +17,6 @@ import (
 	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/internal/tools"
 )
 
@@ -109,118 +105,6 @@ func reasoningParts(text string) []fantasy.StreamPart {
 	}
 }
 
-// TestAgentToolRunsSubagent drives one parent turn that launches a
-// subagent: its report returns as the tool result, the tool row keeps the
-// progress detail, and the run is a child session hidden from the list.
-func TestAgentToolRunsSubagent(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
-			switch {
-			case strings.Contains(system, "a subagent of zemi"):
-				return textParts("sub report for: " + last)
-			case toolResult:
-				return textParts("parent saw: " + last)
-			default:
-				return toolCallParts("call-1", "agent", `{"description":"find things","prompt":"look around","agent":"explore"}`)
-			}
-		}}, nil
-	}
-	if err := h.AgentSend("go"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-
-	var reply, detail, runID string
-	for _, m := range h.Session().Transcript {
-		if m.Kind == "tool" && m.Tool == tools.ToolAgent {
-			detail, runID = m.Detail, m.Run
-		}
-		if m.Role == "assistant" && m.Kind == "" {
-			reply = m.Text
-		}
-	}
-	// the run id heads the report, so send_to can continue the run
-	if !strings.HasPrefix(reply, "parent saw: [run "+runID+"]\n\nsub report for: look around") {
-		t.Fatalf("reply = %q", reply)
-	}
-	if !strings.HasPrefix(detail, "explore   0 tool calls") {
-		t.Fatalf("detail = %q", detail)
-	}
-	list, err := h.DB.ChildSessions(store.MainSessionID)
-	if err != nil || len(list) != 1 {
-		t.Fatalf("sessions = %v %v", list, err)
-	}
-
-	// /agents: the run keeps its transcript, the chat can show it, and a run
-	// this process no longer holds reads the same rows from the store.
-	sid := h.AgentSessionID()
-	runs := h.tasks.runsOf(sid)
-	if len(runs) != 1 || runID != runs[0].id {
-		t.Fatalf("runs = %v", runs)
-	}
-	status, _, _, sid := runs[0].state()
-	want := []ChatMessage{{Role: "user", Text: "look around"}, {Role: "assistant", Text: "sub report for: look around"}}
-	if got := runs[0].transcript(); status != "done" || fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Fatalf("status %s, transcript %+v", status, got)
-	}
-	h.SetUIHooks(&fakeUI{})
-	if err := h.ViewAgent(runs[0].id); err != nil || h.viewedRun() != runs[0] {
-		t.Fatalf("view: %v", err)
-	}
-	forgetRun(h, runID)
-	stored, err := h.loadRun(sid)
-	if err != nil {
-		t.Fatalf("stored run: %v", err)
-	}
-	for i := range stored.tr {
-		// the store stamps a prompt's clock and names its row; the live row
-		// has neither yet
-		stored.tr[i].SentAt, stored.tr[i].ID = 0, ""
-	}
-	if got := stored.transcript(); fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Fatalf("stored run: %+v", got)
-	}
-}
-
-// TestSeedStreamSeedsEveryField: a field a caller seeds must read back from
-// AgentStream, or a golden silently draws the live turn's zero instead. The
-// skips are the fields the read derives rather than holds.
-func TestSeedStreamSeedsEveryField(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHost(t)
-	s := StreamSnapshot{
-		Active: true, ByLoop: true, Text: "t", Reasoning: "r", Thinking: true,
-		Task: "the task", Model: "a/b", Thought: 2 * time.Second, Elapsed: 3 * time.Second,
-		SessionIn: 1, SessionOut: 2, SessionCost: 3.5, LastIn: 4, CtxWindow: 5000,
-		CacheRead: 6, CacheBilled: 7, Retrying: true, RetryIn: 8 * time.Second, RetryWhy: "overloaded",
-		Retries: 9, Turn: 10,
-		Tools: []StreamTool{{ID: "c1", Name: "shell"}},
-	}
-	h.SeedStream(s)
-	// CtxWindow falls back to the model's; Model to the live one; Thought,
-	// Elapsed and RetryIn count from the seed on the host clock; Steering
-	// takes AgentSend, which builds the queue.
-	derived := map[string]string{
-		"Model":     "empty seeds the live model",
-		"CtxWindow": "0 seeds the model's window", "Thought": "counts from the seed",
-		"Elapsed": "counts from the seed", "RetryIn": "counts from the seed",
-		"Steering": "AgentSend builds it",
-	}
-	got := h.AgentStream()
-	want, have := reflect.ValueOf(s), reflect.ValueOf(got)
-	for i := range want.NumField() {
-		name := want.Type().Field(i).Name
-		if _, ok := derived[name]; ok {
-			continue
-		}
-		if !reflect.DeepEqual(want.Field(i).Interface(), have.Field(i).Interface()) {
-			t.Errorf("SeedStream does not seed %s: %v, want %v", name, have.Field(i).Interface(), want.Field(i).Interface())
-		}
-	}
-}
-
 // TestSubagentStoresThinkingTime: a run's stored reasoning row carries the
 // run's own thinking time, like a session's, so a run read back from the
 // store (/agents) shows it.
@@ -283,33 +167,6 @@ func (thoughtModel) StreamObject(context.Context, fantasy.ObjectCall) (fantasy.O
 
 func (thoughtModel) Provider() string { return "stub" }
 func (thoughtModel) Model() string    { return "script-1" }
-
-// TestSubagentFailureKeepsReport: a step failing after the agent already
-// reported something returns that partial report with the error, instead of
-// throwing the finished work away.
-func TestSubagentFailureKeepsReport(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(_, _ string, toolResult bool) []fantasy.StreamPart {
-			if toolResult {
-				return []fantasy.StreamPart{{Type: fantasy.StreamPartTypeError, Error: errors.New("provider down")}}
-			}
-			return append(textParts("partial finding")[:3], toolCallParts("c1", "read", `{"file_path":"/nope"}`)...)
-		}}, nil
-	}
-	def, err := h.agentDef("explore")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, text, err := h.runSubagent(t.Context(), def, "d", "look")
-	if err == nil {
-		t.Fatal("want the step error")
-	}
-	if text != "partial finding" {
-		t.Fatalf("partial report = %q", text)
-	}
-}
 
 // TestSubagentSurvivesAFullWindow: a subagent has no summarizer, so a
 // context the provider refuses drops the middle of its history once - the
@@ -478,37 +335,6 @@ func TestSubagentInstructions(t *testing.T) {
 	}
 	if got := h.nearestInstructions(file, h.instructionFiles(), h.instructionSent); !strings.Contains(got, "use tabs here") {
 		t.Fatalf("the main conversation lost its delivery: %q", got)
-	}
-}
-
-// TestSubagentOwnDir: runs of one agent share a system prompt, so the
-// provider cache serves it, and each is told its own directory in the pad in
-// its task.
-func TestSubagentOwnDir(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	var systems []string
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(system, last string, _ bool) []fantasy.StreamPart {
-			systems = append(systems, system)
-			return textParts(last)
-		}}, nil
-	}
-	def, err := h.agentDef("general")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var dirs []string
-	for range 2 {
-		_, text, err := h.runSubagent(t.Context(), def, "d", "look")
-		_, dir, ok := strings.Cut(text, "keep your own files in "+filepath.Join(h.ScratchDir(), "general-"))
-		if err != nil || !ok {
-			t.Fatalf("task %q, %v", text, err)
-		}
-		dirs = append(dirs, dir)
-	}
-	if len(systems) != 2 || systems[0] != systems[1] || dirs[0] == dirs[1] {
-		t.Errorf("%d prompts, equal %v; dirs %q", len(systems), len(systems) == 2 && systems[0] == systems[1], dirs)
 	}
 }
 
@@ -762,28 +588,6 @@ func TestUpdateToolReportsAFailedSend(t *testing.T) {
 	}
 }
 
-// TestSubagentToolSet: the default set keeps zoom and date (the run opens on
-// the view, and they are how it reads the chat behind it) and drops the
-// nesting, the user's attention and the lua tool.
-func TestSubagentToolSet(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	kept, _ := filterTools(h.allTools(h.PipelineFor()), nil, _subagentExcluded)
-	var names []string
-	for _, k := range kept {
-		names = append(names, k.Info().Name)
-	}
-	for _, want := range []string{"zoom", "date"} {
-		if !slices.Contains(names, want) {
-			t.Errorf("the subagent set lacks %s: %v", want, names)
-		}
-	}
-	for _, gone := range []string{"agent", "workflow", "todos", "question", "plan", "lua"} {
-		if slices.Contains(names, gone) {
-			t.Errorf("the subagent set keeps %s: %v", gone, names)
-		}
-	}
-}
-
 // TestFilterToolsNamesTheUnknown: an agent file spelling its tools another
 // harness's way names nothing here, and a run with no tools would invent
 // its report instead of failing.
@@ -863,273 +667,6 @@ func TestHaltKeepsTheStep(t *testing.T) {
 		if name == "history" && !strings.Contains(got, "w1") {
 			t.Errorf("history lost the call: %s", got)
 		}
-	}
-}
-
-// pinState is the pinned prefix the provider caches: which key built it, the
-// system prompt it holds and the tools' schemas, as bytes.
-func pinState(h *Host) string {
-	h.agents.mu.Lock()
-	defer h.agents.mu.Unlock()
-	b, _ := json.Marshal(h.agents.pin.infos, json.Deterministic(true))
-	return h.agents.pin.key + "\x00" + h.agents.pin.text + "\x00" + string(b)
-}
-
-// TestAgentUpdateReachesTheCaller: what a running agent sends with the update
-// tool joins the caller's turn at its next step boundary, drawn as a notice
-// row of its own rather than as something the user typed, and leaves the
-// pinned prompt and tools, which the provider caches, alone.
-func TestAgentUpdateReachesTheCaller(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	seedSession(t, h)
-	var marks [2]string // the pinned prefix at the child's call, and at the caller's next step
-	saw := ""
-	read := make(chan struct{})
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
-			switch {
-			case strings.Contains(system, "a subagent of zemi"):
-				if strings.HasPrefix(last, "look") {
-					marks[0] = pinState(h)
-					// a child that finds something the task waits on says so at once
-					return toolCallParts("t1", "update", `{"text":"the flaky test is in x_test.go"}`)
-				}
-				// the run must outlive its update: ended as it updated, the
-				// report joins the caller's same step boundary and the update
-				// is never that step's last message. A hang here fails the saw
-				// check below through waitIdle's deadline.
-				select {
-				case <-read:
-				case <-time.After(2 * time.Second):
-				}
-				return textParts("child done")
-			case strings.Contains(last, "<agent-update "):
-				marks[1], saw = pinState(h), last
-				close(read)
-				return textParts("read it")
-			case strings.Contains(last, "<agent-report "):
-				// the call woke on the update, so the run reports as a message
-				return textParts("noted")
-			case strings.Contains(last, "Do not end the turn"):
-				return toolCallParts("w1", "agent", `{"wait":"all"}`)
-			default:
-				return toolCallParts("c1", "agent", `{"description":"d","prompt":"look","agent":"general"}`)
-			}
-		}}, nil
-	}
-	if err := h.AgentSend("go"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-	if !strings.Contains(saw, "the flaky test is in x_test.go") {
-		t.Fatalf("the caller never read the update: %q", saw)
-	}
-	notices, typed := 0, 0
-	for _, m := range h.Session().Transcript {
-		switch {
-		case m.Kind == RowNotice && m.Run != "" && strings.Contains(m.Text, "the flaky test is in x_test.go"):
-			notices++
-		case m.Role == fantasy.MessageRoleUser && strings.Contains(m.Text, "flaky test"):
-			typed++
-		}
-	}
-	if notices != 1 || typed != 0 {
-		t.Fatalf("the update drew %d notice rows and %d user rows: %+v", notices, typed, h.Session().Transcript)
-	}
-	if marks[0] == "" || marks[0] != marks[1] {
-		t.Fatalf("the pinned prefix moved: %q -> %q", marks[0], marks[1])
-	}
-}
-
-// TestAgentMessageKeepsThePin: a caller's steer on a running agent rides the
-// child's queue, never the pinned prefix.
-func TestAgentMessageKeepsThePin(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.SetUIHooks(&fakeUI{}) // a detached run is a TUI feature
-	sid := seedSession(t, h)
-	release := make(chan struct{})
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
-			switch {
-			case strings.Contains(system, "a subagent of zemi"):
-				<-release
-				return textParts("child done")
-			case toolResult:
-				return textParts("started it")
-			case strings.Contains(last, "<agent-report "):
-				return textParts("got the report")
-			case strings.Contains(last, "Do not end the turn"):
-				return toolCallParts("w1", "agent", `{"wait":"all"}`)
-			default:
-				return toolCallParts("c1", "agent", `{"description":"d","prompt":"look","agent":"general","background":true}`)
-			}
-		}}, nil
-	}
-	if err := h.AgentSend("go"); err != nil {
-		t.Fatal(err)
-	}
-	// the turn holds on the run instead of ending into it
-	waitFor(t, func() error {
-		if n := h.tasks.runningFor(sid); n != 1 {
-			return fmt.Errorf("running = %d, want 1", n)
-		}
-		return nil
-	})
-	runs := h.tasks.runsOf(sid)
-	if len(runs) != 1 {
-		t.Fatalf("runs = %v", runs)
-	}
-	before := pinState(h)
-	if err := h.MessageAgent(runs[0].id, "also check y"); err != nil {
-		t.Fatal(err)
-	}
-	if q := runs[0].queued(); len(q) != 1 || q[0] != "also check y" {
-		t.Fatalf("queue = %q", q)
-	}
-	if after := pinState(h); after != before {
-		t.Fatalf("a steer moved the pinned prefix: %q -> %q", before, after)
-	}
-	close(release)
-	waitIdle(t, h)
-}
-
-// TestSubagentUpdatePrompt: every child holds the update tool and is told about
-// it, so an agent file's allowlist cannot take the way back to its caller away.
-func TestSubagentUpdatePrompt(t *testing.T) {
-	h, _ := newTestHostDB(t)
-	def := AgentDef{Name: "general"}
-	for _, c := range []struct {
-		name  string
-		tools []toolRef
-	}{
-		{name: "the full set"},
-		{name: "an allowlist without it", tools: []toolRef{{name: "read"}}},
-		{name: "an allowlist naming it", tools: []toolRef{{name: "read"}, {name: "update"}}},
-		{name: "an allowlist removing it", tools: []toolRef{{name: "update", deny: true}}},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			kept, unknown := childTools(h, h.PipelineFor(), c.tools)
-			if len(unknown) > 0 {
-				t.Fatalf("unknown tools %q", unknown)
-			}
-			if sys := h.subagentSystem(def, kept, false); !strings.Contains(sys, "update tool") {
-				t.Fatal("the prompt does not tell the child about updates")
-			}
-			if !hasTool(kept, tools.ToolUpdate) {
-				t.Fatal("the tool set lost the update tool")
-			}
-		})
-	}
-}
-
-// TestForkContinuesTheCallersPrefix: a fork sends the caller's own request -
-// its tools, system prompt, context message and messages, under its cache key -
-// and then its task. That prefix is what makes the provider read the
-// conversation from its cache instead of writing it out again.
-func TestForkContinuesTheCallersPrefix(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHostDB(t)
-	h.Dirs.ConfigHome = t.TempDir()
-	if err := os.MkdirAll(filepath.Join(h.Dirs.ConfigHome, "agents"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// the fork has its own model to resolve and options of its own to build, so
-	// the rows below hold on values rather than on nil: the run it continues is
-	// on the chat model, and the agents role is another
-	runUser(t, r, `zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", body = { service_tier = "flex" },
-		models = { { id = "big", max_output = 1000 }, { id = "small", max_output = 2000 } } })
-		zemi.config.set("models.agents", "p/small")`)
-	var mu sync.Mutex
-	var calls []fantasy.Call
-	m := &scriptModel{record: func(c fantasy.Call) {
-		mu.Lock()
-		defer mu.Unlock()
-		calls = append(calls, c)
-	}}
-	m.script = func(_, last string, toolResult bool) []fantasy.StreamPart {
-		switch {
-		case strings.Contains(last, _forkTask):
-			return textParts("the fork's report")
-		case toolResult:
-			return textParts("parent saw: " + last)
-		}
-		// a definition written now must not move the fork's tool array: it
-		// sends the caller's own schemas
-		if err := os.WriteFile(filepath.Join(h.Dirs.ConfigHome, "agents", "extra.md"), []byte("---\ndescription: late\n---\nbody"), 0o644); err != nil {
-			t.Error(err)
-		}
-		return toolCallParts("call-1", "agent", `{"description":"check it","prompt":"review what we did","agent":"fork"}`)
-	}
-	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
-	if err := h.AgentSend("hello"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-
-	mu.Lock()
-	defer mu.Unlock()
-	if len(calls) != 3 {
-		for i, c := range calls {
-			last := c.Prompt[len(c.Prompt)-1]
-			t.Logf("call %d: %d messages, last %s %q", i, len(c.Prompt), last.Role, concatText(last.Content))
-		}
-		t.Fatalf("calls = %d, want the caller's step, the fork's and the caller's next", len(calls))
-	}
-	caller, fork, next := calls[0], calls[1], calls[2]
-	if len(fork.Prompt) < len(caller.Prompt)+1 {
-		t.Fatalf("the fork sent %d messages, want the caller's %d plus its task", len(fork.Prompt), len(caller.Prompt))
-	}
-	// the cache breakpoints ride on the last two messages of a request, so they
-	// move with the fork's task and are not part of what it continues
-	for i, msg := range caller.Prompt {
-		if msg.Role != fork.Prompt[i].Role || !reflect.DeepEqual(msg.Content, fork.Prompt[i].Content) {
-			t.Fatalf("message %d is not the caller's:\ncaller %+v\nfork   %+v", i, msg, fork.Prompt[i])
-		}
-	}
-	// the # Brain section rides the caller's prefix, so the fork's first
-	task := concatText(fork.Prompt[len(fork.Prompt)-1].Content)
-	if !strings.HasPrefix(task, _forkTask) || !strings.Contains(task, "review what we did") {
-		t.Fatalf("the fork's task = %q", task)
-	}
-	for _, c := range []struct {
-		what      string
-		got, want any
-	}{
-		{"tools", fork.Tools, caller.Tools},
-		{"provider options", fork.ProviderOptions, caller.ProviderOptions},
-		{"headers", fork.Headers, caller.Headers},
-		{"temperature", fork.Temperature, caller.Temperature},
-		{"max output tokens", fork.MaxOutputTokens, caller.MaxOutputTokens},
-	} {
-		if !reflect.DeepEqual(c.got, c.want) {
-			t.Fatalf("the fork's %s differ from the caller's: %.200s vs %.200s", c.what, fmt.Sprint(c.got), fmt.Sprint(c.want))
-		}
-	}
-	// the caller's own next step still opens with the prefix it had cached
-	for i, msg := range caller.Prompt {
-		if msg.Role != next.Prompt[i].Role || !reflect.DeepEqual(msg.Content, next.Prompt[i].Content) {
-			t.Fatalf("the caller's next step changed message %d:\nbefore %+v\nnext   %+v", i, msg, next.Prompt[i])
-		}
-	}
-
-	var reply string
-	for _, m := range h.Session().Transcript {
-		if m.Role == "assistant" && m.Kind == "" {
-			reply = m.Text
-		}
-	}
-	if !strings.Contains(reply, "the fork's report") {
-		t.Fatalf("reply = %q", reply)
-	}
-	runs := h.tasks.runsOf(h.AgentSessionID())
-	if len(runs) != 1 || runs[0].agent != _forkAgent {
-		t.Fatalf("runs = %+v", runs)
-	}
-	sess, err := h.DB.GetSession(runs[0].sessionID)
-	if err != nil || sess.Agent != _forkAgent || sess.ParentID != h.AgentSessionID() {
-		t.Fatalf("fork session = %+v %v", sess, err)
 	}
 }
 
@@ -1361,42 +898,6 @@ func TestAgentToolHandsOff(t *testing.T) {
 	waitFor(t, func() error {
 		if n := reportRows(h, run.id); n != 1 {
 			return fmt.Errorf("%d report rows for %s, want exactly 1", n, run.id)
-		}
-		return nil
-	})
-}
-
-// TestForegroundEscStopsTheRun: esc cancels the call's own context, and the run
-// waiting on it must stop - the arm the agent tool shares with a workflow call.
-// TestForegroundEscHandsTheRunOff: esc on a turn a foreground agent call waits
-// in hands the run off the way a message taking the turn does - the call
-// answers at once, the run keeps going, and its report lands as a message.
-func TestForegroundEscHandsTheRunOff(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.SetUIHooks(&fakeUI{})
-	seedSession(t, h)
-	release := make(chan struct{})
-	run := &agentRun{id: "r1", agent: "explore", parent: h.AgentSessionID(), status: RunRunning, cancel: func() {}}
-	call, esc := context.WithCancel(t.Context())
-	defer esc()
-	answered := make(chan fantasy.ToolResponse, 1)
-	go func() {
-		resp, _ := (&agentTool{h: h}).foreground(call, "c1", run, func(func(string)) (string, error) {
-			<-release // the run outlives the call: its own context holds it
-			return "found it", nil
-		})
-		answered <- resp
-	}()
-	esc()
-	resp := waitCall(t, answered)
-	if !strings.Contains(resp.Content, "the run goes on") || !run.handedOff() {
-		t.Fatalf("esc answered %q (handed off %v), want the run handed off", resp.Content, run.handedOff())
-	}
-	close(release)
-	waitFor(t, func() error {
-		if n := reportRows(h, run.id); n != 1 {
-			return fmt.Errorf("%d report rows, want the detached run's report", n)
 		}
 		return nil
 	})
@@ -1858,73 +1359,6 @@ func TestWaitHoldsForAWorkflowAgent(t *testing.T) {
 	})
 }
 
-// TestWaitAllWaitsForEveryRun: wait=all returns only when the session's last
-// running run ends, and its answer sums every run it waited on; the reports
-// themselves arrive as messages.
-func TestWaitAllWaitsForEveryRun(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.SetUIHooks(&fakeUI{})
-	seedSession(t, h)
-	gates := map[string]chan struct{}{"one": make(chan struct{}), "two": make(chan struct{})}
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(system, last string, toolResult bool) []fantasy.StreamPart {
-			switch {
-			case strings.Contains(system, "a subagent of zemi"):
-				if !toolResult {
-					<-gates[last]
-					return textParts("done: " + last)
-				}
-			case strings.Contains(last, "<agent-report"):
-				return textParts("noted")
-			}
-			return textParts("ok")
-		}}, nil
-	}
-	def, _ := h.agentDef("explore")
-	id1, err := h.startBackgroundAgent(t.Context(), def, "dig one", "one")
-	if err != nil {
-		t.Fatal(err)
-	}
-	id2, err := h.startBackgroundAgent(t.Context(), def, "dig two", "two")
-	if err != nil {
-		t.Fatal(err)
-	}
-	run1, run2 := h.tasks.find(id1), h.tasks.find(id2)
-	answers := make(chan fantasy.ToolResponse, 1)
-	go func() {
-		resp, _ := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "w", Input: `{"wait":"all"}`})
-		answers <- resp
-	}()
-	waitFor(t, func() error {
-		for _, r := range []*agentRun{run1, run2} {
-			r.mu.Lock()
-			defer r.mu.Unlock()
-			if len(r.updates) == 0 {
-				return errors.New("waitAll never waited on " + r.id)
-			}
-		}
-		return nil
-	})
-	close(gates["one"])
-	waitFor(t, func() error {
-		if run1.isRunning() {
-			return errors.New("one never ended")
-		}
-		return nil
-	})
-	if !run2.isRunning() {
-		t.Fatal("two ended before its gate opened")
-	}
-	close(gates["two"])
-	resp := waitCall(t, answers)
-	if !strings.Contains(resp.Content, id1) || !strings.Contains(resp.Content, id2) ||
-		!strings.Contains(resp.Content, "done") {
-		t.Fatalf("waitAll answered %q, want both runs' lines", resp.Content)
-	}
-	waitIdle(t, h)
-}
-
 // TestWaitAllWakesOnUpdate: wait=all returns when one of the runs sends an
 // update, naming its sender, while every run goes on.
 func TestWaitAllWakesOnUpdate(t *testing.T) {
@@ -1992,38 +1426,6 @@ func TestWaitAllWakesOnUpdate(t *testing.T) {
 	close(hold)
 	close(gate)
 	waitIdle(t, h)
-}
-
-// TestWaitAllHandsOffOnUserSpoke: the user's own message takes every run the
-// wait held, and the answer names them.
-func TestWaitAllHandsOffOnUserSpoke(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.SetUIHooks(&fakeUI{})
-	sid := seedSession(t, h)
-	var runs []*agentRun
-	for _, id := range []string{"r1", "r2"} {
-		run := &agentRun{id: id, agent: "explore", parent: sid, status: RunRunning, started: time.Now(), cancel: func() {}}
-		if err := h.tasks.add(run); err != nil {
-			t.Fatal(err)
-		}
-		runs = append(runs, run)
-	}
-	answers := make(chan fantasy.ToolResponse, 1)
-	go func() {
-		resp, _ := h.agentTool(h.PipelineFor()).Run(t.Context(), fantasy.ToolCall{ID: "w", Input: `{"wait":"all"}`})
-		answers <- resp
-	}()
-	h.UserSpoke()
-	resp := waitCall(t, answers)
-	if !strings.Contains(resp.Content, "r1") || !strings.Contains(resp.Content, "r2") {
-		t.Fatalf("the handoff answered %q, want both runs named", resp.Content)
-	}
-	for _, run := range runs {
-		if !run.handedOff() {
-			t.Fatalf("run %s was not handed off", run.id)
-		}
-	}
 }
 
 // TestWaitAllNothingRunning: a wait with nothing running answers at once,

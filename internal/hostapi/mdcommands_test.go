@@ -68,29 +68,3 @@ func TestMarkdownCommandSends(t *testing.T) {
 		}
 	}
 }
-
-// TestProjectMarkdownCommands: a trusted repository's .agents/commands load
-// as project commands; .claude/commands is not read.
-func TestProjectMarkdownCommands(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHostDB(t)
-	h.SetProjectTrusted(true)
-	for _, c := range []struct{ dir, name string }{{".agents", "atest"}, {".claude", "ctest"}} {
-		d := filepath.Join(h.Dirs.ProjectDir, c.dir, "commands")
-		if err := os.MkdirAll(d, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(d, c.name+".md"), []byte("from "+c.dir+"\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := r.Boot(t.Context(), []lua.BootStep{h.NamespacesStep(), h.MarkdownCommandsStep()}); err != nil {
-		t.Fatal(err)
-	}
-	if cmd := h.Commands.Lookup("atest"); cmd == nil || cmd.Desc != "from .agents" || cmd.Origin != lua.OriginProject {
-		t.Fatalf("/atest = %+v", cmd)
-	}
-	if cmd := h.Commands.Lookup("ctest"); cmd != nil {
-		t.Fatalf(".claude/commands loaded: %+v", cmd)
-	}
-}

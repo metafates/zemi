@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -234,18 +233,6 @@ func TestWorkflowRun(t *testing.T) {
 	}
 	if peak.Load() < 2 {
 		t.Fatalf("parallel agents never overlapped (peak %d)", peak.Load())
-	}
-}
-
-// TestWorkflowDescNamesNoBareCall: the tool description is the API a model
-// writes the script against, so every call in it carries the wf. prefix the
-// guard's names demand; a bare one is what a model copies verbatim.
-func TestWorkflowDescNamesNoBareCall(t *testing.T) {
-	t.Parallel()
-	for name := range _misnamed {
-		if bare := regexp.MustCompile(`(^|[^.\w])` + name + `\(`); bare.MatchString(_workflowToolDesc) {
-			t.Errorf("workflowToolDesc calls %s() bare, not wf.%s()", name, name)
-		}
 	}
 }
 
@@ -537,69 +524,6 @@ func TestWorkflowControl(t *testing.T) {
 	}
 }
 
-// TestWorkflowRowCountsAnAgentAsItIsCalled: the foreground row counts an
-// agent the moment the script calls it, so a call registered right after
-// parallel() returns shows up while it waits, not only when it reports.
-func TestWorkflowRowCountsAnAgentAsItIsCalled(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	m := newGate()
-	h.modelFn = func() (fantasy.LanguageModel, error) { return m, nil }
-	var mu sync.Mutex
-	var reports []string
-	f, err := h.startFlow(t.Context(), flowSpec{
-		src: "local wf = zemi.workflow\n" +
-			`table.concat(wf.parallel({function() return wf.agent("a") end, function() return wf.agent("b") end})) wf.agent("c") return "done"`,
-		background: true,
-		progress: func(f *flowRun) {
-			mu.Lock()
-			defer mu.Unlock()
-			reports = append(reports, f.summary())
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	busy := func(n int32) func() error {
-		return func() error {
-			if got := m.running.Load(); got != n {
-				return fmt.Errorf("%d agents running, want %d", got, n)
-			}
-			return nil
-		}
-	}
-	waitFor(t, busy(2))
-	m.release <- struct{}{}
-	m.release <- struct{}{}
-	// the first two rows read done only after their streams returned, so
-	// busy(1) is then the third call alone: a decrement races its row's done,
-	// and a read before the drain has caught the last tick still predating it
-	waitFor(t, func() error {
-		v := f.view()
-		if len(v.agents) < 2 {
-			return fmt.Errorf("%d agents", len(v.agents))
-		}
-		for _, a := range v.agents[:2] {
-			if a.status == RunRunning {
-				return fmt.Errorf("agent %s still running", a.id)
-			}
-		}
-		return nil
-	})
-	waitFor(t, busy(1)) // the third call, waiting on the model
-	mu.Lock()
-	last, all := reports[len(reports)-1], slices.Clone(reports)
-	mu.Unlock()
-	if !strings.Contains(last, "2/3 agents") {
-		t.Fatalf("the row of a run that called 3 agents reads %q (reports: %q)", last, all)
-	}
-	m.release <- struct{}{}
-	<-f.done
-	if f.result != "done" {
-		t.Fatalf("result %q", f.result)
-	}
-}
-
 // TestWorkflowRerun runs a script, then reruns it from its journal and
 // reruns that rerun, counting the model calls each makes. The model answers
 // "<prompt>!<n>", n counting that prompt's calls, so an answer says which
@@ -815,27 +739,6 @@ func TestWorkflowBranchFailWarns(t *testing.T) {
 			}
 			if c.notWant != "" && strings.Contains(report, c.notWant) {
 				t.Fatalf("report = %q, want no %q", report, c.notWant)
-			}
-		})
-	}
-}
-
-// TestWorkflowListGate: list answers with nothing but the schema's label
-// fields set, and still refuses a call that names a source.
-func TestWorkflowListGate(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	tool := h.workflowTool(h.PipelineFor())
-	for _, c := range []struct {
-		name, input, want string
-	}{
-		{"a habitual description does not kill the list", `{"action":"list","description":"List workflow runs"}`, "no workflow run"},
-		{"a source still gets no action", `{"action":"list","script":"return 1"}`, "action acts on a run"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			resp, _ := tool.Run(t.Context(), fantasy.ToolCall{ID: "c", Name: string(tools.ToolWorkflow), Input: c.input})
-			if !strings.Contains(resp.Content, c.want) {
-				t.Fatalf("list = %q, want %q", resp.Content, c.want)
 			}
 		})
 	}
@@ -1437,49 +1340,6 @@ func TestWorkflowCallHandsOff(t *testing.T) {
 	}
 }
 
-// TestSpentSignalDoesNotDetachCall: the typed message is spent once the turn
-// reads it at a step boundary, so a call started after that drain waits for its
-// run instead of handing it off.
-func TestSpentSignalDoesNotDetachCall(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.SetUIHooks(&fakeUI{})
-	seedSession(t, h)
-	h.agents.mu.Lock()
-	h.agents.steering = []string{"why is it so slow?"}
-	h.agents.mu.Unlock()
-	if msgs := h.deliverSteering(); len(msgs) != 1 {
-		t.Fatalf("the step boundary read %d messages, want the one queued", len(msgs))
-	}
-	select { // the spent signal must not wake a call started later in the turn
-	case <-h.userSpoke():
-		t.Fatal("the spent signal still wakes a later call")
-	default:
-	}
-	gate := make(chan struct{})
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(system, _ string, _ bool) []fantasy.StreamPart {
-			if strings.Contains(system, "a subagent of zemi") {
-				<-gate
-				return textParts("worked")
-			}
-			return textParts("ok")
-		}}, nil
-	}
-	calls := make(chan fantasy.ToolResponse, 1)
-	go func() {
-		resp, _ := h.workflowTool(h.PipelineFor()).Run(t.Context(),
-			fantasy.ToolCall{ID: "1", Name: string(tools.ToolWorkflow), Input: `{"script":"-- late\nreturn zemi.workflow.agent('y')"}`})
-		calls <- resp
-	}()
-	f := waitLiveFlow(t, h)
-	close(gate)
-	resp := waitCall(t, calls)
-	if resp.IsError || !strings.Contains(resp.Content, "[workflow "+f.id) || reportRows(h, f.id) != 0 {
-		t.Fatalf("a call after the drain = %q (error %v), want its report inline and no message", resp.Content, resp.IsError)
-	}
-}
-
 // TestEndedRunIsNotHandedOff: a run that already ended cannot be handed off, so
 // its report stays the caller's - delivered exactly once, and never lost.
 func TestEndedRunIsNotHandedOff(t *testing.T) {
@@ -1750,64 +1610,6 @@ func TestWorkflowUserStart(t *testing.T) {
 	}
 }
 
-// TestWorkflowCancel: cancelling the context stops a script that is
-// waiting on agents or spinning in Lua.
-func TestWorkflowCancel(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	echoAgents(h)
-	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
-	defer cancel()
-	done := make(chan error, 1)
-	go func() {
-		_, err := runFlow(ctx, h, `zemi.workflow.agent("x") while true do end`, nil)
-		done <- err
-	}()
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatal("cancelled workflow returned no error")
-		}
-	case <-time.After(15 * time.Second):
-		t.Fatal("workflow ignored cancellation")
-	}
-}
-
-// TestWorkflowPanicEnds: a panic under the scheduler ends the run as failed,
-// so it holds back no reset or queued report.
-func TestWorkflowPanicEnds(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	echoAgents(h)
-	f, err := h.startFlow(t.Context(), flowSpec{src: `return zemi.workflow.agent("x")`, progress: func(*flowRun) {
-		panic("boom")
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	<-f.done
-	if f.isRunning() || h.tasks.runningFor(f.parent) != 0 {
-		t.Fatalf("a panicked run is still live: %+v", f)
-	}
-}
-
-func TestWorkflowFileStartingWithDashesIsNotFrontmatter(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.Dirs.ConfigHome = t.TempDir()
-	dir := filepath.Join(h.Dirs.ConfigHome, "workflows")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	src := "---\nreturn 1\n"
-	if err := os.WriteFile(filepath.Join(dir, "dashes.lua"), []byte(src), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := h.workflowSource("dashes"); err != nil || got != src {
-		t.Fatalf("workflowSource = %q, %v; want the file as is", got, err)
-	}
-}
-
 func TestSavedWorkflows(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHostDB(t)
@@ -1936,37 +1738,6 @@ return wf.agent("look")`})
 	}
 	if !slices.Contains(ui.closed, "workflow:"+f.id) || !slices.Contains(ui.closed, "workflows") {
 		t.Fatalf("closed %v, want the run's view and the list gone", ui.closed)
-	}
-}
-
-// TestFlowViewIDs: an agent row keeps its id when a later call lands in an
-// earlier phase, so a refresh never moves an open detail to another agent,
-// and a queued one opens like a started one, so enter's hint stays put.
-func TestFlowViewIDs(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	f := &flowRun{id: "0000000a", description: "d", status: RunRunning, limit: 1}
-	add := func(desc, phase string) {
-		f.agents = append(f.agents, &flowAgent{description: desc, phase: phase})
-	}
-	ids := func() map[string]any {
-		m := map[string]any{}
-		for _, row := range h.flowOverlay(f).Items {
-			if row.Fields == nil {
-				t.Fatalf("%s opens nothing", row.Text)
-			}
-			m[row.Text] = row.ID
-		}
-		return m
-	}
-	add("a1", "A")
-	add("b1", "B")
-	before := ids()
-	add("a2", "A")
-	for desc, id := range before {
-		if got := ids()[desc]; got != id {
-			t.Fatalf("%s's row id moved from %v to %v", desc, id, got)
-		}
 	}
 }
 

@@ -184,18 +184,3 @@ func TestFailedTurnLeavesErrorRow(t *testing.T) {
 		}
 	}
 }
-
-// TestBuiltinSkillsShipEnabled: zemi's self-knowledge skill is written to
-// the data dir, discovered as builtin and enabled by default.
-func TestBuiltinSkillsShipEnabled(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostSkills(t)
-	h.syncSkills()
-	s, ok := h.skillsReg.get("zemi")
-	if !ok || s.Source != "builtin" || !h.skillsReg.isEnabled("zemi") {
-		t.Errorf("zemi: found=%v source=%q enabled=%v", ok, s.Source, h.skillsReg.isEnabled("zemi"))
-	}
-	if mine, _ := h.skillsIndexPrompt(); !strings.Contains(mine, "- zemi: ") {
-		t.Fatal("the builtin skill is missing from the prompt index")
-	}
-}

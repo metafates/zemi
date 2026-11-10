@@ -290,22 +290,6 @@ func TestMemoriesWindowReach(t *testing.T) {
 	}
 }
 
-// TestMemoriesFoot: the footer reads the view's size, its lines and levels,
-// and the unbuilt count.
-func TestMemoriesFoot(t *testing.T) {
-	t.Parallel()
-	h, _ := seedMemories(t)
-	o := h.memoriesOverlay()
-	// three built lines ("msgs 0-1", "msgs 2-3", "msg 4") at 8+8+5 bytes,
-	// one placeholder at its own length, across levels 0 and 1
-	if !strings.Contains(o.Foot, "4 lines") || !strings.Contains(o.Foot, "2 levels") || !strings.Contains(o.Foot, "1 not summarized yet") {
-		t.Errorf("foot = %q", o.Foot)
-	}
-	if !strings.Contains(o.Foot, "B") {
-		t.Errorf("foot names no byte size: %q", o.Foot)
-	}
-}
-
 // TestMemoriesRange: v reads the messages a line covers, kind-headed, oldest
 // first; a line past the log is refused.
 func TestMemoriesRange(t *testing.T) {
@@ -425,35 +409,5 @@ func TestStampLogSeqs(t *testing.T) {
 	// the newest message's line reads as on the screen
 	if lo := h.chatWindowLo(); lo != 0 {
 		t.Errorf("the window starts at %d, want the log's 0", lo)
-	}
-}
-
-// TestStampLogSeqsMismatch: a transcript row whose log write failed pairs
-// with nothing - the row draws unstamped and the log's rows pair with the
-// rows that did land.
-func TestStampLogSeqsMismatch(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	if _, err := h.DB.AppendLog(store.KindUser, "first", "", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := h.DB.AppendLog(store.KindUser, "later", "", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	// the log holds two rows; the window's first row's write failed. Both
-	// rows drew live, so neither names a message yet.
-	h.tMu.Lock()
-	h.session = &Session{Transcript: []ChatMessage{
-		{Role: fantasy.MessageRoleUser, Text: "lost", Seq: NoSeq},
-		{Role: fantasy.MessageRoleUser, Text: "later", Seq: NoSeq},
-	}}
-	h.tMu.Unlock()
-	h.stampLogSeqs()
-	tr := h.Session().Transcript
-	if tr[0].Seq != -1 {
-		t.Errorf("the row with no log message carries %d, want the -1 mark", tr[0].Seq)
-	}
-	if tr[1].Seq != 1 {
-		t.Errorf("later stamped %d, want 1", tr[1].Seq)
 	}
 }

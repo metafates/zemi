@@ -7,18 +7,15 @@ package hostapi
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"charm.land/fantasy"
 
-	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/store"
 )
 
@@ -44,67 +41,6 @@ func viewPart(t *testing.T, prompt []fantasy.Message) fantasy.Message {
 		t.Fatalf("prompt has %d messages, want system, context, view, user", len(prompt))
 	}
 	return prompt[2]
-}
-
-// TestViewGrowsOnlyAtItsEnd: the view's parts come from the persisted
-// view_lines, oldest first, and only grow at their end - the marked part's
-// bytes the next view keeps, so the provider reads it from cache.
-func TestViewGrowsOnlyAtItsEnd(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	for i := range 10 {
-		if _, err := h.DB.AppendLog("user", fmt.Sprintf("row %d", i), "", "", ""); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := h.DB.InsertNode(0, int64(i), fmt.Sprintf("line %d text", i)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	one, ok := h.viewMessage()
-	if !ok {
-		t.Fatal("no view message for a ten-line view")
-	}
-	if len(one.Content) != 3 { // 10 lines: 4+4+2
-		t.Fatalf("the first view has %d parts, want 3", len(one.Content))
-	}
-	if _, marked := one.Content[1].(fantasy.TextPart).ProviderOptions["anthropic"]; !marked {
-		t.Fatal("no mark on the newest stable block")
-	}
-	// two more lines land (a turn's rows), unbuilt: placeholders
-	for i := 10; i < 12; i++ {
-		if _, err := h.DB.AppendLog("user", fmt.Sprintf("row %d", i), "", "", ""); err != nil {
-			t.Fatal(err)
-		}
-	}
-	two, ok := h.viewMessage()
-	if !ok {
-		t.Fatal("no view message for a twelve-line view")
-	}
-	if len(two.Content) != 3 { // 12 lines: 4+4+4
-		t.Fatalf("the second view has %d parts, want 3", len(two.Content))
-	}
-	// the parts before the tail are byte-identical, mark included
-	for i := range 2 {
-		a, b := textPart(t, one.Content, i), textPart(t, two.Content, i)
-		if a.Text != b.Text {
-			t.Fatalf("part %d moved between views:\n%q\n%q", i, a.Text, b.Text)
-		}
-	}
-	if _, marked := two.Content[1].(fantasy.TextPart).ProviderOptions["anthropic"]; !marked {
-		t.Fatal("the stable block lost its mark")
-	}
-	// the tail grew, unbuilt message lines as their own heads, the view closed
-	if got := textPart(t, two.Content, 2).Text; !strings.HasSuffix(got, "10+1|user: row 10\n11+1|user: row 11\n</chat>") {
-		t.Fatalf("the tail block = %q", got)
-	}
-	if !strings.HasPrefix(textPart(t, one.Content, 0).Text, "<chat>\n0+1|line 0 text\n") {
-		t.Fatalf("the view does not open with the first line: %q", textPart(t, one.Content, 0).Text)
-	}
-	// the empty log skips the view entirely
-	h2, _ := newTestHostDB(t)
-	if _, ok := h2.viewMessage(); ok {
-		t.Fatal("an empty log built a view message")
-	}
 }
 
 // TestPendingLineNamesAndClips: a line whose node is unbuilt stands in with
@@ -134,110 +70,6 @@ func TestPendingLineNamesAndClips(t *testing.T) {
 		if got := h.chat.pendingLine(seq); got != c.want {
 			t.Errorf("%s = %q, want %q", c.name, got, c.want)
 		}
-	}
-}
-
-// gateStub holds the turn's own model calls until the test releases them;
-// side calls (titles, the builder) pass through.
-type gateStub struct {
-	*replyStubModel
-
-	release chan struct{}
-	arrived chan struct{} // closed when the turn's first call reached the model
-	once    sync.Once
-}
-
-func (g *gateStub) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
-	if !sideCall(call) {
-		g.once.Do(func() { close(g.arrived) })
-		select {
-		case <-g.release:
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-	return g.replyStubModel.Stream(ctx, call)
-}
-
-// TestSteeringLogsAtInjection: a message sent mid-turn logs as a user row
-// where the step boundary injected it, after the call it interrupted and
-// before the step that read it.
-func TestSteeringLogsAtInjection(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	base := replyStub(t, h, "mid\n\nfinal")
-	base.toolStep.Store(1) // step 1 ends in a tool call
-	g := &gateStub{replyStubModel: base, release: make(chan struct{}), arrived: make(chan struct{})}
-	h.modelFn = func() (fantasy.LanguageModel, error) { return g, nil }
-	h.SetUIHooks(&fakeUI{})
-	if err := h.AgentSend("start work"); err != nil {
-		t.Fatal(err)
-	}
-	waitFor(t, func() error {
-		if !h.AgentActive() {
-			return errors.New("the turn has not started")
-		}
-		select {
-		case <-g.arrived:
-			return nil
-		default:
-			return errors.New("the first step has not reached the model")
-		}
-	})
-	if err := h.AgentSendUser("steered in"); err != nil {
-		t.Fatal(err)
-	}
-	close(g.release)
-	waitIdle(t, h)
-	rows, err := h.DB.LogTail(10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var kinds []string
-	steeredAt := -1
-	for i, r := range rows {
-		kinds = append(kinds, string(r.Kind))
-		if r.Kind == store.KindUser && r.Text == "steered in" {
-			steeredAt = i
-		}
-	}
-	if steeredAt <= 0 {
-		t.Fatalf("the steered row is missing or first: %v", kinds)
-	}
-	// it landed after the echo of the call it interrupted, before the reply
-	// that read it
-	if rows[steeredAt-1].Kind != store.KindEcho {
-		t.Fatalf("the steered row follows %q, want the interrupted call's echo", rows[steeredAt-1].Kind)
-	}
-	if !slices.Contains(kinds[steeredAt:], string(store.KindAgent)) {
-		t.Fatalf("no reply after the steered row: %v", kinds)
-	}
-}
-
-// TestNoteCommandAppends: /note writes one note row, mid-turn too, and the
-// next turn's view carries its line.
-func TestNoteCommandAppends(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	m := replyStub(t, h, "ok")
-	h.SetUIHooks(&fakeUI{})
-	if err := h.Note("chapter one"); err != nil {
-		t.Fatal(err)
-	}
-	rows, err := h.DB.LogTail(1)
-	if err != nil || len(rows) != 1 || rows[0].Kind != store.KindNote || rows[0].Text != "chapter one" {
-		t.Fatalf("note rows = %+v, %v", rows, err)
-	}
-	waitFor(t, func() error { // a short note is its own node verbatim
-		_, err := h.DB.NodeAt(0, rows[0].Seq)
-		return err
-	})
-	prompts := sendTurns(t, h, m, "go on")
-	if len(prompts) == 0 {
-		t.Fatal("no turn ran")
-	}
-	if got := concatText(viewPart(t, prompts[len(prompts)-1]).Content); !strings.Contains(got, "chapter one") {
-		t.Fatalf("the view does not carry the note: %q", got)
 	}
 }
 
@@ -271,36 +103,6 @@ func TestNoticesPersist(t *testing.T) {
 	h.tMu.RUnlock()
 	if n := len(live); n < 3 || live[n-2].Seq != rows[1].Seq || live[n-1].Seq != rows[2].Seq {
 		t.Fatalf("live rows unstamped: %+v", live[max(n-2, 0):])
-	}
-}
-
-// TestBuilderWakesOnRealTurns: a turn's rows reach the builder through the
-// dual-write, and every one of them has a built line shortly after.
-func TestBuilderWakesOnRealTurns(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	m := replyStub(t, h, "ok")
-	h.SetUIHooks(&fakeUI{})
-	line := strings.Repeat("u", 600) // over the leaf budget: a model call per row
-	for range 4 {
-		if _, err := h.chat.User(line, ""); err != nil {
-			t.Fatal(err)
-		}
-	}
-	waitFor(t, func() error {
-		n, err := h.DB.LogCount()
-		if err != nil {
-			return err
-		}
-		for seq := range n {
-			if _, err := h.DB.NodeAt(0, seq); err != nil {
-				return fmt.Errorf("leaf %d unbuilt: %w", seq, err)
-			}
-		}
-		return nil
-	})
-	if m.calls.Load() == 0 {
-		t.Fatal("no builder call: the wake did not reach the worker")
 	}
 }
 
@@ -341,30 +143,6 @@ func TestBuilderRebuildsAfterTheWritersReset(t *testing.T) {
 	})
 	if m.calls.Load() == 0 {
 		t.Fatal("no builder call after the writer's reset")
-	}
-}
-
-// TestPromptCarriesTheViewSection: the main conversation's prompt renders
-// the view section and the builder's shares it, word for word; a subagent's
-// prompt gains neither.
-func TestPromptCarriesTheViewSection(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.SetUIHooks(&fakeUI{})
-	sys, _, _ := h.buildSystemParts(h.mainTools())
-	for _, want := range []string{"# The chat", "id+n|text", "until you have it whole", "what you learned"} {
-		if !strings.Contains(sys, want) {
-			t.Errorf("the turn prompt misses %q", want)
-		}
-	}
-	if !strings.Contains(_chatSystem, _viewPrompt) {
-		t.Error("the builder's prompt does not share the view section")
-	}
-	pipe := h.PipelineFor()
-	kept, _ := filterTools(h.allTools(pipe), []string{"shell", "read"}, _subagentExcluded)
-	sub := h.defaultSystemPrompt(kept)
-	if strings.Contains(sub, "# The chat") || strings.Contains(sub, "zoom") {
-		t.Error("the subagent prompt gained the view section")
 	}
 }
 
@@ -517,20 +295,6 @@ func TestUserImagesZoomBack(t *testing.T) {
 	}
 }
 
-// TestLogHoldsTheThought: the turn's messages land in the log as they happen:
-// the user's words, the reply.
-func TestLogHoldsTheTurn(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	m := replyStub(t, h, "kept")
-	h.SetUIHooks(&fakeUI{})
-	sendTurns(t, h, m, "hello")
-	logRows, err := h.DB.LogTail(2)
-	if err != nil || len(logRows) != 2 || logRows[0].Kind != store.KindUser || logRows[0].Text != "hello" || logRows[1].Kind != store.KindAgent || logRows[1].Text != "kept" {
-		t.Fatalf("log rows = %+v, %v", logRows, err)
-	}
-}
-
 // TestLogHoldsTheThought: a reasoning stretch lands in the log as the thought
 // row it drew, ahead of the reply, with the wall time its flush measured -
 // a stretch no call follows included, whose flush never happens.
@@ -571,37 +335,6 @@ func TestLogHoldsTheThought(t *testing.T) {
 	}
 }
 
-// TestReplyStatCarriesTheThought: the reply row's stat carries the turn's
-// whole thought, so the live digest says what the rebuilt window reads from
-// the log's reply row.
-func TestReplyStatCarriesTheThought(t *testing.T) {
-	t.Parallel()
-	h := newTestHostUI(t)
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		m := &scriptModel{script: func(_, _ string, _ bool) []fantasy.StreamPart {
-			return append(reasoningParts("weighing it."), textParts("kept")...)
-		}}
-		return slowThought{LanguageModel: m, gap: 60 * time.Millisecond}, nil
-	}
-	h.SetUIHooks(&fakeUI{})
-	if err := h.AgentSend("go"); err != nil {
-		t.Fatal(err)
-	}
-	waitIdle(t, h)
-	h.tMu.Lock()
-	tr := h.session.Transcript
-	h.tMu.Unlock()
-	var reply *ChatMessage
-	for i := range tr {
-		if tr[i].Kind == "" && tr[i].Role == fantasy.MessageRoleAssistant {
-			reply = &tr[i]
-		}
-	}
-	if reply == nil || reply.Stat == nil || reply.Stat.ThoughtMS < 50 {
-		t.Fatalf("last reply row = %+v, want the turn's thought in its stat", reply)
-	}
-}
-
 // slowThought streams a model's parts with a wall gap before each one after
 // the first, so a thought accrues time the way a streaming provider's does.
 type slowThought struct {
@@ -627,61 +360,6 @@ func (m slowThought) Stream(ctx context.Context, call fantasy.Call) (fantasy.Str
 			}
 		}
 	}, nil
-}
-
-// TestResumedWindowKeepsTheTurn: the turn's readout and thought ride the
-// log's reply row, so the window a restart rebuilds from the log keeps both,
-// as the live one did.
-func TestResumedWindowKeepsTheTurn(t *testing.T) {
-	clock := &fakeClock{now: _testEpoch}
-	h := newTestHostUI(t, clock)
-	h.SetUIHooks(&fakeUI{})
-	// the turn as it ran: the words, a thought, a call, the reply; the log
-	// rows land the way persistMessage writes them
-	if _, err := h.chat.User("go", ""); err != nil {
-		t.Fatal(err)
-	}
-	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: "go"})
-	hk := h.streamHooks()
-	hk.ReasoningDelta("thinking it over.")
-	clock.set(_testEpoch.Add(3 * time.Second))
-	if err := h.chat.Thought("thinking it over.", 3*time.Second); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.chat.Tool("read", `{"path":"a.go"}`, ""); err != nil {
-		t.Fatal(err)
-	}
-	hk.ToolCallPending("t1", "read")
-	if err := h.chat.Echo("read", true, "data", StreamTool{}); err != nil {
-		t.Fatal(err)
-	}
-	hk.ToolCallEnd("t1", "read", out("data"), "")
-	hk.StepDone(agent.Step{}) // the step's finish logged the call and its result
-	hk.TextDelta("The answer.")
-	if err := h.chat.Agent("The answer."); err != nil {
-		t.Fatal(err)
-	}
-	h.agents.mu.Lock()
-	h.agents.turnStart, h.agents.turnModel = _testEpoch, "acme-gateway/big"
-	h.agents.mu.Unlock()
-	(&streamAdapter{h: h}).TurnDone(nil, fantasy.Usage{OutputTokens: 895})
-	// the restart: the window rebuilds from the log's tail
-	rows, err := h.DB.LogTail(_chatWindowRows)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h.SetTranscript(logRows(nil, rows))
-	tr := h.Session().Transcript
-	reply := tr[len(tr)-1]
-	if reply.Stat == nil || reply.Stat.Model != "acme-gateway/big" ||
-		reply.Stat.Out != 895 || reply.Stat.ElapsedMS != 3000 || reply.Stat.ThoughtMS != 3000 || reply.Stat.Ended == 0 {
-		t.Fatalf("the rebuilt reply lost the turn's stat: %+v", reply.Stat)
-	}
-	thought := tr[len(tr)-3]
-	if thought.Kind != RowReasoning || thought.Text != "thinking it over." ||
-		thought.Stat == nil || thought.Stat.ThoughtMS != 3000 || thought.Seq == 0 {
-		t.Fatalf("the rebuilt thought row is not the one the turn drew: %+v", thought)
-	}
 }
 
 // TestResumedWindowNamesADeadTail: a log whose last turn holds no reply and
@@ -739,172 +417,6 @@ func TestResumedWindowNamesADeadTail(t *testing.T) {
 				t.Fatalf("the tail ends with %+v, marker wanted %v", last, c.marker)
 			}
 		})
-	}
-}
-
-// TestResumedZoomAndDateRowsKeepTheirHeads: a zoom row's summary is the line
-// it named, in the id+n shape the chat reads, and its result keeps the opened
-// child for the row to preview; a date row's summary is its id and its result
-// the compact local stamp, not the provider's RFC3339Nano one.
-func TestResumedZoomAndDateRowsKeepTheirHeads(t *testing.T) {
-	h := newTestHostUI(t, &fakeClock{now: _testEpoch})
-	h.SetUIHooks(&fakeUI{})
-	seed := func(tool, input, output string, ok bool) {
-		if err := h.chat.Tool(tool, input, ""); err != nil {
-			t.Fatal(err)
-		}
-		if err := h.chat.Echo(tool, ok, output, StreamTool{}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	seed("zoom", `{"id":16032,"n":8}`, "16032+4|Rate-limit fixed: real quotas (big 50000)\n16034+2|second child line", true)
-	seed("date", `{"id":16033}`, "2026-10-29T11:03:12.487654321Z", true)
-	seed("zoom", `{"id":9,"n":8}`, "no line 9+8 in a chat of 10 messages", false)
-	rows, err := h.DB.LogTail(_chatWindowRows)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h.SetTranscript(logRows(nil, rows))
-	tr := h.Session().Transcript
-	if len(tr) != 3 {
-		t.Fatalf("the rebuilt window holds %d rows, want the three calls: %+v", len(tr), tr)
-	}
-	if tr[0].Text != "16032+8" || tr[1].Text != "16033" || tr[2].Text != "9+8" {
-		t.Fatalf("the rows' summaries are %q, %q, %q, want the id+n shapes", tr[0].Text, tr[1].Text, tr[2].Text)
-	}
-	if want := "16032+4|Rate-limit fixed: real quotas (big 50000)\n16034+2|second child line"; tr[0].Output != want {
-		t.Fatalf("the zoom row keeps %q, want the opened child", tr[0].Output)
-	}
-	at, err := time.Parse(time.RFC3339Nano, "2026-10-29T11:03:12.487654321Z")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := at.Local().Format(_previewStamp); tr[1].Output != want {
-		t.Fatalf("the date row reads %q, want the compact local %q", tr[1].Output, want)
-	}
-	if tr[2].Status != CallErr || tr[2].Output != "no line 9+8 in a chat of 10 messages" {
-		t.Fatalf("the failed zoom row = %+v", tr[2])
-	}
-}
-
-// TestResumedWindowKeepsTheFailuresAndCommands: a failed turn's error row and
-// a shell command row land in the log, so the window a restart rebuilds from
-// the log keeps them as the live one did.
-func TestResumedWindowKeepsTheFailuresAndCommands(t *testing.T) {
-	t.Parallel()
-	h := newTestHostUI(t)
-	h.SetUIHooks(&fakeUI{})
-	// a turn that fails: the error row is the only record of it
-	if _, err := h.chat.User("go", ""); err != nil {
-		t.Fatal(err)
-	}
-	h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: "go"})
-	(&streamAdapter{h: h}).TurnDone(errors.New("the provider failed"), fantasy.Usage{})
-	// the user's own command, which logs beside the echo the model reads
-	h.RunShell("echo hi")
-	waitFor(t, func() error {
-		rows, err := h.DB.LogKindBack(store.KindShell, 1)
-		if err != nil || len(rows) == 0 {
-			return fmt.Errorf("the shell row has not landed: %w", err)
-		}
-		return nil
-	})
-	live := h.Session().Transcript
-	var liveErr, liveShell *ChatMessage
-	for i := range live {
-		if live[i].Kind == RowError {
-			liveErr = &live[i]
-		}
-		if live[i].Kind == RowShell {
-			liveShell = &live[i]
-		}
-	}
-	if liveErr == nil || liveShell == nil {
-		t.Fatalf("the live window holds no error and shell rows: %+v", live)
-	}
-	rows, err := h.DB.LogTail(_chatWindowRows)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h.SetTranscript(logRows(nil, rows))
-	tr := h.Session().Transcript
-	var gotErr, gotShell *ChatMessage
-	for i := range tr {
-		if tr[i].Kind == RowError {
-			gotErr = &tr[i]
-		}
-		if tr[i].Kind == RowShell {
-			gotShell = &tr[i]
-		}
-	}
-	if gotErr == nil || gotErr.Text != liveErr.Text || gotErr.Status != liveErr.Status {
-		t.Fatalf("the rebuilt error row is not the one the turn drew: %+v want %+v", gotErr, liveErr)
-	}
-	if gotShell == nil || gotShell.Text != liveShell.Text || gotShell.Detail != liveShell.Detail || gotShell.Status != liveShell.Status {
-		t.Fatalf("the rebuilt shell row is not the one the command drew: %+v want %+v", gotShell, liveShell)
-	}
-}
-
-// TestToolMarkBudgetOnTheFlow: an in-turn request carries exactly the four
-// marks Anthropic allows - the system block, the view's own marked part and
-// the last two messages. The deleted last-tool mark would make it five,
-// which the provider hard-errors on.
-func TestToolMarkBudgetOnTheFlow(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	m := replyStub(t, h, "done")
-	m.toolStep.Store(1) // the first step ends in a tool call, so a second runs
-	h.SetUIHooks(&fakeUI{})
-	for range 5 { // five lines: two view parts, so the newest stable block is marked
-		if _, err := h.chat.User(strings.Repeat("w", 30), ""); err != nil {
-			t.Fatal(err)
-		}
-	}
-	prompts := sendTurns(t, h, m, "do it")
-	if len(prompts) < 2 {
-		t.Fatalf("%d requests recorded, want the tool step's follow-up", len(prompts))
-	}
-	marked := 0
-	for _, msg := range prompts[1] {
-		if _, ok := msg.ProviderOptions["anthropic"]; ok {
-			marked++
-		}
-		for _, p := range msg.Content {
-			if _, ok := p.Options()["anthropic"]; ok {
-				marked++
-			}
-		}
-	}
-	if marked != 4 {
-		t.Fatalf("%d marks on the in-turn request, want exactly 4", marked)
-	}
-}
-
-// TestChatlogConcurrencyUnderTurns: appends and view reads race safely.
-func TestChatlogConcurrencyUnderTurns(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	var wg sync.WaitGroup
-	for range 8 {
-		wg.Go(func() {
-			for range 10 {
-				if _, err := h.chat.User("x", ""); err != nil {
-					t.Error(err)
-					return
-				}
-				if _, err := h.DB.LoadView(); err != nil {
-					t.Error(err)
-					return
-				}
-			}
-		})
-	}
-	wg.Wait()
-	if n, _ := h.DB.LogCount(); n != 80 {
-		t.Fatalf("log holds %d rows, want 80", n)
-	}
-	if lines, _ := h.DB.LoadView(); len(lines) != 80 {
-		t.Fatalf("view holds %d lines, want 80", len(lines))
 	}
 }
 

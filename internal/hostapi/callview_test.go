@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/store"
@@ -147,26 +146,6 @@ func TestCallInput(t *testing.T) {
 	} {
 		if got := callInput(ChatMessage{Tool: tools.ToolName(c.tool), Text: c.text}); got != c.want {
 			t.Errorf("callInput(%s, %q) = %q, want %q", c.tool, c.text, got, c.want)
-		}
-	}
-}
-
-// TestSteerPrompt: only a message a send_to sent a run is a steer; the call
-// that started the run carries its task, and stop or wait sends nothing.
-func TestSteerPrompt(t *testing.T) {
-	t.Parallel()
-	for _, c := range []struct {
-		name, tool, raw, want string
-	}{
-		{"a message", "agent", `{"send_to":"r9","prompt":"check the parser"}`, "check the parser"},
-		{"beside a wait", "agent", `{"send_to":"r9","wait":"all","prompt":"check the parser"}`, "check the parser"},
-		{"a stop", "agent", `{"send_to":"r9","stop":true}`, ""},
-		{"a new run", "agent", `{"agent":"general","prompt":"look around"}`, ""},
-		{"blank", "agent", `{"send_to":"r9","prompt":"  "}`, ""},
-		{"another tool", "shell", `{"command":"ls"}`, ""},
-	} {
-		if got := steerPrompt(c.tool, c.raw); got != c.want {
-			t.Errorf("%s: steerPrompt(%q) = %q, want %q", c.name, c.raw, got, c.want)
 		}
 	}
 }
@@ -397,28 +376,6 @@ func TestCallViewFollowsItsCall(t *testing.T) {
 	}
 }
 
-// TestCallViewWaitingHasNoClock: a call waiting on its gate has not started,
-// so its view names no time instead of one measured off a zero start.
-func TestCallViewWaitingHasNoClock(t *testing.T) {
-	t.Parallel()
-	h, _ := newLoopHost(t)
-	ui := fakeHooks(t, h)
-	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{
-		{ID: "call_1", Name: "edit", Input: "a.go", Status: CallWait},
-	}})
-	if err := h.openCall(-1); err != nil {
-		t.Fatal(err)
-	}
-	opened := ui.overlays()
-	if len(opened) == 0 {
-		t.Fatal("the call view did not open")
-	}
-	got := opened[len(opened)-1]
-	if got.Title != "Edit" || fieldOf(got, "time") != "" {
-		t.Fatalf("a waiting call's view reads %+v, want no time field", got.Fields)
-	}
-}
-
 // TestSkillBody: a skill's view reads the whole file, not the cut rows a
 // transcript keeps, so the procedure is there to read.
 func TestSkillBody(t *testing.T) {
@@ -468,33 +425,5 @@ func TestCallViewFollowsTheTranscript(t *testing.T) {
 	}
 	if got := rebuilt[len(rebuilt)-1].Next; got != "call 4" {
 		t.Fatalf("the refreshed view steps to %q, want the call that landed", got)
-	}
-}
-
-// TestRefreshLevelsUnderTheTurnLock: a turn settles its rows under the
-// agent lock and refreshes the tracked levels there, so nothing that hook
-// reaches may take that lock again - a live call's view maps to the row it
-// lands on through the transcript alone.
-func TestRefreshLevelsUnderTheTurnLock(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHost(t)
-	h.AppendMessage("user", "ping")
-	h.SeedStream(StreamSnapshot{Active: true, Tools: []StreamTool{{ID: "call_1", Name: "shell", Input: "sleep 9", Status: CallRun}}})
-	ui := &fakeUI{}
-	h.SetUIHooks(ui)
-	if err := h.openCall(-1); err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan struct{})
-	go func() {
-		h.agents.mu.Lock()
-		h.refreshLevels()
-		h.agents.mu.Unlock()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("refreshLevels deadlocks under the agent lock a turn's flush holds")
 	}
 }

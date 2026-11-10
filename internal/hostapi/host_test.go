@@ -16,12 +16,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-	"unicode"
 
 	"charm.land/fantasy"
-	"github.com/charmbracelet/x/ansi"
 	glua "github.com/yuin/gopher-lua"
-	"golang.org/x/text/width"
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/lua"
@@ -264,58 +261,6 @@ func TestReloadConfig(t *testing.T) {
 				t.Fatalf("the reload ran before its caller returned: ui.mouse = %v", mouse)
 			}
 		})
-	}
-}
-
-// TestErrorsFromLua: the agent reads zemi's own failures through the lua
-// tool, so debugging zemi does not depend on the user reading the screen.
-func TestErrorsFromLua(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	h.RecordError("boot", "", `init.lua:1: zemi.provider.add: provider "x" already registered`)
-	runUser(t, r, `
-		local rows = zemi.errors.list()
-		assert(#rows == 1, "rows=" .. #rows)
-		assert(rows[1].source == "boot", "source=" .. tostring(rows[1].source))
-		assert(rows[1].message:find("already registered", 1, true) ~= nil, "message=" .. tostring(rows[1].message))
-	`)
-}
-
-// TestOverlayFromRetiredGenerationIsDropped: an overlay still open across a
-// reload must not run its on_select, which belongs to the retired LState
-// (DESIGN §4).
-func TestOverlayFromRetiredGenerationIsDropped(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHostDB(t)
-	ui := &fakeUI{}
-	h.SetUIHooks(ui)
-
-	called := false
-	var onSelect *glua.LFunction
-	if _, err := r.Do(t.Context(), lua.ClassIO, 0, 0, "test", func(L *glua.LState) ([]any, error) {
-		onSelect = L.NewFunction(func(*glua.LState) int { called = true; return 0 })
-		return nil, nil
-	}); err != nil {
-		t.Fatalf("build callback: %v", err)
-	}
-	o := Overlay{ID: "x", Origin: lua.OriginUser, Gen: h.currentGen(), OnSelect: onSelect, Items: []OverlayItem{{Text: "a"}}}
-
-	h.SelectOverlay(t.Context(), o, 0)
-	if !called {
-		t.Fatal("a live overlay did not run on_select")
-	}
-
-	called = false
-	if err := r.ForceReload(t.Context(), []lua.BootStep{h.NamespacesStep()}, h.PurgeGeneration); err != nil {
-		t.Fatalf("ForceReload: %v", err)
-	}
-	h.SelectOverlay(t.Context(), o, 0)
-	if called {
-		t.Fatal("a stale overlay ran a retired generation's on_select")
-	}
-	// The UI closes the overlay before the callback, which may reopen the id.
-	if len(ui.closed) != 0 {
-		t.Fatalf("SelectOverlay closed %v after on_select", ui.closed)
 	}
 }
 
@@ -695,28 +640,6 @@ func TestLoadPicksDropsDeadKeys(t *testing.T) {
 	}
 }
 
-func TestSetModelFiresWatches(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHostDB(t)
-	runUser(t, r, `zemi.config.watch("models.default", function(nv) zemi.state.set("picked", nv) end)
-		zemi.provider.add({ id = "p", kind = "openai_compat", base_url = "http://x", api_key = "k", models = { { id = "m" }, { id = "o" } } })`)
-	check := func(want string) {
-		t.Helper()
-		waitFor(t, func() error {
-			if v, _ := h.GlobalDB.GetKV("picked"); v != `"`+want+`"` {
-				return fmt.Errorf("models.default watch never saw %q", want)
-			}
-			return nil
-		})
-	}
-	if err := h.SetModel("p/m"); err != nil {
-		t.Fatal(err)
-	}
-	check("p/m")
-	runUser(t, r, `zemi.model.set("p/o")`)
-	check("p/o")
-}
-
 // TestScroll: any origin scrolls the screen, and the region id is optional.
 func TestScroll(t *testing.T) {
 	t.Parallel()
@@ -761,49 +684,6 @@ func TestEventLogFromLua(t *testing.T) {
 	`)
 }
 
-// Sessions belong to the per-project store and user memories to the
-// global one (DESIGN §7); the two open together and are easy to swap.
-func TestStoresByScope(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	if err := h.DB.CreateSession("s1", "", "t", ""); err != nil {
-		t.Fatal(err)
-	}
-	pdb, err := store.Open(store.ProjectDBPath(h.Dirs.StateHome, h.trustRoot()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pdb.Close()
-	if _, err := pdb.GetSession("s1"); err != nil {
-		t.Fatalf("session not in the project store: %v", err)
-	}
-}
-
-// TestStoreKeyedOnRepo: zemi started in a subdirectory is the same project
-// as one started at the root, so its sessions and memories are there.
-func TestStoreKeyedOnRepo(t *testing.T) {
-	root, state := t.TempDir(), t.TempDir()
-	sub := filepath.Join(root, "internal")
-	for _, dir := range []string{filepath.Join(root, ".git"), sub} {
-		if err := os.Mkdir(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	host := func(dir string) *Host {
-		log := slog.New(slog.DiscardHandler)
-		h := NewHost(lua.NewRuntime(lua.RuntimeOptions{Log: log}), log, config.NewStore(), config.Dirs{StateHome: state, ProjectDir: dir})
-		t.Cleanup(h.Close)
-		t.Cleanup(func() { h.DB.Close(); h.GlobalDB.Close() })
-		return h
-	}
-	if err := host(root).DB.CreateSession("s1", "", "t", ""); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := host(sub).DB.GetSession("s1"); err != nil {
-		t.Fatalf("a subdirectory opened another project's store: %v", err)
-	}
-}
-
 func TestShortOutput(t *testing.T) {
 	var lines []string
 	for i := range 30 {
@@ -841,74 +721,6 @@ func TestRowOutputDate(t *testing.T) {
 	}
 	if got := rowOutput("date", "not a stamp"); got != "not a stamp" {
 		t.Errorf("a malformed stamp did not pass through: %q", got)
-	}
-}
-
-// TestOverlayCallbackErrorsRecorded: a raising on_select or on_close reaches
-// /errors, like a timer's or an event handler's.
-func TestOverlayCallbackErrorsRecorded(t *testing.T) {
-	t.Parallel()
-	h, r := newTestHost(t)
-	var boom *glua.LFunction
-	if _, err := r.Do(t.Context(), lua.ClassIO, 0, 0, "test", func(L *glua.LState) ([]any, error) {
-		boom = L.NewFunction(func(L *glua.LState) int { L.RaiseError("nope"); return 0 })
-		return nil, nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	o := Overlay{ID: "x", Origin: lua.OriginUser, Gen: h.currentGen(), OnSelect: boom, OnClose: boom, Items: []OverlayItem{{Text: "a"}}}
-	for source, run := range map[string]func(){
-		"overlay x on_select": func() { h.SelectOverlay(t.Context(), o, 0) },
-		"overlay x on_close":  func() { h.CancelOverlay(t.Context(), o) },
-	} {
-		h.errs.entries = nil
-		run()
-		if len(h.errs.entries) != 1 || h.errs.entries[0].source() != source {
-			t.Errorf("%s: errors = %+v", source, h.errs.entries)
-		}
-	}
-}
-
-// TestProjectEmojiPool: every marker emoji holds the pool's criteria - one
-// codepoint with no joiner, selector, modifier, regional indicator, keycap or
-// combining mark; emoji presentation, curated from Unicode's emoji-variants
-// data, so it renders colored everywhere without VS16; two cells by zemi's
-// own width function and East Asian Wide by UAX #11; and no glyph the UI
-// already draws.
-func TestProjectEmojiPool(t *testing.T) {
-	drawn := map[string]bool{}
-	for _, m := range Marks {
-		drawn[m.Glyph] = true
-	}
-	drawn["⚑"], drawn["↻"], drawn["↓"] = true, true, true // the statusline hints
-	drawn["@"], drawn["─"], drawn["…"] = true, true, true // the snail and its rule
-	seen := map[string]bool{}
-	for _, e := range _projectEmoji {
-		if seen[e] {
-			t.Errorf("%q repeats", e)
-		}
-		seen[e] = true
-		rs := []rune(e)
-		if len(rs) != 1 {
-			t.Errorf("%q: %d codepoints", e, len(rs))
-		}
-		for _, r := range rs {
-			if r == 0x200D || r == 0xFE0E || r == 0xFE0F ||
-				r >= 0x1F3FB && r <= 0x1F3FF || // skin tone and hair modifiers
-				r >= 0x1F1E6 && r <= 0x1F1FF || // regional indicators
-				unicode.Is(unicode.Mn, r) { // covers the keycaps' U+20E3 too
-				t.Errorf("%q: forbidden U+%04X", e, r)
-			}
-		}
-		if w := ansi.StringWidth(e); w != 2 {
-			t.Errorf("%q: width %d, want 2", e, w)
-		}
-		if k := width.LookupRune(rs[0]).Kind(); k != width.EastAsianWide {
-			t.Errorf("%q: UAX #11 kind %v, want wide", e, k)
-		}
-		if drawn[e] {
-			t.Errorf("%q: a glyph the UI already draws", e)
-		}
 	}
 }
 

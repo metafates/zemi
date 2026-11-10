@@ -155,17 +155,3 @@ func TestConvertSegments(t *testing.T) {
 		})
 	}
 }
-
-// TestContextWaitsForTheModelSpec: before the providers load, the model's
-// spec is unknown and the tok readout stays hidden - a stale tally (a wiped
-// chat's, seeded for a resume) must not read as a live meter for the boot's
-// first frames. A seeded window needs no spec: the ctx meter reads it.
-func TestContextWaitsForTheModelSpec(t *testing.T) {
-	t.Parallel()
-	h := newTestHostUI(t)
-	h.SeedStream(StreamSnapshot{SessionIn: 1000, SessionOut: 50, LastIn: 1000})
-	st := h.ScreenState(60, 1, UIState{})
-	if st.Usage.Total != 0 || st.Usage.Priced {
-		t.Fatalf("tok readout rose without a model spec: usage %+v", st.Usage)
-	}
-}

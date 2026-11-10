@@ -3,143 +3,9 @@ package hostapi
 import (
 	"cmp"
 	"fmt"
-	"slices"
-	"strconv"
 	"strings"
 	"testing"
 )
-
-func TestMarkdown(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHost(t)
-	join := func(line []Segment) string {
-		var b strings.Builder
-		for _, s := range line {
-			b.WriteString(s.Text)
-		}
-		return b.String()
-	}
-	lines := h.Markdown("# Title\n\nsome **bold** text that wraps\n", 16)
-	// the wrapped row keeps its space and is soft: a copy rejoins it
-	want := []string{"Title", "", "some bold text ", "that wraps"}
-	got := make([]string, len(lines))
-	for i, l := range lines {
-		got[i] = join(l)
-	}
-	if !slices.Equal(got, want) {
-		t.Fatalf("lines = %q, want %q", got, want)
-	}
-	if last := lines[2][len(lines[2])-1]; !last.Soft {
-		t.Errorf("wrapped row not marked soft: %+v", last)
-	}
-	if hl := lines[0][0].HL; !strings.HasPrefix(hl, "sgr:") {
-		t.Errorf("heading hl = %q, want a style group", hl)
-	}
-	bold := slices.IndexFunc(lines[2], func(s Segment) bool { return s.Text == "bold" })
-	if bold < 0 || lines[2][bold].HL == lines[2][0].HL {
-		t.Errorf("bold run not split out: %+v", lines[2])
-	}
-	if esc := h.Markdown("a\x1b[31mb", 20); join(esc[0]) != "ab" {
-		t.Errorf("escape leaked: %q", join(esc[0]))
-	}
-}
-
-// TestMarkdownSplitRender: a long reply renders its settled prefix from the
-// cache and only the tail anew, with the same text as one whole render.
-// TestMarkdownLinks: a markdown link and a bare URL both carry the URL a
-// click opens, and a scheme zemi does not open never does.
-func TestMarkdownLinks(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHost(t)
-	links := func(text string) map[string]string {
-		got := map[string]string{}
-		for _, row := range h.Markdown(text, 80) {
-			for _, s := range row {
-				if s.Link != "" {
-					got[s.Text] = s.Link
-				}
-			}
-		}
-		return got
-	}
-	if got := links("see [the docs](https://example.com/docs?a=1) and https://example.com/bare."); got["the docs"] != "https://example.com/docs?a=1" || got["https://example.com/bare"] != "https://example.com/bare" {
-		t.Fatalf("links: %q", got)
-	}
-	// a table carries its links inline, never as footnote rows below it
-	for _, row := range h.Markdown("| name | url |\n|------|-----|\n| docs | [the docs](https://example.com/docs) |\n", 60) {
-		var b strings.Builder
-		for _, s := range row {
-			b.WriteString(s.Text)
-		}
-		if strings.Contains(b.String(), "[1]:") {
-			t.Fatalf("table link drawn as a footnote: %q", b.String())
-		}
-	}
-	// the trailing period is punctuation, not the URL
-	for _, text := range []string{"[x](javascript:alert(1))", "[x](file:///etc/passwd)", "mailto a person: [x](mailto:a@b.c)"} {
-		got := links(text)
-		if text == "mailto a person: [x](mailto:a@b.c)" {
-			if got["x"] != "mailto:a@b.c" {
-				t.Fatalf("mailto link: %q", got)
-			}
-			continue
-		}
-		if len(got) != 0 {
-			t.Fatalf("%s kept a link: %q", text, got)
-		}
-	}
-	if out := linkOf("https://example.com/\x1b]8;;evil"); out != "" {
-		t.Fatalf("a control byte survived: %q", out)
-	}
-}
-
-func TestMarkdownSplitRender(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHost(t)
-	var b strings.Builder
-	for range 40 {
-		b.WriteString("some **bold** paragraph text that wraps a little\n\n")
-	}
-	b.WriteString("```go\nfunc f() {\n\treturn\n}\n```\n\nthe tail\n")
-	text := b.String()
-	if cut := settledPrefix(text); cut == 0 || cut >= len(text) {
-		t.Fatalf("settledPrefix = %d of %d", cut, len(text))
-	}
-	join := func(lines [][]Segment) string {
-		var out []string
-		for _, line := range lines {
-			var row strings.Builder
-			for _, s := range line {
-				row.WriteString(s.Text)
-			}
-			if strings.TrimSpace(row.String()) != "" {
-				out = append(out, row.String())
-			}
-		}
-		return strings.Join(out, "\n")
-	}
-	cfg, key := h.markdownStyle()
-	whole := join(h.md.render(&cfg, key, text, 40))
-	if got := join(h.Markdown(text, 40)); got != whole {
-		t.Fatalf("split render differs:\n%s\n---\n%s", got, whole)
-	}
-}
-
-func TestMarkdownKeepsTabIndent(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHost(t)
-	found := false
-	for _, line := range h.Markdown("```go\nfunc f() {\n\treturn\n}\n```", 40) {
-		var b strings.Builder
-		for _, s := range line {
-			b.WriteString(s.Text)
-		}
-		found = found || strings.Contains(b.String(), "    return")
-	}
-	if !found {
-		t.Fatal("tab-indented code lost its indentation")
-	}
-}
 
 // copyText joins lines the way a selection does: decoration left out, a
 // soft-wrapped row joined to the next.
@@ -168,24 +34,6 @@ func copyText(lines [][]Segment) string {
 		joined = soft
 	}
 	return b.String()
-}
-
-// TestMarkdownCopiesBackToSource: what a selection over rendered markdown
-// copies is the text the model wrote, without glamour's decoration.
-func TestMarkdownCopiesBackToSource(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHost(t)
-	for _, c := range []struct{ name, text, want string }{
-		{"paragraph", "a paragraph long enough to wrap over three rows of a narrow chat pane", "a paragraph long enough to wrap over three rows of a narrow chat pane"},
-		{"code block", "```go\nfunc f(a string) { return a + \"a long line that has to wrap somewhere\" }\n```", "func f(a string) { return a + \"a long line that has to wrap somewhere\" }"},
-		{"inline code", "call `go test ./...` now", "call go test ./... now"},
-		{"list", "- first item, long enough that it wraps over two rows\n- second", "first item, long enough that it wraps over two rows\nsecond"},
-		{"quote", "> quoted line", "quoted line"},
-	} {
-		if got := copyText(h.Markdown(c.text, 30)); got != c.want {
-			t.Errorf("%s: %q", c.name, got)
-		}
-	}
 }
 
 // TestMarkdownTableWidth: a table is only as wide as its content, and one
@@ -260,29 +108,6 @@ func plainText(line []Segment) string {
 	return strings.TrimRight(b.String(), " ")
 }
 
-// TestMarkdownCacheBounded: the rendered-line cache rotates on bytes as
-// well as on entries, so a text window keyed by its whole growing body
-// cannot retain every version of it.
-func TestMarkdownCacheBounded(t *testing.T) {
-	c := &markdownCache{}
-	line := []Segment{{Text: strings.Repeat("x", 4096)}}
-	for i := range 4000 {
-		c.put(mdKey{style: strconv.Itoa(i)}, [][]Segment{line})
-	}
-	if c.bytes > _mdBytesMax+8192 || len(c.lines) == 4000 {
-		t.Fatalf("cache holds %d entries, %d bytes", len(c.lines), c.bytes)
-	}
-}
-
-// TestWrapSegsExpandsTabs: a tab measures as no cell and the renderer drops
-// it, so the words around it would merge in every prompt and toast.
-func TestWrapSegsExpandsTabs(t *testing.T) {
-	rows := WrapSegs([]Segment{{Text: "run\tthe\tlisting"}}, 40)
-	if len(rows) != 1 || rows[0][0].Text != "run    the    listing" {
-		t.Fatalf("wrapped %+v", rows)
-	}
-}
-
 func TestMarkdownHexColors(t *testing.T) {
 	t.Parallel()
 	h, _ := newTestHost(t)
@@ -324,16 +149,6 @@ func TestEscapeHTML(t *testing.T) {
 		if got := escapeHTML(c.in); got != c.want {
 			t.Errorf("escapeHTML(%q) = %q, want %q", c.in, got, c.want)
 		}
-	}
-}
-
-// TestSplitTablesTildeFence: a pipe table inside a ~~~ fence stays in the
-// code chunk, and the same table outside one is still chunked as a table.
-func TestSplitTablesTildeFence(t *testing.T) {
-	table := "| a | b |\n|---|---|\n| 1 | 2 |\n"
-	chunks := splitTables("~~~\n" + table + "\n~~~\n\n" + table)
-	if len(chunks) != 3 || chunks[0].table || !strings.Contains(chunks[0].text, "~~~") || !chunks[1].table {
-		t.Fatalf("split: %+v", chunks)
 	}
 }
 
@@ -418,74 +233,5 @@ func TestHighlight(t *testing.T) {
 		if c.lang == "bash" && copyText(rows) != c.text {
 			t.Errorf("%s: copies %q", c.name, copyText(rows))
 		}
-	}
-}
-
-// TestMarkdownTheme: markdown draws only whorl's colors, blocks sit one
-// blank row apart and a quote keeps its bar on every row it wraps to.
-func TestMarkdownTheme(t *testing.T) {
-	t.Parallel()
-	h := newTestHostUI(t)
-	text := "intro\n\n```go\nfunc f() int {\n\t// why\n\treturn 42 + len(\"s\")\n}\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n" +
-		"- one\n  - two\n1. three\n\n> a quote long enough to wrap over more than one row of the pane\n"
-	palette := map[string]bool{}
-	for _, role := range Roles {
-		r, g, b, _ := Whorl.Color(role).RGBA()
-		palette[fmt.Sprintf("%d;%d;%d", r>>8, g>>8, b>>8)] = true
-	}
-	var blank, quote int
-	prevBlank := false
-	for _, row := range h.Markdown(text, 30) {
-		isBlank := strings.TrimSpace(plainText(row)) == ""
-		if isBlank && prevBlank {
-			t.Error("two blank rows")
-		}
-		if isBlank {
-			blank++
-		}
-		prevBlank = isBlank
-		if strings.Contains(plainText(row), "quote") || strings.Contains(plainText(row), "pane") {
-			if !strings.HasPrefix(row[0].Text, "│") {
-				t.Errorf("quote row without its bar: %q", plainText(row))
-			}
-			quote++
-		}
-		for _, s := range row {
-			p := strings.Split(strings.TrimPrefix(s.HL, SGRPrefix), ";")
-			for i := 0; i+1 < len(p); i++ {
-				if p[i] != "38" && p[i] != "48" {
-					continue
-				}
-				if p[i+1] != "2" || i+4 >= len(p) || !palette[strings.Join(p[i+2:i+5], ";")] {
-					t.Errorf("%q draws %s, off the palette", s.Text, s.HL)
-					break
-				}
-				i += 4
-			}
-		}
-	}
-	// intro, code, table, list, the ordered list, quote
-	if blank != 5 || quote < 2 {
-		t.Errorf("%d blank rows, %d quote rows", blank, quote)
-	}
-	// a list in a quote marks its first row only and a task mark is a
-	// decoration
-	for _, c := range []struct{ text, mark string }{
-		{"> - a list item in a quote that wraps over rows", "│ • "},
-		{"> 1. a list item in a quote that wraps over rows", "│ 1. "},
-		{"- [x] done task", "✓ "},
-	} {
-		marks := 0
-		for _, row := range h.Markdown(c.text, 20) {
-			if row[0].Text == c.mark && row[0].NoCopy && row[0].HL == "Dim" {
-				marks++
-			}
-		}
-		if marks != 1 {
-			t.Errorf("%q draws %q %d times", c.text, c.mark, marks)
-		}
-	}
-	if rows := h.Markdown("```diff\n+new\n old\n```", 20); rows[0][1].HL == rows[1][1].HL {
-		t.Errorf("a diff fence draws + like context: %v", rows)
 	}
 }

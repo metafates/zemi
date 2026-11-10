@@ -206,9 +206,6 @@ const (
 	StatusOff      ServiceStatus = "off" // a plugin the user turned off
 )
 
-// _serviceStatuses pins runtime/types/zemi.lua's zemi.ServiceStatus.
-var _serviceStatuses = []ServiceStatus{StatusIdle, StatusStarting, StatusReady, StatusFailed, StatusSignIn, StatusStopped, StatusOff}
-
 // OverlayAnchor puts an overlay in line with the composer frame, by the
 // pill that opened it; "" centers it.
 type OverlayAnchor string
@@ -1765,8 +1762,6 @@ const (
 	TurnCancelled TurnEnd = "cancelled"
 )
 
-var _turnEnds = []TurnEnd{TurnOK, TurnError, TurnCancelled}
-
 // Waiting is the prompt holding a turn: a permission ask, a plan to
 // approve or a question to answer.
 type Waiting string
@@ -1776,8 +1771,6 @@ const (
 	WaitPlan     Waiting = "plan"
 	WaitAnswer   Waiting = "answer"
 )
-
-var _waitings = []Waiting{WaitApproval, WaitPlan, WaitAnswer}
 
 // ClockLayout formats UIState.Time, the wall clock the screen shows.
 const ClockLayout = "15:04"

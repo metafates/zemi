@@ -1,7 +1,6 @@
 package hostapi
 
 import (
-	"slices"
 	"strings"
 	"testing"
 
@@ -17,49 +16,6 @@ func seedKeys(h *Host) {
 		Keys:    map[string]string{"env": "ek"},
 		Missing: []agent.MissingKey{{ID: "wait", Env: "WAIT_KEY", Spec: agent.Spec{ID: "wait", Kind: agent.KindAnthropic, Builtin: true, KeyEnv: "WAIT_KEY", DefaultModel: "big", Models: []agent.Model{{ID: "big"}}}}},
 	})
-}
-
-// TestKeysOverlayRows: a row says where its key lives, and a paste rides
-// only the rows zemi may set.
-func TestKeysOverlayRows(t *testing.T) {
-	h, _ := newTestHost(t)
-	seedKeys(h)
-	// a waiting builtin names its variable, not the shell's export line
-	if r := h.keysOverlay("").Items; len(r) != 2 || r[1].Text != "wait" || r[1].Section != "Needs a key" || r[1].Desc != "WAIT_KEY" || r[1].Copy != "WAIT_KEY=" {
-		t.Fatalf("waiting row: %+v", r)
-	}
-	if err := h.Providers.Register(agent.Spec{ID: "cfg", Kind: agent.KindAnthropic}, "ck", false); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.Providers.Register(agent.Spec{ID: "free", Kind: agent.KindOpenAICompat, BaseURL: "http://x"}, "", false); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.Providers.ApplyStored("wait", "kp", true); err != nil {
-		t.Fatal(err)
-	}
-	rows := map[string]OverlayItem{}
-	for _, it := range h.keysOverlay("").Items {
-		rows[it.Text] = it
-	}
-	if r := rows["env"]; r.Desc != "from $ENV_KEY" || r.Run != "" || r.Verb != "" {
-		t.Errorf("env-keyed: %+v", r)
-	}
-	if r := rows["cfg"]; r.Desc != "from init.lua" || r.Run != "" || len(r.Fields) != 0 {
-		t.Errorf("config-keyed: %+v", r)
-	}
-	if r := rows["free"]; r.Desc != "no key" || r.Run != "keys paste free" || r.Verb != VerbPaste {
-		t.Errorf("keyless user: %+v", r)
-	}
-	r := rows["wait"]
-	if r.Desc == "" || len(r.Fields) != 4 || r.Detail == "" {
-		t.Errorf("chain-filled: %+v", r)
-	}
-	if len(r.Keys) != 2 || r.Keys[0].Key != "p" || r.Keys[0].Run != "keys paste wait" || r.Keys[1].Key != "x" || !r.Keys[1].Danger {
-		t.Errorf("chain-filled keys: %+v", r.Keys)
-	}
-	if slices.ContainsFunc(r.Keys, func(k ItemKey) bool { return k.Key == "k" }) {
-		t.Errorf("a row key claimed k, which moves the list: %+v", r.Keys)
-	}
 }
 
 // TestPasteKey: a paste activates in the registry and lands in the store

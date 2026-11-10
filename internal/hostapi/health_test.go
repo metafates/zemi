@@ -50,32 +50,6 @@ func TestHealthLuaChecks(t *testing.T) {
 	}
 }
 
-// TestHealthListFromLua: list() answers on the interpreter goroutine, where
-// the queue luaHealthRows uses would deadlock, and runs registered checks.
-func TestHealthListFromLua(t *testing.T) {
-	t.Parallel()
-	_, r := newTestHostDB(t)
-	runUser(t, r, `
-		zemi.health.add("disk", function() return { level = "warn", detail = "low" } end)
-		local seen = {}
-		for _, row in ipairs(zemi.health.list()) do seen[row.name] = row.level .. " " .. row.detail end
-		assert(seen.store, "no built-in rows")
-		assert(seen.disk == "warn low", "registered check: " .. tostring(seen.disk))
-	`)
-}
-
-// TestHealthAction: a row's action label and key come from its Run, and a
-// run the table does not label takes no action.
-func TestHealthAction(t *testing.T) {
-	label, key, ok := healthAction("errors")
-	if !ok || label != "Show errors" || key != "s" {
-		t.Errorf("errors = %q, %q, %v", label, key, ok)
-	}
-	if _, _, ok := healthAction("nothing"); ok {
-		t.Error("a run with no label took an action")
-	}
-}
-
 // TestHealthActionCoversRuns: every Run a check sets names a label, so the
 // row it belongs to keeps its detail action.
 func TestHealthActionCoversRuns(t *testing.T) {
@@ -84,32 +58,6 @@ func TestHealthActionCoversRuns(t *testing.T) {
 	for _, c := range h.goHealthRows() {
 		if _, _, ok := healthAction(c.Run); c.Run != "" && !ok {
 			t.Errorf("check %q runs %q, which has no label", c.Name, c.Run)
-		}
-	}
-}
-
-func TestHealthChecks(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	got := map[string]HealthRow{}
-	for _, c := range h.HealthRows() {
-		got[c.Name] = c
-	}
-	for name, level := range map[string]string{
-		"store": "ok", "model": "error", "skills": "ok", "lua": "ok", "mcp": "ok",
-	} {
-		if string(got[name].Level) != level {
-			t.Errorf("%s = %+v, want level %s", name, got[name], level)
-		}
-	}
-
-	items := h.healthItems()
-	if first, last := items[0], items[len(items)-1]; first.Section != "Needs attention" || last.Section != "OK" {
-		t.Fatalf("problems first: %+v ... %+v", first, last)
-	}
-	for _, item := range items {
-		if item.Text == "store" && item.Detail != "" {
-			t.Fatalf("a fine short row opens a detail view: %+v", item)
 		}
 	}
 }

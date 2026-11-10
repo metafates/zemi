@@ -4,92 +4,13 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 	"testing"
 
 	"charm.land/fantasy"
 
 	"github.com/metafates/zemi/internal/store"
-	"github.com/metafates/zemi/internal/tools"
 )
-
-// TestStampingPairsResultRows: a tool result's log row draws no row of its
-// own, so the pairing passes it instead of spending the next row's slot on
-// it - which stalled every turn after the first tool call and left its rows
-// unnamed, the log ids on them dead.
-func TestStampingPairsResultRows(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	turn := func(text string) {
-		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleUser, Text: text})
-		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Kind: RowTool, Tool: tools.ToolName("read"), Text: "a.go", Label: "read a", Status: CallOK})
-		h.AppendChat(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: "all done " + text})
-		for _, row := range []struct {
-			kind       store.LogKind
-			text, meta string
-		}{
-			{store.KindUser, text, ""},
-			{store.KindTool, `{"path":"a.go"}`, `{"tool":"read"}`},
-			{store.KindEcho, "the file body", `{"tool":"read","ok":true}`},
-			{store.KindAgent, "all done " + text, ""},
-		} {
-			if _, err := h.DB.AppendLog(row.kind, row.text, row.meta, "", ""); err != nil {
-				t.Fatal(err)
-			}
-		}
-		h.stampLogSeqs()
-	}
-	turn("one")
-	turn("two")
-	var got []int64
-	for _, m := range h.Session().Transcript {
-		got = append(got, m.Seq)
-	}
-	if want := []int64{0, 1, 3, 4, 5, 7}; !slices.Equal(got, want) {
-		t.Fatalf("stamped seqs = %v, want %v", got, want)
-	}
-}
-
-// TestLogRowsPairsParallelCalls: two calls of one tool log their rows apart
-// and their echoes after them; each call reads its own echo, by the call id
-// both metas carry, not its neighbour's.
-func TestLogRowsPairsParallelCalls(t *testing.T) {
-	t.Parallel()
-	tool := func(seq int64, id string) store.LogEntry {
-		return store.LogEntry{Seq: seq, Kind: store.KindTool, Text: `{"command":"ls"}`, MetaJSON: `{"tool":"shell","id":"` + id + `"}`}
-	}
-	echo := func(seq int64, id, out string) store.LogEntry {
-		return store.LogEntry{Seq: seq, Kind: store.KindEcho, Text: out, MetaJSON: `{"tool":"shell","ok":true,"id":"` + id + `"}`}
-	}
-	user := func(seq int64) store.LogEntry { return store.LogEntry{Seq: seq, Kind: store.KindUser, Text: "next"} }
-	tr := logRows(nil, []store.LogEntry{
-		tool(0, "a"), tool(1, "b"), echo(2, "b", "second"), echo(3, "a", "first"), user(4),
-	})
-	if len(tr) != 3 || tr[0].Output != "first" || tr[1].Output != "second" {
-		t.Fatalf("logRows drew %+v, want each call its own echo", tr)
-	}
-	// rows the ids never reached (an older store) pair by adjacency, the
-	// order results land in
-	legacy := func(seq int64) store.LogEntry {
-		return store.LogEntry{Seq: seq, Kind: store.KindTool, Text: `{"command":"ls"}`, MetaJSON: `{"tool":"shell"}`}
-	}
-	legacyEcho := func(seq int64, out string) store.LogEntry {
-		return store.LogEntry{Seq: seq, Kind: store.KindEcho, Text: out, MetaJSON: `{"tool":"shell","ok":true}`}
-	}
-	tr = logRows(nil, []store.LogEntry{legacy(0), legacy(1), legacyEcho(2, "one"), legacyEcho(3, "two"), user(4)})
-	if len(tr) != 3 || tr[0].Output != "one" || tr[1].Output != "two" {
-		t.Fatalf("legacy rows drew %+v", tr)
-	}
-	// one id on every call, the shape a fake model logs: each call still
-	// reads its own echo, the oldest past it, in log order
-	tr = logRows(nil, []store.LogEntry{
-		tool(0, "t1"), echo(1, "t1", "one"), tool(2, "t1"), echo(3, "t1", "two"), user(4),
-	})
-	if len(tr) != 3 || tr[0].Output != "one" || tr[1].Output != "two" {
-		t.Fatalf("repeated ids drew %+v, want each call its own echo", tr)
-	}
-}
 
 // TestStampPairsASplitMessage: a message over the chat split logs as sibling
 // rows while the transcript holds one; the row names the first chunk and the

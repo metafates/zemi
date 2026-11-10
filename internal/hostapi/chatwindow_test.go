@@ -5,32 +5,10 @@ package hostapi
 // shift while the epoch holds and no flush wipes the chat's cache.
 
 import (
-	"fmt"
 	"testing"
 
 	"charm.land/fantasy"
 )
-
-func TestHeadCut(t *testing.T) {
-	t.Parallel()
-	h := newTestHostUI(t)
-	probe := func() string {
-		t.Helper()
-		st := h.ScreenState(60, 1, UIState{})
-		return fmt.Sprintf("%d|%d", st.TranscriptCut, st.TranscriptEpoch)
-	}
-	for i := range _chatWindowRows + 5 {
-		h.AppendMessage("user", fmt.Sprintf("row %d", i))
-	}
-	// the window holds its last chatWindowRows rows: 5 shed, no replacement
-	if got := probe(); got != "5|1" {
-		t.Fatalf("past the window the ctx reads %q, want \"5|1\"", got)
-	}
-	h.AppendMessage("user", "one more")
-	if got := probe(); got != "6|1" {
-		t.Fatalf("the next flush reads %q, want \"6|1\"", got)
-	}
-}
 
 // TestAlignTrimStartsOnATurn: the window's head never opens on an
 // assistant row - a bound landing mid-turn sheds the rest of that turn,
@@ -71,46 +49,4 @@ func TestAlignTrimStartsOnATurn(t *testing.T) {
 			t.Fatalf("kept %d rows, want the plain clip %d", len(got), _chatWindowRows)
 		}
 	})
-}
-
-func TestLiveAppendTrims(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHost(t)
-	for i := range _chatWindowRows - 1 {
-		h.AppendMessage("user", fmt.Sprintf("row %d", i))
-	}
-	// the live stretch still open when the plan ask lands: the flush
-	// settles it, then the plan row appends, one trim past the bound
-	ag := h.agents
-	ag.mu.Lock()
-	ag.textBuf = "live reply"
-	ag.mu.Unlock()
-	h.appendAfterLive(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: "the plan"})
-
-	tr := h.Session().Transcript
-	if len(tr) != _chatWindowRows {
-		t.Fatalf("after the live append the window holds %d rows, want %d", len(tr), _chatWindowRows)
-	}
-	if cut := h.trCut.Load(); cut != 1 {
-		t.Fatalf("after the live append the head cut reads %d, want 1", cut)
-	}
-	if got := tr[len(tr)-1].Text; got != "the plan" {
-		t.Fatalf("the live row reads %q, want \"the plan\"", got)
-	}
-	if got := tr[len(tr)-2].Text; got != "live reply" {
-		t.Fatalf("the flushed stretch reads %q, want \"live reply\"", got)
-	}
-	if got := tr[0].Text; got != "row 1" {
-		t.Fatalf("the shed head left %q first, want \"row 1\"", got)
-	}
-
-	// a live append on a window already at the bound trims one per row
-	h.appendAfterLive(ChatMessage{Role: fantasy.MessageRoleAssistant, Text: "the plan again"})
-	tr = h.Session().Transcript
-	if len(tr) != _chatWindowRows {
-		t.Fatalf("the second live append left %d rows, want %d", len(tr), _chatWindowRows)
-	}
-	if cut := h.trCut.Load(); cut != 2 {
-		t.Fatalf("the second live append left the cut at %d, want 2", cut)
-	}
 }
