@@ -529,6 +529,12 @@ func (h *Host) fsNamespace(L *glua.LState) *glua.LTable {
 		return 1
 	}))
 
+	// expand spells a leading ~, $HOME or ${HOME} out against the home.
+	tb.RawSetString("expand", L.NewFunction(func(L *glua.LState) int {
+		L.Push(glua.LString(perm.ExpandHome(L.CheckString(1))))
+		return 1
+	}))
+
 	tb.RawSetString("glob", L.NewFunction(func(L *glua.LState) int {
 		pattern := L.CheckString(1)
 		h.luaGate(L, _luaFSRead, h.Dirs.ProjectDir, nil)

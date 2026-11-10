@@ -1699,6 +1699,12 @@ function zemi.fs.stat(path) end
 ---@return boolean
 function zemi.fs.exists(path) end
 
+--- Spells a leading `~`, `$HOME` or `${HOME}` out against the home
+--- directory; anything else comes back unchanged.
+---@param path string
+---@return string
+function zemi.fs.expand(path) end
+
 --- `<data>/lua/<name>`, where config code keeps its files: outside the config
 --- tree, so a write never reloads the config, and `zemi.ui.edit` opens it
 --- through the `lua.fs.read` gate like any other path. Reads
