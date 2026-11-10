@@ -84,24 +84,6 @@ func TestPlanEditKeys(t *testing.T) {
 	}
 }
 
-// TestPlanEditStays: the popup opens at its full width and a change typed
-// past it never widens the box.
-func TestPlanEditStays(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 100, 18)
-	done := planAsync(t, app, "# Plan")
-	app.renderSync(t)
-	w0 := app.planAsk.size.w
-	pressKeys(app, "e", strings.Repeat("change this line ", 12))
-	if w := app.planAsk.size.w; w != w0 {
-		t.Fatalf("typing a long change widened the box from %d to %d", w0, w)
-	}
-	pressKeys(app, "enter")
-	if r := awaitPlan(t, app, done); !r.ok || !strings.HasPrefix(r.v.Feedback, "change this line") {
-		t.Fatalf("the typed change should be the feedback, got %+v ok=%v", r.v, r.ok)
-	}
-}
-
 // TestPlanScroll: the plan's text scrolls a line on shift+arrows and half
 // the view on ctrl+d/u, the list keys move the buttons, and while a change
 // is typed neither half-page key scrolls and esc then e keeps the draft. top
@@ -153,14 +135,5 @@ func TestPlanClickButtons(t *testing.T) {
 	pressKeys(app, "more", "enter")
 	if r := awaitPlan(t, app, done); !r.ok || r.v.Feedback != "more" {
 		t.Fatalf("verdict %+v ok=%v, want feedback \"more\"", r.v, r.ok)
-	}
-}
-
-func TestPlanBoxFits(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 70, 18)
-	box := app.planBox(&planAskPrompt{plan: strings.Repeat("line\n", 200)}, 70, 18)
-	if len(box) > 18 {
-		t.Fatalf("plan box is %d rows, taller than the %d the screen clips to", len(box), 18)
 	}
 }

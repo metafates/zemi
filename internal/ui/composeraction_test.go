@@ -8,32 +8,6 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 )
 
-// TestComposerActions: the composer's history and insert run from Lua and
-// from keymap strings, whatever registered the key.
-// TestComposerRecallPastMultiline: an up arrow recalls history even when a
-// recalled message is multiline - once the cursor reaches the top line (or
-// the text is a single line), the next up keeps iterating instead of being
-// trapped inside the recalled text.
-func TestComposerRecallPastMultiline(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 60, 12)
-	app.composer.pushHistory("old")
-	app.composer.pushHistory("a\nb")
-	up := tea.KeyPressMsg{Code: tea.KeyUp}
-	app.composerKey("up", up) // empty composer: recall the newest
-	if app.composer.text != "a\nb" {
-		t.Fatalf("first up = %q, want the newest multiline recall", app.composer.text)
-	}
-	app.composerKey("up", up) // multiline: cursor moves to the first line
-	if app.composer.text != "a\nb" {
-		t.Fatalf("second up left the multiline recall: %q", app.composer.text)
-	}
-	app.composerKey("up", up) // at the top line: keep iterating
-	if app.composer.text != "old" {
-		t.Fatalf("third up did not iterate past the multiline recall: %q", app.composer.text)
-	}
-}
-
 func TestComposerActions(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 60, 12)

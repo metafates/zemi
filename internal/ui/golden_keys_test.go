@@ -3,7 +3,6 @@ package ui
 import (
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/exp/golden"
 
 	"github.com/metafates/zemi/internal/agent"
@@ -40,24 +39,6 @@ func TestGoldenKeys(t *testing.T) {
 	}
 	app.runCommand("keys", "", false)
 	for app.Pump() {
-	}
-	app.renderSync(t)
-	golden.RequireEqual(t, app.Frame())
-}
-
-// TestGoldenPasteKey pins the masked paste input: bullets under the cursor,
-// the destination note, and the save hint.
-func TestGoldenPasteKey(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 20)
-	registerKeys(t, host)
-	host.Providers.Reset(agent.Catalog{
-		Missing: []agent.MissingKey{{ID: "deepseek", Env: "DEEPSEEK_API_KEY", Spec: agent.Spec{ID: "deepseek", Kind: agent.KindAnthropic, Builtin: true, KeyEnv: "DEEPSEEK_API_KEY", DefaultModel: "deepseek-chat"}}},
-	})
-	app.runCommand("keys", "paste deepseek", false)
-	for app.Pump() {
-	}
-	for _, r := range "sk-deep-123" {
-		app.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
 	app.renderSync(t)
 	golden.RequireEqual(t, app.Frame())

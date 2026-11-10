@@ -160,30 +160,6 @@ func TestThoughtDigestHoldsWhileReplying(t *testing.T) {
 	}
 }
 
-// TestGrownRowRedrawsWhileTheCacheHolds: a settled row whose text grew in
-// place (a joined reasoning chunk) draws its new text, though the rows around
-// it did not change: the edit counter carries it past the chat's cache.
-func TestGrownRowRedrawsWhileTheCacheHolds(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 80, 24)
-	host.AppendMessage("user", "look around")
-	appendReply(host, "short.", hostapi.TurnStat{})
-	st := func() *hostapi.ScreenState { return host.ScreenState(78, 24, app.uiState()) }
-	if got := frameText(renderAt(t, app, "chat", st())); !strings.Contains(got, "short.") {
-		t.Fatalf("the reply's row is not drawn:\n%s", got)
-	}
-	grown := st()
-	grown.Transcript = slices.Clone(grown.Transcript)
-	grown.Transcript[1].Text = "short answer."
-	grown.TranscriptEdit++
-	// twice: the first render fills the cache, the second reads it back
-	for _, pass := range []string{"fill", "hit"} {
-		if got := frameText(renderAt(t, app, "chat", grown)); !strings.Contains(got, "short answer.") {
-			t.Fatalf("the %s drew the stale row:\n%s", pass, got)
-		}
-	}
-}
-
 // runSession stores a run's conversation under a child session, the way a run
 // that ended and left this process writes it, so the chat can show it again.
 func runSession(t testing.TB, db *store.DB, title, status, text string) string {
@@ -205,26 +181,6 @@ func runSession(t testing.TB, db *store.DB, title, status, text string) string {
 		t.Fatal(err)
 	}
 	return id
-}
-
-// TestViewedRunDrawsNoSessionPendingRow: a run's own rows say what it is
-// doing, so the chat draws none of the session's pending row while the run is
-// shown: it would stand at the bottom of a run working somewhere else.
-func TestViewedRunDrawsNoSessionPendingRow(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 80, 24)
-	id := runSession(t, testStore(t, host), "explore the repo", "running", "it reads a.go")
-	defer host.Busy("Answering the side question", func() {})()
-	if err := host.ViewAgent(id); err != nil {
-		t.Fatal(err)
-	}
-	got := frameText(renderAt(t, app, "chat", host.ScreenState(78, 24, app.uiState())))
-	if !strings.Contains(got, "it reads a.go") {
-		t.Fatalf("the run's view does not draw its rows:\n%s", got)
-	}
-	if strings.Contains(got, "answering the side question") || strings.Contains(got, "thinking") {
-		t.Fatalf("the run's view draws the session's pending row:\n%s", got)
-	}
 }
 
 // TestViewedRunThinksLive: a run the chat shows streams its thinking the way

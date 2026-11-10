@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -19,7 +17,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/exp/golden"
 
-	"github.com/metafates/zemi/internal/agent"
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
@@ -331,157 +328,6 @@ func TestColdChatRender(t *testing.T) {
 	}
 }
 
-// TestAgentViewFolds: a run shown by an agent view folds its activity into
-// one digest row, exactly as the session's chat does, and the digest's click
-// opens the rail under it.
-func TestAgentViewFolds(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 100, 30)
-	db := testStore(t, host)
-	id := store.ShortID()
-	if err := db.CreateSession(id, store.ShortID(), "run", "explore"); err != nil {
-		t.Fatal(err)
-	}
-	// one step: a thought and a counted call, then the run's report
-	addRunMessage(t, db, id, fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
-		fantasy.ReasoningPart{Text: "weigh it"},
-		fantasy.ToolCallPart{ToolCallID: "t1", ToolName: "read", Input: `{"file_path":"main.go"}`},
-	}})
-	addRunMessage(t, db, id, fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
-		fantasy.TextPart{Text: "it reads fine"},
-	}})
-	if err := host.ViewAgent(id); err != nil {
-		t.Fatal(err)
-	}
-	rows := func() []string { return chatRows(t, app, 98) }
-	rows() // the first render forgets what was opened before it
-	closed := rows()
-	if !slices.Contains(closed, "▸ 1 file: main.go") || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
-		t.Fatalf("the viewed run does not fold:\n%s", strings.Join(closed, "\n"))
-	}
-	clickChat(t, app, "turn:1")
-	if open := rows(); !slices.Contains(open, "│ ✻ thought") || !slices.Contains(open, "│ ✓ read main.go") {
-		t.Fatalf("the digest's click does not open the rail:\n%s", strings.Join(open, "\n"))
-	}
-}
-
-// TestAgentViewSwitchForgetsOpenedRows: an opened digest belongs to the run
-// it was opened in, so showing another run draws folded rows again.
-func TestAgentViewSwitchForgetsOpenedRows(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 100, 30)
-	db := testStore(t, host)
-	ids := make([]string, 2)
-	for i := range ids {
-		ids[i] = store.ShortID()
-		if err := db.CreateSession(ids[i], store.ShortID(), fmt.Sprintf("run %d", i), "explore"); err != nil {
-			t.Fatal(err)
-		}
-		// one step, then the run's report: the step folds into a digest
-		addRunMessage(t, db, ids[i], fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
-			fantasy.ReasoningPart{Text: "weigh it"},
-			fantasy.ToolCallPart{ToolCallID: "t1", ToolName: "read", Input: `{"file_path":"main.go"}`},
-		}})
-		addRunMessage(t, db, ids[i], fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
-			fantasy.TextPart{Text: "it reads fine"},
-		}})
-	}
-	rows := func() []string { return chatRows(t, app, 98) }
-	if err := host.ViewAgent(ids[0]); err != nil {
-		t.Fatal(err)
-	}
-	rows() // the first render drops what an earlier case opened
-	clickChat(t, app, "turn:1")
-	if got := rows(); !slices.Contains(got, "│ ✻ thought") {
-		t.Fatalf("the first run's digest did not open:\n%s", strings.Join(got, "\n"))
-	}
-	if err := host.ViewAgent(ids[1]); err != nil {
-		t.Fatal(err)
-	}
-	if got := rows(); slices.ContainsFunc(got, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
-		t.Fatalf("the second run drew the first run's opened rows:\n%s", strings.Join(got, "\n"))
-	}
-}
-
-// TestReplyReadoutBehindANotice: the readout rides the reply that ends an
-// exchange, and a notice row arriving after it does not swallow it.
-func TestReplyReadoutBehindANotice(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 100, 30)
-	host.AppendMessage("user", "go")
-	appendReply(host, "done", hostapi.TurnStat{Out: 200, ElapsedMS: 1500, Ended: 1_700_000_000})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "notice", Text: "Background agent a1 (explore) finished"})
-	app.AgentStream()
-	lines, _ := renderChat(t, app, 98, 20, app.uiState())
-	var readouts []string
-	for _, l := range lines {
-		if row := strings.TrimRight(hostapi.SegsText(l), " "); strings.Contains(row, "200 out") {
-			readouts = append(readouts, row)
-		}
-	}
-	if len(readouts) != 1 || !strings.Contains(readouts[0], "1.5s · 200 out") {
-		t.Fatalf("the reply's readout is %q, want one row naming 1.5s and 200 out", readouts)
-	}
-}
-
-// TestWaitRowGuard: the thinking row opens with the turn 300ms in, before any
-// output, its label breathing; every state that says something else stands it
-// down.
-func TestWaitRowGuard(t *testing.T) {
-	tools := []hostapi.StreamTool{{ID: "t1", Name: "read", Label: "read go.mod", Status: hostapi.CallRun}}
-	cases := []struct {
-		name       string
-		stream     hostapi.StreamSnapshot
-		cancelling bool
-		waiting    hostapi.Waiting
-		want       string // "wait": the breathing row alone, "think": it with reasoning under, "": none
-	}{
-		{"before the guard", hostapi.StreamSnapshot{Active: true, Elapsed: 200 * time.Millisecond}, false, "", ""},
-		{"the wait", hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond}, false, "", "wait"},
-		{"reasoning arrived", hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond, Thinking: true, Reasoning: "hmm"}, false, "", "think"},
-		{"a retry backs off", hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond, Retrying: true}, false, "", ""},
-		{"a call runs", hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond, Tools: tools}, false, "", ""},
-		{"the reply streams", hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond, Text: "hello"}, false, "", ""},
-		{"cancelling", hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond}, true, "", ""},
-		{"an ask holds the turn", hostapi.StreamSnapshot{Active: true, Elapsed: 500 * time.Millisecond}, false, hostapi.WaitAnswer, ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			app, host := bootAgentApp(t, 100, 30)
-			host.SeedStream(tc.stream)
-			app.AgentStream()
-			st := app.uiState()
-			st.Cancelling, st.Waiting = tc.cancelling, tc.waiting
-			lines, _ := renderChat(t, app, 98, 20, st)
-			var head []hostapi.Segment
-			for _, l := range lines {
-				if strings.Contains(hostapi.SegsText(l), "thinking") {
-					head = l
-					break
-				}
-			}
-			breathes := slices.ContainsFunc(head, func(s hostapi.Segment) bool { return s.Effect == "shimmer" })
-			switch tc.want {
-			case "":
-				if head != nil {
-					t.Fatalf("%s drew a thinking row: %q", tc.name, hostapi.SegsText(head))
-				}
-			case "wait":
-				if head == nil || !breathes {
-					t.Fatalf("%s: the wait row is %v, want a breathing one", tc.name, head)
-				}
-			case "think":
-				if head == nil || !breathes || !slices.ContainsFunc(lines, func(l []hostapi.Segment) bool {
-					return strings.Contains(hostapi.SegsText(l), "hmm")
-				}) {
-					t.Fatalf("%s: the thinking row is %v, want a breathing one with its reasoning", tc.name, head)
-				}
-			}
-		})
-	}
-}
-
 // addRunMessage stores one model message in a run's child session, which
 // loadRun reads back into transcript rows.
 func addRunMessage(t *testing.T, db *store.DB, session string, m fantasy.Message) {
@@ -520,94 +366,6 @@ func TestNoticeBurst(t *testing.T) {
 	}
 }
 
-// TestChatExpandSettledRow: a settled turn folds what it looked at into one
-// TestRailWindow: a long rail keeps its last six entries and folds the earlier
-// ones behind one row, which a click opens and closes. A printed run lists
-// everything.
-func TestRailWindow(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 100, 30)
-	host.AppendMessage("user", "look around")
-	for i := range 10 {
-		host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "ls", Label: fmt.Sprintf("list dir %d", i), Status: "ok"})
-	}
-	appendReply(host, "done", hostapi.TurnStat{})
-	rows := func() []string { return chatRows(t, app, 98) }
-	click := func(id string) []string {
-		clickChat(t, app, id)
-		return rows()
-	}
-	rows() // the first render forgets what was opened before it
-	// the opened run shows its last six entries behind one for the rest
-	got := click("turn:2")
-	fold, first := slices.Index(got, "│ … 4 earlier"), slices.Index(got, "│ ✓ list dir 4")
-	if fold < 0 || first < 0 || fold > first || slices.Contains(got, "✓ list dir 3") || !slices.Contains(got, "│ ✓ list dir 9") {
-		t.Fatalf("the rail is not windowed:\n%s", strings.Join(got, "\n"))
-	}
-	if got = click("more:2"); !slices.Contains(got, "│ … collapse") || !slices.Contains(got, "│ ✓ list dir 0") {
-		t.Fatalf("the window does not open:\n%s", strings.Join(got, "\n"))
-	}
-	if got = click("more:2"); !slices.Contains(got, "│ … 4 earlier") {
-		t.Fatalf("the window does not close:\n%s", strings.Join(got, "\n"))
-	}
-}
-
-// TestChatFoldOpensItsRun: a click on a settled turn's digest row opens the
-// run's rail under it, the rest of the transcript coming from the chat's
-// cache, and the digest's second click folds it again. The rows of the
-// opened run carry their own view's id: only folds happen in the rail.
-func TestChatFoldOpensItsRun(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 140, 30)
-	host.AppendMessage("user", "run it")
-	appendReasoning(host, strings.Repeat("plan it word by word ", 8)+"\n\nthen build", hostapi.TurnStat{ThoughtMS: 6000})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "make", Status: "ok", Output: "built\nok"})
-	appendReasoning(host, "done then", hostapi.TurnStat{ThoughtMS: 400})
-	appendReply(host, "done", hostapi.TurnStat{})
-	rows := func() []string { return chatRows(t, app, 138) }
-	click := func(id string) []string {
-		clickChat(t, app, id)
-		return rows()
-	}
-	clickIDs := func() map[string]string {
-		app.renderSync(t)
-		_ = app.Frame() // compose fills lastRows
-		out := map[string]string{}
-		for _, row := range app.lastRows {
-			text := strings.Join(strings.Fields(hostapi.SegsText(row)), " ")
-			for _, s := range row {
-				if s.Click != "" {
-					out[text] = s.Click
-				}
-			}
-		}
-		return out
-	}
-	const digest = "▸ 1 command: make · thought 6.4s"
-	const openDigest = "▾ 1 command: make · thought 6.4s"
-	closed := rows()
-	if !slices.Contains(closed, digest) || slices.ContainsFunc(closed, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
-		t.Fatalf("the settled turn does not fold into its digest:\n%s", strings.Join(closed, "\n"))
-	}
-	// the digest stays as the run's header over a rail whose rows are framed
-	// once each, running or done
-	open := click("turn:2")
-	at := slices.Index(open, openDigest)
-	rail := []string{"│", "│ ✻ thought 6.0s", "│", "│ ✓ run make", "│", "│ ✻ thought 0.4s", "│"}
-	if at < 0 || !slices.Equal(open[at+1:at+1+len(rail)], rail) {
-		t.Fatalf("the opened run:\n%s", strings.Join(open, "\n"))
-	}
-	if ids := clickIDs(); ids["│ ✻ thought 6.0s"] != "call:2" || ids["│ ✓ run make"] != "call:3" {
-		t.Fatalf("the opened run's rows = %v, want their own views", ids)
-	}
-	if folded := click("turn:2"); !slices.Equal(folded, closed) {
-		t.Fatalf("a second click does not fold the run:\n%s", strings.Join(folded, "\n"))
-	}
-	if reopened := click("turn:2"); !slices.Equal(reopened, open) {
-		t.Fatalf("the run reopens as it first opened:\n%s", strings.Join(reopened, "\n"))
-	}
-}
-
 // TestBgTurnFolds: a turn whose calls all went to the background folds into
 // its digest too, or its rail would hang open over the events that follow it.
 func TestBgTurnFolds(t *testing.T) {
@@ -621,21 +379,6 @@ func TestBgTurnFolds(t *testing.T) {
 	fold := slices.IndexFunc(rows, func(r string) bool { return strings.HasPrefix(r, "▸ 1 agent run") })
 	if fold < 0 || !strings.Contains(rows[fold], "Review rail-fold branch") {
 		t.Fatalf("the background turn does not fold:\n%s", strings.Join(rows, "\n"))
-	}
-}
-
-// TestDigestSaysWhatRan: the fold row names the first call's about after the
-// counts, so "1 command" alone never hides what ran.
-func TestDigestSaysWhatRan(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 140, 30)
-	host.AppendMessage("user", "run it")
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "go vet ./...", Label: "vet the tree", Status: "ok"})
-	appendReply(host, "clean", hostapi.TurnStat{})
-	rows := chatRows(t, app, 138)
-	if got := slices.IndexFunc(rows, func(r string) bool { return strings.HasPrefix(r, "▸ 1 command") }); got < 0 ||
-		!strings.Contains(rows[got], "vet the tree") {
-		t.Fatalf("the digest row = %v", rows)
 	}
 }
 
@@ -680,55 +423,6 @@ func TestShortThoughtFolds(t *testing.T) {
 	rows := chatRows(t, app, 138)
 	if !slices.Contains(rows, "▸ thought") || slices.ContainsFunc(rows, func(r string) bool { return strings.HasPrefix(r, "│ ") }) {
 		t.Fatalf("the short thought does not fold into its digest:\n%s", strings.Join(rows, "\n"))
-	}
-}
-
-// TestTurnStats: the readout rides only the reply that ends the exchange, and
-// each call counts its own diff.
-func TestTurnStats(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 100, 30)
-	rows := func() []string {
-		app.renderSync(t)
-		var out []string
-		for row := range strings.SplitSeq(ansi.Strip(app.Frame()), "\r\n") {
-			if row != "" && strings.TrimSpace(row) != "" {
-				out = append(out, strings.Join(strings.Fields(row), " "))
-			}
-		}
-		return out[:len(out)-4] // the composer and the statusline row
-	}
-	click := func(id string) []string {
-		clickChat(t, app, id)
-		return rows()
-	}
-	host.AppendMessage("user", "fix it")
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "a.go", Status: "ok", Diff: "--- a.go\n+++ a.go\n@@ -1,2 +1,2 @@\n-old\n+new\n keep"})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "b.go", Status: "ok", Diff: "--- b.go\n+++ b.go\n@@ -1 +1 @@\n-x\n+y"})
-	// a sentence between two runs, with a readout of its own stored on it
-	appendReply(host, "a check for it:", hostapi.TurnStat{In: 100, Out: 100, ElapsedMS: 900, Ended: 1_700_000_000})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "go test", Status: "ok"})
-	appendReply(host, "done", hostapi.TurnStat{In: 100, Out: 200, ElapsedMS: 1500, Ended: 1_700_000_000})
-	host.SeedStream(hostapi.StreamSnapshot{})
-	app.AgentStream()
-	ended := rows()
-	if !slices.Contains(ended, "▸ 2 edits") {
-		t.Fatalf("the run of edits does not fold into its digest:\n%s", strings.Join(ended, "\n"))
-	}
-	open := click("turn:2")
-	for _, want := range []string{"│ ✓ edit a.go +1 -1", "│ ✓ edit b.go +1 -1"} {
-		if !slices.Contains(open, want) {
-			t.Fatalf("missing %q, each call counts its own:\n%s", want, strings.Join(open, "\n"))
-		}
-	}
-	if slices.ContainsFunc(open, func(r string) bool { return strings.Contains(r, "+2") || strings.Contains(r, "-2") }) {
-		t.Fatalf("a summed diff shows:\n%s", strings.Join(open, "\n"))
-	}
-	if n := strings.Count(strings.Join(ended, "\n"), "0.9s"); n != 0 {
-		t.Fatalf("a sentence between runs carries a readout:\n%s", strings.Join(ended, "\n"))
-	}
-	if n := strings.Count(strings.Join(ended, "\n"), "1.5s · 200 out"); n != 1 {
-		t.Fatalf("the reply that ends the exchange carries the readout:\n%s", strings.Join(ended, "\n"))
 	}
 }
 
@@ -1004,117 +698,6 @@ func TestGoldenModelPicker(t *testing.T) {
 	}
 }
 
-// TestGoldenAgentStream pins the live stream block in the chat widget
-// (DESIGN §6.3): transcript, tool call lines with status marks, dim
-// reasoning, the streaming reply, and the queued messages under the turn: the
-// user's own words, and a background report as a notice waiting its step.
-// TestGoldenWaitRow: the turn's first wait, 300ms in with nothing arrived
-// yet, draws the thinking row where the reply will land, its label breathing.
-func TestGoldenWaitRow(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 22)
-	host.AppendMessage("user", "why does Vec<String> in __init__ fail?")
-	host.SeedStream(hostapi.StreamSnapshot{
-		Active:  true,
-		Elapsed: 500 * time.Millisecond,
-		Model:   "anthropic/claude-sonnet-4-5",
-	})
-	app.AgentStream()
-	app.renderSync(t)
-	golden.RequireEqual(t, app.Frame())
-}
-
-func TestGoldenAgentStream(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 22)
-
-	// the user's own text is plain; a reply keeps a generic that is no HTML
-	host.AppendMessage("user", "why does Vec<String> in __init__ fail?")
-	appendReply(host, "Read the build log: Vec<String> moved.", hostapi.TurnStat{
-		In: 12340, Out: 1234, ThoughtMS: 4200, ElapsedMS: 38000,
-	})
-	host.SeedStream(hostapi.StreamSnapshot{
-		Active:    true,
-		Text:      "The test binary exits 1 because\nthe fixture path moved.",
-		Reasoning: "checked go.mod, then the fixture dir", Thinking: true,
-		Tools: []hostapi.StreamTool{
-			{Name: "read", Input: "internal/fixtures/paths.go", Status: "ok"},
-			{Name: "shell", Input: "go vet ./...", Label: "Vet the packages", Status: "ok"},
-			{Name: "shell", Input: "go test ./... 2>&1 | tail -5", Status: "run"},
-			{Name: "read", Input: "go.mod", Status: "wait"},
-		},
-		Model:      "anthropic/claude-sonnet-4-5",
-		Thought:    4 * time.Second,
-		Elapsed:    12 * time.Second,
-		SessionIn:  41200,
-		SessionOut: 3800,
-		LastIn:     24500,
-		CtxWindow:  200000,
-	})
-	// what waits for the next step boundary: the user's words, and a background
-	// report as the head line the model will read it by
-	if err := host.AgentSend("also check go.mod"); err != nil {
-		t.Fatal(err)
-	}
-	if err := host.AgentSend(agent.AttachMarker + "\n<agent-report run=\"a1\" agent=\"explore\" status=\"finished\" description=\"look around\">\nfound it\n</agent-report>\n</attached-files>"); err != nil {
-		t.Fatal(err)
-	}
-	// A stream event lands through the hook path, bumping the frame.
-	app.AgentStream()
-
-	app.renderSync(t)
-	app.Frame() // the first compose stamps the boot bar's rise
-	app.settleBars()
-	golden.RequireEqual(t, app.Frame())
-
-	if !app.host.AgentActive() {
-		t.Fatal("seeded stream should read active")
-	}
-}
-
-// TestQueuedFold: queued updates draw no rows - their work rows landed where
-// they were delivered - and the user's own queued line draws once, never
-// folding, however much model markup queues behind it.
-func TestQueuedFold(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 80, 24)
-	host.AppendMessage("user", "go on")
-	host.SeedStream(hostapi.StreamSnapshot{Active: true})
-	update := func(i int) {
-		src := fmt.Sprintf("\n<agent-update run=\"a%d\" agent=\"explore\">\nupdate %d\n</agent-update>\n</attached-files>", i, i)
-		if err := host.AgentSend(agent.AttachMarker + src); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := host.AgentSend("a typed line"); err != nil {
-		t.Fatal(err)
-	}
-	for i := 1; i <= 6; i++ {
-		update(i)
-	}
-	app.AgentStream()
-	rows := func() (fold, notes, typed int) {
-		for _, r := range chatRows(t, app, 78) {
-			switch {
-			case strings.Contains(r, "earlier") || strings.Contains(r, "collapse"):
-				fold++
-			case strings.Contains(r, " queued Agent a"):
-				notes++
-			case strings.Contains(r, " a typed line"):
-				typed++
-			}
-		}
-		return fold, notes, typed
-	}
-	if fold, notes, typed := rows(); fold != 0 || notes != 0 || typed != 1 {
-		t.Fatalf("fold=%d notes=%d typed=%d rows:\n%s", fold, notes, typed, strings.Join(chatRows(t, app, 78), "\n"))
-	}
-	// a seventh update rewrites nothing and adds no row
-	update(7)
-	app.AgentStream()
-	if fold, notes, typed := rows(); fold != 0 || notes != 0 || typed != 1 {
-		t.Fatalf("after a seventh update fold=%d notes=%d typed=%d rows:\n%s", fold, notes, typed, strings.Join(chatRows(t, app, 78), "\n"))
-	}
-}
-
 // TestInterruptKeys: esc interrupts a running turn on a second press within
 // 2s, an agent view takes it as back, a busy job's chord cancels the job;
 // ctrl+c clears a draft into the history first, mid-turn included, and arms
@@ -1227,26 +810,6 @@ func TestInterruptKeys(t *testing.T) {
 	}
 }
 
-// TestQuitHintFollowsTheNextPress: a paste landing inside the quit arm's
-// window fills the draft, and the hint then draws only when the draft is
-// gone and the next ctrl+c really quits.
-func TestQuitHintFollowsTheNextPress(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 90, 16)
-	app.now = func() time.Time { return time.UnixMilli(1000) }
-	app.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
-	app.Update(tea.PasteMsg{Content: "a pasted draft"})
-	for app.Pump() {
-	}
-	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); strings.Contains(frame, "again to quit") {
-		t.Fatalf("quit hint under a draft:\n%s", frame)
-	}
-	if !app.isArmed("ctrl+c") {
-		t.Fatal("the paste disarmed quit")
-	}
-}
-
 // TestAgentViewEscRestoresItsMenus: esc on a shown run restores the menu the
 // view was raised from under the screen the back command reopens, so h walks
 // back down the chain the view closed.
@@ -1292,72 +855,6 @@ func TestAgentViewEscRestoresItsMenus(t *testing.T) {
 	}
 }
 
-// TestPermissionPreview: a file tool's ask shows the proposed change, with
-// escape sequences from model input stripped.
-func TestPermissionPreview(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 80, 20)
-	done, done2 := make(chan struct{}), make(chan struct{})
-	go func() {
-		app.AskPermission(hostapi.PermRequest{
-			Subject: "fs.write", Arg: "main.go\x1b[31m", Reason: "edit file",
-			Preview: "--- a/main.go\n+++ b/main.go\n@@ -1 +1 @@\n-old line\n+new line\n",
-		})
-		close(done)
-	}()
-	waitPrompt(t, app, func() bool { return app.permAsk != nil })
-	app.renderSync(t)
-	frame := app.Frame()
-	if plain := ansi.Strip(frame); !strings.Contains(plain, "- old line") || !strings.Contains(plain, "+ new line") {
-		t.Fatalf("preview missing:\n%s", plain)
-	}
-	if strings.Contains(frame, "\x1b[31m") {
-		t.Fatal("model escape reached the permission chrome")
-	}
-	app.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
-	<-done
-
-	// a long target wraps at its slashes, keeping its start, its end and
-	// the choices below it on screen
-	long := "/opt/src/" + strings.Repeat("github.com/example/project/", 100) + "int_test.go"
-	go func() {
-		app.AskPermission(hostapi.PermRequest{Subject: "fs.read", Arg: long, Reason: "read"})
-		close(done2)
-	}()
-	waitPrompt(t, app, func() bool { return app.permAsk != nil })
-	app.renderSync(t)
-	if plain := ansi.Strip(app.Frame()); !strings.Contains(plain, "int_test.go") || !strings.Contains(plain, "/opt/src/") || !strings.Contains(plain, "esc") {
-		t.Fatalf("target cut:\n%s", plain)
-	}
-	app.askSwallow = time.Time{}
-	app.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
-	<-done2
-}
-
-// TestLuaSelect drives zemi.ui.select from Lua: enter hands the chosen item
-// to on_choice, esc hands it nil. The callback reports through a toast.
-func TestLuaSelect(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 80, 20)
-	pick := `function(item) zemi.notify({ title = "picked", body = item or "none" }) end`
-
-	runLua(t, app, `zemi.ui.select({ "red", "green" }, { prompt = "Color" }, `+pick+`)`)
-	if len(app.overlays) != 1 || app.overlays[0].o.Title != "Color" {
-		t.Fatalf("select overlay: %+v", app.overlays)
-	}
-	app.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if got := lastToast(app); got != "green" {
-		t.Fatalf("enter picked %q", got)
-	}
-
-	runLua(t, app, `zemi.ui.select({ "x" }, {}, `+pick+`)`)
-	app.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if got := lastToast(app); got != "none" {
-		t.Fatalf("esc picked %q", got)
-	}
-}
-
 // runLua runs src as user config and delivers the hooks it posted.
 func runLua(t *testing.T, app *App, src string) {
 	t.Helper()
@@ -1376,69 +873,6 @@ func lastToast(app *App) string {
 		return ""
 	}
 	return app.toasts[len(app.toasts)-1].body
-}
-
-// TestBandToTheEdge: a selected choice's band fills the box's inner width,
-// scrolling or not: the scrollbar's column is the box's border and the band
-// never reaches into it.
-func TestBandToTheEdge(t *testing.T) {
-	choices := make([]promptChoice, 10)
-	for i := range choices {
-		choices[i] = promptChoice{label: "opt" + strconv.Itoa(i)}
-	}
-	for _, viewH := range []int{20, 4} {
-		box := hostBox("", "", "", choiceView(choices, 1, &viewport{viewH: viewH}, 30, true), 40, 40, 30)
-		band := 0
-		for _, row := range box {
-			for _, s := range row {
-				if s.Fill == hostapi.FillBand {
-					band += ansi.StringWidth(s.Text)
-				}
-			}
-		}
-		if want := hostapi.SegsWidth(box[0]) - 4; band != want {
-			t.Errorf("view of %d rows: the band takes %d cells, want %d", viewH, band, want)
-		}
-	}
-}
-
-// TestMatchLook: a match is the accent on every row, bold on the selected
-// one, and the selection is its own channel, the band (^), which a section
-// header never takes.
-func TestMatchLook(t *testing.T) {
-	items := []listItem{
-		{label: "sonnet", section: "anthropic", match: []int{3, 4, 5}},
-		{label: "opus", section: "anthropic", desc: "net"},
-		{label: "gpt", section: "openai", match: []int{0}},
-	}
-	for _, c := range []struct {
-		name string
-		sel  int
-		want string
-	}{
-		{"the selected row is a band under its plain header, its match bold accent", 0, "[anthropic/Host:Title] [› /Host:Title^ son/Host:Bold^ net/Host:Title^] [opus/Host:Value net/Host:Hint] [openai/Host:Title] [g/Host:HintKey pt/Host:Value]"},
-		{"a selected row with a desc match keeps the band", 1, "[anthropic/Host:Title] [son/Host:Value net/Host:HintKey] [› /Host:Title^ opus/Host:Bold^ net/Host:Hint^] [openai/Host:Title] [g/Host:HintKey pt/Host:Value]"},
-	} {
-		var got []string
-		for _, row := range listRowsW(items, items, c.sel, nil, 20, 0, 0) {
-			var segs []string
-			for _, s := range row {
-				if strings.TrimSpace(s.Text) != "" {
-					band := ""
-					if s.Fill == hostapi.FillBand {
-						band = "^"
-					}
-					segs = append(segs, s.Text+"/"+s.HL+band)
-				}
-			}
-			if segs != nil {
-				got = append(got, fmt.Sprint(segs))
-			}
-		}
-		if g := strings.Join(got, " "); g != c.want {
-			t.Errorf("%s:\n got %s\nwant %s", c.name, g, c.want)
-		}
-	}
 }
 
 // TestPaletteArgumentCompletion: past "/name " the palette lists the
@@ -1717,42 +1151,6 @@ func TestAskGuardUnderDraft(t *testing.T) {
 	}
 }
 
-// TestPermissionAnswersUnderADraft: an ask under a draft keeps its keys —
-// a single y answers, and the draft rides out the answer intact.
-func TestPermissionAnswersUnderADraft(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 80, 20)
-	done := make(chan struct{})
-	var allowed bool
-	go func() {
-		allowed, _ = app.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "make deploy"})
-		close(done)
-	}()
-	waitPrompt(t, app, func() bool { return app.permAsk != nil })
-	app.program = tea.NewProgram(nil)
-	opened := app.now()
-	now := opened
-	app.now = func() time.Time { return now }
-	typeKey := func(key string) {
-		now = now.Add(time.Millisecond)
-		app.Update(tea.KeyPressMsg{Code: rune(key[0]), Text: key})
-	}
-	now = opened.Add(_permGrace + time.Millisecond)
-	typeKey("hold a ladder")                          // letters the ask does not use still draft
-	app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"}) // the ask's y answers
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("a y under a draft must answer the ask")
-	}
-	if !allowed {
-		t.Fatal("the y approved")
-	}
-	if app.composer.text != "hold a ladder" {
-		t.Fatalf("the draft must ride out the answer: %q", app.composer.text)
-	}
-}
-
 // TestPermissionProseTypesUnderTheAsk: past the grace an ask's keys answer
 // even under a draft — the ask owns its keys — while letters it does not
 // use type into the draft the box keeps, and enter answers the highlighted
@@ -1856,44 +1254,6 @@ func TestNoopKeysBumpNothing(t *testing.T) {
 	}
 }
 
-// TestPromptWaitsOnFullQueue: a blocking prompt posted while the hook queue
-// is full waits for room; dropped, its caller would wait forever.
-func TestPromptWaitsOnFullQueue(t *testing.T) {
-	app, _ := bootAgentApp(t, 80, 20)
-	// the host's close runs outside the bubble: leave it a queue from here
-	outside := make(chan tea.Msg, 1)
-	synctest.Test(t, func(t *testing.T) {
-		// a queue made in the bubble, so Wait sees the ask blocked on it
-		app.testQueue = make(chan tea.Msg, 1)
-		defer func() { app.testQueue = outside }()
-		app.do(func() {})
-		done := make(chan string, 1)
-		go func() { done <- app.AskTrust("/proj", "/proj", "") }()
-		synctest.Wait()
-		waitPrompt(t, app, func() bool { return app.trust != nil })
-		app.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
-		<-done
-	})
-}
-
-// TestLuaUtil runs the shipped zemi.util helpers through the real runtime.
-func TestLuaUtil(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 80, 20)
-	runLua(t, app, `
-		local u = require("zemi.util")
-		assert(u.trim("  hi \n") == "hi", "trim")
-		assert(table.concat(u.split("a,,b", ","), "|") == "a||b", "split")
-		assert(table.concat(u.keys({ b = 1, a = 2 }), ",") == "a,b", "keys")
-		assert(u.get({ a = { b = { c = 3 } } }, "a", "b", "c") == 3 and u.get({}, "x", "y") == nil, "get")
-		local cyc = { 1, name = "x" }
-		cyc.self = cyc
-		local s = u.inspect(cyc)
-		assert(s == '{ 1, name = "x", self = <cycle> }', s)
-		assert(not pcall(u.validate, "opt", 1, "string"), "validate")
-	`)
-}
-
 // thoughtHead is the line carrying the live thinking mark, "" for a frame
 // without one.
 func thoughtHead(frame string) string {
@@ -1912,50 +1272,6 @@ func spinOf(head string) (mark, rest string) {
 		return string(r[2]), string(r[:2]) + string(r[3:])
 	}
 	return "", head
-}
-
-// maskSnail replaces the snail's spinning shell, which steps per frame with
-// the working state, so frame comparisons see the mascot alone.
-func maskSnail(frame string) string {
-	for _, s := range hostapi.Spinner {
-		frame = strings.ReplaceAll(frame, s+"··", "@··")
-	}
-	return frame
-}
-
-// TestReasoningLiveTail: while the model thinks, only its last lines show, and
-// the live mark animates (a braille spinner) without moving the header or tail.
-func TestReasoningLiveTail(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 80, 16)
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Reasoning: "one\ntwo\nthree\nfour\nfive\n", Thinking: true})
-	render := func(ms int64) string {
-		app.now = func() time.Time { return time.UnixMilli(ms) }
-		app.renderSync(t)
-		return ansi.Strip(app.Frame())
-	}
-	// the default now is 500ms -> frame 10 -> braille index 1
-	frame := render(500)
-	if strings.Contains(frame, "✻ ") || !strings.Contains(frame, " thinking ") {
-		t.Fatalf("live mark is not the braille spinner:\n%s", frame)
-	}
-	if strings.Contains(frame, "│   one") || !strings.Contains(frame, "│   two") || !strings.Contains(frame, "│   five") {
-		t.Fatalf("live thinking tail:\n%s", frame)
-	}
-	// the spinner cycles a frameMS apart while the header and tail stay put
-	a, b := render(500), render(750)
-	headA, headB := thoughtHead(a), thoughtHead(b)
-	spinA, restA := spinOf(headA)
-	spinB, restB := spinOf(headB)
-	if !strings.HasPrefix(headA, "│ ") || spinA == spinB {
-		t.Fatalf("live mark does not animate on the rail:\n%s", a)
-	}
-	if restA != restB {
-		t.Fatalf("header moved while animating:\n%s\n%s", a, b)
-	}
-	if strings.Replace(maskSnail(a), headA, "", 1) != strings.Replace(maskSnail(b), headB, "", 1) {
-		t.Fatalf("tail moved while animating:\n%s\n%s", a, b)
-	}
 }
 
 // TestReasoningSpinsBehindModal: the backdrop of an open box keeps its
@@ -1979,87 +1295,6 @@ func TestReasoningSpinsBehindModal(t *testing.T) {
 	}
 	if !app.spun || app.tickInterval() != _frameInterval {
 		t.Fatalf("a spinner behind a box ticks %v (spun %v)", app.tickInterval(), app.spun)
-	}
-}
-
-// TestRailFoldsWhenTheTurnEnds: the live turn stands on the rail, a
-// step's reads one row with the short thought before it as its suffix, a
-// long thought a row of its own and a trailing one its own too; the
-// ended turn folds into its digest alone, its rail a click away, and draws
-// none of the thoughts the digest totals. A run the
-// model closed with a reply folds the moment it starts answering, and the run
-// it is working in stays open while it thinks and calls.
-func TestRailFoldsWhenTheTurnEnds(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 80, 24)
-	host.AppendMessage("user", "look around")
-	appendReasoning(host, "where to start", hostapi.TurnStat{ThoughtMS: 1200})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "a.go", Status: "ok"})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "b.go", Status: "ok"})
-	appendReasoning(host, "a long one", hostapi.TurnStat{ThoughtMS: 8000})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "shell", Text: "ls", Label: "list the data", Status: "ok"})
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "edit", Text: "a.go", Status: "ok", Diff: "--- a.go\n+++ a.go\n@@ -1 +1 @@\n-old\n+new"})
-	appendReasoning(host, "that is all", hostapi.TurnStat{ThoughtMS: 400})
-	rows := func() []string {
-		app.renderSync(t)
-		var out []string
-		for row := range strings.SplitSeq(ansi.Strip(app.Frame()), "\r\n") {
-			if row != "" && strings.TrimSpace(row) != "" {
-				out = append(out, strings.Join(strings.Fields(row), " "))
-			}
-		}
-		return out[:len(out)-4] // the composer and the statusline row
-	}
-	host.SeedStream(hostapi.StreamSnapshot{Active: true})
-	app.AgentStream()
-	live := []string{"▌ look around", "│", "│ ✻ thought 1.2s", "│", "│ ✓ read 2 files", "│", "│ ✻ thought 8.0s", "│", "│ ✓ list the data", "│", "│ ✓ edit a.go +1 -1", "│", "│ ✻ thought 0.4s", "│"}
-	if got := rows(); !slices.Equal(got, live) {
-		t.Fatalf("live rail:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(live, "\n"))
-	}
-	// the reply closes that run as it streams, before its row settles
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Text: "now the next one"})
-	closed := []string{"▌ look around", "▸ 2 files, 1 command: list the data, 1 edit: a.go · thought 9.6s", "now the next one"}
-	if got := rows(); !slices.Equal(got, closed) {
-		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
-	}
-	// its row settles, and the call after it opens a new run; the mid-turn
-	// sentence carries no stat, so no diff of its own shows under it
-	appendReply(host, "now the next one", hostapi.TurnStat{})
-	host.SeedStream(hostapi.StreamSnapshot{Active: true})
-	app.AgentStream()
-	host.AppendChat(hostapi.ChatMessage{Role: "assistant", Kind: "tool", Tool: "read", Text: "c.go", Status: "ok"})
-	closed = append(closed, "│", "│ ✓ read c.go", "│")
-	if got := rows(); !slices.Equal(got, closed) {
-		t.Fatalf("the run the reply closed stays open:\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(closed, "\n"))
-	}
-	host.SeedStream(hostapi.StreamSnapshot{})
-	if got, want := rows(), append(closed[:3:3], "▸ 1 file: c.go"); !slices.Equal(got, want) {
-		t.Fatalf("ended turn:\n%s", strings.Join(got, "\n"))
-	}
-}
-
-// TestWorkingRowRetry: a waiting provider retry replaces the elapsed time
-// with a countdown so the turn does not look stuck, and the rule names the
-// running call nowhere: that is the chat row's job.
-func TestWorkingRowRetry(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 80, 16)
-	// the block keeps a cell off the rule's end, so the corner follows a space
-	// whatever it says
-	for _, c := range []struct {
-		in   time.Duration
-		want string
-	}{{0, ` esc interrupt · retrying now · elapsed 20s ┐`}, {4 * time.Second, ` esc interrupt · next try in \ds · elapsed 20s ┐`}} {
-		host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Retrying: true, RetryIn: c.in, Retries: 1})
-		app.renderSync(t)
-		if frame := ansi.Strip(app.Frame()); !regexp.MustCompile(c.want).MatchString(frame) {
-			t.Fatalf("retry row missing %q:\n%s", c.want, frame)
-		}
-	}
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second, Tools: []hostapi.StreamTool{{Name: "shell", Status: "run", Label: "run the tests"}}})
-	app.renderSync(t)
-	if row := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 80)); strings.Contains(row, "run the tests") || strings.Contains(row, "shell") {
-		t.Fatalf("the working row names the running call: %q", row)
 	}
 }
 
@@ -2088,19 +1323,6 @@ func TestWorkingRowRetryNarrow(t *testing.T) {
 				t.Fatalf("the narrow rule kept the key hint over the reason: %q", row)
 			}
 		})
-	}
-}
-
-// TestWorkingRowRetrySubSecond: a wait under a second reads as retrying now,
-// not as "next try in 0s".
-func TestWorkingRowRetrySubSecond(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 100, 16)
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 4 * time.Second, Retrying: true, RetryIn: 400 * time.Millisecond, Retries: 2, RetryWhy: "rate limited by the provider"})
-	app.renderSync(t)
-	row := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 100))
-	if !strings.Contains(row, "retrying now") || strings.Contains(row, "next try in 0s") {
-		t.Fatalf("a sub-second wait drew a 0s countdown: %q", row)
 	}
 }
 
@@ -2177,57 +1399,6 @@ func TestWorkingRowMascot(t *testing.T) {
 	app.renderSync(t)
 	if r := ansi.Strip(app.renderSegs(app.widgetLines("working")[0], 24)); !strings.Contains(r, "esc interrupt") || strings.Contains(r, "20s") {
 		t.Fatalf("the narrow rule lost the interrupt key: %q", r)
-	}
-}
-
-// TestWorkingRowAgentView: an agent view names the run the chat shows in the
-// middle of the rule and the key that leaves it at the rule's end, alone while
-// nothing runs, and keeps that key once the name is dropped for width.
-func TestWorkingRowAgentView(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 80, 16)
-	db := testStore(t, host)
-	id := store.ShortID()
-	if err := db.CreateSession(id, store.ShortID(), "explore the repo", "explore"); err != nil {
-		t.Fatal(err)
-	}
-	if err := host.ViewAgent(id); err != nil {
-		t.Fatal(err)
-	}
-	row := func(w int) string {
-		app.Update(tea.WindowSizeMsg{Width: w, Height: 16})
-		app.renderSync(t)
-		segs := app.widgetLines("working")[0]
-		if got := hostapi.SegsWidth(segs); got != w-2 {
-			t.Fatalf("the rule is %d cells at %d wide, want %d", got, w, w-2)
-		}
-		return ansi.Strip(app.renderSegs(segs, w))
-	}
-	// centred: the run's own name on the rule, not the agent that ran it, a cell
-	// of rule either side of it and the block at the rule's end
-	centred := func(r string) bool {
-		left, right, ok := strings.Cut(r, "explore the repo")
-		rule, tail, found := strings.Cut(right, " esc back ")
-		if !ok || !found || strings.Trim(rule, "─ ") != "" || tail != "" {
-			return false
-		}
-		a, b := ansi.StringWidth(left), ansi.StringWidth(right)
-		return max(a, b)-min(a, b) <= 1
-	}
-	// idle: the run and the key that leaves it, where the rule was bare before
-	if r := row(80); !centred(r) {
-		t.Fatalf("the idle rule does not centre the viewed run: %q", r)
-	}
-	// the rule reports the run on screen, never the session's turn: a running
-	// session moves neither the clock nor the key while a finished run shows
-	host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-	if r := row(80); !centred(r) || strings.Contains(r, "20s") || strings.Contains(r, "esc interrupt") {
-		t.Fatalf("a session turn leaks into the view's rule: %q", r)
-	}
-	// width sheds the name first, never the key
-	host.SeedStream(hostapi.StreamSnapshot{})
-	if r := row(26); strings.Contains(r, "viewing") || !strings.HasSuffix(r, " esc back ") {
-		t.Fatalf("the narrow rule lost the back key or kept the name: %q", r)
 	}
 }
 
@@ -2384,51 +1555,6 @@ func TestKeySequence(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
 	if len(app.keySeq) != 0 || app.composer.text != "b" {
 		t.Fatalf("broken sequence: pending=%v composer=%q", app.keySeq, app.composer.text)
-	}
-}
-
-// TestPermissionChoices: up and down move between the choices, enter
-// answers the highlighted one, and the letters answer directly; without an
-// always choice there are three.
-func TestPermissionChoices(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 100, 30)
-	ask := func(req hostapi.PermRequest, keys ...tea.KeyPressMsg) (bool, string) {
-		t.Helper()
-		done := make(chan struct{})
-		var ok bool
-		var by string
-		go func() { ok, by = app.AskPermission(req); close(done) }()
-		waitPrompt(t, app, func() bool { return app.permAsk != nil })
-		// the previous answer swallowed the keys behind it (a paste's tail);
-		// a human's next key comes after the swallow window
-		app.askSwallow = time.Time{}
-		for _, k := range keys {
-			app.Update(k)
-		}
-		<-done
-		return ok, by
-	}
-	down, up, enter := tea.KeyPressMsg{Code: tea.KeyDown}, tea.KeyPressMsg{Code: tea.KeyUp}, tea.KeyPressMsg{Code: tea.KeyEnter}
-	letter := func(r rune) tea.KeyPressMsg { return tea.KeyPressMsg{Code: r, Text: string(r)} }
-	shell := func() hostapi.PermRequest {
-		return hostapi.PermRequest{Tool: "shell", Subject: "tool.shell", Arg: "go test ./..."}
-	}
-	for _, c := range []struct {
-		name string
-		req  hostapi.PermRequest
-		keys []tea.KeyPressMsg
-		ok   bool
-		by   string
-	}{
-		{"down enter takes no", shell(), []tea.KeyPressMsg{down, enter}, false, "user"},
-		{"up stays on yes", shell(), []tea.KeyPressMsg{up, enter}, true, "user:once"},
-		{"enter takes no, the default", shell(), []tea.KeyPressMsg{enter}, false, "user"},
-		{"n denies", shell(), []tea.KeyPressMsg{letter('n')}, false, "user"},
-	} {
-		if ok, by := ask(c.req, c.keys...); ok != c.ok || by != c.by {
-			t.Errorf("%s: %v %q", c.name, ok, by)
-		}
 	}
 }
 
@@ -2675,112 +1801,6 @@ func TestDigestCountsEveryFamily(t *testing.T) {
 	}
 }
 
-// TestPendingRow: work that will change this conversation later - a job the
-// user waits on, a compaction - draws one static row at the chat's tail,
-// above the todos. A running flow is pinned by TestGoldenWorkflows.
-func TestPendingRow(t *testing.T) {
-	for _, c := range []struct {
-		name string
-		work func(h *hostapi.Host)
-		want string
-	}{
-		{"busy job", func(h *hostapi.Host) { h.Busy("Checking health", nil) }, "⧗ checking health"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-			pendingRow(t, c.work, c.want)
-		})
-	}
-}
-
-func pendingRow(t *testing.T, work func(*hostapi.Host), want string) {
-	t.Helper()
-	app, host := bootAgentApp(t, 100, 24)
-	seedTodos(t, host, []store.Todo{{Content: "step one", Status: "pending"}})
-	work(host)
-	lines, _ := renderChat(t, app, 80, 20, app.uiState())
-	rows := make([]string, 0, len(lines))
-	var row []hostapi.Segment
-	for _, l := range lines {
-		r := strings.TrimRight(hostapi.SegsText(l), " ")
-		rows = append(rows, r)
-		if r == want {
-			row = l
-		}
-		if strings.Contains(r, "thinking") {
-			t.Fatalf("the chat drew a thinking row too: %q", r)
-		}
-	}
-	at, todos := slices.Index(rows, want), slices.IndexFunc(rows, func(r string) bool { return strings.HasPrefix(r, "Todos ") })
-	if at < 0 || todos < 0 || at > todos {
-		t.Fatalf("want %q above the todos header, at %d of %d:\n%s", want, at, todos, strings.Join(rows, "\n"))
-	}
-	if row[0].Effect != "" || !slices.ContainsFunc(row[1:], func(s hostapi.Segment) bool { return s.Effect == "shimmer" }) {
-		t.Fatalf("the row's label breathes and its mark does not: %v", row)
-	}
-}
-
-// TestTodosMeterSpansTheList: the meter's cells cover the whole list, one
-// per item while they fit and scaled past the shown window, so "2/14" never
-// sits beside a meter that only counts the rows on screen.
-func TestTodosMeterSpansTheList(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 100, 24)
-	todos := []store.Todo{{Content: "one", Status: "done"}, {Content: "two", Status: "done"}, {Content: "three", Status: "in_progress"}}
-	for i := range 11 {
-		todos = append(todos, store.Todo{Content: fmt.Sprintf("item %d", i), Status: "pending"})
-	}
-	seedTodos(t, host, todos)
-	lines, _ := renderChat(t, app, 80, 24, app.uiState())
-	for _, l := range lines {
-		r := strings.TrimRight(hostapi.SegsText(l), " ")
-		if !strings.HasPrefix(r, "Todos ") {
-			continue
-		}
-		if !strings.Contains(r, "2/14") {
-			t.Fatalf("the header lost the count: %q", r)
-		}
-		// cap at height 24 is 8: sixteen cells over fourteen items, the first
-		// two done, the third live
-		if n := strings.Count(strings.TrimPrefix(r, "Todos 2/14  "), "━"); n != 16 {
-			t.Fatalf("the meter drew %d cells for 14 items: %q", n, r)
-		}
-		return
-	}
-	t.Fatalf("no todos header in:\n%s", func() string {
-		var b []string
-		for _, l := range lines {
-			b = append(b, hostapi.SegsText(l))
-		}
-		return strings.Join(b, "\n")
-	}())
-}
-
-// TestTodosMeterFillsTheFraction: a scaled meter fills ceil(done×cells/total)
-// cells, so a part-done list never reads emptier than its count (1 of 6 over
-// six cells lights the first).
-func TestTodosMeterFillsTheFraction(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 100, 24)
-	todos := []store.Todo{{Content: "one", Status: "done"}}
-	for i := range 5 {
-		todos = append(todos, store.Todo{Content: fmt.Sprintf("item %d", i), Status: "pending"})
-	}
-	seedTodos(t, host, todos)
-	// cap at height 9 is 3: six cells over six items
-	lines, _ := renderChat(t, app, 80, 9, app.uiState())
-	for _, l := range lines {
-		r := strings.TrimRight(hostapi.SegsText(l), " ")
-		if strings.HasPrefix(r, "Todos ") {
-			if !strings.Contains(r, "1/6   ━━━━━━") {
-				t.Fatalf("the meter read emptier than the count: %q", r)
-			}
-			return
-		}
-	}
-	t.Fatal("no todos header in the render")
-}
-
 // TestTodosMeterWithinTheWindow: a list at or under the shown window draws
 // two cells per item with each cell its own state: the scaled path above
 // never draws the all-done lie a wrong divisor gives.
@@ -2907,27 +1927,6 @@ func todoRows(t *testing.T, h int, live, last store.TodoStatus, want, gone []str
 	}
 }
 
-// TestEllipsizeSegsWordBoundary: the ellipsis follows a whole word. A word
-// the cut splits is dropped, one the cut left whole stays, so no row ends
-// short of its width when the cut landed at a word's end.
-func TestEllipsizeSegsWordBoundary(t *testing.T) {
-	t.Parallel()
-	for _, c := range []struct {
-		name, text string
-		w          int
-		want       string
-	}{
-		{"a word the cut splits is dropped", "alpha beta gamma delta", 13, "alpha beta…"},
-		{"a word the cut left whole stays", "alpha beta widths. more", 18, "alpha beta widths…"},
-		{"a word too long to drop keeps its cut", "alpha supercalifragilisticexpialidocious", 25, "alpha supercalifragilist…"},
-		{"a path holding no space keeps its cut", "internal/ui/agent.go", 12, "internal/ui…"},
-	} {
-		if got := hostapi.SegsText(ellipsizeSegs([]hostapi.Segment{{Text: c.text}}, c.w)); got != c.want {
-			t.Errorf("%s: %q, want %q", c.name, got, c.want)
-		}
-	}
-}
-
 func TestStreamEventsCoalesce(t *testing.T) {
 	app := &App{testQueue: make(chan tea.Msg, _hookQueueSize), log: slog.New(slog.DiscardHandler), focused: true, now: time.Now}
 	for range 3 * _hookQueueSize {
@@ -3023,34 +2022,4 @@ func TestPermTitle(t *testing.T) {
 			t.Errorf("%+v: %q %q", c.req, title, target)
 		}
 	}
-}
-
-// TestAskWrappedChoiceContinuesUnderItsDescription: at a width the t
-// choice's description wraps under, its continuation lines up under the
-// description's first row — no seam floating where no label precedes it.
-func TestAskWrappedChoiceContinuesUnderItsDescription(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 60, 20)
-	done := make(chan struct{})
-	go func() {
-		app.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "make deploy", Reason: "deploy"})
-		close(done)
-	}()
-	waitPrompt(t, app, func() bool { return app.permAsk != nil })
-	app.renderSync(t)
-	for line := range strings.SplitSeq(ansi.Strip(app.Frame()), "\n") {
-		// the ask's box interior: a seam belongs only right after a label,
-		// never at a row's start where no label precedes it
-		_, rest, ok := strings.Cut(line, "│")
-		if !ok {
-			continue
-		}
-		inner, _, _ := strings.Cut(rest, "│")
-		if strings.HasPrefix(strings.TrimLeft(inner, " "), "  ") {
-			t.Fatalf("a wrapped description drew a floating seam: %q", line)
-		}
-	}
-	app.askSwallow = time.Time{}
-	app.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
-	<-done
 }

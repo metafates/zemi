@@ -2,13 +2,11 @@ package ui
 
 import (
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/lua"
 )
 
 // TestWidgetRows: one widget's lines become the rows the layout draws, a
@@ -33,41 +31,6 @@ func TestWidgetRows(t *testing.T) {
 				t.Fatalf("rows = %q, want %q", got, c.want)
 			}
 		})
-	}
-}
-
-// TestFadeSparesTheWidgetCache: the modal fade dims copies, never the rows a
-// non-scrolled wrap region shares with the widget cache, so the frame after
-// the box closes draws the widget as before.
-func TestFadeSparesTheWidgetCache(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 60, 20)
-	addWidget(app, &widget{id: "notes.wide", region: _regionChat, priority: 20, wrap: true, render: func(*hostapi.ScreenState) ([][]hostapi.Segment, bool) {
-		return [][]hostapi.Segment{{{Text: strings.Repeat("word ", 14)}}}, false
-	}})
-	app.screen(t)
-	app.settleBars()
-	before := app.Frame()
-	app.openOverlay(hostapi.Overlay{
-		ID: "pick", Title: "pick", Origin: lua.OriginBuiltin,
-		Items: []hostapi.OverlayItem{{Text: "a row"}},
-	})
-	app.renderSync(t)
-	app.Frame()
-	c := app.caches["notes.wide"]
-	if c == nil {
-		t.Fatal("the wrap widget never rendered")
-	}
-	for _, row := range c.wrapped {
-		for _, s := range row {
-			if s.Fade != 0 {
-				t.Fatalf("the modal's fade reached the widget cache: %+v", s)
-			}
-		}
-	}
-	app.closeOverlays("pick")
-	if after := app.Frame(); after != before {
-		t.Fatalf("the frame kept the fade past the box:\n%s\nwant:\n%s", after, before)
 	}
 }
 

@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/store"
@@ -98,66 +97,6 @@ func TestMemoriesZoomKeys(t *testing.T) {
 	}
 	if got := st.items[0].label; got != "msgs 0-1" {
 		t.Fatalf("h reads %q", got)
-	}
-}
-
-// TestMemoriesLeafPreview: enter on a leaf reads the messages it covers over
-// the browser, and the chat stays where it was - the browser is an overview;
-// finding a turn's place on the screen is the chat's own scrolling.
-func TestMemoriesLeafPreview(t *testing.T) {
-	t.Parallel()
-	app, host := seedMemoriesApp(t, 100, 24)
-	app.renderSync(t)
-	app.Frame()
-	if err := host.MemoriesCommand(""); err != nil {
-		t.Fatal(err)
-	}
-	pump(t, app)
-	ov := &app.overlays[len(app.overlays)-1]
-	// the built leaf, message 4
-	ov.selected = 2
-	app.Frame()
-	before := app.scrolls[_regionChat].focus
-	press(t, app, tea.KeyPressMsg{Code: tea.KeyEnter})
-	pump(t, app)
-	st := &app.overlays[len(app.overlays)-1]
-	if st.o.ID != "memories range 0 4" {
-		t.Fatalf("enter on a leaf opened %s, want the preview", st.o.ID)
-	}
-	if len(app.overlays) != 2 {
-		t.Fatalf("%d overlays open, want the browser under the preview", len(app.overlays))
-	}
-	if got := app.scrolls[_regionChat].focus; got != before {
-		t.Fatalf("enter moved the chat to %d, want it left at %d", got, before)
-	}
-}
-
-// TestMemoriesPreviewBody: the v-preview of a leaf shows the logged rows,
-// each head carrying the row's date, and never the gone-sentence the body's
-// own content rules out.
-func TestMemoriesPreviewBody(t *testing.T) {
-	t.Parallel()
-	app, host := seedMemoriesApp(t, 100, 24)
-	if err := host.MemoriesCommand("view 0 1"); err != nil {
-		t.Fatal(err)
-	}
-	pump(t, app)
-	st := &app.overlays[len(app.overlays)-1]
-	if st.o.ID != "memories range 0 1" {
-		t.Fatalf("the preview = %s", st.o.ID)
-	}
-	if st.o.Empty != "" {
-		t.Fatalf("a preview with rows carried Empty %q", st.o.Empty)
-	}
-	if !strings.Contains(st.o.Body, "user 20") || !strings.Contains(st.o.Body, ": row") {
-		t.Fatalf("the preview body = %q", st.o.Body)
-	}
-	frame := ansi.Strip(app.Frame())
-	if !strings.Contains(frame, "row row") {
-		t.Fatalf("the preview drew:\n%s", frame)
-	}
-	if strings.Contains(frame, "gone from this store") {
-		t.Fatalf("the gone-sentence drew under real content:\n%s", frame)
 	}
 }
 

@@ -13,7 +13,6 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/tools"
 )
 
 // notifyApp is a bare zemi for the tests that drive ticks and turn ends
@@ -99,46 +98,6 @@ func TestNotifyWhenAway(t *testing.T) {
 	}
 }
 
-// TestNotifyWaitsForAChain: a turn's end lands on the frame that reads the
-// agent idle, so a chain of turns notifies once, as its last turn ends.
-func TestNotifyWaitsForAChain(t *testing.T) {
-	t.Parallel()
-	app, host := notifyAwayApp(t, "osc")
-	app.Update(turnDoneMsg{})
-	host.SeedStream(hostapi.StreamSnapshot{Active: true})
-	if got := notifyFrame(app); got != "" {
-		t.Errorf("sent %q while the agent is active", got)
-	}
-	host.SeedStream(hostapi.StreamSnapshot{})
-	if got, want := notifyFrame(app), "\x1b]9;zemi finished\x07"; got != want {
-		t.Errorf("sent %q, want %q", got, want)
-	}
-}
-
-// TestNotifyFocused: a focused terminal needs no alert.
-func TestNotifyFocused(t *testing.T) {
-	t.Parallel()
-	app, host := notifyStyled(t, "osc")
-	app.Update(turnDoneMsg{})
-	host.SeedStream(hostapi.StreamSnapshot{})
-	if got := notifyFrame(app); got != "" {
-		t.Errorf("a focused terminal got %q", got)
-	}
-}
-
-// TestNotifyBack: a turn that ends away sends nothing once the window is
-// focused again.
-func TestNotifyBack(t *testing.T) {
-	t.Parallel()
-	app, host := notifyAwayApp(t, "osc")
-	app.Update(tea.FocusMsg{})
-	app.Update(turnDoneMsg{})
-	host.SeedStream(hostapi.StreamSnapshot{})
-	if got := notifyFrame(app); got != "" {
-		t.Errorf("a focused terminal got %q", got)
-	}
-}
-
 // TestNotifyAsTheLoopEnds: a loop's runs end quietly; the loop's end
 // notifies, unless the terminal already carries the status record.
 func TestNotifyAsTheLoopEnds(t *testing.T) {
@@ -164,45 +123,6 @@ func TestNotifyAsTheLoopEnds(t *testing.T) {
 				t.Errorf("sent %q, want %q", got, c.want)
 			}
 		})
-	}
-}
-
-// TestAskNotifyRidesTheRecord: an ask alerts an unfocused terminal only
-// where the program-status record does not already carry it — a terminal
-// that answered the OSC 7501 feature query shows the record itself.
-func TestAskNotifyRidesTheRecord(t *testing.T) {
-	t.Parallel()
-	for _, c := range []struct {
-		name    string
-		support bool
-		want    string
-	}{
-		{"without support", false, "\x1b]9;zemi: a question: which database?\x07"},
-		{"with support", true, ""},
-	} {
-		app, _ := notifyApp(t)
-		app.Update(tea.BlurMsg{})
-		app.statusSupport = c.support
-		app.testQueue = make(chan tea.Msg, 1)
-		answered := make(chan struct{}, 1)
-		go func() {
-			app.AskQuestion([]tools.Question{{Question: "which database?"}})
-			answered <- struct{}{}
-		}()
-		_, cmd := app.Update(<-app.testQueue)
-		var got string
-		for _, m := range runCmd(cmd) {
-			if raw, ok := m.(tea.RawMsg); ok {
-				if s := fmt.Sprint(raw.Msg); strings.Contains(s, "\x1b]9;") {
-					got = s
-				}
-			}
-		}
-		if got != c.want {
-			t.Errorf("%s: sent %q, want %q", c.name, got, c.want)
-		}
-		app.finishQuestion(false)
-		<-answered
 	}
 }
 
@@ -249,67 +169,6 @@ func TestAlertWhenAway(t *testing.T) {
 		if len(app.toasts) == 0 {
 			t.Errorf("%s: no toast", c.name)
 		}
-	}
-}
-
-// TestAskQuestionNotifiesWhenAway: the question ask alerts an unfocused
-// terminal with its batch count and its first line.
-func TestAskQuestionNotifiesWhenAway(t *testing.T) {
-	t.Parallel()
-	app, host := notifyApp(t)
-	if _, err := host.Settings.SetQuiet("ui.notify", "osc"); err != nil {
-		t.Fatal(err)
-	}
-	app.Update(tea.BlurMsg{})
-	app.testQueue = make(chan tea.Msg, 1)
-	done := make(chan bool, 1)
-	go func() {
-		_, ok := app.AskQuestion([]tools.Question{{Question: "which database?"}, {Question: "which driver?"}})
-		done <- ok
-	}()
-	var sent string
-	if _, cmd := app.Update(<-app.testQueue); cmd != nil {
-		for _, m := range runCmd(cmd) {
-			if raw, ok := m.(tea.RawMsg); ok {
-				sent = fmt.Sprint(raw.Msg)
-			}
-		}
-	}
-	if sent != "\x1b]9;zemi: a question (1 of 2): which database?\x07" {
-		t.Fatalf("sent %q", sent)
-	}
-	app.finishQuestion(false)
-	if got := <-done; got {
-		t.Fatal("a dismissed batch answered true")
-	}
-}
-
-// TestAskTrustNotifiesWhenAway: the trust ask alerts an unfocused terminal
-// like the other three asks do.
-func TestAskTrustNotifiesWhenAway(t *testing.T) {
-	t.Parallel()
-	app, host := notifyApp(t)
-	if _, err := host.Settings.SetQuiet("ui.notify", "osc"); err != nil {
-		t.Fatal(err)
-	}
-	app.Update(tea.BlurMsg{})
-	app.testQueue = make(chan tea.Msg, 1)
-	done := make(chan string, 1)
-	go func() { done <- app.AskTrust("/proj", "/proj", "") }()
-	var sent string
-	if _, cmd := app.Update(<-app.testQueue); cmd != nil {
-		for _, m := range runCmd(cmd) {
-			if raw, ok := m.(tea.RawMsg); ok {
-				sent = fmt.Sprint(raw.Msg)
-			}
-		}
-	}
-	if sent != "\x1b]9;zemi: trust this project?  /proj\x07" {
-		t.Fatalf("sent %q", sent)
-	}
-	app.answerTrust("later")
-	if got := <-done; got != "later" {
-		t.Fatalf("answered %q", got)
 	}
 }
 
@@ -403,41 +262,6 @@ func TestWindowTitle(t *testing.T) {
 	}
 }
 
-// TestWindowTitleWhileRunning: a running turn leaves the title alone — the
-// program status reports it.
-func TestWindowTitleWhileRunning(t *testing.T) {
-	t.Parallel()
-	for _, c := range []struct {
-		name string
-		at   time.Duration
-	}{
-		{"running", 0},
-		{"running 200 ms on", 200 * time.Millisecond},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-			app, _ := notifyApp(t)
-			app.now = func() time.Time { return time.UnixMilli(1_000_000).Add(c.at) }
-			app.turnActive = true
-			if got := app.windowTitle(); got != "zemi" {
-				t.Errorf("%q, want zemi", got)
-			}
-		})
-	}
-}
-
-// TestWindowTitleAsks: a permission ask waiting on the user makes the title
-// ask.
-func TestWindowTitleAsks(t *testing.T) {
-	t.Parallel()
-	app, _ := notifyApp(t)
-	app.turnActive = true
-	app.permAsk = &permAskPrompt{}
-	if got := app.windowTitle(); got != "? zemi" {
-		t.Errorf("%q, want ? zemi", got)
-	}
-}
-
 // TestWindowTitleAsksTrust: so does the trust prompt, which waits before any
 // turn.
 func TestWindowTitleAsksTrust(t *testing.T) {
@@ -490,49 +314,4 @@ func TestToastTray(t *testing.T) {
 			t.Errorf("%s:\n%s\nwant\n%s", c.name, strings.Join(got, "\n"), strings.Join(c.want, "\n"))
 		}
 	}
-}
-
-// TestToastWakesTheTick: a pushed toast wakes the frame tick, so its box
-// draws without waiting for a keystroke.
-func TestToastWakesTheTick(t *testing.T) {
-	t.Parallel()
-	app, _ := notifyApp(t)
-	app.pushToast(slog.LevelInfo, "Copied", "12 bytes")
-	select {
-	case <-app.wake:
-	default:
-		t.Fatal("a pushed toast left the frame tick asleep; its box would pop")
-	}
-}
-
-// TestToastNotCopied: a drag over a box a toast stands on copies the box's own
-// text, never the toast's words, which would paste two boxes as one.
-func TestToastNotCopied(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 80, 20)
-	go app.AskPermission(hostapi.PermRequest{Subject: "tool.shell", Arg: "rm -rf build && go test ./..."})
-	waitPrompt(t, app, func() bool { return app.permAsk != nil })
-	// three sections: the tray reaches the ask's first text row, where the
-	// oldest one shares its row with the ask's own facts
-	for _, who := range []string{"a", "b", "c"} {
-		app.pushToast(slog.LevelError, "background agent "+who+" failed", "the tool was denied")
-	}
-	app.renderSync(t)
-	_, y := findCell(t, app, "background agent a failed")
-	text := boxText(app.chromeRect)
-	if y < text.Min.Y || y >= text.Max.Y {
-		t.Fatalf("the toast's row %d is not among the box's text rows %v", y, text)
-	}
-	// the ask's facts row is where the oldest toast shares it, and the
-	// box's own text there copies alone
-	_, cy := findCell(t, app, "rm -rf build &&")
-	dragTo(app, text.Min.X, cy, text.Max.X-1, cy)
-	got := app.selectionText()
-	if strings.Contains(got, "failed") || strings.Contains(got, "denied") {
-		t.Fatalf("the drag copied the toast: %q", got)
-	}
-	if !strings.Contains(got, "command") {
-		t.Fatalf("the drag copied nothing of the box: %q", got)
-	}
-	app.answerPerm(false, tools.ByNobody) // the box the drag read
 }

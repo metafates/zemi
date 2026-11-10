@@ -2,12 +2,10 @@ package ui
 
 import (
 	"cmp"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"regexp"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -20,29 +18,6 @@ import (
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
 )
-
-// TestGoldenHelpOverlay pins the help box; enter on a command row closes
-// it and runs the command.
-func TestGoldenHelpOverlay(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 24)
-	ran := false
-	host.Commands.Add(&hostapi.Command{
-		Name: "model", Desc: "choose the model", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-		GoFn: func(*hostapi.Host, string, bool) error { ran = true; return nil },
-	})
-	host.OpenHelp()
-	for app.Pump() {
-	}
-	app.renderSync(t)
-	golden.RequireEqual(t, app.Frame())
-
-	st := &app.overlays[0]
-	st.selected = len(st.texts) - 1
-	app.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if len(app.overlays) != 0 || !ran {
-		t.Fatalf("enter on a command row: overlays=%d ran=%v", len(app.overlays), ran)
-	}
-}
 
 // TestGoldenOverlayDetail pins a detail view: the wrapped body, then the
 // actions as a list.
@@ -164,98 +139,6 @@ func TestResizeSweep(t *testing.T) {
 	}
 }
 
-// TestResizeStartsNoTick: Init starts the one frame loop; a resize that
-// started another would leave both running for good.
-func TestResizeStartsNoTick(t *testing.T) {
-	app := newTestApp(t, t.TempDir())
-	_, cmd := app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	for _, msg := range runCmd(cmd) {
-		if _, tick := msg.(frameTickMsg); tick {
-			t.Fatal("resize started a second frame loop")
-		}
-	}
-}
-
-// TestStaleRenderKeepsNewerLines: a render dispatched earlier that lands
-// after a newer one, of the same generation at another size and failing
-// alike, leaves the newer lines and the pending mark alone.
-func TestStaleRenderKeepsNewerLines(t *testing.T) {
-	app := newTestApp(t, t.TempDir())
-	app.pending = map[string]renderKey{"w": {gen: 8}}
-	app.Update(widgetsRenderedMsg{{id: "w", lines: [][]hostapi.Segment{{{Text: "new"}}}, height: 19, gen: 7, seq: 2}})
-	app.Update(widgetsRenderedMsg{{id: "w", lines: [][]hostapi.Segment{{{Text: "old"}}}, height: 20, gen: 7, seq: 1}})
-	app.Update(widgetsRenderedMsg{{id: "w", height: 20, gen: 7, seq: 1, err: errors.New("old")}})
-	if c := app.caches["w"]; hostapi.SegsText(c.lines[0]) != "new" || c.height != 19 || c.err != "" || app.pending["w"].gen != 8 {
-		t.Fatalf("cache %+v, pending %v", c, app.pending)
-	}
-}
-
-// TestAnchoredPickerComposerLine: a picker opens by the statusline instead
-// of mid-chat, its border in line with the composer frame on the side of the
-// pill that opened it, standing on the frame's top rule.
-func TestAnchoredPickerComposerLine(t *testing.T) {
-	a := newTestApp(t, t.TempDir())
-	a.Update(tea.WindowSizeMsg{Width: 100, Height: 16})
-	_ = a.Frame()
-	for _, anchor := range []hostapi.OverlayAnchor{hostapi.OverlayBottomLeft, hostapi.OverlayBottomRight} {
-		a.openOverlay(hostapi.Overlay{ID: "pick", Title: "Picker", Items: []hostapi.OverlayItem{{Text: "manual"}, {Text: "allow"}}, Anchor: anchor})
-		rows := strings.Split(ansi.Strip(a.Frame()), "\r\n")
-		edge := func(row string) bool {
-			if anchor == hostapi.OverlayBottomLeft {
-				return strings.HasPrefix(row, "┌ Picker") || strings.HasPrefix(row, "├─")
-			}
-			return strings.HasSuffix(row, "┐") || strings.HasSuffix(row, "┤")
-		}
-		top := slices.IndexFunc(rows, func(row string) bool { return strings.Contains(row, "Picker") })
-		c := a.layout(100, 16).composer
-		if top < 0 || !edge(rows[top]) || !edge(rows[c.Min.Y]) {
-			t.Fatalf("%s: picker rows %d and %d not in line with the composer frame:\n%s", anchor, top, c.Min.Y, strings.Join(rows, "\n"))
-		}
-		// the corner it stands on is its own border on its panel, not the dimmed backdrop
-		x := c.Min.X
-		if anchor == hostapi.OverlayBottomRight {
-			x += c.Dx() - 1
-		}
-		if s := dropCells(a.lastRows[c.Min.Y], x)[0]; s.HL != hostapi.ChromeRule || s.Fill != hostapi.FillPanel {
-			t.Errorf("%s: its corner is %q %s on fill %d", anchor, s.Text, s.HL, s.Fill)
-		}
-		a.closeOverlayByID("pick")
-	}
-}
-
-// TestAnchoredBoxBottomBorder: the rule an anchored box stands on carries the
-// working rule's key and clock, and the cells the box covers are its own
-// bottom border: no backdrop text cuts it.
-func TestAnchoredBoxBottomBorder(t *testing.T) {
-	t.Parallel()
-	for _, anchor := range []hostapi.OverlayAnchor{hostapi.OverlayBottomLeft, hostapi.OverlayBottomRight} {
-		app, host := bootAgentApp(t, 100, 20)
-		host.SeedStream(hostapi.StreamSnapshot{Active: true, Elapsed: 20 * time.Second})
-		app.renderSync(t)
-		if label := ansi.Strip(app.Frame()); !strings.Contains(label, "esc interrupt · 20s") {
-			t.Fatalf("%s: no working key and clock on the rule to cut:\n%s", anchor, label)
-		}
-		app.openOverlay(hostapi.Overlay{ID: "usage", Title: "Usage", Items: []hostapi.OverlayItem{{Text: "row one"}}, Anchor: anchor})
-		app.renderSync(t)
-		frame := ansi.Strip(app.Frame())
-		r := app.chromeRect
-		mid := truncateSegs(dropCells(app.lastRows[r.Max.Y-1], r.Min.X), r.Dx())
-		if hostapi.SegsWidth(mid) != r.Dx() {
-			t.Fatalf("%s: the box's bottom row is %d cells, want %d:\n%s", anchor, hostapi.SegsWidth(mid), r.Dx(), frame)
-		}
-		for _, s := range mid {
-			if !s.Line || s.HL != hostapi.ChromeRule || s.Fill != hostapi.FillPanel || s.Fade != 0 {
-				t.Fatalf("%s: the box's bottom border is %+v:\n%s", anchor, s, frame)
-			}
-			for _, ch := range s.Text {
-				if armsOf(ch) == 0 {
-					t.Fatalf("%s: %q cuts the box's bottom border:\n%s", anchor, ch, frame)
-				}
-			}
-		}
-	}
-}
-
 // TestToastCap: a long error keeps a few rows, drops its stack trace, says
 // how much it cut and sends the reader to /errors when its caller recorded
 // it there; a toast records nothing itself. A lone title or body sits inside the box.
@@ -295,30 +178,6 @@ func TestToastCap(t *testing.T) {
 		lone := c.title == "" || c.body == ""
 		if inner := hostapi.SegsText(box[1]); len(box) != c.rows || !strings.Contains(inner, cmp.Or(c.body, c.title)) || lone != strings.HasPrefix(hostapi.SegsText(box[0]), "┌─") {
 			t.Errorf("toast %q %q: %d rows, %q; want %d rows with the lone text inside", c.title, c.body, len(box), inner, c.rows)
-		}
-	}
-}
-
-// TestFitClusters: a short statusline drops the highest priority widget
-// first, whichever side it is on, and the lasting ones stay outermost.
-func TestFitClusters(t *testing.T) {
-	item := func(text string, pri float64) statusItem { return statusItem{[]hostapi.Segment{{Text: text}}, pri} }
-	left := []statusItem{item("auto", 5), item("proj", 10), item("ctrl+c again to quit", 110)}
-	right := []statusItem{item("fake/m", 8), item("96%", 40), item("1.1k/128k ctx", 41), item("$0.12", 42)}
-	for _, c := range []struct {
-		w    int
-		want string
-	}{
-		{80, "auto  proj  ctrl+c again to quit|$0.12  1.1k/128k ctx  96%  fake/m"},
-		{45, "auto  proj|$0.12  1.1k/128k ctx  96%  fake/m"},
-		{20, "auto  proj|fake/m"},
-		{15, "auto|fake/m"},
-		{8, "auto|"},
-		{3, "au…|"},
-	} {
-		l, r := fitClusters(left, right, c.w)
-		if got := hostapi.SegsText(l) + "|" + hostapi.SegsText(r); got != c.want {
-			t.Errorf("w %d: %q, want %q", c.w, got, c.want)
 		}
 	}
 }

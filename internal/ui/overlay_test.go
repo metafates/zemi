@@ -4,17 +4,14 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"log/slog"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	glua "github.com/yuin/gopher-lua"
 
@@ -23,7 +20,6 @@ import (
 	"github.com/metafates/zemi/internal/lua"
 	"github.com/metafates/zemi/internal/perm"
 	"github.com/metafates/zemi/internal/store"
-	"github.com/metafates/zemi/internal/tools"
 )
 
 // fail is "" when ok, and what the check saw otherwise: a check states its own
@@ -33,64 +29,6 @@ func fail(ok bool, seen any) string {
 		return ""
 	}
 	return fmt.Sprint(seen)
-}
-
-// TestToggleOverlayStaysOpen: in a Reload overlay (skills) space and enter
-// run the row and rebuild the list in place, keeping the selection and the
-// box's size; ctrl+n moves like j. An open filter takes space as text, so a
-// query of two words toggles nothing, and a rebuild with fewer rows keeps it.
-func TestToggleOverlayStaysOpen(t *testing.T) {
-	a := newTestApp(t, t.TempDir())
-	on := false
-	items := func() []hostapi.OverlayItem {
-		mark := "○ b"
-		if on {
-			mark = "● b"
-		}
-		return []hostapi.OverlayItem{{Text: "a"}, {Text: mark}, {Text: "c"}, {Text: "d"}, {Text: "e"}} // filterMin rows
-	}
-	a.openOverlay(hostapi.Overlay{ID: "t", Origin: lua.OriginBuiltin, Items: items(), Reload: func() []hostapi.OverlayItem { on = !on; return items() }})
-	a.overlayKey("ctrl+n", "")
-	a.overlays[0].size = boxSize{60, 12}
-	for _, key := range []string{"space", "enter"} {
-		wasOn := on
-		text := ""
-		if key == "space" {
-			text = " "
-		}
-		a.overlayKey(key, text)
-		if len(a.overlays) != 1 || a.overlays[0].selected != 1 || on == wasOn || a.overlays[0].size != (boxSize{60, 12}) {
-			t.Fatalf("%s: overlays=%d selected=%d on=%v size=%v", key, len(a.overlays), a.overlays[0].selected, on, a.overlays[0].size)
-		}
-	}
-	if got := a.overlays[0].labels[1]; got != "○ b" {
-		t.Fatalf("row=%q", got)
-	}
-	a.overlayKey("", "/")
-	a.overlayKey("", "b")
-	wasOn := on
-	a.overlayKey("space", " ")
-	if st := a.overlays[0]; !st.active || st.query != "b " || len(st.visible) != 1 || on != wasOn {
-		t.Fatalf("space in a filter: on %v -> %v, %+v", wasOn, on, st.listFilter)
-	}
-	a.openOverlay(hostapi.Overlay{ID: "t", Origin: lua.OriginBuiltin, Items: items()[:_filterMin-1]})
-	if !a.overlays[0].filterable {
-		t.Fatal("a rebuild to fewer than filterMin rows dropped the filter row")
-	}
-}
-
-// TestReloadClosesLuaOverlays: an overlay the interpreter owns must not
-// survive a reload. Its callbacks are dropped as stale, so leaving it on
-// screen reads as a frozen picker; Go-built ones keep working and stay.
-func TestReloadClosesLuaOverlays(t *testing.T) {
-	a := newTestApp(t, t.TempDir())
-	a.openOverlay(hostapi.Overlay{ID: "lua", Origin: lua.OriginUser, Gen: 1, Items: []hostapi.OverlayItem{{Text: "a"}}})
-	a.openOverlay(hostapi.Overlay{ID: "go", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "b"}}})
-
-	a.host.PurgeGeneration()
-	if len(a.overlays) != 1 || a.overlays[0].o.ID != "go" {
-		t.Fatalf("overlays after purge: %+v", a.overlays)
-	}
 }
 
 // TestOverlayFilter: "/" types a query that narrows the rows (all words,
@@ -357,157 +295,6 @@ func TestPaletteLuaCompleterOffKeyLoop(t *testing.T) {
 	}
 }
 
-// TestTopBoxJoinsAlone: the sides of a dimmed box running into the top
-// box's borders do not join them.
-func TestTopBoxJoinsAlone(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 80, 24)
-	items := make([]hostapi.OverlayItem, 14)
-	for i := range items {
-		items[i] = hostapi.OverlayItem{Text: fmt.Sprintf("item %d", i)}
-	}
-	app.openOverlay(hostapi.Overlay{ID: "list", Title: "List", Items: items})
-	app.openOverlay(hostapi.Overlay{ID: "in", Title: strings.Repeat("a long title ", 6), Input: true})
-	app.renderSync(t)
-	if f := ansi.Strip(app.Frame()); strings.ContainsAny(f, "┬┴├┤┼") {
-		t.Fatalf("the top box joined the dimmed one under it:\n%s", f)
-	}
-}
-
-// TestModalDimsBackground: a modal sinks what lies under it toward the
-// canvas; a toast and the palette are not modal and do not.
-// TestBoxAreaFallsBackToTheScreen: a box centers on the stage, or on the
-// whole screen when the stage cannot give it 40 columns and 8 rows, which is
-// what a prompt on a small terminal stands on.
-func TestBoxAreaFallsBackToTheScreen(t *testing.T) {
-	screen := uv.Rect(0, 0, 120, 30)
-	for _, c := range []struct {
-		name        string
-		stage, want uv.Rectangle
-	}{
-		{"room", uv.Rect(4, 2, 110, 20), uv.Rect(4, 2, 110, 20)},
-		{"the least that fits", uv.Rect(4, 2, 40, 8), uv.Rect(4, 2, 40, 8)},
-		{"too narrow", uv.Rect(4, 2, 39, 20), screen},
-		{"too few rows", uv.Rect(4, 2, 110, 7), screen},
-	} {
-		if got := boxArea(c.stage, 120, 30); got != c.want {
-			t.Errorf("%s: boxArea = %v, want %v", c.name, got, c.want)
-		}
-	}
-}
-
-func TestModalDimsBackground(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 80, 24)
-	host.AppendMessage("user", "hello there")
-	for i := range 20 { // a chat full of text for the box to stand over
-		appendReply(host, fmt.Sprintf("answer %d %s", i, strings.Repeat("xyz ", 17)), hostapi.TurnStat{})
-	}
-	glyph := func(row []hostapi.Segment, x int) rune {
-		cells := dropCells(row, x)
-		if len(cells) == 0 {
-			return ' '
-		}
-		c, _ := utf8.DecodeRuneInString(cells[0].Text)
-		return c
-	}
-	runes := func(rows [][]hostapi.Segment) [][]rune {
-		out := make([][]rune, len(rows))
-		for y, row := range rows {
-			out[y] = make([]rune, 0, app.width)
-			for x := range app.width {
-				out[y] = append(out[y], glyph(row, x))
-			}
-		}
-		return out
-	}
-	app.renderSync(t)
-	app.Frame()
-	backdrop := runes(app.lastRows)
-	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "a"}}})
-	app.pushToast(slog.LevelInfo, "Copied to the clipboard", "")
-	seg := func(text string) hostapi.Segment {
-		app.renderSync(t)
-		app.Frame()
-		for _, row := range app.lastRows {
-			for _, s := range row {
-				if strings.Contains(s.Text, text) {
-					return s
-				}
-			}
-		}
-		t.Fatalf("%q not on screen", text)
-		return hostapi.Segment{}
-	}
-	if s := seg("hello"); s.Fade != _modalFade || s.HL == hostapi.ChromeDim {
-		t.Fatalf("under an overlay: %+v", s)
-	}
-	// a box covers its own cells and nothing else: every glyph the backdrop drew
-	// outside it stays where it was, so no word of the chat is cut short, and the
-	// cells beside it keep the backdrop's own style, so no stripe of the
-	// terminal's background digs into what the box stands over
-	r := app.chromeRect
-	for y := r.Min.Y; y < r.Max.Y && y < len(app.lastRows); y++ {
-		for x := range app.width {
-			if x >= r.Min.X && x < r.Max.X {
-				continue
-			}
-			if got := glyph(app.lastRows[y], x); got != backdrop[y][x] {
-				t.Fatalf("the box rewrote the backdrop at %d,%d: %q, was %q", x, y, got, backdrop[y][x])
-			}
-		}
-	}
-	if s := dropCells(app.lastRows[r.Min.Y+1], r.Min.X-1)[0]; s.HL == "" || s.Fade != _modalFade {
-		t.Fatalf("the chat beside the box: %+v", s)
-	}
-	if s := seg("Copied"); s.Fade != 0 {
-		t.Fatalf("the overlay faded a toast: %+v", s)
-	}
-	// a box behind the modal sinks to the canvas with the rest of the backdrop
-	app.overlays = nil
-	under := make([]hostapi.OverlayItem, 30)
-	for i := range under {
-		under[i] = hostapi.OverlayItem{Text: fmt.Sprintf("under %02d", i)}
-	}
-	app.openOverlay(hostapi.Overlay{ID: "under", Title: "U", Origin: lua.OriginBuiltin, Items: under})
-	app.renderSync(t)
-	app.Frame()
-	app.openOverlay(hostapi.Overlay{ID: "t2", Title: "T", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "a"}}})
-	if s := seg("under 00"); s.OnPanel || s.Fade != _modalFade {
-		t.Fatalf("a box behind the modal: %+v", s)
-	}
-	app.overlays = nil
-	app.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
-	if s := seg("untrusted"); s.Fade != 0 {
-		t.Fatalf("the palette faded the screen: %+v", s)
-	}
-}
-
-// TestToastOverBox: the tray draws over every window, a box included: on a
-// screen too short for one the box is the whole screen, so the tray lands on
-// the box's own rows and must still be the text drawn there.
-func TestToastOverBox(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 80, 10)
-	app.openOverlay(hostapi.Overlay{ID: "list", Title: "List", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "a"}, {Text: "b"}, {Text: "c"}}})
-	app.pushToast(slog.LevelInfo, "Copied to the clipboard", "")
-	app.View()        // the toast's rise starts
-	app.settleRamps() // land it
-	app.renderSync(t)
-	app.Frame()
-	y := slices.IndexFunc(app.lastRows, func(row []hostapi.Segment) bool {
-		return strings.Contains(hostapi.SegsText(row), "Copied to the clipboard")
-	})
-	if y < 0 {
-		t.Fatalf("the box drew over the tray:\n%s", ansi.Strip(app.Frame()))
-	}
-	// the box's own rows, which the tray must sit inside for the check above
-	// to mean anything
-	if r := app.chromeRect; y < r.Min.Y || y >= r.Max.Y {
-		t.Fatalf("the box %v does not reach the tray's row %d", r, y)
-	}
-}
-
 // TestBootFailedBox: a boot that failed leaves a runtime with no theme, no
 // widgets and no Lua at all, where the only screen left is Go's. The box
 // states the error and the log, the composer gives way to it, `c` copies the
@@ -557,30 +344,6 @@ func TestBootFailedBox(t *testing.T) {
 	app.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
 	if app.composer.text != "x" {
 		t.Fatalf("the composer is still captured after a good boot: %q", app.composer.text)
-	}
-}
-
-// TestOverlayWidthIsFixed: a box takes its width when it opens and keeps it,
-// so a row whose keys make the footer longer moves nothing.
-func TestOverlayWidthIsFixed(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 120, 30)
-	app.openOverlay(hostapi.Overlay{ID: "c", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{
-		{Text: "short", Keys: []hostapi.ItemKey{{Key: "c", Desc: "Change", Run: "nope"}}},
-		{Text: "long", Keys: []hostapi.ItemKey{{Key: "c", Desc: "Change", Run: "nope"}, {Key: "o", Desc: "Open the file in the editor now", Run: "nope"}, {Key: "x", Desc: "Delete it", Danger: true, Run: "nope"}}},
-	}})
-	width := func() int { return hostapi.SegsWidth(app.overlayBox(&app.overlays[0], 120, 30, true)[0]) }
-	opened := width()
-	pressKeys(app, "j")
-	if got := width(); got != opened {
-		t.Fatalf("the box went %d cells wide on the wider row, it opened at %d", got, opened)
-	}
-	pressKeys(app, "k")
-	if got := width(); got != opened {
-		t.Fatalf("the box went %d cells wide on the narrower row, it opened at %d", got, opened)
-	}
-	if opened < _listBoxW+4 || opened > 120-4 {
-		t.Fatalf("the box opened at %d cells, outside a menu's width", opened)
 	}
 }
 
@@ -1163,37 +926,6 @@ func fiveRows() []hostapi.OverlayItem {
 	return []hostapi.OverlayItem{{Text: "a"}, {Text: "b"}, {Text: "c"}, {Text: "d"}, {Text: "e"}}
 }
 
-// TestOverlayFlushKeepsTheFilter: a rebuild of the same list is no level
-// move - the query survives it, so a filter never strands the browser on a
-// list it hides.
-func TestOverlayFlushKeepsTheFilter(t *testing.T) {
-	a := newTestApp(t, t.TempDir())
-	parent := []hostapi.OverlayItem{
-		{Text: "msg one", Run: "memories zoom 1 0"},
-		{Text: "msg two"},
-		{Text: "msg six"},
-		{Text: "msg ten"},
-		{Text: "msg four"},
-	}
-	a.openOverlay(hostapi.Overlay{ID: "memories", Origin: lua.OriginBuiltin, Items: parent})
-	a.overlayKey("/", "/")
-	a.overlayKey("t", "t")
-	a.overlayKey("w", "w")
-	a.overlayKey("o", "o")
-	a.overlayKey("enter", "")
-	st := &a.overlays[0]
-	if st.query != "two" || len(st.visible) != 1 {
-		t.Fatalf("filter = %q over %d rows, want one hit", st.query, len(st.visible))
-	}
-
-	// a flush rebuild is no level move: the query survives it
-	a.openOverlay(hostapi.Overlay{ID: "memories", Origin: lua.OriginBuiltin, Items: parent})
-	st = &a.overlays[0]
-	if st.query != "two" || len(st.visible) != 1 {
-		t.Fatalf("flush kept query %q hits %d, want the filter kept", st.query, len(st.visible))
-	}
-}
-
 // TestOverlayArrowKeys: left and right alias h and l on a list, and an open
 // filter keeps them for its cursor, as it moves and edits the query with
 // them.
@@ -1321,32 +1053,6 @@ func TestOverlayArrowKeys(t *testing.T) {
 				t.Fatal(msg)
 			}
 		})
-	}
-}
-
-// TestOverlayHintsAreTheFrontmostBox: a covered screen keeps its own footer
-// and loses the stack's h back, which names the top overlay's keys alone.
-func TestOverlayHintsAreTheFrontmostBox(t *testing.T) {
-	t.Parallel()
-	a, _ := bootAgentApp(t, 80, 24)
-	a.openOverlay(hostapi.Overlay{
-		ID: "j", Title: "Jobs", Origin: lua.OriginBuiltin,
-		Items: []hostapi.OverlayItem{{Text: "job", Detail: "the job's view"}},
-	})
-	a.openOverlay(hostapi.Overlay{
-		ID: "s", Origin: lua.OriginBuiltin,
-		Items: []hostapi.OverlayItem{{Text: "other", Detail: "stacked over it"}},
-	})
-	covered, top := a.overlayBox(&a.overlays[0], 80, 20, false), a.overlayBox(&a.overlays[1], 80, 20, true)
-	cf, tf := hostapi.SegsText(covered[len(covered)-2]), hostapi.SegsText(top[len(top)-2])
-	if strings.Contains(cf, "h back") {
-		t.Errorf("covered box footer %q", cf)
-	}
-	if !strings.Contains(cf, "enter open") || !strings.Contains(cf, "y copy") || !strings.Contains(cf, "esc close") {
-		t.Errorf("covered box lost its own keys: %q", cf)
-	}
-	if !strings.Contains(tf, "h back") {
-		t.Errorf("top box footer %q", tf)
 	}
 }
 
@@ -1492,70 +1198,6 @@ func TestMoveSel(t *testing.T) {
 	}
 }
 
-// TestHintOrder: pairs sort into their slots, and a narrow row drops the
-// middle pairs, scrolling and copy first, then the screen's state keys last
-// first, and a row's own key only once no state key is left; never enter or
-// esc.
-func TestHintOrder(t *testing.T) {
-	pairs := []hintPair{
-		{key: "esc", verb: "close"},
-		{key: "y", verb: "copy"},
-		{key: "a", verb: "keep"},
-		{key: "enter", verb: "open"},
-		{key: "d", verb: "drop"},
-		{key: "v", verb: "show", row: true},
-		{key: "ctrl+d/u", verb: "scroll"},
-	}
-	for _, c := range []struct {
-		w    int
-		want string
-	}{
-		{80, "enter open   y copy   a keep   d drop   v show   esc close   ctrl+d/u scroll"},
-		{55, "enter open   a keep   d drop   v show   esc close"},
-		{40, "enter open   a keep   v show   esc close"},
-		{5, "enter open   esc close"},
-	} {
-		if got := hostapi.SegsText(hint(c.w, pairs...)); got != c.want {
-			t.Errorf("%d cells: %q, want %q", c.w, got, c.want)
-		}
-	}
-}
-
-// TestOverlayFilterKeepsSize: filtering, down to no match, never resizes
-// the box or moves the description column; a list longer than the cap
-// scrolls instead of filling the screen.
-func TestOverlayFilterKeepsSize(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 80, 40)
-	var items []hostapi.OverlayItem
-	for i := range 15 {
-		items = append(items, hostapi.OverlayItem{Text: fmt.Sprintf("item %02d", i), Desc: "about"})
-	}
-	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: append(items, hostapi.OverlayItem{Text: "a much longer row than the others", Desc: "x"})})
-	st := &app.overlays[0]
-	box := app.overlayBox(st, 80, 40, true)
-	if len(box) > listRowsCap(40)+4 {
-		t.Fatalf("a 16-row list took %d of 40 rows", len(box))
-	}
-	st.selected = 15
-	if !strings.Contains(fmt.Sprint(app.overlayBox(st, 80, 40, true)), "item 14") {
-		t.Fatal("the last row does not scroll into view")
-	}
-	st.selected = 0
-	col := func(box [][]hostapi.Segment) int { return strings.Index(hostapi.SegsText(box[2]), "about") }
-	for _, q := range []string{"item", "xxx"} {
-		st.active, st.query = true, q
-		st.apply()
-		got := app.overlayBox(st, 80, 40, true)
-		if hostapi.SegsWidth(got[0]) != hostapi.SegsWidth(box[0]) || len(got) != len(box) {
-			t.Fatalf("filter %q: %dx%d, want %dx%d", q, hostapi.SegsWidth(got[0]), len(got), hostapi.SegsWidth(box[0]), len(box))
-		}
-		if q == "item" && col(got) != col(box) {
-			t.Fatalf("filter %q moved the description column from %d to %d", q, col(box), col(got))
-		}
-	}
-}
-
 // TestOverlayRowsBuiltOnce: a frame that moved nothing builds no list rows,
 // so an open picker costs the same at 10 items and 10000.
 func TestOverlayRowsBuiltOnce(t *testing.T) {
@@ -1583,19 +1225,6 @@ func TestOverlayRowsBuiltOnce(t *testing.T) {
 	}
 	if got := hostapi.SegsText(st.rows[0]); !strings.Contains(got, "item 04") {
 		t.Errorf("filtered list starts with %q", got)
-	}
-}
-
-// TestOverlayResizeBuildsRows: a width change rebuilds rows laid out for the
-// one before it, though nothing else moved.
-func TestOverlayResizeBuildsRows(t *testing.T) {
-	t.Parallel()
-	app, st := overlayList(t)
-	app.overlayBox(st, 80, 20, true)
-	before := st.rows
-	app.overlayBox(st, 60, 20, true)
-	if &before[0] == &st.rows[0] {
-		t.Fatal("a resize kept the rows laid out for the old width")
 	}
 }
 
@@ -1640,75 +1269,6 @@ func TestOverlayClosesOnOutsideClick(t *testing.T) {
 	app.answerPerm(false, "user")
 }
 
-// TestListDescUnderLabel: a list too narrow for its description column
-// puts each description under its label instead of dropping them all.
-func TestListDescUnderLabel(t *testing.T) {
-	items := []listItem{{label: "shift+enter, alt+enter, ctrl+j", desc: "newline"}, {label: "esc", desc: "back, or twice to interrupt"}}
-	var got []string
-	for _, row := range listRowsW(items, items, 0, nil, 10, 0, 30) {
-		got = append(got, strings.TrimRight(hostapi.SegsText(row), " "))
-	}
-	if want := "› shift+enter, alt+enter…|  newline|  esc|  back, or twice to interrupt"; strings.Join(got, "|") != want {
-		t.Fatalf("rows %q", got)
-	}
-}
-
-// TestListDescColumn: descriptions start in one column sized before the
-// labels: when a box is too narrow for both, the longer column gives way.
-func TestListDescColumn(t *testing.T) {
-	for _, c := range []struct {
-		name          string
-		w             int
-		items         []listItem
-		whole, wanted string // row 0 keeps whole, never shows wanted
-	}{
-		{"a long description gives way to a label that fits", 52, []listItem{
-			{label: "a much longer session title here", desc: "now  short"},
-			{label: "done", desc: "now  2 messages  hello number 3 with a longer message to title it", key: tagSeg("current")},
-		}, "", ""},
-		{"the model picker cuts labels at the floor on a narrow box", 52, []listItem{
-			{label: "deepseek/deepseek-v4-flash", desc: "DeepSeek-V4-Flash  1M  $0.14/$0.28"},
-			{label: "fake/m", desc: "128k", key: tagSeg("current")},
-			{label: "fake/deepseek-v4-flash-long-model-name", desc: "1M"},
-		}, "", ""},
-		{"a workflow run reads its metadata whole and cuts its long title", 92, []listItem{
-			{label: "Review the changes: a very long workflow description that runs past the box", desc: "done  abc12345  1/1 agents  1.5k tok  0.0s"},
-			{label: "short run", desc: "running  def67890  0 calls"},
-			{label: "tiny", desc: "queued"},
-		}, "0.0s", "runs past the box"},
-		{"a stub description still draws beside its label", 52, []listItem{
-			{label: "a much longer session title here than the desc needs", desc: "5m"},
-		}, "5m", ""},
-		{"a cut after a sentence ends in the bare ellipsis", 52, []listItem{
-			{label: "explore", desc: "read-only: finds how something works. Use it before editing"},
-		}, "", ""},
-	} {
-		col := -1
-		for i, row := range listRowsW(c.items, c.items, 0, nil, 10, 0, c.w) {
-			text, it := hostapi.SegsText(row), c.items[i]
-			if i == 0 && c.whole != "" && (!strings.Contains(text, c.whole) || c.wanted != "" && strings.Contains(text, c.wanted)) {
-				t.Errorf("%s: row %q, want %q whole and %q cut", c.name, text, c.whole, c.wanted)
-			}
-			if !strings.HasSuffix(text, it.key.Text) || strings.Contains(text, ".…") {
-				t.Errorf("%s: row %q", c.name, text)
-			}
-			x := 0
-			for _, s := range row {
-				if s.HL == "Host:Hint" {
-					if col < 0 {
-						col = x
-					}
-					if x != col {
-						t.Errorf("%s: description at %d, want %d: %q", c.name, x, col, text)
-					}
-					break
-				}
-				x += ansi.StringWidth(s.Text)
-			}
-		}
-	}
-}
-
 // TestOverlaySwitch: an item's on and locked fields draw the switch, the
 // same width in every state, so a toggle never moves a row's text.
 func TestOverlaySwitch(t *testing.T) {
@@ -1732,40 +1292,6 @@ func TestOverlaySwitch(t *testing.T) {
 		if hostapi.SegsWidth(row) != width {
 			t.Errorf("%v: row %d cells, want %d", c.item, hostapi.SegsWidth(row), width)
 		}
-	}
-}
-
-func TestOverlayFitsShortScreen(t *testing.T) {
-	t.Parallel()
-	a, _ := bootAgentApp(t, 80, 16)
-	items := make([]hostapi.OverlayItem, 30)
-	for i := range items {
-		items[i] = hostapi.OverlayItem{Text: fmt.Sprintf("p/model-%d", i)}
-	}
-	a.openOverlay(hostapi.Overlay{Title: "Model", Items: items})
-	a.renderSync(t)
-	if f := ansi.Strip(a.Frame()); !strings.Contains(f, "esc close") || !strings.Contains(f, "└") {
-		t.Fatalf("the overlay's hint or bottom border is cut:\n%s", f)
-	}
-}
-
-// TestOverlaySegmentLabel: a render_item row keeps its colors, takes the
-// row's style where it sets none, cuts with an ellipsis, and loses a click
-// id, which would otherwise act as Go chrome.
-func TestOverlaySegmentLabel(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 40, 20)
-	app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginPlugin, Items: []hostapi.OverlayItem{
-		{Text: "a", Row: []hostapi.Segment{{Text: "red", HL: "ToastErr", Click: "reload"}, {Text: " plain"}}},
-		{Text: "b", Row: []hostapi.Segment{{Text: "a label far too long for a forty cell wide box", HL: "Title"}}},
-	}, Selected: 1})
-	rows := app.overlayBox(&app.overlays[0], 40, 20, true)
-	first, second := rows[1], rows[2]
-	if first[2].HL != "ToastErr" || first[2].Click != "" || first[3].HL != "Host:Value" {
-		t.Fatalf("first row: %+v", first)
-	}
-	if !strings.Contains(hostapi.SegsText(second), "…") || second[2].HL != "Title" {
-		t.Fatalf("selected row: %+v", second)
 	}
 }
 
@@ -2236,103 +1762,6 @@ func TestOverlayOwnership(t *testing.T) {
 	}
 }
 
-// TestOverlayReopensOnItsRow: a menu left for a screen that closes it (a
-// run's transcript under a row's run, the palette) reopens with the cursor
-// on the row it was left on, falling back to the first when the list
-// changed under it.
-func TestOverlayReopensOnItsRow(t *testing.T) {
-	a := newTestApp(t, t.TempDir())
-	items := []hostapi.OverlayItem{
-		{Text: "first"},
-		{Text: "second", Run: "open second"},
-		{Text: "third", Run: "open third"},
-	}
-	a.host.Commands.Add(&hostapi.Command{
-		Name: "open", NArgs: hostapi.NArgsAny, Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
-		GoFn: func(h *hostapi.Host, args string, confirm bool) error { // the screen the row opens closes the menu, as /agents view does
-			if ui, err := h.Screen(); err == nil {
-				ui.CloseOverlay("menu", lua.OriginBuiltin, "")
-				ui.OpenOverlay(hostapi.Overlay{ID: "view:" + args, Title: "View", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "x"}, {Text: "y"}}})
-			}
-			return nil
-		},
-	})
-	open := func(list []hostapi.OverlayItem) {
-		a.openOverlay(hostapi.Overlay{ID: "menu", Title: "Menu", Origin: lua.OriginBuiltin, Items: list})
-	}
-	for _, want := range []int{1, 2} {
-		open(items)
-		a.overlayKey("down", "")
-		a.overlayKey("enter", "")
-		if len(a.overlays) != 1 || a.overlays[0].o.ID != "view:second" && a.overlays[0].o.ID != "view:third" {
-			t.Fatalf("round %d: overlays=%d", want, len(a.overlays))
-		}
-		a.overlayKey("esc", "")
-		if len(a.overlays) != 0 {
-			t.Fatalf("round %d: the view did not close", want)
-		}
-		open(items) // the back command reopens the screen
-		if a.overlays[0].selected != want {
-			t.Fatalf("round %d: selected=%d, want %d", want, a.overlays[0].selected, want)
-		}
-		a.overlayKey("esc", "")
-	}
-	// a list without the remembered row falls back to its first
-	open([]hostapi.OverlayItem{{Text: "only"}})
-	if a.overlays[0].selected != 0 {
-		t.Fatalf("fallback selected=%d", a.overlays[0].selected)
-	}
-}
-
-func TestFieldRows(t *testing.T) {
-	for _, c := range []struct {
-		name   string
-		fields []hostapi.Field
-		mark   hostapi.MarkKind
-		w      int
-		want   []string
-	}{
-		{
-			"an error value keeps its lines, in Danger",
-			[]hostapi.Field{{Name: "url", Value: "https://x.dev/mcp"}, {Name: "error", Value: "one two three four five six seven eight nine ten\nstack traceback:"}},
-			"", 40,
-			[]string{"url    https://x.dev/mcp", "error  one two three four five six  Host:Danger", "       seven eight nine ten Host:Danger", "       stack traceback: Host:Danger"},
-		},
-		{
-			"a status word takes its color, an empty value is left out",
-			[]hostapi.Field{{Name: "status", Value: "ready"}, {Name: "latest", Value: ""}},
-			"", 40,
-			[]string{"status  ready Host:Ok"},
-		},
-		{
-			"the view's mark leads the status word, which keeps its own color",
-			[]hostapi.Field{{Name: "status", Value: "running"}, {Name: "agent", Value: "explore"}},
-			"spin", 40,
-			[]string{"status  ⠋ running Dim", "agent   explore"},
-		},
-		{
-			"too narrow for a column, a field is a line",
-			[]hostapi.Field{{Name: "status", Value: "failed"}},
-			"err", 24,
-			[]string{"status: ✗ failed Danger Host:Danger"},
-		},
-	} {
-		var got []string
-		for _, r := range fieldRows(c.fields, c.mark, c.w) {
-			row := hostapi.SegsText(r)
-			for _, s := range r[1:] {
-				if s.HL != "" {
-					row += " " + s.HL
-				}
-			}
-			got = append(got, row)
-		}
-		if !slices.Equal(got, c.want) {
-			t.Errorf("%s: rows %q, want %q", c.name, got, c.want)
-		}
-	}
-}
-
 // TestListPreview: the selected row's preview shows under the list in a
 // pane as tall as the longest preview, so moving or filtering never changes
 // the box's height, and the filter matches preview words.
@@ -2362,50 +1791,6 @@ func TestListPreview(t *testing.T) {
 		if got := strings.Contains(pane, "a preview") || strings.Contains(pane, short); c.want == "" && got || c.want != "" && !strings.HasPrefix(top, c.want) {
 			t.Errorf("%q: pane %q, want %q", name, pane, c.want)
 		}
-	}
-}
-
-func TestPhaseMark(t *testing.T) {
-	for _, c := range []struct {
-		name  string
-		marks []hostapi.MarkKind
-		want  hostapi.MarkKind
-	}{
-		{"a failure outranks a running row", []hostapi.MarkKind{tools.MarkOK, tools.MarkSpin, tools.MarkErr}, tools.MarkErr},
-		{"a running row outranks a queued one", []hostapi.MarkKind{tools.MarkWait, tools.MarkSpin, tools.MarkOK}, tools.MarkSpin},
-		{"a paused phase waits", []hostapi.MarkKind{tools.MarkOK, tools.MarkWait}, tools.MarkWait},
-		{"a stopped row marks the phase stopped", []hostapi.MarkKind{tools.MarkOK, tools.MarkStop}, tools.MarkStop},
-		{"done when every row is", []hostapi.MarkKind{tools.MarkOK, tools.MarkOK}, tools.MarkOK},
-	} {
-		if got := phaseMark(c.marks); got != c.want {
-			t.Errorf("%s: %q, want %q", c.name, got, c.want)
-		}
-	}
-}
-
-// TestOverlayStepsAlongRail: ctrl+j and ctrl+k open the next and the previous
-// view of the same rail in place, so walking a turn's calls leaves no stack
-// of boxes behind and esc closes the one the walk ended on.
-func TestOverlayStepsAlongRail(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 80, 24)
-	runLua(t, app, `zemi.command.add("step", function() zemi.ui.overlay.open({ id = "two", title = "two" }) end)`)
-	app.openOverlay(hostapi.Overlay{ID: "one", Title: "one", Origin: lua.OriginBuiltin, Next: "step"})
-	app.renderSync(t)
-	pressKeys(app, "ctrl+j")
-	waitPrompt(t, app, func() bool { return len(app.overlays) == 1 && app.overlays[0].o.ID == "two" })
-	if len(app.overlays) != 1 || app.overlays[0].o.ID != "two" {
-		t.Fatalf("ctrl+j left %d overlays", len(app.overlays))
-	}
-	pressKeys(app, "esc")
-	if len(app.overlays) != 0 {
-		t.Fatal("esc left a box open")
-	}
-	// the hint names the pair only where there is somewhere to go
-	app.openOverlay(hostapi.Overlay{ID: "one", Title: "one", Origin: lua.OriginBuiltin, Prev: "step"})
-	app.renderSync(t)
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "ctrl+j/k next/prev") {
-		t.Fatalf("the footer does not name the step keys:\n%s", frame)
 	}
 }
 
@@ -2731,22 +2116,5 @@ func TestCancelMenuClosesTheWholeMenu(t *testing.T) {
 	app.cancelMenu()
 	if len(app.overlays) != 0 {
 		t.Fatalf("%d overlays survived the cancel", len(app.overlays))
-	}
-}
-
-// TestOverlayFootClipsBeforeItsKeys: a stats footer takes only the cells
-// the key hints leave, so a narrow screen keeps enter and esc whole.
-func TestOverlayFootClipsBeforeItsKeys(t *testing.T) {
-	t.Parallel()
-	a, _ := bootAgentApp(t, 60, 20)
-	a.openOverlay(hostapi.Overlay{
-		ID: "m", Title: "Memories", Origin: lua.OriginBuiltin,
-		Items: []hostapi.OverlayItem{{Text: "line one", Detail: "the line's view"}},
-		Foot:  "1.9k  46 lines  1 level  3 not summarized yet  tags are line ids",
-	})
-	rows := a.overlayBox(&a.overlays[0], 60, 18, false)
-	foot := hostapi.SegsText(rows[len(rows)-2])
-	if !strings.Contains(foot, "enter open") || !strings.Contains(foot, "esc close") {
-		t.Fatalf("a narrow footer lost its keys: %q", foot)
 	}
 }

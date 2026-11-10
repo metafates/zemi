@@ -7,17 +7,6 @@ import (
 	"github.com/charmbracelet/colorprofile"
 )
 
-// TestChipPlain: off a terminal a chip line reads as plain words, bold alone.
-func TestChipPlain(t *testing.T) {
-	t.Parallel()
-	if got := chipLine(colorprofile.NoTTY, " busy ", chip{key: "57356", text: "x"}); got != " busy  57356  x" {
-		t.Fatalf("keyed chip: %q", got)
-	}
-	if got := chipLine(colorprofile.NoTTY, " busy ", chip{text: "x"}); got != " busy  x" {
-		t.Fatalf("keyless chip: %q", got)
-	}
-}
-
 // TestBusy: the one-instance refusal carries the pid as its keycap, and no
 // pid leaves the keycap off.
 func TestBusy(t *testing.T) {

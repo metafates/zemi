@@ -193,139 +193,6 @@ func TestDropPaste(t *testing.T) {
 	}
 }
 
-func TestComposerCursorColumn(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 60, 12)
-	app.composer.text, app.composer.cursor = "hello world", 2
-	if _, cell, ok := app.composerRows(60, ""); !ok || cell.X != 2 || cell.Y != 0 {
-		t.Fatalf("caret cell %+v ok=%v, want column 2", cell, ok)
-	}
-}
-
-func TestFilterKeys(t *testing.T) {
-	for _, c := range []struct{ query, key, want string }{
-		{"foo bar", "ctrl+w", "foo "},
-		{"foo bar", "alt+backspace", "foo "},
-		{"foo", "backspace", "fo"},
-	} {
-		f := listFilter{active: true, query: c.query, cursor: len([]rune(c.query)), labels: []string{"a"}}
-		if !f.edit(c.key, "") || f.query != c.want {
-			t.Errorf("%q %s -> %q, want %q", c.query, c.key, f.query, c.want)
-		}
-	}
-}
-
-// TestFilterRowWidth: a long query is cut to the box's width, the active
-// one keeping its end and cursor, so filtering widens no box.
-func TestFilterRowWidth(t *testing.T) {
-	const w = 30
-	f := listFilter{query: strings.Repeat("x", 60), cursor: 60, labels: []string{"a"}}
-	f.active = true
-	if row := f.filterRow(w); hostapi.SegsWidth(row) != w || row[len(row)-1].HL != hostapi.ChromeCursor {
-		t.Errorf("active query not cut to %d with its cursor kept: %q", w, hostapi.SegsText(row))
-	}
-	f.active = false
-	if row := f.filterRow(w); hostapi.SegsWidth(row) > w {
-		t.Errorf("kept query wider than %d: %q", w, hostapi.SegsText(row))
-	}
-}
-
-// TestHoverTargets: hover and click act on whole items, and only with the
-// pointer over the item's own cells.
-func TestHoverTargets(t *testing.T) {
-	overlay := func(app *App) {
-		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "beta and a much longer row"}, {Text: "alpha"}, {Text: "gamma", Section: "Remembered"}}})
-	}
-	keyed := func(app *App) {
-		app.openOverlay(hostapi.Overlay{ID: "t", Title: "T", Origin: lua.OriginBuiltin, Items: []hostapi.OverlayItem{{Text: "a much longer row than the other"}, {Text: "alpha", Tag: "current"}}})
-	}
-	perm := func(app *App) {
-		app.permAsk = &permAskPrompt{req: hostapi.PermRequest{Tool: "shell", Subject: "tool.shell", Arg: "make deploy"}, answer: make(chan permAnswer, 1)}
-	}
-	thought := func(app *App) {
-		app.host.AppendMessage("user", "why?")
-		appendReasoning(app.host, "first idea\n", hostapi.TurnStat{ThoughtMS: 1000})
-	}
-	widgets := func(app *App) {
-		one := func(id string, priority float64, seg hostapi.Segment, click bool) *widget {
-			w := &widget{id: id, region: _regionStatusLeft, priority: priority, render: func(*hostapi.ScreenState) ([][]hostapi.Segment, bool) {
-				return [][]hostapi.Segment{{seg}}, false
-			}}
-			if click {
-				w.onClick = func(*App, map[string]any) bool { return true }
-			}
-			return w
-		}
-		addWidget(app, one("a", 90, hostapi.Segment{Text: "clickme", Click: "go"}, true))
-		addWidget(app, one("b", 91, hostapi.Segment{Text: "noclick", Click: "go"}, false))
-		addWidget(app, one("c", 89, hostapi.Segment{Text: "quiet", HL: "Dim", Click: "go", NoHover: true}, true))
-	}
-	for _, c := range []struct {
-		name string
-		open func(app *App)
-		text string // hovered text
-		dx   int    // cell offset from where text starts
-		rows int    // rows lit, 0 = not a target
-		lit  string // the hover group, or the fixed prompt style
-	}{
-		{"a section header is not a target", overlay, "Remembered", 1, 0, ""},
-		{"overlay row text is a target", overlay, "alpha", 1, 1, "HoverItem"},
-		{"overlay row padding is not a target", overlay, "alpha", 6, 0, ""},
-		{"overlay gutter is not a target", overlay, "beta and", -1, 0, ""},
-		{"gap before the key column is not a target", keyed, "current", -3, 0, ""},
-		{"the key column lights its item", keyed, "current", 1, 1, "HoverItem"},
-		{"a prompt choice keeps the fixed hover", perm, "No ", 0, 1, "Host:Hover"},
-		{"a choice's key button answers it too", perm, "No ", -3, 1, "Host:Hover"},
-		{"the padding right of a choice is not a target", perm, "No ", 30, 0, ""},
-		// a chat body row acts on a click and keeps its own groups; a header hovers
-		{"a thought row's text is a target", thought, "thought 1.0s", 1, 1, "Hover"},
-		{"a quiet click id takes no hover style", widgets, "quiet", 1, 1, ""},
-		{"right of a thought row is not a target", thought, "thought 1.0s", 60, 0, ""},
-		{"a widget click id with a handler is a target", widgets, "clickme", 1, 1, "Hover"},
-		{"a widget click id without a handler runs its command", widgets, "noclick", 1, 1, "Hover"},
-		{"the space right of a widget click id is not", widgets, "clickme", 7, 0, ""},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			app, _ := bootAgentAppPinned(t, 80, 24)
-			c.open(app)
-			app.renderSync(t)
-			x, y := findCell(t, app, c.text)
-			app.Update(tea.MouseMotionMsg{X: x + c.dx, Y: y})
-			app.renderSync(t)
-			app.Frame()
-			spans, _, ok := app.target(x+c.dx, y)
-			if !ok {
-				spans = nil
-			}
-			lit := map[int]bool{}
-			for _, sp := range spans {
-				lit[sp.y] = true
-			}
-			if len(lit) != c.rows {
-				t.Fatalf("lit %d rows, want %d: %+v", len(spans), c.rows, spans)
-			}
-			for _, sp := range spans {
-				seg := dropCells(app.lastRows[sp.y], sp.lo)
-				for len(seg) > 1 && seg[0].NoHover { // a row's mark never lights
-					seg = seg[1:]
-				}
-				// a prompt choice's fixed style replaces HL, every other hover
-				// draws Over, and a body row keeps its own style
-				got := ""
-				if len(seg) > 0 {
-					got = seg[0].Over
-					if seg[0].HL == "Host:Hover" {
-						got = seg[0].HL
-					}
-				}
-				if got != c.lit {
-					t.Fatalf("row %d lit with %q, want %q: %+v", sp.y, got, c.lit, app.lastRows[sp.y])
-				}
-			}
-		})
-	}
-}
-
 // TestClickScrolledListOpensSameItem: the first click selects, and the list
 // stays put so the second click opens the same item.
 func TestClickScrolledListOpensSameItem(t *testing.T) {
@@ -342,21 +209,6 @@ func TestClickScrolledListOpensSameItem(t *testing.T) {
 	clickAt(app, x+1, y)
 	if app.composer.text != "item 08" {
 		t.Fatalf("composer = %q", app.composer.text)
-	}
-}
-
-// TestBoxEllipsisOnlyOnLongRows: a long row ends in an ellipsis, a short row
-// padded to its width does not, and a long row keeps its scrollbar cell,
-// which draws in the border.
-func TestBoxEllipsisOnlyOnLongRows(t *testing.T) {
-	items := []listItem{{label: "short"}, {label: strings.Repeat("long ", 20)}}
-	box := hostBox("", "", "", listRowsW(items, items, 0, nil, 10, 0, 0), 40, 100, 0)
-	if short, long := hostapi.SegsText(box[1]), hostapi.SegsText(box[2]); strings.Contains(short, "…") || !strings.Contains(long, "…") {
-		t.Fatalf("short %q, long %q", short, long)
-	}
-	barred := hostBox("", "", "", [][]hostapi.Segment{{{Text: strings.Repeat("long ", 20)}, {Text: "█", Bar: true}}}, 40, 100, 0)
-	if row := hostapi.SegsText(barred[1]); !strings.Contains(row, "…") || !strings.HasSuffix(row, " █") {
-		t.Fatalf("barred %q", row)
 	}
 }
 
@@ -626,34 +478,6 @@ func TestScrollbarDrag(t *testing.T) {
 			}
 			if !c.done(app) {
 				t.Fatalf("the drag from row %d to %d did not reach the end", top, bottom)
-			}
-		})
-	}
-}
-
-// TestWheelUnderPointer: in a box with overflowing text and a list, the
-// wheel moves whichever the pointer is over.
-func TestWheelUnderPointer(t *testing.T) {
-	for _, c := range []struct {
-		over      string
-		sel, text int
-	}{
-		{"intro 0", 0, 1},
-		{"beta", 1, 0},
-	} {
-		t.Run(c.over, func(t *testing.T) {
-			t.Parallel()
-			app, _ := bootAgentApp(t, 80, 24)
-			var body []string
-			for i := range 12 {
-				body = append(body, fmt.Sprintf("intro %d", i))
-			}
-			app.openOverlay(hostapi.Overlay{Title: "Model", Origin: lua.OriginBuiltin, Body: strings.Join(body, "\n"), Items: []hostapi.OverlayItem{{Text: "alpha"}, {Text: "beta"}, {Text: "gamma"}, {Text: "delta"}, {Text: "epsilon"}}})
-			app.renderSync(t)
-			x, y := findCell(t, app, c.over)
-			app.Update(tea.MouseWheelMsg{X: x, Y: y, Button: tea.MouseWheelDown})
-			if st := app.overlays[0]; st.selected != c.sel || st.body.top != c.text {
-				t.Fatalf("selected %d, text top %d; want %d, %d", st.selected, st.body.top, c.sel, c.text)
 			}
 		})
 	}

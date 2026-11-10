@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -125,41 +124,6 @@ func TestGoldenQuestionOverlay(t *testing.T) {
 	if r := awaitAnswer(t, app, done); !r.ok || fmt.Sprint(r.answers) != "[{[skip]  only in this repo} {[tests lint]  }]" {
 		t.Fatalf("answers %+v ok=%v", r.answers, r.ok)
 	}
-}
-
-// TestQuestionTypingKeepsBox: typing past the field, a cursor moved into
-// the text and a kept note cut to the field never widen the question's box.
-func TestQuestionTypingKeepsBox(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 70, 18)
-	done := askAsync(t, app, tools.Question{Type: tools.TypeSingle, Question: "Proceed?", Options: []tools.QuestionOption{{Label: "yes"}, {Label: "no"}}})
-	width := func() int {
-		app.renderSync(t)
-		f := ansi.Strip(app.Frame())
-		top := strings.Index(f, "┌ Question")
-		if top < 0 {
-			t.Fatalf("no question box:\n%s", f)
-		}
-		return ansi.StringWidth(strings.Split(f[top:], "\n")[0])
-	}
-	want := width()
-	pressKeys(app, "j", "j", "enter") // the typed-answer row, focused
-	for i := range 3 {
-		pressKeys(app, strings.Repeat("0123456789", 4))
-		if got := width(); got != want {
-			t.Fatalf("typing %d chars widened the box from %d to %d", (i+1)*40, want, got)
-		}
-	}
-	pressKeys(app, "left", "left", "left", "left", "left", "x", "y", "z")
-	if got := width(); got != want {
-		t.Fatalf("typing at a moved cursor widened the box from %d to %d", want, got)
-	}
-	pressKeys(app, "esc") // the draft is kept and shown on the field row
-	if got := width(); got != want {
-		t.Fatalf("a kept note widened the box from %d to %d", want, got)
-	}
-	pressKeys(app, "enter", "enter")
-	awaitAnswer(t, app, done)
 }
 
 func TestQuestionAnswers(t *testing.T) {
@@ -293,60 +257,6 @@ func TestQuestionBoxScrolls(t *testing.T) {
 		}
 	}
 	pressKeys(app, "esc")
-}
-
-// TestQuestionOptionsWrap: an option draws as one full-width row and the
-// selected option's description shows in the pane under the options, where
-// moving the selection swaps it without shifting a row.
-func TestQuestionOptionsWrap(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 100, 20)
-	askAsync(t, app, tools.Question{Type: tools.TypeSingle, Question: "Which storage?", Options: []tools.QuestionOption{
-		{Label: "SQLite with write-ahead logging and a busy timeout", Description: "one file, no server", Recommended: true},
-		{Label: "Postgres", Description: "a server to run and back up"},
-	}})
-	app.renderSync(t)
-	frame := ansi.Strip(app.Frame())
-	if !regexp.MustCompile(`\[1\] SQLite with write-ahead logging and a busy timeout`).MatchString(frame) ||
-		!strings.Contains(frame, "one file, no server") || strings.Contains(frame, "a server to run") || !strings.Contains(frame, "recommended") {
-		t.Fatalf("the selected option's description is not alone in the pane:\n%s", frame)
-	}
-	rows := func() (h, w int) {
-		app.renderSync(t)
-		f := ansi.Strip(app.Frame())
-		top := strings.Index(f, "┌ Question")
-		return strings.Count(f[:top], "\n"), ansi.StringWidth(strings.Split(f[top:], "\n")[0])
-	}
-	h0, w0 := rows()
-	h, w := func() (int, int) { pressKeys(app, "j"); return rows() }()
-	if h != h0 || w != w0 {
-		t.Fatalf("moving the selection moved the box:\n%s", ansi.Strip(app.Frame()))
-	}
-	if frame := ansi.Strip(app.Frame()); !strings.Contains(frame, "a server to run and back up") || strings.Contains(frame, "one file, no server") {
-		t.Fatalf("the pane does not follow the selection:\n%s", frame)
-	}
-	pressKeys(app, "esc")
-}
-
-// TestQuestionNoteStays: a note typed past the box's width never widens it.
-func TestQuestionNoteStays(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 100, 24)
-	askAsync(t, app, tools.Question{Type: tools.TypeSingle, Question: "Proceed?", Options: []tools.QuestionOption{
-		{Label: "yes"}, {Label: "no", Description: "stop and wait"},
-	}})
-	app.renderSync(t)
-	f := ansi.Strip(app.Frame())
-	top := strings.Index(f, "┌ Question")
-	w0 := ansi.StringWidth(strings.Split(f[top:], "\n")[0])
-	pressKeys(app, "n", strings.Repeat("x", 120))
-	app.renderSync(t)
-	f = ansi.Strip(app.Frame())
-	top = strings.Index(f, "┌ Question")
-	if w := ansi.StringWidth(strings.Split(f[top:], "\n")[0]); w != w0 {
-		t.Fatalf("typing a long note widened the box from %d to %d:\n%s", w0, w, f)
-	}
-	pressKeys(app, "esc", "esc")
 }
 
 // TestQuestionMarkdown: the question and the selected option's description

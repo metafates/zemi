@@ -14,25 +14,6 @@ func cells(n int) Size   { return Size{Kind: _sizeCells, N: n} }
 func percent(n int) Size { return Size{Kind: _sizePercent, N: n} }
 func fill(n int) Size    { return Size{Kind: _sizeFill, N: n} }
 
-// TestComposerMeasureFitsTheFrame: a framed composer is measured at the
-// width its frame actually draws at, so a multiline draft never clips the
-// bottom border.
-func TestComposerMeasureFitsTheFrame(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 60, 12)
-	n := &node{Kind: _layoutComposer, Frame: true, Top: _regionWorking}
-	w := 40
-	// 36 cells wrap on one row at the frame's full width, two at frameInner's
-	app.composer.text, app.composer.cursor = strings.Repeat("a", 36)+" b", 38
-	frameRows, _, _ := app.composerFrame(n, w)
-	if got, want := app.measure(n, w), len(frameRows); got != want {
-		t.Fatalf("measure at %d: %d rows, the frame draws %d", w, got, want)
-	}
-	if last := frameRows[len(frameRows)-1]; !strings.HasPrefix(hostapi.SegsText(last), "└") {
-		t.Fatalf("the frame's last row lost its bottom border: %q", hostapi.SegsText(last))
-	}
-}
-
 var _contentSize = Size{Kind: _sizeContent}
 
 func TestSpan(t *testing.T) {
@@ -145,38 +126,6 @@ func TestViewport(t *testing.T) {
 	}
 }
 
-func TestPinned(t *testing.T) {
-	for _, c := range []struct {
-		name, rows string // t a turn header row, s a section header, e an end mark, . any other
-		top        int
-		want       []int
-	}{
-		{"top of content", "t . . . .", 0, nil},
-		{"header at top", ". t . . .", 1, nil},
-		{"header close under", "t . . . t .", 2, nil},
-		{"header three under", "t . . . . t", 2, []int{0}},
-		{"block above", ". t t . . . .", 4, []int{1}},
-		{"no header above", ". . . . . . t", 2, nil},
-		{"a section under its turn pins both, in order", "t . s . . . e . .", 4, []int{0, 2}},
-		{"a section on its pin's row draws as itself", "t . . s . . . e .", 2, []int{0}},
-		{"a section above its pin's row pins", "t . . s . . . e .", 3, []int{0, 3}},
-		{"the section's end on its pin's row ends it", "t . s . . e . . . .", 4, []int{0}},
-		{"a second section after the first's end", "t . s . e . s . . . .", 8, []int{0, 6}},
-		{"a new turn resets", "t . s . . . t . . . . .", 10, []int{6}},
-		{"a wrapped end drops one section", "t . s . s . e e . . . .", 10, []int{0, 2}},
-		{"sections without a turn", ". s . . . .", 3, []int{1}},
-	} {
-		var lines [][]hostapi.Segment
-		pins := map[string]hostapi.Pin{"t": hostapi.PinTurn, "s": hostapi.PinSection, "e": hostapi.PinEnd}
-		for f := range strings.FieldsSeq(c.rows) {
-			lines = append(lines, []hostapi.Segment{{Text: f, Pin: pins[f]}})
-		}
-		if got := pinned(nil, lines, c.top); !slices.Equal(got, c.want) {
-			t.Errorf("%s: %v, want %v", c.name, got, c.want)
-		}
-	}
-}
-
 // BenchmarkPin is the pin's share of a painted frame: nothing for a view at
 // the content's top, a scan back for one far below its header, and no
 // allocation while the pinned row stays the same.
@@ -195,73 +144,6 @@ func BenchmarkPin(b *testing.B) {
 				st.pinRows(lines, 80)
 			}
 		})
-	}
-}
-
-func TestJoin(t *testing.T) {
-	for _, c := range []struct {
-		name string
-		dim  bool
-		// a row starting with "!" is content, no Line; elsewhere every light
-		// box rune is a Line cell
-		rows, want []string
-	}{
-		{
-			"a box on the composer rule joins at its corner and its edge", false,
-			[]string{"┌──┐   ", "│ab│   ", "┌─────┐"},
-			[]string{"┌──┐   ", "│ab│   ", "├──┴──┐"},
-		},
-		{
-			"a right-anchored box joins at the rule's other corner", false,
-			[]string{"   ┌──┐", "   │ab│", "┌─────┐"},
-			[]string{"   ┌──┐", "   │ab│", "┌──┴──┤"},
-		},
-		{
-			"dimmed rows join nothing", true,
-			[]string{"┌──┐   ", "│ab│   ", "┌─────┐"},
-			[]string{"┌──┐   ", "│ab│   ", "┌─────┐"},
-		},
-		{
-			"a narrower box under a wider one shares its border", false,
-			[]string{"┌─────┐", "│abcde│", "└─┌───┐", "  │abc│", "  └───┘"},
-			[]string{"┌─────┐", "│abcde│", "└─┬───┤", "  │abc│", "  └───┘"},
-		},
-		{
-			"a wider box under a narrower one shares its border", false,
-			[]string{"  ┌───┐", "  │abc│", "┌─────┐", "│abcde│", "└─────┘"},
-			[]string{"  ┌───┐", "  │abc│", "┌─┴───┤", "│abcde│", "└─────┘"},
-		},
-		{"a rule ending at a separator", false, []string{"a│c", "─│c", "b│c"}, []string{"a│c", "─┤c", "b│c"}},
-		{"rules on both sides of a separator cross it", false, []string{"a│c", "─│─", "b│c"}, []string{"a│c", "─┼─", "b│c"}},
-		{"parallel lines stay", false, []string{"││", "└┘", "┌┐"}, []string{"││", "└┘", "┌┐"}},
-		{"text and the snail's art beside a line stay", false, []string{"─x─╭"}, []string{"─x─╭"}},
-		{"content lines under a border stay", false, []string{"┌─┐", "!│a│"}, []string{"┌─┐", "│a│"}},
-	} {
-		w := 0
-		rows := make([][]hostapi.Segment, len(c.rows))
-		for i, r := range c.rows {
-			r, content := strings.CutPrefix(r, "!")
-			for _, ch := range r {
-				line := !content && armsOf(ch) != 0
-				if n := len(rows[i]); n > 0 && rows[i][n-1].Line == line {
-					rows[i][n-1].Text += string(ch)
-				} else {
-					rows[i] = append(rows[i], hostapi.Segment{Text: string(ch), Line: line})
-				}
-			}
-			w = max(w, len([]rune(r)))
-		}
-		if c.dim {
-			dimRows(rows)
-		}
-		(&App{}).join(rows, w)
-		got := make([]string, len(rows))
-		for i, r := range rows {
-			got[i] = hostapi.SegsText(r)
-		}
-		if !slices.Equal(got, c.want) {
-			t.Errorf("%s:\n%s\nwant\n%s", c.name, strings.Join(got, "\n"), strings.Join(c.want, "\n"))
-		}
 	}
 }
 

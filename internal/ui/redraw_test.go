@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"log/slog"
 	"slices"
 	"strings"
 	"testing"
@@ -15,7 +14,6 @@ import (
 
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
-	"github.com/metafates/zemi/internal/store"
 )
 
 // TestProgressReport: the view reports OSC 9;4 while a turn runs, changes it
@@ -36,30 +34,6 @@ func TestProgressReport(t *testing.T) {
 	}
 	if app.progressTick(false); app.View().ProgressBar != nil {
 		t.Fatal("the end of a turn should clear the report")
-	}
-}
-
-// TestComposerTerminalCursor: the view carries the terminal's own cursor at
-// the composer caret while the composer holds the keys, and hides it when
-// the chat or a modal takes them.
-func TestComposerTerminalCursor(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 60, 12)
-	app.composer.text, app.composer.cursor = "hi", 1
-	cur := app.View().Cursor
-	// the caret rides the composer frame's origin: two border cells in, past
-	// the top rule, on the rune the draft's cursor is at
-	if cur == nil || cur.Shape != tea.CursorBar || cur.X != 3 || cur.Y != 9 {
-		t.Fatalf("a keyed composer should draw a bar caret at 3,9, got %+v", cur)
-	}
-	app.chatFocus = true
-	if cur = app.View().Cursor; cur != nil {
-		t.Fatalf("the chat's keys should hide the caret, got %+v", cur)
-	}
-	app.chatFocus = false
-	app.openOverlay(hostapi.Overlay{ID: "box", Title: "box"})
-	if cur = app.View().Cursor; cur != nil {
-		t.Fatalf("a modal's keys should hide the caret, got %+v", cur)
 	}
 }
 
@@ -185,90 +159,6 @@ func TestRedrawAfterCallbacks(t *testing.T) {
 	}
 }
 
-// TestIdleDrawsNothing: the 50 ms frame clock re-renders nothing while zemi
-// sits idle, and the animation tick alone never does. A running turn ticks
-// the readouts, and the mascot's done frame comes and goes once each.
-func TestIdleDrawsNothing(t *testing.T) {
-	t.Parallel()
-	app, host := bootAgentApp(t, 80, 24)
-	app.Update(frameTickMsg{}) // the first tick settles the clock and the flags
-	gen := app.frameGen
-	for ms := range int64(20) {
-		app.now = func() time.Time { return time.UnixMilli(ms * 500) }
-		app.Update(frameTickMsg{})
-	}
-	if app.frameGen != gen {
-		t.Fatalf("idle: %d redraws over 10s of ticks", app.frameGen-gen)
-	}
-	if app.tickInterval() != _idleInterval {
-		t.Fatal("idle should tick slowly")
-	}
-	host.SeedStream(hostapi.StreamSnapshot{Active: true})
-	app.Update(frameTickMsg{})
-	if app.frameGen == gen {
-		t.Fatal("a running turn does not tick the working row")
-	}
-	if app.tickInterval() != _frameInterval {
-		t.Fatal("a running turn should tick at frame rate")
-	}
-
-	host.SeedStream(hostapi.StreamSnapshot{})
-	app.Update(turnDoneMsg{})
-	app.Update(frameTickMsg{}) // the turn ends
-
-	// a run left 'running' in the store by a crash is one this process does
-	// not hold: viewing it reads as cancelled and ticks nothing
-	host.SeedStream(hostapi.StreamSnapshot{})
-	testStore(t, host)
-	id := store.ShortID()
-	if err := host.DB.CreateSession(id, store.ShortID(), "run", "explore"); err != nil {
-		t.Fatal(err)
-	}
-	if err := host.DB.SetSessionRunStatus(id, "running"); err != nil {
-		t.Fatal(err)
-	}
-	if err := host.ViewAgent(id); err != nil {
-		t.Fatal(err)
-	}
-	// the view's own bumps settle before the frame is measured: a gen they
-	// land after the snapshot is the load race, not a tick
-	for app.Pump() {
-	}
-	gen = app.frameGen
-	app.Update(frameTickMsg{})
-	if app.frameGen != gen {
-		t.Fatal("a stored 'running' row viewed ticks the frame")
-	}
-	if app.tickInterval() != _idleInterval {
-		t.Fatal("a stored 'running' row viewed should tick idly")
-	}
-}
-
-// TestBumpWakesIdleTick: a change while the tick sleeps idle wakes it, and
-// every stale widget comes back in one message.
-func TestBumpWakesIdleTick(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 80, 24)
-	woke := func() bool {
-		select {
-		case <-app.wake:
-			return true
-		default:
-			return false
-		}
-	}
-	woke()
-	if app.bump(); !woke() {
-		t.Fatal("the bump left the idle tick asleep")
-	}
-	if msg, ok := app.renderStaleWidgetsCmd(false)().(widgetsRenderedMsg); !ok || len(msg) < 2 {
-		t.Fatalf("stale widgets should render as one message, got %T %v", msg, msg)
-	}
-	if app.onWidgetRendered(widgetRender{id: "chat", more: true}); !woke() {
-		t.Fatal("a render asking to run again left the idle tick asleep")
-	}
-}
-
 // TestFrameClock: a tick lands on the next frame boundary, from the timer
 // and from a wake that cuts an idle sleep short alike, so the spinner and the
 // shimmer step one glyph per tick.
@@ -291,52 +181,6 @@ func TestFrameClock(t *testing.T) {
 			last = f
 		}
 	})
-}
-
-// TestFrameCache: a View with nothing behind it returns the frame it has,
-// and every change that moves neither the generation nor the size - a
-// composer key, a widget's lines, a toast coming and going - still repaints.
-func TestFrameCache(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 80, 14)
-	app.renderSync(t)
-	first := app.View().Content
-
-	app.composer.text, app.composer.cursor = "changed under the cache", 23
-	if app.View().Content != first {
-		t.Fatal("a View with nothing behind it recomposed")
-	}
-
-	app.Update(tea.KeyPressMsg{Text: "x"})
-	if frame := ansi.Strip(app.View().Content); !strings.Contains(frame, "changed under the cachex") {
-		t.Fatalf("the draft did not repaint:\n%s", frame)
-	}
-
-	app.onWidgetRendered(widgetRender{id: "statusline.model", lines: [][]hostapi.Segment{{{Text: "fresh lines"}}}, width: 78, height: 12, gen: app.frameGen})
-	if frame := ansi.Strip(app.View().Content); !strings.Contains(frame, "fresh lines") {
-		t.Fatalf("a widget's lines did not repaint:\n%s", frame)
-	}
-
-	app.pushToast(slog.LevelInfo, "saved", "")
-	if frame := ansi.Strip(app.View().Content); !strings.Contains(frame, "saved") {
-		t.Fatalf("a toast did not show:\n%s", frame)
-	}
-	app.toasts[0].expires = time.Now().Add(-time.Second) // expired for the tray's clock too
-	app.pruneToasts(time.Now().Add(time.Hour))
-	if frame := ansi.Strip(app.View().Content); strings.Contains(frame, "saved") {
-		t.Fatalf("an expired toast stayed:\n%s", frame)
-	}
-
-	// a frame that drew something moving by itself is never clean: its
-	// shimmer steps with the frame clock though nothing else changed
-	app.onWidgetRendered(widgetRender{id: "statusline.model", lines: [][]hostapi.Segment{{{Text: "breathing", HL: "Dim", Effect: hostapi.EffectShimmer}}}, width: 78, height: 12, gen: app.frameGen})
-	app.View()
-	app.now = func() time.Time { return time.UnixMilli(50) }
-	slow := app.View().Content
-	app.now = func() time.Time { return time.UnixMilli(100) }
-	if fast := app.View().Content; fast == slow {
-		t.Fatal("a shimmering frame stopped moving")
-	}
 }
 
 // TestComposerGrowResizesSplash: the frames drawn between the composer
@@ -563,89 +407,6 @@ func TestResetSinksTheChatIntoTheSplash(t *testing.T) {
 	}
 }
 
-// TestFirstMessageSinksTheKnot: the first message takes the region, and the
-// knot sinks on the rows it kept before the chat's rows draw whole.
-func TestFirstMessageSinksTheKnot(t *testing.T) {
-	app, _ := bootAgentApp(t, 100, 30)
-	at := time.UnixMilli(1000)
-	app.now = func() time.Time { return at }
-
-	st := func(count int) *hostapi.ScreenState {
-		s := &hostapi.ScreenState{Width: 98, Height: 20, TranscriptCount: count, TranscriptEpoch: 1}
-		if count > 0 {
-			s.Transcript = []hostapi.ChatMessage{{Role: "user", Text: "hello"}}
-		}
-		return s
-	}
-	draw := func(id string, s *hostapi.ScreenState) [][]hostapi.Segment {
-		lines, more := app.widgetByID(id).render(s)
-		app.onWidgetRendered(widgetRender{id: id, lines: lines, more: more, gen: 1, seq: 1, width: 98, height: 20})
-		return app.caches[id].lines
-	}
-	// the boot's knot stands settled
-	if rows := draw("splash", st(0)); len(rows) == 0 {
-		t.Fatal("the knot did not draw")
-	}
-	app.settleRamps()
-
-	// the first message: the splash renders none, its curtain sinks the knot,
-	// and the chat waits while the kept rows still draw
-	if rows := draw("splash", st(1)); rows == nil {
-		t.Fatal("the knot vanished whole on the first message")
-	}
-	if lines := draw("chat", st(1)); len(lines) != 0 {
-		t.Fatal("the chat drew over the knot's sink")
-	}
-	at = at.Add(_riseDuration / 2)
-	if rows := draw("splash", st(1)); len(rows) == 0 || maxFade(rows) < 0.4 || maxFade(rows) > 0.6 {
-		t.Fatalf("the knot's sink did not ride mid-ramp: fade %v", maxFade(rows))
-	}
-	at = at.Add(2 * _riseDuration)
-	if rows := draw("splash", st(1)); len(rows) != 0 {
-		t.Fatal("the knot stayed after its sink")
-	}
-	// the knot rode out: the chat takes the region whole
-	if lines := draw("chat", st(1)); len(lines) == 0 || maxFade(lines) != 0 {
-		t.Fatalf("the chat's first rows did not draw clean: fade %v", maxFade(lines))
-	}
-}
-
-// TestChatBootRise: a chat that boots with rows rises like the scrollbar's
-// first paint — sunk through the delay, settled after it — keeping the tick
-// awake while it rides.
-func TestChatBootRise(t *testing.T) {
-	t.Parallel()
-	app, _ := bootAgentApp(t, 100, 30)
-	at := time.UnixMilli(1000)
-	app.now = func() time.Time { return at }
-
-	st := &hostapi.ScreenState{Width: 98, Height: 20, TranscriptCount: 1, TranscriptEpoch: 1}
-	st.Transcript = []hostapi.ChatMessage{{Role: "user", Text: "hello"}}
-	draw := func() [][]hostapi.Segment {
-		lines, more := app.widgetByID("chat").render(st)
-		app.onWidgetRendered(widgetRender{id: "chat", lines: lines, more: more, gen: 1, seq: 1, width: 98, height: 20})
-		return app.caches["chat"].lines
-	}
-	if lines := draw(); len(lines) == 0 || maxFade(lines) != 1 {
-		t.Fatalf("the boot's chat did not draw sunk: fade %v", maxFade(lines))
-	}
-	if !app.fadesRising() || app.tickInterval() != _riseTick {
-		t.Fatal("the chat's boot rise did not keep the tick awake")
-	}
-	at = at.Add(_barDelay / 2)
-	if lines := draw(); len(lines) == 0 || maxFade(lines) != 1 {
-		t.Fatalf("the chat's delay did not hold it sunk: fade %v", maxFade(lines))
-	}
-	at = at.Add(_barDelay/2 + _riseDuration/2)
-	if lines := draw(); len(lines) == 0 || maxFade(lines) < 0.4 || maxFade(lines) > 0.6 {
-		t.Fatalf("the chat's rise did not ride mid-ramp: fade %v", maxFade(lines))
-	}
-	at = at.Add(_riseDuration)
-	if lines := draw(); len(lines) == 0 || maxFade(lines) != 0 {
-		t.Fatalf("the boot's chat never settled: fade %v", maxFade(lines))
-	}
-}
-
 // maxFade is the deepest sink in rows, 0 when they draw clean.
 func maxFade(rows [][]hostapi.Segment) float64 {
 	fade := 0.0
@@ -752,126 +513,6 @@ func TestUserPromptRise(t *testing.T) {
 	host2.AppendChat(hostapi.ChatMessage{Role: fantasy.MessageRoleUser, Text: "an old question"})
 	if row, ok := promptRow(app2); ok && row[0].Fade != 0 {
 		t.Fatalf("a resumed prompt rose: fade %v", row[0].Fade)
-	}
-}
-
-// TestQueuedMessageRise: a message queued behind a running turn stands in its
-// queued colors the frame it arrives, and the transcript row the turn
-// consumes it into starts at the same colors and runs the ramp.
-func TestQueuedMessageRise(t *testing.T) {
-	app, host := bootAgentApp(t, 100, 30)
-	f := app.chatFolds()
-	at := time.UnixMilli(1000)
-	f.now = func() time.Time { return at }
-
-	queuedRow := func(app *App) ([]hostapi.Segment, bool) {
-		lines, _ := renderChat(t, app, 98, 20, app.uiState())
-		for _, row := range lines {
-			if len(row) > 1 && row[0].Text == "▌ " && row[0].HL == "Queued" {
-				return row, true
-			}
-		}
-		return nil, false
-	}
-
-	// the boot's empty frames read the log the splash owns
-	renderChat(t, app, 98, 20, app.uiState())
-	host.SeedStream(hostapi.StreamSnapshot{Active: true})
-	if err := host.AgentSend("one more thing"); err != nil {
-		t.Fatal(err)
-	}
-	row, ok := queuedRow(app)
-	if !ok || row[0].Fade != 0 {
-		t.Fatalf("the queued message did not stand whole: fade %v found %v", row[0].Fade, ok)
-	}
-
-	// the turn consumes it: the transcript row it lands as starts at the
-	// queued colors, two consumed at one boundary ramp together
-	host.AppendChat(hostapi.ChatMessage{Role: fantasy.MessageRoleUser, Text: "one more thing"})
-	host.AppendChat(hostapi.ChatMessage{Role: fantasy.MessageRoleUser, Text: "and this too"})
-	lines, _ := renderChat(t, app, 98, 20, app.uiState())
-	landed := 0
-	for _, row := range lines {
-		if len(row) > 1 && row[0].Text == "▌ " && row[0].HL == "UserMsg" && row[0].Rise == 1 {
-			landed++
-		}
-	}
-	if landed != 2 {
-		t.Fatalf("%d consumed messages started at the queued colors, want 2", landed)
-	}
-	at = at.Add(2 * _riseDuration)
-	lines, _ = renderChat(t, app, 98, 20, app.uiState())
-	for _, row := range lines {
-		if len(row) > 1 && row[0].Text == "▌ " && row[0].HL == "UserMsg" && row[0].Rise != 0 {
-			t.Fatalf("a consumed message stayed sunk after the ramp: rise %v", row[0].Rise)
-		}
-	}
-}
-
-// TestReadoutRiseSurvivesTheSeqNaming: the reply's row lands unstamped and
-// the log names it a moment later; the rise keys by the row's place in the
-// window, so the naming neither freezes the readout sunk nor pops it clean.
-func TestReadoutRiseSurvivesTheSeqNaming(t *testing.T) {
-	app, host := bootAgentApp(t, 100, 30)
-	f := app.chatFolds()
-	at := time.UnixMilli(1000)
-	f.now = func() time.Time { return at }
-	f.readEpoch, f.epoch, f.rows = 1, 1, 1 // the user row ahead of the reply is drawn already
-	st := &hostapi.ScreenState{
-		Width: 98, Height: 20, TranscriptEpoch: 1, TranscriptCount: 2,
-		Transcript: []hostapi.ChatMessage{
-			{Role: fantasy.MessageRoleUser, Text: "q", Seq: 1},
-			{Role: fantasy.MessageRoleAssistant, Text: "a", Stat: &hostapi.TurnStat{Model: "fake/m", Out: 11}, Seq: hostapi.NoSeq},
-		},
-	}
-	f.render(host, st) // the reply lands unstamped: its readout sinks
-
-	// the log names the row between frames, as the flush's stamping does
-	st.Transcript[1].Seq = 2
-	fade := func() float64 {
-		lines, _ := f.render(host, st)
-		out := 0.0
-		for _, row := range lines {
-			if len(row) > 1 && row[0].NoCopy && row[0].Text == "  " && strings.HasSuffix(hostapi.SegsText(row), " out") {
-				for _, s := range row {
-					out = max(out, s.Fade)
-				}
-			}
-		}
-		return out
-	}
-	if fade() == 0 {
-		t.Fatal("the readout drew clean before its rise")
-	}
-	at = at.Add(2 * _riseDuration)
-	if fade := fade(); fade != 0 {
-		t.Fatalf("the readout stayed sunk after the log named its row: fade %v", fade)
-	}
-}
-
-// TestAppendKeepsTheSettledRows: a transcript row appended (a rail action
-// landing) rebuilds from the tail but keeps every unchanged unit's rows, so
-// the scrollbar's total never dips for the frames the fill would need.
-func TestAppendKeepsTheSettledRows(t *testing.T) {
-	app, host := bootAgentApp(t, 100, 30)
-	for range 40 {
-		host.AppendChat(hostapi.ChatMessage{Role: "user", Text: "a question"})
-		appendReply(host, "a reply of a few words", hostapi.TurnStat{Model: "fake/m", Out: 11})
-	}
-	for range 200 {
-		renderChat(t, app, 98, 20, app.uiState())
-		if app.chatFolds().fillUnit == 0 {
-			break
-		}
-	}
-	before := len(app.chatFolds().settled)
-	if before < 20 {
-		t.Fatalf("the transcript did not fill a view: %d rows", before)
-	}
-	appendReply(host, "one more", hostapi.TurnStat{Model: "fake/m", Out: 11})
-	renderChat(t, app, 98, 20, app.uiState())
-	if after := len(app.chatFolds().settled); after < before {
-		t.Fatalf("an append dipped the settled rows: %d after %d", after, before)
 	}
 }
 

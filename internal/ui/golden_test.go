@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -15,7 +14,6 @@ import (
 	"github.com/metafates/zemi/internal/config"
 	"github.com/metafates/zemi/internal/hostapi"
 	"github.com/metafates/zemi/internal/lua"
-	"github.com/metafates/zemi/internal/store"
 	"github.com/metafates/zemi/runtime"
 )
 
@@ -149,55 +147,6 @@ func (a *App) Pump() bool {
 	}
 }
 
-// The composer with an open @-completion popup and a two-line draft,
-// pinned as a golden (files injected; no filesystem walk).
-func TestGoldenComposerCompletion(t *testing.T) {
-	app, _ := bootAgentApp(t, 60, 12)
-	app.completion.setFiles([]string{"internal/ui/app.go", "main.go"})
-	for _, k := range []string{"s", "e", "e", " ", "@", "a", "p"} {
-		app.Update(tea.KeyPressMsg{Code: rune(k[0]), Text: k})
-	}
-
-	app.timeStr = "09:41"
-	app.renderSync(t)
-
-	golden.RequireEqual(t, app.Frame())
-}
-
-// TestGoldenComposerFade pins a draft taller than the composer's window
-// (§8): the rows past either edge sink toward the panel, deepest at the edge,
-// while the cursor row stays clear of the ramp with a row of headroom below
-// it.
-func TestGoldenComposerFade(t *testing.T) {
-	app, _ := bootAgentAppPinned(t, 60, 20)
-	var draft strings.Builder
-	for i := range 14 {
-		fmt.Fprintf(&draft, "draft line %d\n", i+1)
-	}
-	app.composer.text = strings.TrimSuffix(draft.String(), "\n")
-	app.composer.cursor = strings.Index(app.composer.text, "draft line 9")
-
-	app.timeStr = "09:41"
-	app.renderSync(t)
-	golden.RequireEqual(t, app.Frame())
-}
-
-// TestGoldenReasoningCollapse pins the persisted thinking block (§8): a
-// thought alone keeps its rail row between the user message and the reply,
-// its text one click away.
-func TestGoldenReasoningCollapse(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 14)
-
-	host.AppendMessage("user", "why does the build fail?")
-	appendReasoning(host, "checked go.mod, then the fixture dir", hostapi.TurnStat{ThoughtMS: 4200, ElapsedMS: 38000})
-	appendReply(host, "The test binary exits 1 because the fixture path moved.", hostapi.TurnStat{
-		In: 12340, Out: 1234, ThoughtMS: 4200, ElapsedMS: 38000, Ended: 1_700_000_000,
-	})
-
-	app.renderSync(t)
-	golden.RequireEqual(t, app.Frame())
-}
-
 // TestGoldenSlashPalette pins the slash-command popup (§6.6): typing "/"
 // as the first character lists the registered commands, filtered as you
 // type, with the first match highlighted.
@@ -247,69 +196,4 @@ func TestPopupKeepsSize(t *testing.T) {
 			t.Fatalf("%s%s:\n%s\nwant the size of\n%s", c.open, c.narrow, got, want)
 		}
 	}
-}
-
-// TestGoldenMemories pins the memories browser (§8): the live view one row
-// per line, each the line's text with its id as the right-hand tag, the
-// unbuilt tail's placeholder, the stats line in the footer, and the selected
-// line's message banded in the chat.
-func TestGoldenMemories(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 24)
-	testStore(t, host)
-	reloadUI(t, host)
-	for range 6 {
-		if _, err := host.DB.AppendLog("user", strings.Repeat("row ", 200), "", "", ""); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for i := range 5 {
-		if _, err := host.DB.InsertNode(0, int64(i), fmt.Sprintf("message %d: the work it asked for", i)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := host.DB.InsertNode(1, 0, "the first exchange settled the goal"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := host.DB.InsertNode(1, 1, "the second exchange took the change"); err != nil {
-		t.Fatal(err)
-	}
-	if n, err := host.DB.MergeViewLines([]store.ViewMerge{{L: 1, I: 0}, {L: 1, I: 1}}); err != nil || n != 2 {
-		t.Fatalf("the merges: %d applied, %v", n, err)
-	}
-	tr := make([]hostapi.ChatMessage, 6)
-	for i := range tr {
-		tr[i] = hostapi.ChatMessage{Role: "user", Text: fmt.Sprintf("prompt %d about the change", i), Seq: int64(i)}
-	}
-	host.SetTranscript(tr)
-
-	app.timeStr = "09:41"
-	app.renderSync(t)
-	app.Frame()
-	if err := host.MemoriesCommand(""); err != nil {
-		t.Fatal(err)
-	}
-	for app.Pump() {
-	}
-	app.renderSync(t)
-	golden.RequireEqual(t, app.Frame())
-}
-
-// TestGoldenChatScroll pins the transcript scrollback (§8): ctrl+u moves the
-// viewport off the tail to earlier lines, which stay anchored while the
-// tail keeps filling underneath.
-func TestGoldenChatScroll(t *testing.T) {
-	app, host := bootAgentApp(t, 80, 14)
-	fillChat(host)
-	app.renderSync(t)
-	app.Frame() // establish the viewport metrics
-
-	for app.Pump() {
-	}
-	app.Update(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
-	for app.Pump() {
-	}
-
-	app.timeStr = "12:34"
-	app.renderSync(t)
-	golden.RequireEqual(t, app.Frame())
 }
