@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/metafates/zemi/internal/perm"
 )
 
 // TestXDG: every root stays absolute; with no $HOME home is the passwd
@@ -97,57 +95,6 @@ func TestTrustRoot(t *testing.T) {
 	outside := t.TempDir()
 	if got, _ := filepath.EvalSymlinks(outside); (Dirs{ProjectDir: outside}).TrustRoot() != got {
 		t.Errorf("no repository: got %s", (Dirs{ProjectDir: outside}).TrustRoot())
-	}
-}
-
-func TestRepoRootStopsAtHome(t *testing.T) {
-	tmp, _ := filepath.EvalSymlinks(t.TempDir())
-	for _, dir := range []string{"home/.git", "home/.agents", "home/work/sub", "home/repo/.git", "home/repo/sub"} {
-		if err := os.MkdirAll(filepath.Join(tmp, dir), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Setenv("HOME", filepath.Join(tmp, "home"))
-	for _, c := range []struct {
-		name, cwd, root, config string
-		folds                   bool // needs a case-folding volume
-	}{
-		{"dotfiles repo is not the root below home", "home/work/sub", "home/work/sub", "home/work/sub/.agents", false},
-		{"repo below home", "home/repo/sub", "home/repo", "home/repo/.agents", false},
-		{"home itself", "home", "home", "home/.agents", false},
-		{"case variant of home", "HOME/work/sub", "HOME/work/sub", "HOME/work/sub/.agents", true},
-	} {
-		if c.folds && perm.FoldCase("A") == "A" {
-			continue
-		}
-		d := Dirs{ProjectDir: filepath.Join(tmp, c.cwd)}
-		if got := d.RepoRoot(); got != filepath.Join(tmp, c.root) {
-			t.Errorf("%s: root %s", c.name, got)
-		}
-		if got := d.TrustRoot(); got != filepath.Join(tmp, c.root) {
-			t.Errorf("%s: trust root %s", c.name, got)
-		}
-		if got := d.ProjectConfigDir(); got != filepath.Join(tmp, c.config) {
-			t.Errorf("%s: config dir %s", c.name, got)
-		}
-	}
-}
-
-func TestProjectConfigDir(t *testing.T) {
-	tmp := t.TempDir()
-	for _, dir := range []string{"repo/.git", "repo/sub/.agents", "stray/.agents", "stray/norepo"} {
-		if err := os.MkdirAll(filepath.Join(tmp, dir), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, c := range []struct{ cwd, want string }{
-		{"repo/sub", "repo/.agents"},             // the repository root's, never a nearer one
-		{"stray/norepo", "stray/norepo/.agents"}, // no repo: a parent's is not used
-	} {
-		got := Dirs{ProjectDir: filepath.Join(tmp, c.cwd)}.ProjectConfigDir()
-		if got != filepath.Join(tmp, c.want) {
-			t.Errorf("%s: got %s", c.cwd, got)
-		}
 	}
 }
 

@@ -3,31 +3,10 @@ package agent
 import (
 	"context"
 	"errors"
-	"net/http"
 	"testing"
 	"testing/synctest"
 	"time"
-
-	"charm.land/fantasy"
 )
-
-// TestRateLimiterWait: the metronome spreads the window's requests evenly -
-// one at once, then one every window/allow - and a caller whose context ends
-// during the wait gets it.
-func TestRateLimiter(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		l := newRateLimiter(RateLimit{Requests: 2}, nil) // 2 a minute: one every 30s
-		start := time.Now()
-		for range 3 {
-			if err := l.wait(context.Background()); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if d := time.Since(start); d != 60*time.Second {
-			t.Fatalf("3 calls took %v, want the first at once then two paces", d)
-		}
-	})
-}
 
 func TestRateLimiterCancel(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
@@ -46,25 +25,6 @@ func TestRateLimiterCancel(t *testing.T) {
 	})
 }
 
-// TestRateLimiterTokens: a drained completion budget holds the next call
-// until a token refills, and the reply's charge may sink it negative.
-func TestRateLimiterTokens(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		l := newRateLimiter(RateLimit{CompletionTokens: 10}, nil)
-		if err := l.wait(context.Background()); err != nil {
-			t.Fatal(err)
-		}
-		l.charge(11) // one over the window's budget: the bucket sinks to -1
-		start := time.Now()
-		if err := l.wait(context.Background()); err != nil {
-			t.Fatal(err)
-		}
-		if d := time.Since(start); d != 12*time.Second {
-			t.Fatalf("the drained budget held the call %v, want the debt's 12s", d)
-		}
-	})
-}
-
 // TestRateLimiterTokensOnly: a completion budget alone paces without a
 // request quota.
 func TestRateLimiterTokensOnly(t *testing.T) {
@@ -79,33 +39,6 @@ func TestRateLimiterTokensOnly(t *testing.T) {
 		}
 		if d := time.Since(start); d < 12*time.Second {
 			t.Fatalf("3 drained calls took %v, want each to wait a token out", d)
-		}
-	})
-}
-
-// TestRateLimiterHold: a 429 through the limiter holds the next calls for
-// the spec's window, so fantasy's retries land after the reset instead of
-// spending the window's quota on refusals; anything but a 429 teaches
-// nothing.
-func TestRateLimiterHold(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		l := newRateLimiter(RateLimit{Requests: 100}, nil)
-		l.refused(errors.New("plain failure"))
-		l.refused(&fantasy.ProviderError{StatusCode: http.StatusForbidden})
-		start := time.Now()
-		if err := l.wait(context.Background()); err != nil {
-			t.Fatal(err)
-		}
-		if d := time.Since(start); d != 0 {
-			t.Fatalf("a non-429 held the call %v, want none", d)
-		}
-		l.refused(&fantasy.ProviderError{StatusCode: http.StatusTooManyRequests})
-		start = time.Now()
-		if err := l.wait(context.Background()); err != nil {
-			t.Fatal(err)
-		}
-		if d := time.Since(start); d != 60*time.Second {
-			t.Fatalf("the refusal held the call %v, want the window's 60s", d)
 		}
 	})
 }

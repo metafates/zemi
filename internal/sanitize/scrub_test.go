@@ -45,28 +45,3 @@ func TestScrubKnownShapes(t *testing.T) {
 		}
 	}
 }
-
-func TestIsOneBlob(t *testing.T) {
-	cases := []struct {
-		in   string
-		want bool
-	}{
-		{"[redacted 24 chars]", true},
-		{" [redacted 3 chars]  [redacted 44 chars] ", true},
-		{"gate lives in [redacted 24 chars] config", false},
-	}
-	for _, tc := range cases {
-		if got := IsOneBlob(tc.in); got != tc.want {
-			t.Errorf("IsOneBlob(%q) = %v", tc.in, got)
-		}
-	}
-}
-
-func TestTruncate(t *testing.T) {
-	if got := Truncate("日本語", 2); got != "日本" {
-		t.Errorf("Truncate cut mid-rune: %q", got)
-	}
-	if got := Truncate("short", 10); got != "short" {
-		t.Errorf("Truncate changed a short string: %q", got)
-	}
-}

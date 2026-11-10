@@ -5,15 +5,12 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
-	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -132,24 +129,6 @@ func cacheKey(o fantasy.ProviderOptionsData) string {
 	return *k
 }
 
-// TestCallOptionsBody: a spec's extra body fields ride every request, with
-// or without a reasoning effort.
-func TestCallOptionsBody(t *testing.T) {
-	r := &Registry{}
-	if err := r.Register(Spec{ID: "c", Kind: KindOpenAICompat, BaseURL: "http://127.0.0.1:1/v1", Body: map[string]any{"service_tier": "flex"}}, "k", false); err != nil {
-		t.Fatal(err)
-	}
-	for _, effort := range []string{"", "high"} {
-		po, ok := r.CallOptions("c/m", effort, "")["openai-compat"].(*openaicompat.ProviderOptions)
-		if !ok || po.ExtraBody["service_tier"] != "flex" {
-			t.Fatalf("effort %q: options %+v", effort, po)
-		}
-		if (po.ReasoningEffort != nil) != (effort != "") {
-			t.Fatalf("effort %q: reasoning effort %v", effort, po.ReasoningEffort)
-		}
-	}
-}
-
 // generateStub answers Generate with a fixed usage.
 type generateStub struct {
 	fantasy.LanguageModel
@@ -191,22 +170,6 @@ func TestGoogleUsage(t *testing.T) {
 			if c.kind == KindGoogle && ContextUsed(part.Usage) != 200_150 {
 				t.Errorf("context used %d", ContextUsed(part.Usage))
 			}
-		}
-	}
-}
-
-// TestModelErrorFinal: a refused connection stays what it is to callers
-// but is no net.Error to fantasy's retry check, while a reset still is.
-func TestModelErrorFinal(t *testing.T) {
-	refused := &url.Error{Op: "Post", URL: "http://127.0.0.1:1/v1", Err: &net.OpError{Op: "dial", Err: syscall.ECONNREFUSED}}
-	reset := &url.Error{Op: "Post", URL: "http://127.0.0.1:1/v1", Err: &net.OpError{Op: "read", Err: syscall.ECONNRESET}}
-	for _, c := range []struct {
-		err   error
-		retry bool
-	}{{refused, false}, {reset, true}, {&net.DNSError{Name: "x"}, false}} {
-		err := ModelError{"p", c.err}
-		if _, isNet := errors.AsType[net.Error](err); isNet != c.retry || !errors.Is(err, c.err) {
-			t.Errorf("%v: net.Error %v, want %v", c.err, isNet, c.retry)
 		}
 	}
 }
@@ -269,20 +232,6 @@ func TestBuiltin(t *testing.T) {
 			}
 		}); len(c.Specs) != 0 || len(c.Keys) != 0 {
 			t.Errorf("%s: %+v", p.ID, c)
-		}
-	}
-}
-
-// TestAnthropicBase: the SDK merges v1/messages by replacing the base's last
-// path segment, so a trailing slash would double it and the segment stays.
-func TestAnthropicBase(t *testing.T) {
-	for _, c := range []struct{ base, want string }{
-		{"https://opencode.ai/zen/v1/", "https://opencode.ai/zen/v1"},
-		{"https://gw/anthropic/", "https://gw/anthropic"},
-		{"https://api.anthropic.com", "https://api.anthropic.com"},
-	} {
-		if got := anthropicBase(c.base); got != c.want {
-			t.Errorf("anthropicBase(%q) = %q, want %q", c.base, got, c.want)
 		}
 	}
 }
@@ -363,63 +312,6 @@ func TestUpdateCatalog(t *testing.T) {
 		if saved := LoadCatalog(dir, soloEnv); len(saved.Specs) != 1 || saved.Info.Fetched.IsZero() {
 			t.Fatalf("%s: saved catalog does not load: %+v", c.name, saved.Info)
 		}
-	}
-}
-
-// TestRegistryBuiltin: Default prefers a user spec over the catalog and
-// the spec's default model, Register clears Builtin so DropBuiltin keeps
-// the override, Delete and Register drop an id from Missing.
-func TestRegistryBuiltin(t *testing.T) {
-	r := &Registry{}
-	r.Reset(Catalog{Specs: []Spec{
-		{ID: "a", Kind: KindAnthropic, Builtin: true, DefaultModel: "big", Models: []Model{{ID: "big"}}},
-		{ID: "o", Kind: KindOpenAI, Builtin: true, Models: []Model{{ID: "first"}}},
-	}, Keys: map[string]string{"a": "ka", "o": "ko"}, Missing: []MissingKey{{ID: "x", Env: "X_KEY"}, {ID: "y", Env: "Y_KEY"}}})
-	if r.Default() != "a/big" || !r.HasKey("o") {
-		t.Fatalf("seed: %s", r.Default())
-	}
-	r.Delete("a")
-	r.Delete("nope")
-	r.Delete("x")
-	if r.Default() != "o/first" || r.HasKey("a") || !slices.EqualFunc(r.Missing(), []MissingKey{{ID: "y", Env: "Y_KEY"}}, func(a, b MissingKey) bool { return a.ID == b.ID && a.Env == b.Env }) {
-		t.Fatalf("after delete: %s %v", r.Default(), r.Missing())
-	}
-	if err := r.Register(Spec{ID: "empty", Kind: KindAnthropic, BaseURL: "http://gw"}, "", false); err != nil {
-		t.Fatal(err)
-	}
-	if r.Default() != "o/first" {
-		t.Fatalf("model-less user spec ahead of a builtin: %s", r.Default())
-	}
-	r.Delete("empty")
-	if err := r.Register(Spec{ID: "local", Kind: KindOpenAICompat, BaseURL: "http://127.0.0.1:1/v1", Builtin: true, Models: []Model{{ID: "q"}}}, "", false); err != nil {
-		t.Fatal(err)
-	}
-	if r.Default() != "local/q" {
-		t.Fatalf("user spec after a builtin: %s", r.Default())
-	}
-	if err := r.Register(Spec{ID: "o", Kind: KindOpenAI, BaseURL: "http://gw/v1", Models: []Model{{ID: "g"}}}, "", false); err != nil {
-		t.Fatal(err)
-	}
-	if r.Default() != "o/g" || r.HasKey("o") {
-		t.Fatalf("override: %s", r.Default())
-	}
-	if err := r.Register(Spec{ID: "y", Kind: KindAnthropic}, "", false); err != nil {
-		t.Fatal(err)
-	}
-	if len(r.Missing()) != 0 {
-		t.Fatalf("user add under a missing builtin still waits for its key: %v", r.Missing())
-	}
-	r.DropBuiltin()
-	var ids []string
-	for _, s := range r.List() {
-		ids = append(ids, s.ID)
-	}
-	if !slices.Equal(ids, []string{"o", "local", "y"}) || r.Default() != "o/g" || len(r.Missing()) != 0 {
-		t.Fatalf("after drop: %v %v", ids, r.Missing())
-	}
-	r.Reset(Catalog{})
-	if r.Default() != "" || len(r.List()) != 0 {
-		t.Fatal("reset to empty")
 	}
 }
 

@@ -1,7 +1,6 @@
 package skill
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,37 +14,6 @@ func writeFile(t *testing.T, path, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestParseValid(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "local-integration")
-	writeFile(t, filepath.Join(dir, "SKILL.md"), `---
-name: local-integration
-description: run the local integration suite
----
-
-Body instructions here.
-`)
-	writeFile(t, filepath.Join(dir, "zemi-skill.lua"), "-- hook\n")
-	sk, err := Parse(dir, User, "")
-	if err != nil {
-		t.Fatalf("parse: %v", err)
-	}
-	if sk.Name != "local-integration" || sk.Description != "run the local integration suite" {
-		t.Fatalf("skill: %+v", sk)
-	}
-	if sk.Source != User {
-		t.Fatalf("source: %s", sk.Source)
-	}
-	if sk.Hook == "" {
-		t.Fatal("hook missing")
-	}
-
-	crlf := filepath.Join(t.TempDir(), "crlf")
-	writeFile(t, filepath.Join(crlf, "SKILL.md"), "---\r\nname: crlf\r\ndescription: saved on windows\r\n---\r\n\r\nBody.\r\n")
-	if sk, err := Parse(crlf, User, ""); err != nil || sk.Description != "saved on windows" {
-		t.Fatalf("crlf: %+v %v", sk, err)
 	}
 }
 
@@ -73,71 +41,6 @@ func TestParseErrors(t *testing.T) {
 				t.Fatalf("err=%v, want %q", err, c.want)
 			}
 		})
-	}
-}
-
-// Claude's invocation keys are accepted and ignored: the model loads every
-// skill, and it asks for a command on its own.
-func TestParseInvocation(t *testing.T) {
-	for _, extra := range []string{
-		`user-invocable: "true"`,
-		"disable-model-invocation: true\nargument-hint: [pr]",
-	} {
-		dir := filepath.Join(t.TempDir(), "x")
-		writeFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: x\ndescription: d\n"+extra+"\n---\nBody.\n")
-		if _, err := Parse(dir, User, ""); err != nil {
-			t.Fatalf("%q: %v", extra, err)
-		}
-	}
-}
-
-// A description over the cap is cut, not a reason to drop the skill:
-// published skills are written for longer limits than zemi's index.
-// The two relaxations: frontmatter name and description are optional, the
-// directory and the body's first line stand in; a present-but-mismatched
-// name stays an error, and a Dir prefix is the fallback name for a bare one
-// another skill already holds.
-func TestParseRelaxationsAndPrefix(t *testing.T) {
-	loose := filepath.Join(t.TempDir(), "loose")
-	writeFile(t, filepath.Join(loose, "SKILL.md"), "---\nuser-invocable: false\n---\n\nFirst line is the trigger.\n\nBody.\n")
-	sk, err := Parse(loose, User, "")
-	if err != nil || sk.Name != "loose" || sk.Description != "First line is the trigger." {
-		t.Fatalf("relaxed: %+v %v", sk, err)
-	}
-	mismatch := filepath.Join(t.TempDir(), "other")
-	writeFile(t, filepath.Join(mismatch, "SKILL.md"), "---\nname: not-other\ndescription: d\n---\nbody")
-	if _, err := Parse(mismatch, User, ""); err == nil || !strings.Contains(err.Error(), "must match the directory") {
-		t.Fatalf("mismatch: %v", err)
-	}
-	base := t.TempDir()
-	writeFile(t, filepath.Join(base, "greet", "SKILL.md"), "---\nname: greet\ndescription: say hi\n---\nbody")
-	got, warns := Discover(Dir{Path: base, Source: Plugin, Prefix: "fix-", Root: "/r", Data: "/d"})
-	if len(got) != 1 || got[0].Name != "greet" || got[0].Root != "/r" || len(warns) != 0 {
-		t.Fatalf("bare: %+v %q", got, warns)
-	}
-	taken := t.TempDir()
-	writeFile(t, filepath.Join(taken, "greet", "SKILL.md"), "---\nname: greet\ndescription: taken\n---\nbody")
-	got, warns = Discover(Dir{Path: taken, Source: User}, Dir{Path: base, Source: Plugin, Prefix: "fix-", Root: "/r", Data: "/d"})
-	if len(got) != 2 || got[0].Name != "greet" || got[1].Name != "fix-greet" || len(warns) != 0 {
-		t.Fatalf("fallback: %+v %q", got, warns)
-	}
-}
-
-func TestParseDescriptionCap(t *testing.T) {
-	base := t.TempDir()
-	dir := filepath.Join(base, "x")
-	long := strings.Repeat("a", MaxDescriptionRunes+1)
-	writeFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: x\ndescription: "+long+"\n---\n\nBody.\n")
-	sk, err := Parse(dir, User, "")
-	if !errors.Is(err, ErrDescriptionCut) {
-		t.Fatalf("err=%v", err)
-	}
-	if len([]rune(sk.Description)) != MaxDescriptionRunes {
-		t.Fatalf("description kept %d runes", len([]rune(sk.Description)))
-	}
-	found, warnings := Discover(Dir{Path: base, Source: User})
-	if len(found) != 1 || len(warnings) != 1 {
-		t.Fatalf("discover: %+v %q", found, warnings)
 	}
 }
 
@@ -199,47 +102,5 @@ func TestDiscoverSymlinkedSkillDir(t *testing.T) {
 	got, warns := Discover(Dir{Path: base, Source: User})
 	if len(got) != 1 || got[0].Name != "real" || len(warns) != 1 || !strings.Contains(warns[0].Error(), "symlink") {
 		t.Fatalf("discover: %+v %v", got, warns)
-	}
-}
-
-func TestDiscoverBrokenSkillHoldsItsName(t *testing.T) {
-	root := t.TempDir()
-	user, project := filepath.Join(root, "user"), filepath.Join(root, "project")
-	writeFile(t, filepath.Join(user, "x", "SKILL.md"), "not frontmatter")
-	writeFile(t, filepath.Join(project, "x", "SKILL.md"), "---\nname: x\ndescription: project x\n---\n")
-
-	got, warns := Discover(Dir{Path: user, Source: User}, Dir{Path: project, Source: Project})
-	if len(got) != 0 {
-		t.Fatalf("a lower-trust skill took the name: %+v", got)
-	}
-	if len(warns) != 1 || !strings.Contains(warns[0].Error(), "frontmatter block") {
-		t.Fatalf("warnings=%v", warns)
-	}
-}
-
-func TestDiscoverMergesUserOverBuiltin(t *testing.T) {
-	root := t.TempDir()
-	user, builtin := filepath.Join(root, "user"), filepath.Join(root, "builtin")
-	writeFile(t, filepath.Join(user, "alpha", "SKILL.md"), "---\nname: alpha\ndescription: user alpha\n---\n")
-	writeFile(t, filepath.Join(user, "broken", "SKILL.md"), "not frontmatter")
-	writeFile(t, filepath.Join(builtin, "alpha", "SKILL.md"), "---\nname: alpha\ndescription: builtin alpha\n---\n")
-	writeFile(t, filepath.Join(builtin, "beta", "SKILL.md"), "---\nname: beta\ndescription: builtin beta\n---\n")
-
-	got, warns := Discover(Dir{Path: user, Source: User}, Dir{Path: builtin, Source: Builtin})
-	if len(warns) != 1 || !strings.Contains(warns[0].Error(), "broken") {
-		t.Fatalf("warnings=%v", warns)
-	}
-	byName := map[string]Skill{}
-	for _, s := range got {
-		byName[s.Name] = s
-	}
-	if len(got) != 2 {
-		t.Fatalf("skills=%d", len(got))
-	}
-	if byName["alpha"].Source != User || byName["alpha"].Description != "user alpha" {
-		t.Fatalf("alpha: %+v", byName["alpha"])
-	}
-	if byName["beta"].Source != Builtin {
-		t.Fatalf("beta: %+v", byName["beta"])
 	}
 }

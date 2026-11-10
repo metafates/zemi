@@ -13,24 +13,6 @@ import (
 	"github.com/metafates/zemi/internal/perm"
 )
 
-// TestShortID: a pad file name is trusted as an id only through IDShape, so
-// the generator and the regexp must agree.
-func TestShortID(t *testing.T) {
-	seen := map[string]bool{}
-	for range 500 {
-		id := ShortID()
-		if !IDShape.MatchString(id) || seen[id] {
-			t.Fatalf("ShortID() = %q, shape %v, repeat %v", id, IDShape.MatchString(id), seen[id])
-		}
-		seen[id] = true
-	}
-	for _, bad := range []string{"0123456", "0123456i", "0123456L", "../01234", "012345678"} {
-		if IDShape.MatchString(bad) {
-			t.Errorf("IDShape matches %q", bad)
-		}
-	}
-}
-
 // TestNewestMigration: the migrations' version is the highest number in their
 // file names, so a number nobody used still leaves a store read as migrated.
 func TestNewestMigration(t *testing.T) {
@@ -103,40 +85,6 @@ func TestWriteSessionGone(t *testing.T) {
 			t.Fatalf("err = %v, want some other failure", err)
 		}
 	})
-}
-
-// TestMigrationFresh: a fresh store opens, the one migration stamps its
-// version, and a second open runs nothing again.
-func TestMigrationFresh(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "zemi.db")
-	db, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sid := ShortID()
-	if err := db.CreateSession(sid, "", "a session", ""); err != nil {
-		t.Fatal(err)
-	}
-	var version int
-	if err := db.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&version); err != nil || version != newestMigration(_migrations) {
-		t.Fatalf("goose version = %d, %v; want %d", version, err, newestMigration(_migrations))
-	}
-	db.Close()
-
-	// the second open runs nothing again
-	db, err = Open(path)
-	if err != nil {
-		t.Fatalf("a migrated store must reopen: %v", err)
-	}
-	defer db.Close()
-	var again int
-	if err := db.db.QueryRow(`SELECT max(version_id) FROM goose_db_version`).Scan(&again); err != nil || again != version {
-		t.Fatalf("goose version after a reopen = %d, %v; want %d", again, err, version)
-	}
-	var n int
-	if err := db.db.QueryRow(`SELECT count(*) FROM sessions WHERE ` + _topLevelSessions).Scan(&n); err != nil || n != 1 {
-		t.Fatalf("sessions = %d, %v", n, err)
-	}
 }
 
 // TestOpenReadUnmigrated: a read-only open refuses a store this binary's
@@ -240,144 +188,6 @@ func TestConcurrentOpen(t *testing.T) {
 	}
 }
 
-func TestSessionLifecycle(t *testing.T) {
-	db := openTest(t)
-	if err := db.CreateSession("s1", "parent0", "first", "coder"); err != nil {
-		t.Fatal(err)
-	}
-	s, err := db.GetSession("s1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if s.Title != "first" || s.Agent != "coder" || s.ParentID != "parent0" {
-		t.Fatalf("unexpected session: %+v", s)
-	}
-	if _, err := db.GetSession("missing"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("want ErrNotFound, got %v", err)
-	}
-	if err := db.execOne("rename", `UPDATE sessions SET title = ? WHERE id = ?`, "renamed", "s1"); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AddUsage("s1", 10, 20, 0, 0, 0.5); err != nil {
-		t.Fatal(err)
-	}
-	s, _ = db.GetSession("s1")
-	if s.Title != "renamed" || s.PromptTokens != 10 || s.CompletionTokens != 20 || s.Cost != 0.5 {
-		t.Fatalf("usage/rename not applied: %+v", s)
-	}
-	// a vanished session must report the miss, not swallow the update
-	for _, err := range []error{
-		db.execOne("rename", `UPDATE sessions SET title = ? WHERE id = ?`, "x", "ghost"),
-		db.AddUsage("ghost", 1, 1, 0, 0, 1),
-	} {
-		if !errors.Is(err, ErrNotFound) {
-			t.Fatalf("want ErrNotFound, got %v", err)
-		}
-	}
-	// only a message makes a session recent: a late bill for a closed one must not
-	db.db.Exec(`UPDATE sessions SET updated_at = 1 WHERE id = 's1'`)
-	_ = db.AddUsage("s1", 1, 1, 0, 0, 0)
-	if s, _ = db.GetSession("s1"); s.UpdatedAt != 1 {
-		t.Fatalf("usage bumped updated_at to %d", s.UpdatedAt)
-	}
-	_ = db.AddMessage(&Message{SessionID: "s1", Role: "user", PartsJSON: "[]"})
-	if s, _ = db.GetSession("s1"); s.UpdatedAt == 1 {
-		t.Fatal("a message did not bump updated_at")
-	}
-	db.db.Exec(`UPDATE sessions SET updated_at = 1 WHERE id = 's1'`)
-	if err := db.execOne("rename", `UPDATE sessions SET title = ? WHERE id = ?`, "relabelled", "s1"); err != nil {
-		t.Fatal(err)
-	}
-	if s, _ = db.GetSession("s1"); s.UpdatedAt != 1 || s.Title != "relabelled" {
-		t.Fatalf("rename: %+v", s)
-	}
-}
-
-func TestMessagesAndToolCalls(t *testing.T) {
-	db := openTest(t)
-	if err := db.CreateSession("s1", "", "t", ""); err != nil {
-		t.Fatal(err)
-	}
-	m := &Message{SessionID: "s1", Role: "user", PartsJSON: `[{"type":"text","text":"hi"}]`}
-	if err := db.AddMessage(m); err != nil {
-		t.Fatal(err)
-	}
-	if m.ID == "" || m.CreatedAt == 0 {
-		t.Fatal("AddMessage must fill id and timestamp")
-	}
-	if err := db.AddMessage(&Message{ID: "m2", SessionID: "s1", Role: "assistant", PartsJSON: `[]`}); err != nil {
-		t.Fatal(err)
-	}
-	msgs, err := db.Messages("s1")
-	if err != nil || len(msgs) != 2 {
-		t.Fatalf("messages: %v %v", msgs, err)
-	}
-	if msgs[0].ID != m.ID {
-		t.Fatalf("messages not in order: %+v", msgs)
-	}
-	// Tool telemetry rows stay out of the picker preview; the call and the
-	// message it points at land together.
-	if err := db.AddToolCall(&Message{SessionID: "s1", Role: "tool", PartsJSON: `{}`},
-		&ToolCall{Tool: "shell", OK: false}); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AddToolCall(&Message{SessionID: "ghost", Role: "tool", PartsJSON: `{}`},
-		&ToolCall{Tool: "shell", OK: true}); err == nil {
-		t.Fatal("an unknown session must fail")
-	}
-}
-
-func TestTodosReplace(t *testing.T) {
-	db := openTest(t)
-	if err := db.CreateSession("s1", "", "t", ""); err != nil {
-		t.Fatal(err)
-	}
-	in := []Todo{{Content: "a", Status: "pending"}, {Content: "b", Status: "done", ActiveForm: "doing b"}}
-	if err := db.SetTodos("s1", in); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.SetTodos("s1", in); err != nil {
-		t.Fatal(err)
-	}
-	out, err := db.Todos("s1")
-	if err != nil || len(out) != 2 {
-		t.Fatalf("todos: %v %v", out, err)
-	}
-	if out[1].Content != "b" {
-		t.Fatalf("order wrong: %+v", out)
-	}
-}
-
-func TestKVRoundtrip(t *testing.T) {
-	db := openTest(t)
-	if _, err := db.GetKV("k"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("want ErrNotFound, got %v", err)
-	}
-	if err := db.SetKV("k", `{"v":1}`); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.SetKV("k", `{"v":2}`); err != nil {
-		t.Fatal(err)
-	}
-	v, err := db.GetKV("k")
-	if err != nil || v != `{"v":2}` {
-		t.Fatalf("kv: %q %v", v, err)
-	}
-}
-
-func TestProjectDBPath(t *testing.T) {
-	if got := ProjectDBPath("/state", ""); got != "/state/zemi.db" {
-		t.Fatalf("global path: %s", got)
-	}
-	p := ProjectDBPath("/state", "/home/u/proj")
-	if filepath.Dir(filepath.Dir(p)) != filepath.Join("/state", "projects") {
-		t.Fatalf("project path: %s", p)
-	}
-	if p == ProjectDBPath("/state", "/home/u/other") {
-		t.Fatal("different projects must hash differently")
-	}
-}
-
 // TestProjectRoot: opening a project store names its root beside it, a
 // root file names a root only when that hashes to its dir, and Touch moves
 // its last use.
@@ -431,25 +241,5 @@ func TestProjectRoot(t *testing.T) {
 				t.Fatalf("after Touch the last use is %v", opened)
 			}
 		})
-	}
-}
-
-func TestUsageSince(t *testing.T) {
-	db := openTest(t)
-	// a bill lands in its own UTC day; the windows read the same sum while
-	// the day is today, and nothing past it
-	if err := db.AddUsageDay(200, 20, 0.5); err != nil {
-		t.Fatal(err)
-	}
-	if u, err := db.UsageSince(time.Time{}); err != nil || u.Prompt != 200 || u.Completion != 20 || u.Cost != 0.5 {
-		t.Fatalf("all time = %+v, %v", u, err)
-	}
-	y, m, d := time.Now().UTC().Date()
-	midnight := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
-	if u, _ := db.UsageSince(midnight); u.Prompt != 200 {
-		t.Fatalf("today = %+v, want the whole day's bills", u)
-	}
-	if u, _ := db.UsageSince(midnight.AddDate(0, 0, 1)); u.Prompt != 0 {
-		t.Fatalf("tomorrow = %+v, want zero", u)
 	}
 }

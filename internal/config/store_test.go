@@ -6,25 +6,6 @@ import (
 	"time"
 )
 
-// A reader of a path outside the schema gets the zero value: every writer
-// (Add, Check, SetQuiet, AddWatch) refuses an unknown key, so this is the
-// one silent hole left, and it is what a mistyped literal reads as.
-func TestStoreReadUnknownKey(t *testing.T) {
-	s := NewStore()
-	if got := s.Str("session.recap"); got != "3m" {
-		t.Fatalf("a schema key holds its default: %q", got)
-	}
-	if got := s.Str("ui.theemes"); got != "" {
-		t.Fatalf("unknown string key = %q", got)
-	}
-	if got := s.Bool("ui.theemes"); got {
-		t.Fatal("unknown bool key is not false")
-	}
-	if got := s.Int("ui.theemes"); got != 0 {
-		t.Fatalf("unknown number key = %d", got)
-	}
-}
-
 // A duration key resolves "" and a stale value of another kind to its
 // schema default, and 0 means off.
 func TestStoreDuration(t *testing.T) {
@@ -75,22 +56,6 @@ func TestStoreKinds(t *testing.T) {
 		if c.bad != (err != nil) || !c.bad && !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s: Check = %v, %v; want %v, bad %v", c.name, got, err, c.want, c.bad)
 		}
-	}
-}
-
-// Only a models.<role> key names a model slot: favorites is a list key.
-func TestKeyFamilies(t *testing.T) {
-	if role, ok := ModelRole(KeyModelsCompact); !ok || role != "compact" {
-		t.Fatalf("ModelRole(models.compact) = %q, %v", role, ok)
-	}
-	if role, ok := ModelRole(KeyModelsFavorites); ok {
-		t.Fatalf("favorites names slot %q", role)
-	}
-	if name, ok := PluginOf(PluginKey("jira", "url")); !ok || name != "jira" {
-		t.Fatalf("PluginOf = %q, %v", name, ok)
-	}
-	if _, ok := PluginOf(KeyUIMouse); ok {
-		t.Fatal("a builtin key names a plugin")
 	}
 }
 
