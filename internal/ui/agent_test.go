@@ -1614,7 +1614,7 @@ func TestCallRowClickIDs(t *testing.T) {
 	}
 	for text, want := range map[string]string{
 		"▸ 1 file: b.go":          "turn:2",
-		"│ ✻ thought 6.0s":        "call:6",
+		"▸ thought 6.0s":          "call:6",
 		"│ ✓ edit /w/a.go +1 -1":  "call:-1",
 		"│ ✓ read 2 files":        "step:-2",
 		"✓ explore found it":      "agent:r1",

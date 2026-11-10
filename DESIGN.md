@@ -2167,8 +2167,9 @@ view; a reset's wipe drops the row with the chat.
   its whole rail, but a run holding one call a family counts names it even
   when its diff is news, so no single-row rail stands with no fold row to
   close it. A run a reply has closed folds this
-  way at once, while the reply still streams and after it settles, so only the
-  run the turn is working in, the one it thinks and calls in, stays open, and an
+  way at once, while the reply still streams and after it settles, and a flush
+  mid-turn folds the steps it settles the same way: only the turn's live rows,
+  the ones still to flush, read whole, and an
   agent run's view folds it the same way, so what a run shows behaves like the
   session's chat. Consecutive notice rows (a background report's head, an
   agent's update line, a plugin's or a loop's send) draw as one block with no
