@@ -187,6 +187,15 @@ func TestChatCursorFoldsALongPrompt(t *testing.T) {
 	if !folded("▸") {
 		t.Fatalf("h did not fold the prompt back:\n%s", strings.Join(rows(), "\n"))
 	}
+	// a key inside the frame after a toggle reads no paint: h on a prompt l
+	// just opened still folds it, the state, not the glyph, says what it does
+	foldKey(tea.KeyPressMsg{Code: 'l'})
+	press(t, app, tea.KeyPressMsg{Code: 'h'})
+	if !folded("▸") {
+		t.Fatalf("h inside the frame after l did not fold the prompt back:\n%s", strings.Join(rows(), "\n"))
+	}
+	app.renderSync(t) // the frame the click below reads
+	app.Frame()
 	x, y := findCell(t, app, "▸ +")
 	clickAt(app, x, y)
 	if !folded("▴") {

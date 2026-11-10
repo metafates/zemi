@@ -2128,19 +2128,20 @@ func (a *App) chatFoldKey(key string) {
 	if from < 0 {
 		return
 	}
+	folds := a.chatFolds()
+	if folds == nil {
+		return
+	}
 	for _, row := range st.lines[from : to+1] {
 		for _, seg := range row {
 			// a run's digest and a long prompt carry their fold the same way
 			if !strings.HasPrefix(seg.Click, "turn:") && !strings.HasPrefix(seg.Click, "prompt:") {
 				continue
 			}
-			// the glyph says the fold's state: ▸ folded, ▴/▾ open (a prompt
-			// folds upward, a run's digest downward). Head rows carry the
-			// click without one
-			open := strings.HasPrefix(seg.Text, "▾") || strings.HasPrefix(seg.Text, "▴")
-			if !open && !strings.HasPrefix(seg.Text, "▸") {
-				continue
-			}
+			// the fold's state is the chat's own, not the glyph the last paint
+			// drew: a key pressed before the toggle's frame has landed would
+			// otherwise read the state the toggle undid
+			open := folds.open(seg.Click)
 			if key == "h" && !open || key == "l" && open {
 				return
 			}
