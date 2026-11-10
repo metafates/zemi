@@ -1685,7 +1685,9 @@ UI extensibility contract:
   arguments, or the next argument's), `enter` submits the typed line, the
   highlighted command standing in for a typed name that is none or that the
   user moved off; `esc` closes and `ctrl+space` reopens whatever popup the
-  cursor's word takes. The popup never holds a line back: a submit whose
+  cursor's word takes. A draft naming no command closes the popup instead of
+  drawing an empty list - only `@` keeps its "No matches." frame. The popup
+  never holds a line back: a submit whose
   name names no command sends the line to the model as a message, so a
   pasted `/absolute/path` rides with the words around it. The exact,
   case-sensitive `/reload` is Go-reserved: it is checked on composer submit

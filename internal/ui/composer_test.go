@@ -961,7 +961,7 @@ func TestPaletteDispatch(t *testing.T) {
 		if m := regexp.MustCompile(`› (/\S+)`).FindStringSubmatch(frame); m != nil {
 			row = m[1]
 		}
-		if row != c.row || !strings.Contains(frame, "enter run") {
+		if row != c.row || (c.row != "" && !strings.Contains(frame, "enter run")) {
 			t.Errorf("%s: highlighted %q, want %q beside the hint:\n%s", c.name, row, c.row, frame)
 		}
 		app.composerKey("enter", tea.KeyPressMsg{})
@@ -995,15 +995,14 @@ func TestSubmitFailed(t *testing.T) {
 }
 
 // TestUnknownCommandIsAMessage: a "/" line that names no command goes to the
-// model like any message - a pasted path among them - the popup it opened
-// gone once the send is away.
+// model like any message - a pasted path among them, its popup never drawn.
 func TestUnknownCommandIsAMessage(t *testing.T) {
 	app := newTestApp(t, t.TempDir())
 	for _, r := range "/tmp/notes.txt" {
 		app.composerKey(string(r), tea.KeyPressMsg{Text: string(r)})
 	}
-	if !app.completion.shown() {
-		t.Fatal("the / popup did not open")
+	if app.completion.shown() {
+		t.Fatal("the / popup stayed open over a path")
 	}
 	app.composerKey("enter", tea.KeyPressMsg{})
 	c := app.composer
@@ -1021,6 +1020,11 @@ func TestRestoreQueue(t *testing.T) {
 	t.Parallel()
 	app, host := bootAgentApp(t, 60, 12)
 	host.SeedStream(hostapi.StreamSnapshot{Active: true})
+	if _, err := host.Commands.Add(&hostapi.Command{
+		Name: "help", Desc: "show keys and commands", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err := host.AgentSendUser("queued"); err != nil {
 		t.Fatal(err)
 	}
@@ -1047,7 +1051,12 @@ func TestRestoreQueue(t *testing.T) {
 // popups, so a set or insert never leaves one keyed at stale rune offsets.
 func TestComposerEditRecomputes(t *testing.T) {
 	t.Parallel()
-	app, _ := bootAgentApp(t, 60, 12)
+	app, host := bootAgentApp(t, 60, 12)
+	if _, err := host.Commands.Add(&hostapi.Command{
+		Name: "help", Desc: "show keys and commands", Origin: lua.OriginBuiltin, Gen: hostapi.Gen(1),
+	}); err != nil {
+		t.Fatal(err)
+	}
 	app.composer.text, app.composer.cursor = "/he", 3
 	app.updateCompletion()
 	if !app.completion.shown() {

@@ -397,12 +397,12 @@ func (f *wordCompleter) count() int {
 	return n
 }
 
-// shown reports whether the popup is drawn and takes its keys: a Lua
-// trigger with nothing to offer stays out of the way of prose, while the
-// composer's own triggers draw their empty list ("No matches.") so the
-// reader sees why nothing picks.
+// shown reports whether the popup is drawn and takes its keys: the @
+// trigger draws its empty list ("No matches.") so the reader sees why
+// nothing picks, a slash draft naming no command closes the popup and
+// leaves the line alone.
 func (f *wordCompleter) shown() bool {
-	return f.open && (f.trigger == '@' || f.trigger == '/' || f.count() > 0)
+	return f.open && (f.trigger == '@' || f.count() > 0)
 }
 
 // title names what the popup lists for the triggers zemi knows the meaning
