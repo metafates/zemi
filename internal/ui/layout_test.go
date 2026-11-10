@@ -169,3 +169,74 @@ func TestUnitSpans(t *testing.T) {
 		}
 	}
 }
+
+func TestReanchor(t *testing.T) {
+	row := func(text string, anchor int) []hostapi.Segment {
+		return []hostapi.Segment{{Text: text, Anchor: anchor}}
+	}
+	// look-alike rows: the text probes cannot tell one from the next
+	lookalike := func(n, anchorAt, anchor int) [][]hostapi.Segment {
+		lines := make([][]hostapi.Segment, n)
+		for i := range lines {
+			if i == anchorAt {
+				lines[i] = row("rail head", anchor)
+				continue
+			}
+			lines[i] = row("word", 0)
+		}
+		return lines
+	}
+	st := func(top, anchorAt, anchor int, lines [][]hostapi.Segment) *scrollState {
+		from, _ := unitSpan(lines, anchor)
+		return &scrollState{
+			top: top, rows: len(lines), anchorOff: top - anchorAt,
+			anchor:        []string{"rail head", "word", "word"},
+			anchorID:      anchor,
+			anchorUnitOff: anchorAt - from,
+			anchorTop:     top,
+		}
+	}
+	for _, c := range []struct {
+		name     string
+		lines    [][]hostapi.Segment
+		st       *scrollState
+		prevRows int
+		want     int
+	}{
+		{"a streamed tail leaves the top alone", lookalike(20, 10, 7), nil, 20, 10},
+		{"a fill above and a tail below move the top exactly", nil, nil, 20, 15},
+		{"the anchored unit shed falls back to the probes", nil, nil, 20, 10},
+	} {
+		lines := c.lines
+		s := c.st
+		switch c.name {
+		case "a streamed tail leaves the top alone":
+			s = st(10, 10, 7, lines)
+			lines = append(slices.Clone(lines), make([][]hostapi.Segment, 6)...)
+			for i := 20; i < 26; i++ {
+				lines[i] = row("word", 0)
+			}
+		case "a fill above and a tail below move the top exactly":
+			lines = lookalike(20, 10, 7)
+			s = st(10, 10, 7, lines)
+			grown := make([][]hostapi.Segment, 0, 31)
+			grown = append(grown, make([][]hostapi.Segment, 5)...)
+			for i := range 5 {
+				grown[i] = row("word", 0)
+			}
+			grown = append(grown, lines...)
+			for range 6 {
+				grown = append(grown, row("word", 0))
+			}
+			lines = grown
+		case "the anchored unit shed falls back to the probes":
+			lines = lookalike(20, 10, 7)
+			s = st(10, 10, 7, lines)
+			lines = slices.Clone(lines)
+			lines[10] = row("word", 0)
+		}
+		if got := reanchor(lines, s, c.prevRows); got != c.want {
+			t.Errorf("%s: top %d, want %d", c.name, got, c.want)
+		}
+	}
+}
