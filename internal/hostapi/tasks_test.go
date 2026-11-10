@@ -425,7 +425,7 @@ func TestAgentItemsListRunsOfOtherSessions(t *testing.T) {
 	if !strings.Contains(rows, "section:Running") || !strings.Contains(rows, "text:look") || !strings.Contains(rows, "explore   p/m   from Other work") || !strings.Contains(rows, "keys:[desc:view its transcript key:v run:agents view agent-9 list danger:true desc:stop key:s run:agents stop agent-9]") || !strings.Contains(rows, "fields:[model p/m] [status running]") || !strings.Contains(rows, "0 tool calls") {
 		t.Fatalf("run of another session not listed:\n%s", rows)
 	}
-	if strings.Contains(rows, "scan part1") || !strings.Contains(rows, "   from Other work id:0000000f mark:wait run:workflows view 0000000f section:Workflows") {
+	if strings.Contains(rows, "scan part1") || !strings.Contains(rows, "   from Other work id:0000000f keys:[danger:true desc:stop key:x run:workflows stop 0000000f] mark:wait run:workflows view 0000000f section:Workflows") {
 		t.Fatalf("another session's workflow is not one row:\n%s", rows)
 	}
 	// the running run, under New agent, is selected

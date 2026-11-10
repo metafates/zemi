@@ -63,10 +63,14 @@ func flowDesc(f *flowRun, v flowView) string {
 // act on it.
 func (h *Host) flowItem(f *flowRun, section string) OverlayItem {
 	v := f.view()
-	return OverlayItem{
+	item := OverlayItem{
 		ID: f.id, Text: f.description, Desc: flowDesc(f, v) + h.fromSession(f.parent), Section: section,
 		Run: "workflows view " + f.id, Verb: VerbOpen, Mark: RunMarks[flowWord(v)],
 	}
+	if v.status == RunRunning { // the view's x, on the row, so /agents lists reach it too
+		item.Keys = []ItemKey{{Key: "x", Desc: "stop", Run: "workflows stop " + f.id, Danger: true}}
+	}
+	return item
 }
 
 var _notSlug = regexp.MustCompile(`[^a-z0-9]+`)

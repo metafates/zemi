@@ -425,6 +425,14 @@ func TestWorkflowControl(t *testing.T) {
 				if got := act(c, _actStop, 0, ""); got != "Stopped "+c.f.description+" ("+c.f.id+")" {
 					c.t.Fatalf("stop = %q", got)
 				}
+				stop := c.h.flowItem(c.f, "").Keys
+				tick(c, func(v flowView) bool { return v.status == RunCancelled })
+				if len(stop) == 0 || stop[0].Key != "x" {
+					c.t.Fatal("a running run's row offers no stop")
+				}
+				if len(c.h.flowItem(c.f, "").Keys) != 0 {
+					c.t.Fatal("a cancelled run's row still offers stop")
+				}
 			},
 			want: "context canceled",
 		},
