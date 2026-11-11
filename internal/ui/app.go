@@ -1292,8 +1292,11 @@ func (a *App) renderStaleWidgetsCmd(sizeOnly bool) tea.Cmd {
 	seq := a.renderSeq
 	return func() tea.Msg {
 		out := make(widgetsRenderedMsg, 0, len(stale))
+		// One ScreenState for the whole frame: the snapshot reads the session
+		// and stats the repo, work per widget would scale it 17x.
+		screen := a.host.ScreenState(stale[0].width, stale[0].height, st)
 		for _, w := range stale {
-			screen := a.host.ScreenState(w.width, w.height, st)
+			screen.Width, screen.Height = w.width, w.height
 			lines, more, err := a.renderWidget(w, screen)
 			out = append(out, widgetRender{id: w.ID, lines: lines, more: more, width: w.width, height: w.height, gen: gen, seq: seq, err: err, model: screen.Model})
 		}

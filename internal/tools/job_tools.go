@@ -236,7 +236,7 @@ func (m *Jobs) Start(dir, name, line string, env []string) (string, error) {
 	cmd.Env = env
 	j := &Job{
 		Name: cmp.Or(name, line), Cmd: line, Started: time.Now(), cmd: cmd, done: make(chan struct{}),
-		stdout: &proc.Buffer{Max: 1 << 20}, stderr: &proc.Buffer{Max: 1 << 20},
+		stdout: &proc.Buffer{Max: 1 << 18}, stderr: &proc.Buffer{Max: 1 << 18},
 	}
 	cmd.Stdout, cmd.Stderr = j.stdout, j.stderr
 	if err := proc.Start(cmd); err != nil {
@@ -253,7 +253,7 @@ func (m *Jobs) Start(dir, name, line string, env []string) (string, error) {
 // keeps going as a job instead of losing the work done so far. name is what
 // the user sees it as (the shell call's about), line the command itself.
 func (m *Jobs) Adopt(name, line string, cmd *exec.Cmd, out *proc.Buffer, sent int64, started time.Time, wait <-chan error) string {
-	j := &Job{Name: cmp.Or(name, line), Cmd: line, Started: started, cmd: cmd, done: make(chan struct{}), stdout: out, stderr: &proc.Buffer{Max: 1 << 20}}
+	j := &Job{Name: cmp.Or(name, line), Cmd: line, Started: started, cmd: cmd, done: make(chan struct{}), stdout: out, stderr: &proc.Buffer{Max: 1 << 18}}
 	j.sent[0] = sent
 	return m.add(j, wait)
 }

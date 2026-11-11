@@ -1043,6 +1043,9 @@ type filesScannedMsg struct {
 func (a *App) clearComposer() {
 	a.composer.text, a.composer.cursor = "", 0
 	a.completion.close()
+	// the draft is gone, so the file corpus goes with it: a big repo's list
+	// is the scan's whole weight, and the next @ rescans anyway
+	a.completion.files, a.completion.bases = nil, nil
 }
 
 // submitComposer routes the composer submit: a line naming a command runs
