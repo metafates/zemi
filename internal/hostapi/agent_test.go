@@ -248,7 +248,7 @@ func TestReloadKeepsRuntimePicks(t *testing.T) {
 		{name: "a set comes back", config: []any{"p/c"}, want: "p/c", source: "init.lua"},
 		{name: "dropping every set returns the default", want: "", source: "default"},
 		{name: "a Lua number sets a number key", key: "agent.max_background", config: []any{5.0}, want: 5.0, source: "init.lua"},
-		{name: "so dropping it returns the default", key: "agent.max_background", want: 4.0, source: "default"},
+		{name: "so dropping it returns the default", key: "agent.max_background", want: 10.0, source: "default"},
 		{name: "a pick persists", pick: "p/b", keep: true, restart: true, want: "p/b", source: "saved"},
 		{name: "init.lua overrides it", config: []any{"p/a"}, restart: true, want: "p/a", source: "init.lua"},
 		{name: "a pick over config lasts the run", config: []any{"p/a"}, pick: "p/c", keep: true, want: "p/c", source: "this run"},

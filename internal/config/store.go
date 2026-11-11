@@ -163,7 +163,7 @@ func (s *Store) defineDefaults() {
 		{Path: KeyProvidersBuiltin, Kind: KindBool, Default: true, Desc: "the builtin providers, each on while its key is exported (/model lists them); false leaves only what init.lua adds"},
 		{Path: KeyAgentEffort, Kind: KindString, Default: "", Desc: "reasoning effort: low, medium, high, or empty for the model's default"},
 		{Path: KeySessionRecap, Kind: KindDuration, Default: "3m", Desc: "after a turn with tool calls, if there is no input for this long, add a one-line recap from a short model call on the cached conversation (billed to the session); 0 turns it off, empty for the 3m default"},
-		{Path: KeyAgentMaxBackground, Kind: KindNumber, Default: 4.0, Desc: "background agents and workflows running at once; one more is refused until one ends (1 at least)"},
+		{Path: KeyAgentMaxBackground, Kind: KindNumber, Default: 10.0, Desc: "background agents and workflows running at once; one more is refused until one ends (1 at least)"},
 		{Path: KeyPluginsAutoUpdate, Kind: KindBool, Default: true, Desc: "pull every registered marketplace once a day when zemi's UI opens, in the background, moving the plugins installed from them; false only fetches and tells you a marketplace has updates, pulling stays yours with plugin marketplace update"},
 		{Path: KeyLSPAuto, Kind: KindBool, Default: true, Desc: "start installed language servers for files with their marker in a trusted project, and lua-language-server for the Lua of your config and local plugins"},
 		{Path: KeyEditorCommand, Kind: KindString, Default: "", Desc: "editor for zemi.ui.edit and the composer draft (empty uses $VISUAL, then $EDITOR, then vi)"},

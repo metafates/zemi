@@ -1439,7 +1439,7 @@ func TestConfigEdit(t *testing.T) {
 		path, section, prefill, typed, desc, toast string
 	}{
 		{"editor.command", "editor", "", "vim", "this run  vim", ""},
-		{"agent.max_background", "agent", "4", "x", "default   4", "agent.max_background is a number"},
+		{"agent.max_background", "agent", "10", "x", "default  10", "agent.max_background is a number"},
 	} {
 		app.runCommand("config", "", false)
 		app.runCommand("config", "edit "+c.path, false)

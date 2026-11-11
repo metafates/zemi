@@ -517,7 +517,7 @@ func TestConfigSet(t *testing.T) {
 		path, want string
 	}{
 		{"session.recap", "default 3m"},
-		{"agent.max_background", "default 4"},
+		{"agent.max_background", "default 10"},
 		{"editor.command", ""},
 	} {
 		s, err := h.setting(config.Key(c.path))
