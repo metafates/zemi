@@ -463,7 +463,7 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			if err != nil {
 				return err
 			}
-			ui.OpenOverlay(hostapi.Overlay{ID: "cwd", Title: "Project root", Origin: lua.OriginBuiltin, Anchor: hostapi.OverlayBottomRight, Body: h.ProjectRoot()})
+			ui.OpenOverlay(hostapi.Overlay{ID: "cwd", Title: "Project root", Origin: lua.OriginBuiltin, Anchor: hostapi.OverlayBottomLeft, Body: h.ProjectRoot()})
 			return nil
 		}},
 		{Name: "copy", NArgs: hostapi.NArgsAny, Desc: "copy the last reply or one of its code blocks", GoFn: func(h *hostapi.Host, args string, confirm bool) error {

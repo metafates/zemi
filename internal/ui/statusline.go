@@ -73,7 +73,7 @@ func statusCwd(st *hostapi.ScreenState) ([][]hostapi.Segment, bool) {
 			p = strings.TrimRight(p, "/")[i+1:]
 		}
 	}
-	line := []hostapi.Segment{{Text: p, HL: hostapi.GroupDim}}
+	line := []hostapi.Segment{{Text: p, HL: hostapi.GroupDim, Click: "cwd"}}
 	if st.Branch != "" {
 		line = append(line, hostapi.Segment{Text: ":" + st.Branch, HL: "Accent"})
 	}
