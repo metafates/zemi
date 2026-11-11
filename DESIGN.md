@@ -2330,7 +2330,8 @@ view; a reset's wipe drops the row with the chat.
   answered in an overlay, from the view so far,
   never stored), `/note <text>` (one note-kind row into the chat, a chapter
   mark, mid-turn too), `/copy [reply|code [n]]` (the last reply or its code blocks as
-  written, no trailing `<tldr>`; bare over a reply with code blocks opens their picker), `/logs` (recent
+  written, no trailing `<tldr>`; bare over a reply with code blocks opens their picker), `/cwd`
+  (an overlay with the project root's path, `y` copies it), `/logs` (recent
   `print` and `zemi.log` lines), `/health` (one row per check, problems first: store,
   providers, catalog, model, context window, git, shell, notify,
   the chat builder (§10), skills, the Lua runtime, plugins,

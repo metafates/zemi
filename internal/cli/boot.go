@@ -458,6 +458,14 @@ func mainCommands(quit, trust func()) []*hostapi.Command {
 			h.CompactNow()
 			return nil
 		}},
+		{Name: "cwd", Desc: "show the project root's path", GoFn: func(h *hostapi.Host, _ string, confirm bool) error {
+			ui, err := h.Screen()
+			if err != nil {
+				return err
+			}
+			ui.OpenOverlay(hostapi.Overlay{ID: "cwd", Title: "Project root", Origin: lua.OriginBuiltin, Anchor: hostapi.OverlayBottomRight, Body: h.ProjectRoot()})
+			return nil
+		}},
 		{Name: "copy", NArgs: hostapi.NArgsAny, Desc: "copy the last reply or one of its code blocks", GoFn: func(h *hostapi.Host, args string, confirm bool) error {
 			return h.CopyReply(args)
 		}, GoComplete: hostapi.SubcommandCompleter([]string{"reply", "code"}, nil)},

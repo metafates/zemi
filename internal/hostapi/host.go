@@ -908,6 +908,10 @@ func TrustUnsaved(root string) bool {
 // ProjectTrusted reports whether the user trusts this project.
 func (h *Host) ProjectTrusted() bool { return h.projectTrusted.Load() }
 
+// ProjectRoot is the repository this session belongs to, symlinks resolved
+// (a worktree maps to its main checkout).
+func (h *Host) ProjectRoot() string { return h.trustRoot() }
+
 // projectNamespace is zemi.project: what a job-starting plugin checks first.
 func (h *Host) projectNamespace(L *glua.LState) *glua.LTable {
 	tb := L.NewTable()
