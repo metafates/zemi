@@ -1,7 +1,9 @@
 -- Ship a requirement end to end, ready to ship: read from all sides, planned
 -- and audited until sound, implemented by workers (parallel worktrees when it
 -- splits), merged and unified, then a verify-and-fix loop runs until nothing
--- is left, and the scaffolding cleans itself up.
+-- is left - the proof lens re-runs each new test on the pre-change code,
+-- and an expectation is never weakened without a critic's verdict - and the
+-- scaffolding cleans itself up.
 -- A large flow, dozens of agent calls and many minutes: run it only for big
 -- features, and ask the user first unless the prompt explicitly names this
 -- workflow or attaches it. args is the requirement.
@@ -11,6 +13,8 @@ if not req then return "ship needs a requirement: /workflows run ship <what to b
 
 local cadence = "Commit each verified area as its own lowercase one-line commit; never push. "
 	.. "Never leave the tree red: when a commit breaks the checks, revert that commit and fix forward - a red tree is not slept on. "
+	.. "Never make a check pass by weakening it: an existing test's expectation is never edited, skipped or deleted, and the requirement is never narrowed. "
+	.. "When you believe an expectation itself is wrong, leave it failing and answer with a line '=== AMENDMENT: <the expectation, what reality shows, and why accepting it does not weaken the requirement>'. "
 
 -- a reply without its verdict line counts as clean, so a confused round
 -- ends a loop instead of spinning it
@@ -20,6 +24,16 @@ local function flawed(text)
 		if line:match("^=== VERDICT: flawed") then return true end
 	end
 	return false
+end
+
+local function amendments(text)
+	local out = {}
+	if type(text) ~= "string" then return out end
+	for line in (text .. "\n"):gmatch("(.-)\n") do
+		local a = line:match("^=== AMENDMENT: (.+)$")
+		if a then out[#out + 1] = a end
+	end
+	return out
 end
 
 wf.phase("understand")
@@ -97,6 +111,41 @@ local plan, cerr = wf.agent(
 	{ agent = "explore", description = "converge plans" }
 )
 if not plan then return "could not converge a plan: " .. cerr end
+
+local rejected = {}
+-- a worker's proposal to change an expectation is judged without the worker's
+-- report: only the requirement, the plan and the proposal itself
+local function adjudicate(report)
+	for _, a in ipairs(amendments(report)) do
+		wf.log("an amendment was proposed: " .. a)
+		local verdict = wf.agent(
+			"You judge a proposed amendment to a requirement, and you never see any implementation: the proposal alone is your input. "
+				.. "Accept it only when reality (the code, the platform, the project's own checks) contradicts the expectation it names, "
+				.. "accepting it keeps every guarantee the requirement makes, and it is the smallest change that unblocks the work. "
+				.. "A proposal that narrows, weakens or excuses what the requirement asks is rejected: that is a bug to fix, not an amendment. "
+				.. "Answer with '=== VERDICT: accept - <one line why>' or '=== VERDICT: reject - <one line why>'.\n\nRequirement: "
+				.. req
+				.. "\n\nPlan:\n"
+				.. plan
+				.. "\n\nProposed amendment: "
+				.. a,
+			{ agent = "explore", description = "judge amendment" }
+		)
+		if verdict and verdict:match("^=== VERDICT: accept") then
+			req = req .. "\n\nAmendment (accepted by the critic): " .. a
+			wf.log("the amendment was accepted: " .. a)
+		else
+			local why = verdict and verdict:match("^=== VERDICT: reject %- (.+)")
+				or "the critic came back with no verdict"
+			rejected[#rejected + 1] = "- the amendment '"
+				.. a
+				.. "' was rejected: "
+				.. why
+				.. " - fix the code to meet the expectation instead."
+			wf.log("the amendment was rejected: " .. why)
+		end
+	end
+end
 
 wf.phase("audit")
 for round = 1, 3 do
@@ -206,6 +255,7 @@ if #zones > 1 then
 		if zoneReports[i] then
 			landed = landed + 1
 			work[#work + 1] = "## zone " .. z.name .. "\n" .. zoneReports[i]
+			adjudicate(zoneReports[i])
 		elseif zerrs and zerrs[i] then
 			wf.log("zone " .. z.name .. " failed: " .. zerrs[i])
 		end
@@ -237,6 +287,7 @@ if #zones > 1 then
 	)
 	if merged then
 		work[#work + 1] = "## merge\n" .. merged
+		adjudicate(merged)
 	else
 		wf.log("the merge failed: " .. tostring(merr) .. "; the verify rounds take it from here")
 	end
@@ -254,6 +305,7 @@ else
 	)
 	if not landed then return "implementation failed: " .. werr end
 	work[#work + 1] = "## implementation\n" .. landed
+	adjudicate(landed)
 end
 
 wf.phase("verify")
@@ -285,6 +337,17 @@ for round = 1, 4 do
 			"gates",
 			"general",
 			"the mechanical gates: find this project's own check and test commands, run them whole, and report every failure",
+		},
+		{
+			"proof",
+			"general",
+			"the proof that the checks bite: every test this change added or tightened must fail on the pre-change code. "
+				.. "For each, make a throwaway worktree at the commit just before this change's earliest commit (its commits are named in what landed), "
+				.. "bring in only the test files as they are now with `git checkout <this branch> -- <test files>` run inside the throwaway worktree, "
+				.. "run those tests there, and confirm each one fails; remove the throwaway worktree after. "
+				.. "Then confirm they pass in the real tree, which you leave untouched. "
+				.. "A test that passes on the pre-change code checks nothing: flawed. "
+				.. "When the change adds or tightens no test, answer clean and say so",
 		},
 		{
 			"fresh eyes",
@@ -321,6 +384,11 @@ for round = 1, 4 do
 			wf.log("the " .. lens[1] .. " review failed: " .. rerrs[i])
 		end
 	end
+	if #rejected > 0 then
+		bad = true
+		trail[#trail + 1] = "## rejected amendments\n" .. table.concat(rejected, "\n")
+		rejected = {}
+	end
 	if not bad then
 		clean = true
 		break
@@ -337,6 +405,11 @@ for round = 1, 4 do
 		{ agent = "general", description = "fix round " .. round }
 	)
 	work[#work + 1] = "## fix round " .. round .. "\n" .. (fixed or "the fixer came back with nothing")
+	if fixed then adjudicate(fixed) end
+end
+if #rejected > 0 then
+	clean = false
+	leftover = (leftover and leftover .. "\n\n" or "") .. "## rejected amendments\n" .. table.concat(rejected, "\n")
 end
 
 wf.phase("cleanup")
