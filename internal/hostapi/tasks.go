@@ -115,9 +115,8 @@ type agentRun struct {
 	runState
 
 	id, agent, description string
-	parent                 string         // the session that started the run
-	workflow, phase        string         // the flow that started it, "" for none
-	schema                 map[string]any // the report must be a JSON object matching it
+	parent                 string // the session that started the run
+	workflow, phase        string // the flow that started it, "" for none
 	// the model the run sends on, resolved from its definition once the runner
 	// is built
 	// NOTE: "" for a run loadRun rebuilt, which continues on its definition's

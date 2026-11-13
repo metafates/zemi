@@ -283,7 +283,6 @@ type wfTask struct {
 type wfAgentReq struct {
 	def         AgentDef
 	prompt, key string
-	schema      map[string]any // the report must be a JSON object matching it
 	agent       *flowAgent
 }
 
@@ -480,8 +479,6 @@ func (r *wfRun) agentDone(d wfDone) {
 		line.Err = "stopped by the user"
 	case d.err != nil:
 		line.Err = r.h.friendlyError(d.err)
-	case d.req.schema != nil: // runAgent checked it is the object asked for
-		line.Result = jsontext.Value(d.text)
 	default:
 		line.Result = jsonString(d.text)
 	}
@@ -490,16 +487,8 @@ func (r *wfRun) agentDone(d wfDone) {
 	if line.Err != "" {
 		r.resume(d.task, glua.LNil, glua.LString(line.Err))
 	} else {
-		r.resume(d.task, answer(r.L, line.Result))
+		r.resume(d.task, glua.LString(d.text))
 	}
-}
-
-// answer is an agent's journaled result as the script gets it: the report,
-// or a table for a schema call. A line zemi did not write answers nil.
-func answer(L *glua.LState, result jsontext.Value) glua.LValue {
-	var v any
-	_ = json.Unmarshal(result, &v)
-	return lua.FromGo(L, v)
 }
 
 // addAgent records a call in the run and tells its row: the count moves now,
@@ -681,7 +670,7 @@ func (r *wfRun) open(args any) (*glua.LState, error) {
 }
 
 // _agentOpts are the option keys zemi.workflow.agent reads; any other raises.
-var _agentOpts = []string{"agent", "description", "model", "phase", "schema"}
+var _agentOpts = []string{"agent", "description", "model", "phase"}
 
 // _wfMembers are zemi.workflow's members, named when a script reads one the
 // table lacks.
@@ -725,9 +714,8 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 		first, _, _ := strings.Cut(string(prompt), "\n")
 		desc = clipRunes(first, 40)
 	}
-	schema := callSchema(L, opts)
 	a := &flowAgent{def: def.Name, description: desc, phase: cmp.Or(phase, r.f.phase), model: def.Model}
-	key := agentKey(def.Name, a.model, schema, string(prompt))
+	key := agentKey(def.Name, a.model, string(prompt))
 	// an identical call an earlier run finished answers at once and starts
 	// nothing, so it does not count toward the cap
 	if q := r.cache[key]; len(q) > 0 {
@@ -737,7 +725,9 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 		r.f.addAgent(a)
 		hit.Description, hit.Phase, hit.Reused = a.description, a.phase, true
 		r.f.note(hit)
-		L.Push(answer(L, hit.Result))
+		var v any
+		_ = json.Unmarshal(hit.Result, &v) // a line zemi did not write answers nil
+		L.Push(lua.FromGo(L, v))
 		return 1
 	}
 	if r.started >= _workflowMaxAgents {
@@ -745,35 +735,8 @@ func (r *wfRun) luaAgent(L *glua.LState) int {
 	}
 	r.started++
 	r.f.addAgent(a)
-	reqPrompt := string(prompt)
-	if schema != nil { // in the task, never the system prompt, which runs share
-		b, _ := json.Marshal(schema, json.Deterministic(true))
-		reqPrompt += "\n\nEnd with only a JSON object matching this JSON Schema, no prose and no code fences:\n" + string(b)
-	}
-	t.req = &wfAgentReq{def: def, prompt: reqPrompt, key: key, schema: schema, agent: a}
+	t.req = &wfAgentReq{def: def, prompt: string(prompt), key: key, agent: a}
 	return L.Yield()
-}
-
-// callSchema reads agent's schema option: nil for none, and a raise for one
-// that is no JSON Schema object whose required fields it declares.
-func callSchema(L *glua.LState, opts *glua.LTable) map[string]any {
-	tb, ok := opt[*glua.LTable](L, opts, "schema")
-	if !ok {
-		return nil
-	}
-	v, _ := lua.ToGo(tb)
-	s, _ := v.(map[string]any)
-	props, _ := s["properties"].(map[string]any)
-	req, _ := s["required"].([]any)
-	stray := slices.ContainsFunc(req, func(r any) bool {
-		name, _ := r.(string)
-		_, ok := props[name]
-		return !ok
-	})
-	if s["type"] != "object" || props == nil || stray {
-		lua.RaiseScriptf(L, "agent: schema must be a JSON Schema object with type \"object\" and properties, and required naming only those; it holds a %s", tb.Type())
-	}
-	return s
 }
 
 // parallel({fn, ...}) runs each function as its own branch and returns the
@@ -872,7 +835,7 @@ func (r *wfRun) dispatch() {
 		req := t.req
 		t.req = nil
 		run, ctx := r.h.newRun(r.ctx, req.def, req.agent.description, req.prompt, false)
-		run.parent, run.workflow, run.phase, run.schema = f.parent, f.id, req.agent.phase, req.schema
+		run.parent, run.workflow, run.phase = f.parent, f.id, req.agent.phase
 		_ = r.h.tasks.add(run) // only background runs are capped
 		f.mu.Lock()
 		req.agent.run = run
@@ -1189,9 +1152,8 @@ func jsonString(s string) jsontext.Value {
 }
 
 // agentKey is what makes two agent calls identical for a rerun.
-func agentKey(def, model string, schema map[string]any, prompt string) string {
-	s, _ := json.Marshal(schema, json.Deterministic(true)) // map keys sort: one schema, one text
-	sum := sha256.Sum256([]byte(def + "\x00" + model + "\x00" + string(s) + "\x00" + prompt))
+func agentKey(def, model, prompt string) string {
+	sum := sha256.Sum256([]byte(def + "\x00" + model + "\x00" + prompt))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -1435,7 +1397,7 @@ func (h *Host) workflowTool(pipe *tools.Pipeline) fantasy.AgentTool {
 const _workflowToolDesc = `Run a Lua script that coordinates subagents with code between them: stages that feed each other, fan-out over a list, loops, checks. For independent tasks send several agent calls at once instead.
 
 The script gets Lua's string, table and math, zemi.json and zemi.workflow, and no bare copy of them: write local wf = zemi.workflow first, and every call as wf.<name>.
-wf.agent(prompt, {agent, description, phase, model, schema}) -> report, or nil, err; agent defaults to general; the prompt must stand alone; with schema (a JSON Schema object) the report is a table
+wf.agent(prompt, {agent, description, phase, model}) -> report, or nil, err; agent defaults to general; the prompt must stand alone
 wf.parallel({fn, ...}) -> results, errs: runs the functions at once
 wf.pipeline(items, stage, ...) -> results, errs: each item through the stages, stage(prev, item, i), items independent
 wf.phase(name) groups the agents after it; wf.log(...) tells the user; wf.args is the input's args

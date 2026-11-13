@@ -191,7 +191,7 @@ func TestWorkflowRun(t *testing.T) {
 		{name: "parallel over the agent cap", script: `local t = {} for i = 1, 101 do t[i] = function() return 1 end end return wf.parallel(t)`, wantErr: true, want: "more than the"},
 		{name: "unknown agent", script: `return wf.agent("x", {agent = "nope"})`, wantErr: true, want: "unknown agent"},
 		{name: "a wrong-typed option raises naming it", script: `return wf.agent("x", {phase = 1})`, wantErr: true, want: "phase must be a string"},
-		{name: "an unknown option names the ones there are", script: `return wf.agent("x", {agnt = "explore"})`, wantErr: true, want: `unknown option "agnt"; have agent, description, model, phase, schema`},
+		{name: "an unknown option names the ones there are", script: `return wf.agent("x", {agnt = "explore"})`, wantErr: true, want: `unknown option "agnt"; have agent, description, model, phase`},
 		{name: "bare agent points at zemi.workflow", script: `return agent("x")`, wantErr: true, want: "has no agent, write zemi.workflow.agent"},
 		{name: "print is gone", script: `print("x")`, wantErr: true, want: "has no print, write zemi.workflow.log"},
 		{name: "coroutine.yield points at the suspenders", script: `coroutine.yield(1)`, wantErr: true, want: "has no coroutine, write zemi.workflow.agent or zemi.workflow.parallel"},
@@ -829,47 +829,6 @@ func TestStaleWorkflowWait(t *testing.T) {
 			})
 			if !strings.Contains(resp.Content, c.want) {
 				t.Fatalf("wait = %q, want %q", resp.Content, c.want)
-			}
-		})
-	}
-}
-
-// TestWorkflowSchema: a schema call's report is the JSON object cut out of
-// the reply, checked, asked for again at most twice, and a table in Lua.
-func TestWorkflowSchema(t *testing.T) {
-	t.Parallel()
-	h, _ := newTestHostDB(t)
-	h.modelFn = func() (fantasy.LanguageModel, error) {
-		return &scriptModel{script: func(_, last string, _ bool) []fantasy.StreamPart {
-			switch first, _, _ := strings.Cut(last, "\n"); {
-			case first == "fenced":
-				return textParts("Here:\n```json\n{\"n\": 1}\n```")
-			case strings.HasPrefix(first, "Your reply is not the JSON"):
-				return textParts(`{"n": 1}`)
-			default:
-				return textParts(`{}`)
-			}
-		}}, nil
-	}
-	const n = `{type = "object", properties = {n = {type = "number"}}, required = {"n"}}`
-	for _, c := range []struct{ name, script, want string }{
-		{"a fenced reply is a table", `return wf.agent("fenced", {schema = ` + n + `}).n`, "1"},
-		{"a mismatch is asked for again", `return wf.agent("retry", {schema = ` + n + `}).n`, "1"},
-		{
-			"a mismatch fails after two retries",
-			`local r, err = wf.agent("never", {schema = {type = "object", properties = {m = {type = "string"}}, required = {"m"}}}) return tostring(r) .. " " .. err`,
-			"nil the report is not the JSON asked for",
-		},
-		{"a schema that is no object schema raises", `return wf.agent("x", {schema = {type = "string"}})`, "schema must be a JSON Schema object"},
-		{"a required field it does not declare raises", `return wf.agent("x", {schema = {type = "object", properties = {a = {}}, required = {"b"}}})`, "schema must be"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			got, err := runFlow(t.Context(), h, "local wf = zemi.workflow\n"+c.script, nil)
-			if err != nil {
-				got = err.Error()
-			}
-			if !strings.Contains(got, c.want) {
-				t.Fatalf("= %q, want %q", got, c.want)
 			}
 		})
 	}

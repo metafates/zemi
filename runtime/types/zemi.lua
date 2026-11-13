@@ -1365,7 +1365,6 @@ function zemi.agent.run(spec, on_done) end
 ---@field description? string Row label; default the prompt's first line.
 ---@field phase? string Group for this agent; default the last phase().
 ---@field model? string A role or provider/model id.
----@field schema? table A JSON Schema object: the report is then a table matching it.
 
 ---@class zemi.WorkflowInfo
 ---@field name string
@@ -1399,7 +1398,7 @@ function zemi.workflow.run(spec, on_done) end
 --- ```
 ---@param prompt string Everything the agent needs: it does not see the conversation.
 ---@param opts? zemi.WorkflowAgentOpts
----@return string|table|nil report A table when opts.schema is set.
+---@return string|nil report
 ---@return string|nil err
 function zemi.workflow.agent(prompt, opts) end
 

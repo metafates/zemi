@@ -9,7 +9,6 @@ package hostapi
 import (
 	"cmp"
 	"context"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -396,20 +395,6 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	}
 	run.forkBase = own
 	said := func() []fantasy.Message { return runner.History[min(own, len(runner.History)):] }
-	// NOTE: tools.Validate checks required fields and types, not every
-	// keyword (enum, bounds); a deeper validator is the upgrade.
-	var report string
-	for tries := 0; err == nil && run.schema != nil; tries++ {
-		var bad error
-		if report, bad = schemaReport(run.schema, lastAssistantText(said())); bad == nil {
-			break
-		}
-		if tries == 2 {
-			err = fmt.Errorf("the report is not the JSON asked for: %w", bad)
-			break
-		}
-		own, err = h.sendPruning(ctx, runner, modelID, "Your reply is not the JSON asked for: "+bad.Error()+". Reply with only the JSON object.", own)
-	}
 	// a message parked while the queue was closed - send_to racing the finish
 	// - still reaches the run: one more pass before the report
 	for next := run.followUp(err); next != ""; next = run.followUp(err) {
@@ -425,9 +410,6 @@ func (h *Host) runAgent(ctx context.Context, run *agentRun, def AgentDef, prompt
 	}
 	if err != nil {
 		return text, err
-	}
-	if run.schema != nil {
-		return report, nil
 	}
 	if text == "" {
 		text = "(the agent finished without a reply)"
@@ -731,42 +713,6 @@ func (h *Host) subagentSystem(def AgentDef, toolset []fantasy.AgentTool, readOnl
 		" and say plainly what you did not find or could not verify.\n\n" + def.System + readOnlyLine + update +
 		"\n\nParallel siblings of the same caller work in the same project tree: touch only the files your task names." +
 		"\n\n# Using tools\n" + _batchPrompt + read + "\n" + _toolRules
-}
-
-// schemaReport cuts the outermost {...} out of a reply, which models wrap
-// in prose and fences, and checks it against schema. What comes back is the
-// checked object re-marshalled: the report the caller journals and answers
-// with is what the gate validated, quotes and key order included.
-func schemaReport(schema map[string]any, reply string) (string, error) {
-	i, j := strings.Index(reply, "{"), strings.LastIndex(reply, "}")
-	if i < 0 || j < i {
-		return "", errors.New("it holds no JSON object")
-	}
-	var m map[string]any
-	if err := json.Unmarshal([]byte(reply[i:j+1]), &m); err != nil {
-		return "", err
-	}
-	var req []string
-	list, _ := schema["required"].([]any)
-	for _, r := range list {
-		name, _ := r.(string)
-		req = append(req, name)
-	}
-	info := fantasy.ToolInfo{Parameters: tools.SchemaProperties(schema), Required: req}
-	if err := tools.Validate(info, m, tools.SchemaOpen(schema)); err != nil {
-		return "", err
-	}
-	// re-decode the raw bytes: values keep the model's own spelling, so no
-	// number round-trips through float64 on its way to the journal
-	var raw map[string]jsontext.Value
-	if err := json.Unmarshal([]byte(reply[i:j+1]), &raw); err != nil {
-		return "", err
-	}
-	out, err := json.Marshal(raw, json.Deterministic(true))
-	if err != nil {
-		return "", err
-	}
-	return string(out), nil
 }
 
 func lastAssistantText(history []fantasy.Message) string {
